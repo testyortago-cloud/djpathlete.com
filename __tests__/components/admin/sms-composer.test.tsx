@@ -384,3 +384,205 @@ describe("SmsComposer — the request it actually sends", () => {
     expect(alert).toHaveTextContent(/did not send/i)
   })
 })
+
+// ---------------------------------------------------------------------------
+// G28 — no recorded consent, and the audited override. Owner ruled 2026-09-21.
+//
+// THE FOURTH PRODUCT DECISION IN THIS COMPONENT, and the one most likely to
+// be "simplified" into a hole: the override is offered ONLY after the server
+// has refused, and it overrides CONSENT ONLY. A suppressed number is still
+// blocked before the box even enables, and `sendManualSms` checks
+// suppression ahead of consent so a STOP refuses whatever is ticked here.
+//
+// The button is deliberately NOT called "Send anyway" -- that accessible
+// name already belongs to the quiet-hours confirmation, and Testing
+// Library's `name:` is a full-string match, so two controls sharing it
+// cannot be told apart (and neither can a screen-reader user).
+// ---------------------------------------------------------------------------
+describe("SmsComposer — G28, sending without recorded consent", () => {
+  const originalFetch = global.fetch
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  function refuseOnce() {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({
+          error: "There is no record that this person agreed to be texted.",
+          reason: "no_consent",
+          canOverride: true,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ id: "m1", providerMessageId: "SM1" }),
+      })
+  }
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    global.fetch = fetchMock as unknown as typeof fetch
+  })
+
+  afterEach(() => {
+    global.fetch = originalFetch
+  })
+
+  it("shows the refusal and offers the override after a no_consent 409", async () => {
+    refuseOnce()
+    render(<SmsComposer {...base} />)
+    await userEvent.type(screen.getByRole("textbox"), "hello")
+    await userEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/no record that this person agreed/i)
+    expect(screen.getByRole("button", { name: "Send without permission on file" })).toBeInTheDocument()
+    // And it warns that using it is recorded, because that is the deal.
+    expect(screen.getByText(/recorded against your name/i)).toBeInTheDocument()
+  })
+
+  it("the FIRST attempt never carries the override", async () => {
+    refuseOnce()
+    render(<SmsComposer {...base} />)
+    await userEvent.type(screen.getByRole("textbox"), "hello")
+    await userEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const first = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
+    expect(first).not.toHaveProperty("consentOverride")
+  })
+
+  it("the override click re-sends the SAME message with consentOverride true", async () => {
+    refuseOnce()
+    render(<SmsComposer {...base} />)
+    await userEvent.type(screen.getByRole("textbox"), "hello")
+    await userEvent.click(screen.getByRole("button", { name: "Send" }))
+    await screen.findByRole("button", { name: "Send without permission on file" })
+
+    await userEvent.click(screen.getByRole("button", { name: "Send without permission on file" }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const second = JSON.parse(String((fetchMock.mock.calls[1] as [string, RequestInit])[1].body))
+    expect(second).toMatchObject({ consentOverride: true, body: "hello" })
+  })
+
+  it("clears the box once the override send succeeds", async () => {
+    refuseOnce()
+    render(<SmsComposer {...base} />)
+    await userEvent.type(screen.getByRole("textbox"), "hello")
+    await userEvent.click(screen.getByRole("button", { name: "Send" }))
+    await screen.findByRole("button", { name: "Send without permission on file" })
+    await userEvent.click(screen.getByRole("button", { name: "Send without permission on file" }))
+
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""))
+    expect(screen.queryByRole("button", { name: "Send without permission on file" })).not.toBeInTheDocument()
+  })
+
+  it("does NOT offer the override for any other refusal", async () => {
+    // The presence control is the first test in this block. Keyed on the
+    // machine-readable `reason`: a suppressed number, a bad phone or a
+    // provider outage must never grow a button that offers to push past it.
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: "This number has opted out of texts.", reason: "suppressed" }),
+    })
+    render(<SmsComposer {...base} />)
+    await userEvent.type(screen.getByRole("textbox"), "hello")
+    await userEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/opted out/i)
+    expect(screen.queryByRole("button", { name: "Send without permission on file" })).not.toBeInTheDocument()
+  })
+
+  it("withdraws the override offer when a retry fails for a different reason", async () => {
+    // Otherwise a stale button sits there offering to override something
+    // that is no longer the problem, and the coach's next click means
+    // something they did not intend.
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: "No record of consent.", reason: "no_consent", canOverride: true }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        json: async () => ({ error: "That text did not send. Try again in a moment." }),
+      })
+
+    render(<SmsComposer {...base} />)
+    await userEvent.type(screen.getByRole("textbox"), "hello")
+    await userEvent.click(screen.getByRole("button", { name: "Send" }))
+    await screen.findByRole("button", { name: "Send without permission on file" })
+
+    await userEvent.click(screen.getByRole("button", { name: "Send without permission on file" }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Send without permission on file" })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole("alert")).toHaveTextContent(/did not send/i)
+  })
+
+  it("withdraws the override offer when the message is edited", async () => {
+    // Review finding. The textarea's onChange clears `error` and re-arms
+    // the quiet-hours warning; leaving `consentRefused` set kept an
+    // override button on screen after the refusal it belonged to was gone.
+    // During quiet hours that is not cosmetic: `setWarned(false)` has just
+    // re-armed the warning, so the next click on that button is swallowed
+    // by the quiet-hours branch and appears to do nothing at all.
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: "No record of consent.", reason: "no_consent", canOverride: true }),
+    })
+    render(<SmsComposer {...base} />)
+    await userEvent.type(screen.getByRole("textbox"), "hello")
+    await userEvent.click(screen.getByRole("button", { name: "Send" }))
+    await screen.findByRole("button", { name: "Send without permission on file" })
+
+    await userEvent.type(screen.getByRole("textbox"), " again")
+
+    expect(screen.queryByRole("button", { name: "Send without permission on file" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/recorded against your name/i)).not.toBeInTheDocument()
+  })
+
+  it("an ordinary send still carries no override — the plain Send button is not the override", async () => {
+    // Guards the `onClick={() => handleSend()}` wrapper. Passing
+    // `handleSend` by reference hands React's MouseEvent in as the first
+    // parameter, which is truthy, and every ordinary send silently becomes
+    // an override.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "m1", providerMessageId: "SM1" }),
+    })
+    render(<SmsComposer {...base} />)
+    await userEvent.type(screen.getByRole("textbox"), "hello")
+    await userEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const sent = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
+    expect(sent).not.toHaveProperty("consentOverride")
+  })
+
+  it("the quiet-hours confirmation is not the override either", async () => {
+    // Two controls, two meanings. Clicking through the late-hour warning
+    // must not smuggle a consent override with it.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "m1", providerMessageId: "SM1" }),
+    })
+    render(<SmsComposer {...base} contactLocalHour={23} />)
+    await userEvent.type(screen.getByRole("textbox"), "hello")
+    await userEvent.click(screen.getByRole("button", { name: "Send" }))
+    await userEvent.click(await screen.findByRole("button", { name: "Send anyway" }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const sent = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
+    expect(sent).toMatchObject({ confirmQuietHours: true })
+    expect(sent).not.toHaveProperty("consentOverride")
+  })
+})

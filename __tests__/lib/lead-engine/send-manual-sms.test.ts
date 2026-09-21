@@ -5,13 +5,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // factories close over must themselves be created inside vi.hoisted() — a
 // bare `const isSuppressed = vi.fn()` referenced below throws "Cannot access
 // before initialization" (repo convention: see chat-escalate.test.ts's `h`).
-const { isSuppressed, insertSmsMessage, markSmsMessageOutcome } = vi.hoisted(() => ({
+const { isSuppressed, hasConsent, insertSmsMessage, markSmsMessageOutcome } = vi.hoisted(() => ({
   isSuppressed: vi.fn(),
+  hasConsent: vi.fn(),
   insertSmsMessage: vi.fn(),
   markSmsMessageOutcome: vi.fn(),
 }))
 
-vi.mock("@/lib/db/contact-consents", () => ({ isSuppressed }))
+vi.mock("@/lib/db/contact-consents", () => ({ isSuppressed, hasConsent }))
 vi.mock("@/lib/db/sms-messages", () => ({ insertSmsMessage, markSmsMessageOutcome }))
 
 import {
@@ -20,6 +21,7 @@ import {
   SmsNotConfiguredError,
   SmsTooLongError,
   SmsUnparseablePhoneError,
+  SmsNoConsentError,
 } from "@/lib/lead-engine/sms"
 import type { BusinessSettings } from "@/lib/db/businesses"
 
@@ -32,6 +34,7 @@ const BIZ = "11111111-1111-1111-1111-111111111111"
 const PHONE = "+12025550123"
 // A national-format spelling of the SAME number, for the normalisation test.
 const PHONE_NATIONAL = "(202) 555-0123"
+const CONTACT = "22222222-2222-4222-8222-222222222222"
 const CONFIGURED = {
   sms_messaging_service_sid: "MGtest",
   sms_sender_phone: "",
@@ -44,6 +47,11 @@ const UNCONFIGURED = {
 beforeEach(() => {
   vi.resetAllMocks()
   isSuppressed.mockResolvedValue(false)
+  // Default to GRANTED so the suites that are not about consent are not
+  // silently exercising the refusal path. They pass `consentOverride: true`
+  // as well, so neither the default nor the override alone is load-bearing
+  // for them.
+  hasConsent.mockResolvedValue(true)
   insertSmsMessage.mockResolvedValue({ id: "m1" })
   markSmsMessageOutcome.mockResolvedValue(undefined)
   vi.stubEnv("TWILIO_ACCOUNT_SID", "AC1")
@@ -66,6 +74,7 @@ describe("sendManualSms — suppression", () => {
         settings: CONFIGURED,
         businessId: BIZ,
         appendOptOut: false,
+        consentOverride: true,
       }),
     ).rejects.toThrow(SmsSuppressedError)
 
@@ -81,6 +90,7 @@ describe("sendManualSms — suppression", () => {
       settings: CONFIGURED,
       businessId: BIZ,
       appendOptOut: false,
+      consentOverride: true,
     })
     expect(isSuppressed).toHaveBeenCalledWith(PHONE, BIZ)
   })
@@ -96,6 +106,7 @@ describe("sendManualSms — suppression", () => {
         settings: UNCONFIGURED,
         businessId: BIZ,
         appendOptOut: false,
+        consentOverride: true,
       }),
     ).rejects.toThrow(SmsSuppressedError)
   })
@@ -111,6 +122,7 @@ describe("sendManualSms — suppression", () => {
       settings: CONFIGURED,
       businessId: BIZ,
       appendOptOut: false,
+      consentOverride: true,
     })
     expect(isSuppressed).toHaveBeenCalledWith(PHONE, BIZ)
   })
@@ -128,6 +140,7 @@ describe("sendManualSms — suppression", () => {
         settings: CONFIGURED,
         businessId: BIZ,
         appendOptOut: false,
+        consentOverride: true,
       }),
     ).rejects.toThrow(/consent lookup unavailable/)
 
@@ -145,6 +158,7 @@ describe("sendManualSms — configuration", () => {
         settings: UNCONFIGURED,
         businessId: BIZ,
         appendOptOut: false,
+        consentOverride: true,
       }),
     ).rejects.toThrow(SmsNotConfiguredError)
     expect(global.fetch).not.toHaveBeenCalled()
@@ -159,6 +173,7 @@ describe("sendManualSms — the send", () => {
       settings: CONFIGURED,
       businessId: BIZ,
       appendOptOut: false,
+      consentOverride: true,
     })
     const body = (global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string
     expect(body).toContain("MessagingServiceSid=MGtest")
@@ -186,6 +201,7 @@ describe("sendManualSms — the send", () => {
       contactId: "c1",
       sentBy: "u1",
       appendOptOut: false,
+      consentOverride: true,
     })
 
     expect(insertSmsMessage).toHaveBeenCalledWith(
@@ -217,6 +233,7 @@ describe("sendManualSms — the send", () => {
       contactId: "c1",
       sentBy: "u1",
       appendOptOut: false,
+      consentOverride: true,
     })
 
     expect(out).toMatchObject({ messageId: "m1", providerMessageId: "SM123", text: "hi" })
@@ -232,6 +249,7 @@ describe("sendManualSms — the send", () => {
       settings: CONFIGURED,
       businessId: BIZ,
       appendOptOut: true,
+      consentOverride: true,
     })
     expect(out.text).toContain("Reply STOP to opt out")
     const body = (global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string
@@ -254,6 +272,7 @@ describe("sendManualSms — the send", () => {
         settings: CONFIGURED,
         businessId: BIZ,
         appendOptOut: false,
+        consentOverride: true,
       }),
     ).rejects.toThrow(/blocked/)
 
@@ -285,6 +304,7 @@ describe("sendManualSms — the send", () => {
         settings: CONFIGURED,
         businessId: BIZ,
         appendOptOut: false,
+        consentOverride: true,
       }),
     ).rejects.toThrow(/blocked by carrier/)
 
@@ -306,6 +326,7 @@ describe("sendManualSms — the send", () => {
       settings: CONFIGURED,
       businessId: BIZ,
       appendOptOut: false,
+      consentOverride: true,
     })
 
     expect(out).toMatchObject({ messageId: null, providerMessageId: "SM123", text: "hi" })
@@ -331,6 +352,7 @@ describe("sendManualSms — a DB blip before the send", () => {
       settings: CONFIGURED,
       businessId: BIZ,
       appendOptOut: false,
+      consentOverride: true,
     })
 
     // MUTANT: rethrow the insert error instead of logging it — the text would
@@ -361,6 +383,7 @@ describe("sendManualSms — a DB blip before the send", () => {
         settings: CONFIGURED,
         businessId: BIZ,
         appendOptOut: false,
+        consentOverride: true,
       }),
     ).rejects.toThrow(/blocked/)
 
@@ -383,6 +406,7 @@ describe("sendManualSms — segment length", () => {
         settings: CONFIGURED,
         businessId: BIZ,
         appendOptOut: false,
+        consentOverride: true,
       }),
     ).rejects.toThrow(SmsTooLongError)
     expect(global.fetch).not.toHaveBeenCalled()
@@ -396,6 +420,7 @@ describe("sendManualSms — segment length", () => {
         settings: CONFIGURED,
         businessId: BIZ,
         appendOptOut: false,
+        consentOverride: true,
       })
       throw new Error("sendManualSms did not throw")
     } catch (err) {
@@ -423,6 +448,7 @@ describe("sendManualSms — phone normalisation", () => {
         settings: CONFIGURED,
         businessId: BIZ,
         appendOptOut: false,
+        consentOverride: true,
       }),
     ).rejects.toThrow(SmsUnparseablePhoneError)
 
@@ -441,11 +467,220 @@ describe("sendManualSms — phone normalisation", () => {
         settings: CONFIGURED,
         businessId: BIZ,
         appendOptOut: false,
+        consentOverride: true,
       })
       throw new Error("sendManualSms did not throw")
     } catch (err) {
       expect(err).toBeInstanceOf(SmsUnparseablePhoneError)
       expect((err as SmsUnparseablePhoneError).phone).toBe("+12345678")
+    }
+  })
+})
+
+// G28 — manual texts are consent-gated, with an audited override.
+// Owner ruled 2026-09-21.
+//
+// THE MEASURED PREMISE, and it is uncomfortable: `contact_consents` has
+// ZERO rows in production. So this gate blocks EVERY manual text on day
+// one, and every send needs the coach to tick "Send anyway" until consent
+// rows start accumulating. The owner accepted that knowingly, because the
+// alternative is texting people with no recorded permission and no record
+// that anyone decided to.
+//
+// WHY THE OVERRIDE IS NOT A HOLE: it skips CONSENT, never SUPPRESSION. A
+// STOP is not a preference, and no tick in a compose box may undo it. The
+// suppression suite at the top of this file now passes
+// `consentOverride: true` on every call and still expects
+// SmsSuppressedError — that IS the proof, not a separate claim.
+describe("sendManualSms — G28 consent gate", () => {
+  it("REFUSES when the contact has no granted SMS consent, and sends nothing", async () => {
+    hasConsent.mockResolvedValue(false)
+
+    await expect(
+      sendManualSms({
+        phone: PHONE,
+        body: "hi",
+        settings: CONFIGURED,
+        businessId: BIZ,
+        contactId: CONTACT,
+        appendOptOut: false,
+        consentOverride: false,
+      }),
+    ).rejects.toThrow(SmsNoConsentError)
+
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(insertSmsMessage).not.toHaveBeenCalled()
+  })
+
+  it("REFUSES when there is no contact at all — an unknown number cannot have consented", async () => {
+    // The easiest way around a consent gate is to text a number that has no
+    // contact row. `contactId` is optional on this function, so without this
+    // branch the gate would be trivially bypassable.
+    await expect(
+      sendManualSms({
+        phone: PHONE,
+        body: "hi",
+        settings: CONFIGURED,
+        businessId: BIZ,
+        contactId: null,
+        appendOptOut: false,
+        consentOverride: false,
+      }),
+    ).rejects.toThrow(SmsNoConsentError)
+
+    expect(hasConsent).not.toHaveBeenCalled()
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it("SENDS when the contact has granted SMS consent, with no override needed", async () => {
+    // The presence control. Without it every refusal above would pass just
+    // as well on a function that refuses unconditionally.
+    hasConsent.mockResolvedValue(true)
+
+    await sendManualSms({
+      phone: PHONE,
+      body: "hi",
+      settings: CONFIGURED,
+      businessId: BIZ,
+      contactId: CONTACT,
+      appendOptOut: false,
+      consentOverride: false,
+    })
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(hasConsent).toHaveBeenCalledWith(CONTACT, "sms")
+  })
+
+  it("asks about the SMS channel, not email", async () => {
+    hasConsent.mockResolvedValue(true)
+    await sendManualSms({
+      phone: PHONE,
+      body: "hi",
+      settings: CONFIGURED,
+      businessId: BIZ,
+      contactId: CONTACT,
+      appendOptOut: false,
+      consentOverride: false,
+    })
+    expect(hasConsent).toHaveBeenCalledWith(CONTACT, "sms")
+    expect(hasConsent).not.toHaveBeenCalledWith(CONTACT, "email")
+  })
+
+  it("SENDS without consent when the override is set, and does not even ask", async () => {
+    hasConsent.mockResolvedValue(false)
+
+    await sendManualSms({
+      phone: PHONE,
+      body: "hi",
+      settings: CONFIGURED,
+      businessId: BIZ,
+      contactId: CONTACT,
+      appendOptOut: false,
+      consentOverride: true,
+    })
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(hasConsent).not.toHaveBeenCalled()
+  })
+
+  it("THE OVERRIDE DOES NOT BYPASS SUPPRESSION — a STOP still refuses", async () => {
+    // The single most important assertion in this file. "Send anyway" is a
+    // consent override, not a suppression override. Someone who texted STOP
+    // stays unreachable however many boxes an admin ticks.
+    isSuppressed.mockResolvedValue(true)
+    hasConsent.mockResolvedValue(false)
+
+    await expect(
+      sendManualSms({
+        phone: PHONE,
+        body: "hi",
+        settings: CONFIGURED,
+        businessId: BIZ,
+        contactId: CONTACT,
+        appendOptOut: false,
+        consentOverride: true,
+      }),
+    ).rejects.toThrow(SmsSuppressedError)
+
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it("checks consent BEFORE configuration, so an unconfigured business cannot mask it", async () => {
+    // Same reasoning the suppression check is documented with: ordering a
+    // configuration error ahead of a legal one reports the wrong problem,
+    // and an admin who then fixes the credentials texts someone who never
+    // agreed.
+    hasConsent.mockResolvedValue(false)
+
+    await expect(
+      sendManualSms({
+        phone: PHONE,
+        body: "hi",
+        settings: UNCONFIGURED,
+        businessId: BIZ,
+        contactId: CONTACT,
+        appendOptOut: false,
+        consentOverride: false,
+      }),
+    ).rejects.toThrow(SmsNoConsentError)
+  })
+
+  it("checks suppression BEFORE consent, so the stronger refusal wins", async () => {
+    isSuppressed.mockResolvedValue(true)
+    hasConsent.mockResolvedValue(false)
+
+    await expect(
+      sendManualSms({
+        phone: PHONE,
+        body: "hi",
+        settings: CONFIGURED,
+        businessId: BIZ,
+        contactId: CONTACT,
+        appendOptOut: false,
+        consentOverride: false,
+      }),
+    ).rejects.toThrow(SmsSuppressedError)
+  })
+
+  it("does NOT treat an unreadable consent row as a refusal — the error propagates", async () => {
+    // "could not read" and "they said no" are different answers, and
+    // hasConsent throws rather than returning false for exactly that reason
+    // (see its doc comment). Swallowing it here would turn a database blip
+    // into a silent policy decision — in the safe direction today, but it
+    // would also hide an outage behind a message the coach cannot act on.
+    hasConsent.mockRejectedValue(new Error("consents read failed"))
+
+    await expect(
+      sendManualSms({
+        phone: PHONE,
+        body: "hi",
+        settings: CONFIGURED,
+        businessId: BIZ,
+        contactId: CONTACT,
+        appendOptOut: false,
+        consentOverride: false,
+      }),
+    ).rejects.toThrow("consents read failed")
+
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it("carries the NORMALISED phone on the error, so the route can name the number", async () => {
+    hasConsent.mockResolvedValue(false)
+    try {
+      await sendManualSms({
+        phone: PHONE_NATIONAL,
+        body: "hi",
+        settings: CONFIGURED,
+        businessId: BIZ,
+        contactId: CONTACT,
+        appendOptOut: false,
+        consentOverride: false,
+      })
+      throw new Error("sendManualSms did not throw")
+    } catch (err) {
+      expect(err).toBeInstanceOf(SmsNoConsentError)
+      expect((err as SmsNoConsentError).phone).toBe(PHONE)
     }
   })
 })

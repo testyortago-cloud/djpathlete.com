@@ -52,6 +52,13 @@ export type SmsComposeSubmission = {
   body: string
   /** True only after the admin was warned about the hour and clicked again. */
   confirmQuietHours: boolean
+  /**
+   * G28. True only after the server refused for `no_consent` and the coach
+   * pressed "Send anyway". Never set on a first attempt: the refusal has to
+   * happen first, so the override is always a reply to being told, not a
+   * box that can be left permanently ticked.
+   */
+  consentOverride: boolean
 }
 
 export interface SmsComposerProps {
@@ -133,6 +140,11 @@ export function SmsComposer({
   // post-send record write failed, so it may not show up below. Distinct
   // from `error` — this is not a failed send, and must not read as one.
   const [warning, setWarning] = useState<string | null>(null)
+  // G28. Set only when the server answers 409 `no_consent`. It is what
+  // turns the refusal into an offer of "Send anyway" -- keyed on the
+  // machine-readable `reason`, never on matching the error TEXT, which
+  // would silently stop working the day the wording is improved.
+  const [consentRefused, setConsentRefused] = useState(false)
 
   const who = contactName ?? phone
   const counted = countSmsSegments(body)
@@ -149,16 +161,25 @@ export function SmsComposer({
         body: submission.body,
         ...(contactId ? { contactId } : {}),
         confirmQuietHours: submission.confirmQuietHours,
+        ...(submission.consentOverride ? { consentOverride: true } : {}),
       }),
     })
-    const payload = (await response.json().catch(() => null)) as { error?: string; warning?: string } | null
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string
+      warning?: string
+      reason?: string
+    } | null
     if (!response.ok) {
-      throw new Error(payload?.error ?? "That text did not send. Try again in a moment.")
+      const err = new Error(payload?.error ?? "That text did not send. Try again in a moment.")
+      // Carried so `handleSend` can branch on the REASON rather than the
+      // message. `cause` is the standard place for it and needs no new type.
+      err.cause = payload?.reason
+      throw err
     }
     return { warning: payload?.warning }
   }
 
-  async function handleSend() {
+  async function handleSend(consentOverride = false) {
     if (!canSend) return
 
     // Decision 1. The FIRST click during quiet hours warns and returns
@@ -171,11 +192,15 @@ export function SmsComposer({
     setSending(true)
     setError(null)
     setWarning(null)
+    // Cleared on every attempt: if this one fails for a DIFFERENT reason,
+    // the stale "Send anyway" button must not still be sitting there
+    // offering to override something that is no longer the problem.
+    setConsentRefused(false)
     try {
       if (onSend) {
-        await onSend({ body, confirmQuietHours: warned })
+        await onSend({ body, confirmQuietHours: warned, consentOverride })
       } else {
-        const result = await post({ body, confirmQuietHours: warned })
+        const result = await post({ body, confirmQuietHours: warned, consentOverride })
         if (result.warning) setWarning(result.warning)
       }
       setBody("")
@@ -183,6 +208,9 @@ export function SmsComposer({
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : "That text did not send.")
+      if (err instanceof Error && err.cause === "no_consent") {
+        setConsentRefused(true)
+      }
     } finally {
       setSending(false)
     }
@@ -234,6 +262,15 @@ export function SmsComposer({
           setWarned(false)
           setError(null)
           setWarning(null)
+          // Same reasoning as `setWarned(false)`, and it matters more here.
+          // Leaving this set keeps "Send without permission on file" and its
+          // "recorded against your name" note on screen after the refusal
+          // they belong to has been cleared -- an override button offering
+          // to push past a refusal the coach can no longer see. During quiet
+          // hours it is worse than cosmetic: `setWarned(false)` has just
+          // re-armed the warning, so the next click on that button is
+          // swallowed by the quiet-hours branch and appears to do nothing.
+          setConsentRefused(false)
         }}
         placeholder={blocked ? "" : `Write a text to ${who}…`}
         rows={3}
@@ -275,7 +312,12 @@ export function SmsComposer({
       ) : null}
 
       <div className="mt-3 flex items-center gap-2">
-        <Button type="button" onClick={handleSend} disabled={!canSend}>
+        {/* `() => handleSend()` , NOT `handleSend`. The handler now takes
+            `consentOverride` as its first parameter, and React passes the
+            click event as the first argument -- a MouseEvent is truthy, so
+            passing the function by reference would turn EVERY ordinary send
+            into a silent consent override. */}
+        <Button type="button" onClick={() => handleSend()} disabled={!canSend}>
           {sending ? <Loader2 aria-hidden className="size-4 animate-spin" /> : <Send aria-hidden className="size-4" />}
           {/* The two states carry DIFFERENT names on purpose: a test cannot
               tell two controls with the same accessible name apart, and more
@@ -288,7 +330,21 @@ export function SmsComposer({
             Not now
           </Button>
         ) : null}
+        {consentRefused && !blocked ? (
+          /* NOT "Send anyway" -- that name already belongs to the quiet-hours
+             confirmation above, and two controls sharing an accessible name
+             are indistinguishable to a screen reader and to a test. This one
+             says what it actually does. */
+          <Button type="button" variant="outline" onClick={() => handleSend(true)} disabled={!canSend}>
+            Send without permission on file
+          </Button>
+        ) : null}
       </div>
+      {consentRefused && !blocked ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Sending this way is recorded against your name, with the time and who you sent it to.
+        </p>
+      ) : null}
     </div>
   )
 }
