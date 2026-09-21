@@ -146,6 +146,13 @@ function constraintViolation(table: string, payload: Row, rows: Row[]): PgError 
  */
 let selectErrorByTable: Partial<Record<keyof Store, PgError>> = {}
 
+/**
+ * G23. A write fault aimed at ONE row, by id. See `doUpdate` for why the
+ * per-table shape above cannot express what this pins. Cleared in
+ * `beforeEach`, so it cannot leak into another case.
+ */
+let updateErrorByRowId: { id: string; error: PgError } | null = null
+
 // NOTE ON THE MOCK: copied (structure verbatim) from __tests__/db/sequences.ts's
 // harness. The trap this project has hit twice is a `.eq()` that returns the
 // query object without recording the filter, so every query resolves to
@@ -164,6 +171,7 @@ vi.mock("@/lib/supabase", () => ({
       const filters: Array<[string, any]> = []
       const gteFilters: Array<[string, any]> = []
       const ltFilters: Array<[string, any]> = []
+      const isFilters: Array<[string, any]> = []
       // CHAINED `.order()` CALLS ACCUMULATE, first one primary — the real
       // PostgREST contract (`.order("a").order("b")` is `ORDER BY a, b`).
       // Held as a list rather than a single column because `listPipelines`
@@ -177,7 +185,11 @@ vi.mock("@/lib/supabase", () => ({
       const passesFilters = (row: Row) =>
         filters.every(([col, val]) => row[col] === val) &&
         gteFilters.every(([col, val]) => row[col] >= val) &&
-        ltFilters.every(([col, val]) => row[col] < val)
+        ltFilters.every(([col, val]) => row[col] < val) &&
+        // `IS NULL` / `IS NOT NULL`. A column the fixture simply omitted reads
+        // as `undefined`, which `== null` treats as null — matching Postgres,
+        // where an unset column IS null rather than a third thing.
+        isFilters.every(([col, val]) => (val === null ? row[col] == null : row[col] === val))
 
       const matched = (): Row[] => {
         let result = rows.filter(passesFilters)
@@ -215,6 +227,16 @@ vi.mock("@/lib/supabase", () => ({
 
       const doUpdate = (): { data: any; error: any } => {
         updateCalls.push({ table: String(table), payload: { ...(payload as Row) }, filters: [...filters] })
+        // A write fault the mock can be told to answer ONE row's UPDATE with,
+        // keyed by id. Per-row rather than per-table (unlike
+        // `selectErrorByTable`) because what it exists to pin is ISOLATION:
+        // G23's sweep walks several boards in a loop, and "one board's
+        // transient failure must not strand the boards after it" cannot be
+        // expressed by a fault that fails all of them at once.
+        const failingId = updateErrorByRowId && filters.find(([col]) => col === "id")?.[1]
+        if (failingId && updateErrorByRowId && failingId === updateErrorByRowId.id) {
+          return { data: null, error: updateErrorByRowId.error }
+        }
         const targets = rows.filter(passesFilters)
         for (const row of targets) Object.assign(row, payload)
         return { data: [...targets], error: null }
@@ -262,6 +284,16 @@ vi.mock("@/lib/supabase", () => ({
         },
         eq: (col: string, val: any) => {
           filters.push([col, val])
+          return api
+        },
+        // PostgREST's NULL predicate. `.eq(col, null)` is NOT a substitute —
+        // it renders as `col = NULL`, which is never true in Postgres — so a
+        // reader that wants "still open" must use this, and a fake without it
+        // makes that reader throw a TypeError instead of answering. G23 found
+        // that the expensive way: the sweep's own try/catch swallowed the
+        // missing method and the effect became a silent no-op.
+        is: (col: string, val: any) => {
+          isFilters.push([col, val])
           return api
         },
         gte: (col: string, val: any) => {
@@ -362,6 +394,7 @@ beforeEach(() => {
   opportunitiesHasSourceEventId = true
   updateCalls.length = 0
   selectErrorByTable = {}
+  updateErrorByRowId = null
 })
 
 // ---------------------------------------------------------------------------
@@ -1903,6 +1936,314 @@ describe("applyPipelineEvent", () => {
   // seeds ONE board, so a refund resolving to "whichever pipeline happens to
   // be seeded" would pass all of them too. These seed TWO boards specifically
   // to prove the resolution is real.
+  // G23. A person can be on more than one board at once — an assessment
+  // enquiry AND a camp enquiry — and when they finally buy, only the board
+  // they bought on learns about it. The others keep an open card that is now
+  // a lie: the coach chases someone who has already paid, and the board's
+  // own "gone quiet" colouring pushes them up the list for it.
+  //
+  // Closed as WON, not lost, because the lead did convert — just not into
+  // this board's product. `value_cents: 0` and `outcome_reason:
+  // 'paid_elsewhere'` are what keep the sale from being counted twice.
+  describe("a payment closes the enquiry cards left open on other boards (G23)", () => {
+    function seedThreeBoardsWithTwoOpenEnquiries() {
+      seedBoard()
+      seedCampsBoard()
+      seedAssessmentBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-camps-open", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-interested",
+      })
+      seedOpportunity("opp-assessment-open", "c-1", {
+        pipeline_id: "pipe-assessment",
+        stage_id: "assessment-stage-open",
+      })
+    }
+
+    it("closes the other boards' open cards as lost / 0 / paid_elsewhere", async () => {
+      seedThreeBoardsWithTwoOpenEnquiries()
+
+      await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 300000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: "coaching",
+      })
+
+      for (const id of ["opp-camps-open", "opp-assessment-open"]) {
+        const card = store.opportunities.find((o) => o.id === id)
+        expect(card?.outcome).toBe("lost")
+        expect(card?.outcome_reason).toBe("paid_elsewhere")
+        expect(card?.value_cents).toBe(0)
+        // `opportunities_closed_fields_agree` (00219) requires outcome,
+        // closed_at and closed_trigger to be set together or not at all — a
+        // patch that set only `outcome` would be rejected by the real table.
+        expect(card?.closed_at).toEqual(expect.any(String))
+        // `payment`, never `manual`: decideMove treats a manual close as
+        // `humanClosed` and refuses to move the card ever again, so a sweep
+        // stamping `manual` would permanently freeze a board the coach never
+        // touched.
+        expect(card?.closed_trigger).toBe("payment")
+      }
+    })
+
+    // Each board's OWN lost stage, found by `kind`, never by the key "lost" —
+    // 00219's schema comment says the state machine keys on `kind` precisely
+    // so a business can rename a stage. A card parked on another board's
+    // stage id would be a foreign-key-valid lie.
+    it("moves each card to ITS OWN board's lost stage", async () => {
+      seedThreeBoardsWithTwoOpenEnquiries()
+
+      await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 300000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: "coaching",
+      })
+
+      expect(store.opportunities.find((o) => o.id === "opp-camps-open")?.stage_id).toBe("camps-stage-lost")
+      expect(store.opportunities.find((o) => o.id === "opp-assessment-open")?.stage_id).toBe("assessment-stage-lost")
+    })
+
+    // THE REASON THIS SWEEP CLOSES AS LOST RATHER THAN WON, and the test that
+    // would have caught the first cut. `decideMove`'s payment arm returns
+    // `{kind:"noop", reason:"already_won"}` for an already-won card — so a
+    // sweep that marked the camp card WON would make that board deaf to a
+    // genuine later camp sale: the money would be recorded nowhere, and the
+    // board would sit on a card worth 0 forever. A LOST card is re-closed as
+    // won at full value by that same arm, reusing the row, so the history
+    // reads opened → lost (paid elsewhere) → won.
+    //
+    // Before the sweep existed the card was simply still open and this
+    // payment closed it Won. Losing a real $450 sale would have been a worse
+    // bug than the stale card the sweep tidies away.
+    it("still records a REAL later sale on the board it swept", async () => {
+      seedThreeBoardsWithTwoOpenEnquiries()
+
+      // The coaching purchase that sweeps the camp enquiry.
+      await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 300000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: "coaching",
+      })
+      expect(store.opportunities.find((o) => o.id === "opp-camps-open")?.outcome).toBe("lost")
+
+      // Weeks later they actually buy a camp place, with no fresh enquiry in
+      // between — a checkout straight off an email, which is the common path.
+      const { decision } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 45000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: CAMPS_CLINICS_KEY,
+      })
+
+      expect(decision).toMatchObject({ kind: "close", outcome: "won", valueCents: 45000 })
+      const camp = store.opportunities.find((o) => o.id === "opp-camps-open")
+      expect(camp?.outcome).toBe("won")
+      expect(camp?.value_cents).toBe(45000)
+      expect(camp?.outcome_reason).toBe("payment_received")
+    })
+
+    it("records a stage event for each card it closes, so the board's history explains the move", async () => {
+      seedThreeBoardsWithTwoOpenEnquiries()
+
+      await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 300000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: "coaching",
+      })
+
+      for (const id of ["opp-camps-open", "opp-assessment-open"]) {
+        const events = stageEventsFor(id)
+        expect(events).toHaveLength(1)
+        expect(events[0].metadata).toMatchObject({ closed_reason: "paid_elsewhere" })
+      }
+    })
+
+    it("leaves the card it just WON alone — it keeps its real value", async () => {
+      seedThreeBoardsWithTwoOpenEnquiries()
+
+      const { opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 300000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: "coaching",
+      })
+
+      const won = store.opportunities.find((o) => o.id === opportunityId)
+      expect(won?.value_cents).toBe(300000)
+      expect(won?.outcome_reason).not.toBe("paid_elsewhere")
+    })
+
+    // The sweep must not reach across people or tenants. A contact id is a
+    // UUID so the cross-tenant case needs the inconsistency simulated
+    // directly, the same way the refund anchor's tenant test does.
+    it("does not touch another CONTACT's open card", async () => {
+      seedThreeBoardsWithTwoOpenEnquiries()
+      seedContact("c-2")
+      seedOpportunity("opp-someone-else", "c-2", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-interested",
+      })
+
+      await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 300000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: "coaching",
+      })
+
+      expect(store.opportunities.find((o) => o.id === "opp-someone-else")?.outcome).toBeNull()
+    })
+
+    it("does not touch a card carrying this contact under a DIFFERENT business", async () => {
+      seedThreeBoardsWithTwoOpenEnquiries()
+      seedOpportunity("opp-other-tenant", "c-1", {
+        business_id: OTHER_BUSINESS_ID, // the inconsistency
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-interested",
+      })
+
+      await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 300000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: "coaching",
+      })
+
+      expect(store.opportunities.find((o) => o.id === "opp-other-tenant")?.outcome).toBeNull()
+    })
+
+    // Already-closed cards keep the outcome and reason they earned. A lost
+    // camp enquiry from March must not be rewritten as won because the person
+    // bought coaching in September.
+    it("does not reopen or rewrite a card that was already closed", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-camps-lost", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-lost",
+        outcome: "lost",
+        outcome_reason: "no_response",
+        value_cents: null,
+        closed_at: new Date(Date.now() - 90 * DAY_MS).toISOString(),
+        closed_trigger: "manual",
+      })
+
+      await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 300000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: "coaching",
+      })
+
+      const card = store.opportunities.find((o) => o.id === "opp-camps-lost")
+      expect(card?.outcome).toBe("lost")
+      expect(card?.outcome_reason).toBe("no_response")
+    })
+
+    // A booking, a quiz result or an inquiry opens a card; none of them is a
+    // sale, so none of them may close anybody else's.
+    it.each([
+      ["a booking", { kind: "booking", status: "scheduled", occurredAt: new Date() }],
+      ["a quiz result", { kind: "quiz_result", tier: "red", occurredAt: new Date() }],
+      ["an inquiry", { kind: "inquiry", serviceType: "in_person", occurredAt: new Date() }],
+    ])("leaves other boards alone for %s, which is not a sale", async (_label, event) => {
+      seedThreeBoardsWithTwoOpenEnquiries()
+
+      await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: event as any,
+        pipelineKey: "coaching",
+      })
+
+      expect(store.opportunities.find((o) => o.id === "opp-camps-open")?.outcome).toBeNull()
+      expect(store.opportunities.find((o) => o.id === "opp-assessment-open")?.outcome).toBeNull()
+    })
+
+    // The sweep walks several boards. One board failing must not strand the
+    // boards after it: before the per-card try/catch, a single `throw` unwound
+    // past every remaining card and left them open behind one log line — the
+    // exact stale-card state this gap exists to remove, reintroduced by its
+    // own error handling.
+    it("keeps sweeping the remaining boards when one card's write fails", async () => {
+      seedThreeBoardsWithTwoOpenEnquiries()
+      updateErrorByRowId = {
+        id: "opp-camps-open",
+        error: { code: "40001", message: "could not serialize access", details: null, hint: null },
+      }
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+
+      await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 300000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: "coaching",
+      })
+
+      // The failing board is left exactly as it was — open, not half-written.
+      expect(store.opportunities.find((o) => o.id === "opp-camps-open")?.outcome).toBeNull()
+      // The board AFTER it in the loop is still swept.
+      expect(store.opportunities.find((o) => o.id === "opp-assessment-open")?.outcome).toBe("lost")
+      expect(store.opportunities.find((o) => o.id === "opp-assessment-open")?.outcome_reason).toBe("paid_elsewhere")
+      // And the failure is loud, not silent.
+      expect(errors).toHaveBeenCalled()
+    })
+
+    // A LOST close must not sweep, and this needs its own fixture because
+    // every test above closes as WON: gating the sweep on `decision.outcome
+    // === "won"` could be deleted entirely and they would all still pass.
+    // A cancelled consult means the person did NOT buy, so their camp and
+    // assessment enquiries are still live leads — marking them won would tell
+    // the coach they converted, and would count them as sales.
+    it("does NOT sweep when the card closes as LOST", async () => {
+      seedThreeBoardsWithTwoOpenEnquiries()
+      seedOpportunity("opp-coaching-open", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-consult-booked",
+      })
+
+      const { decision } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "booking", status: "cancelled", occurredAt: new Date() },
+        pipelineKey: "coaching",
+      })
+
+      expect(decision).toMatchObject({ kind: "close", outcome: "lost" })
+      expect(store.opportunities.find((o) => o.id === "opp-camps-open")?.outcome).toBeNull()
+      expect(store.opportunities.find((o) => o.id === "opp-assessment-open")?.outcome).toBeNull()
+    })
+
+    // The other half of "a payment wins": when the contact ALREADY has an open
+    // card on the routed board, decideMove closes it rather than creating a
+    // new one. That is a different code branch, and it must sweep too.
+    it("sweeps from the CLOSE branch as well as the create branch", async () => {
+      seedThreeBoardsWithTwoOpenEnquiries()
+      seedOpportunity("opp-coaching-open", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-consult-booked",
+      })
+
+      const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 300000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: "coaching",
+      })
+
+      expect(decision.kind).toBe("close")
+      expect(opportunityId).toBe("opp-coaching-open")
+      expect(store.opportunities.find((o) => o.id === "opp-camps-open")?.outcome_reason).toBe("paid_elsewhere")
+      expect(store.opportunities.find((o) => o.id === "opp-assessment-open")?.outcome_reason).toBe("paid_elsewhere")
+    })
+  })
+
   describe("refund board resolution (Task 3, spec §3.1)", () => {
     it("amends the Won card on a NON-default board, with no pipelineKey passed at all", async () => {
       seedBoard()

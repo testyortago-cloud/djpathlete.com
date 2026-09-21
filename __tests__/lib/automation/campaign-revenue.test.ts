@@ -61,6 +61,10 @@ vi.mock("@/lib/supabase", () => ({
       const gteFilters: Array<[string, any]> = []
       const ltFilters: Array<[string, any]> = []
       const inFilters: Array<[string, any[]]> = []
+      // The columns this query actually asked for; null means "*". Applied in
+      // `matched()` so a row comes back with exactly the shape PostgREST would
+      // have returned.
+      let projection: string[] | null = null
       // `range` SLICES rather than being recorded and ignored. A mock that
       // accepted it and returned everything would make the paging loops look
       // correct while never exercising a second page — and would spin forever
@@ -83,12 +87,19 @@ vi.mock("@/lib/supabase", () => ({
       /** Past this an `.in(...)` list is too long for the query string. */
       const IN_CAP = 200
 
+      const project = (row: Row): Row => {
+        if (!projection) return row
+        const out: Row = {}
+        for (const col of projection) out[col] = row[col]
+        return out
+      }
+
       const matched = (): Row[] => {
         const hits = rows.filter(passesFilters)
         const windowed = range ? hits.slice(range[0], range[1] + 1) : hits
         // TRUNCATES, exactly as PostgREST does. It does not error, which is
         // precisely what makes an unpaged read fail silently in production.
-        return windowed.slice(0, ROW_CAP)
+        return windowed.slice(0, ROW_CAP).map(project)
       }
 
       const execute = (): { data: any; error: any } => {
@@ -105,7 +116,21 @@ vi.mock("@/lib/supabase", () => ({
       }
 
       const api: any = {
-        select: () => api,
+        // THE MOCK PROJECTS, it does not merely accept the select string.
+        // Same philosophy as the range/IN caps above, and the same class of
+        // bug: a projection-blind fake hands back whole seeded rows whatever
+        // was asked for, so a reader that FORGETS to select a column it later
+        // reads passes every test here while reading `undefined` in
+        // production. G23 needs `outcome_reason` in the won query to drop
+        // `paid_elsewhere` rows; without this, deleting that column from the
+        // projection left the suite green and the aggregator silently
+        // double-counting every sale.
+        select: (columns?: string) => {
+          if (columns && columns !== "*") {
+            projection = columns.split(",").map((c) => c.trim()).filter(Boolean)
+          }
+          return api
+        },
         eq: (col: string, val: any) => {
           filters.push([col, val])
           return api
@@ -264,6 +289,57 @@ describe("readCampaignRevenue", () => {
     expect(summer?.wonCount).toBe(1)
     expect(summer?.wonValueCents).toBe(2_000)
     expect(summer?.isUnattributed).toBe(false)
+  })
+
+  // G23. When a payment wins a card, this person's enquiry cards on OTHER
+  // boards are closed `lost` with reason `paid_elsewhere`. They share the
+  // contact's `first_touch_session_id`, so they land in the SAME campaign
+  // bucket as the sale — if they were closed `won` (as the gap row proposed,
+  // at zero value) the money would stay right while `wonCount` went to 3 for
+  // one sale, and conversion rate is the number this page exists to report.
+  //
+  // Pinned HERE, in the aggregator's own suite, rather than left implicit in
+  // the writer's: this file is where someone would come to change what counts
+  // as a won deal, and `lost` is the only reason no filter is needed.
+  it("a sale that closed enquiries on other boards is still ONE won deal", async () => {
+    seedAttribution("sess-a", { utm_source: "google", utm_campaign: "spring-sale" })
+    seedWonOpportunity({ source_session_id: "sess-a", value_cents: 30_000 })
+    // The same person's camp and assessment enquiries, swept by that sale.
+    seedLostOpportunity({ source_session_id: "sess-a", value_cents: 0, outcome_reason: "paid_elsewhere" })
+    seedLostOpportunity({ source_session_id: "sess-a", value_cents: 0, outcome_reason: "paid_elsewhere" })
+
+    const rows = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
+
+    const spring = rows.find((r) => r.utmCampaign === "spring-sale")
+    expect(spring?.wonCount).toBe(1)
+    expect(spring?.wonValueCents).toBe(30_000)
+  })
+
+  // The swept cards are still REGISTRATIONS — the enquiries genuinely
+  // happened, and that count reads opportunities of any outcome by when they
+  // were created. Closing them must not erase them from the top of the funnel.
+  it("still counts the swept enquiries as registrations", async () => {
+    seedAttribution("sess-a", { utm_source: "google", utm_campaign: "spring-sale" })
+    // Registrations are keyed on `created_at`, not `closed_at`, so the seeds
+    // need one — the helpers only set `closed_at`.
+    const created = new Date().toISOString()
+    seedWonOpportunity({ source_session_id: "sess-a", value_cents: 30_000, created_at: created })
+    seedLostOpportunity({
+      source_session_id: "sess-a",
+      value_cents: 0,
+      outcome_reason: "paid_elsewhere",
+      created_at: created,
+    })
+    seedLostOpportunity({
+      source_session_id: "sess-a",
+      value_cents: 0,
+      outcome_reason: "paid_elsewhere",
+      created_at: created,
+    })
+
+    const rows = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
+
+    expect(rows.find((r) => r.utmCampaign === "spring-sale")?.registrationCount).toBe(3)
   })
 
   // Final review, Minor: spec §7 groups by utm_campaign / utm_source / gclid,
