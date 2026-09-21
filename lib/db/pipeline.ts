@@ -44,6 +44,21 @@ import {
 // `checkout.session.completed` handler) and arrives here as a plain
 // `pipelineKey` string.
 import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
+// G29 (Task 3). Pure rules for a board's stage LIST — distinct from
+// pipeline-move.ts's pure rules for a single CARD's movement, above. This
+// file is the only place the two meet: it calls `validateStageList` /
+// `planStageSave` / `strandedStageProblems` and performs the writes they
+// describe, and it is the only place the camelCase (StageDraft/SavedStage)
+// <-> snake_case (save_pipeline_stages' jsonb params) conversion happens —
+// see that module's header and this file's `savePipelineStages` below.
+import {
+  validateStageList,
+  planStageSave,
+  strandedStageProblems,
+  type StageDraft,
+  type StageProblem,
+  type SavedStage,
+} from "@/lib/lead-engine/stage-list"
 
 // Re-exported, not redefined: lib/lead-engine/pipeline-move.ts is now the one
 // place this string lives (see that file's comment on DEFAULT_PIPELINE_KEY).
@@ -2052,4 +2067,249 @@ export async function listGrantablePrograms(): Promise<
     .order("name")
   if (error) throw new Error(`programs read failed: ${error.message}`)
   return (data ?? []) as Array<{ id: string; name: string; price_cents: number | null }>
+}
+
+// ---------------------------------------------------------------------------
+// G29 (Task 3). Board CRUD and `savePipelineStages` for /admin/pipeline's
+// board editor (Task 7). `lib/lead-engine/stage-list.ts` DECIDES (pure);
+// everything below WRITES. Controller ruling R1: the StageDraft/SavedStage
+// (camelCase) <-> save_pipeline_stages' jsonb params (snake_case) boundary
+// is drawn HERE, at the `.rpc()` call in `savePipelineStages`, and nowhere
+// else — stage-list.ts stays free of transport concerns.
+// ---------------------------------------------------------------------------
+
+/**
+ * `"Camps & Clinics"` -> `"camps_clinics"`: lowercase, every run of
+ * non-alphanumeric characters becomes one `_`, leading/trailing `_` trimmed,
+ * capped at 40 characters — then trimmed again, since a cut that lands on a
+ * `_` leaves a trailing one the first trim never saw.
+ */
+function slugifyBoardKey(name: string): string {
+  const collapsed = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+  return collapsed.slice(0, 40).replace(/_+$/g, "")
+}
+
+/**
+ * G29. A new board is created VALID: it gets a `won` and a `lost` stage in
+ * the same call that creates it, because `validateStageList` (and
+ * `decideMove`) require both — a board that exists for even one request
+ * without them is a board whose cards can never close.
+ *
+ * NOT atomic with the stages insert: migration 00276 has no board-creation
+ * RPC, only a stage-LIST-save one, and this is a two-row write (`pipelines`,
+ * then `pipeline_stages`) that RPC was never asked to cover. If the second
+ * insert fails, the first is left behind as a pipeline with zero stages —
+ * exactly the state `PipelineNotConfiguredError` already exists to name;
+ * every reader of this board already treats "no stages" as "not configured",
+ * never as "empty and fine".
+ */
+export async function createPipelineBoard(input: {
+  name: string
+  businessId: string
+}): Promise<{ id: string; key: string }> {
+  const key = slugifyBoardKey(input.name)
+  const supabase = getClient()
+
+  const { data: pipelineRow, error: insertErr } = await supabase
+    .from("pipelines")
+    .insert({ business_id: input.businessId, key, name: input.name })
+    .select("id, key")
+    .single()
+  if (insertErr) {
+    // Readable refusal naming the clash, not a raw PostgREST object — see
+    // `listPipelines` above for the same convention on this file's reads.
+    if (isPgUniqueViolation(insertErr)) {
+      throw new Error(`A board with the key "${key}" already exists for this business. Choose a different name.`)
+    }
+    throw new Error(`createPipelineBoard failed: ${insertErr.message}`)
+  }
+  const created = pipelineRow as { id: string; key: string }
+
+  const { error: stagesErr } = await supabase.from("pipeline_stages").insert([
+    { business_id: input.businessId, pipeline_id: created.id, key: "won", name: "Won", kind: "won", position: 1 },
+    { business_id: input.businessId, pipeline_id: created.id, key: "lost", name: "Lost", kind: "lost", position: 2 },
+  ])
+  if (stagesErr) throw new Error(`createPipelineBoard failed to seed stages: ${stagesErr.message}`)
+
+  return { id: created.id, key: created.key }
+}
+
+async function readBoardRow(
+  pipelineId: string,
+  businessId: string,
+): Promise<{ id: string; key: string; name: string } | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("pipelines")
+    .select("id, key, name")
+    .eq("id", pipelineId)
+    .eq("business_id", businessId)
+    .maybeSingle()
+  if (error) throw new Error(`pipelines read failed: ${error.message}`)
+  return data as { id: string; key: string; name: string } | null
+}
+
+/**
+ * INVARIANT 6 (controller ruling R7 cross-references this from migration
+ * 00276's own header). `routeToPipeline` returns KEYS, and a routed event
+ * naming an archived board has nowhere to land on the write path: the read
+ * path (`readBoard`) falls back to `boards[0]` when a key does not resolve,
+ * but nothing on the write path does. Refusing the archive here — before the
+ * write, in English — is the only place this gap can be closed, because
+ * this is the one function that sees both the board's key and the intent to
+ * archive it before either lands.
+ *
+ * The board is read SCOPED to `businessId` first (`readBoardRow`), same as
+ * every other reader in this file — a lookup by id alone would leak whether
+ * a board belonging to a DIFFERENT tenant happens to be that tenant's
+ * default, through this function's own thrown message.
+ */
+export async function updatePipelineBoard(input: {
+  pipelineId: string
+  businessId: string
+  name?: string
+  status?: "active" | "archived"
+}): Promise<void> {
+  const supabase = getClient()
+
+  if (input.status === "archived") {
+    const board = await readBoardRow(input.pipelineId, input.businessId)
+    if (!board) throw new Error(`Board ${input.pipelineId} was not found for this business.`)
+    if (board.key === DEFAULT_PIPELINE_KEY) {
+      throw new Error(
+        `"${board.name}" is the board every unrouted event falls back to, so it cannot be archived. Point the default at another board first.`,
+      )
+    }
+  }
+
+  const patch: Row = { updated_at: new Date().toISOString() }
+  if (input.name !== undefined) patch.name = input.name
+  if (input.status !== undefined) patch.status = input.status
+
+  const { error } = await supabase
+    .from("pipelines")
+    .update(patch)
+    .eq("id", input.pipelineId)
+    .eq("business_id", input.businessId)
+  if (error) throw new Error(`updatePipelineBoard failed: ${error.message}`)
+}
+
+/**
+ * R2 (controller ruling): returns the WIDENED `SavedStage` shape —
+ * name/kind/thresholds alongside id/key/position — because Task 7's editor
+ * screen renders its form from exactly this read, not from a second one.
+ *
+ * `cardCountByStageId` counts every opportunity on the stage regardless of
+ * outcome (open, won or lost) — a save that would strand a CLOSED card is
+ * still a save that orphans a row nothing can find on the board again, and
+ * `strandedStageProblems` needs the true count to refuse it.
+ */
+export async function readStagesForEdit(
+  pipelineId: string,
+  businessId: string,
+): Promise<{ stages: SavedStage[]; cardCountByStageId: Map<string, number> }> {
+  const supabase = getClient()
+
+  const { data: stageData, error: stageErr } = await supabase
+    .from("pipeline_stages")
+    .select("id, key, name, position, kind, amber_after_days, red_after_days")
+    .eq("business_id", businessId)
+    .eq("pipeline_id", pipelineId)
+    .order("position", { ascending: true })
+  if (stageErr) throw new Error(`pipeline_stages read failed: ${stageErr.message}`)
+
+  const stages: SavedStage[] = ((stageData ?? []) as Row[]).map((row) => ({
+    id: row.id,
+    key: row.key,
+    position: row.position,
+    name: row.name,
+    kind: row.kind,
+    amberAfterDays: row.amber_after_days ?? null,
+    redAfterDays: row.red_after_days ?? null,
+  }))
+
+  const { data: oppData, error: oppErr } = await supabase
+    .from("opportunities")
+    .select("stage_id")
+    .eq("business_id", businessId)
+    .eq("pipeline_id", pipelineId)
+  if (oppErr) throw new Error(`opportunities read failed: ${oppErr.message}`)
+
+  const cardCountByStageId = new Map<string, number>()
+  for (const row of (oppData ?? []) as Row[]) {
+    const stageId = row.stage_id as string
+    cardCountByStageId.set(stageId, (cardCountByStageId.get(stageId) ?? 0) + 1)
+  }
+
+  return { stages, cardCountByStageId }
+}
+
+/**
+ * R7 (controller ruling): `validateStageList` runs FIRST, so an invalid list
+ * never reaches the RPC — migration 00276's terminal assertion and survivor
+ * check are the LAST line of defence, for a bypass of this function, not the
+ * first thing a legitimate caller meets. `strandedStageProblems` runs next,
+ * against the board's actual card counts, because that check needs a DB
+ * read `validateStageList` (pure, no IO) cannot perform. Only once both are
+ * clean does this call the RPC.
+ *
+ * R1 (controller ruling): the camelCase -> snake_case conversion for the RPC
+ * boundary happens HERE and only here. `p_stages`' array ORDER is its
+ * position (the SQL reads it `WITH ORDINALITY`) — no `position` field is
+ * sent, and none should be: the submitted order IS the position.
+ */
+export async function savePipelineStages(input: {
+  pipelineId: string
+  businessId: string
+  stages: StageDraft[]
+  destinations: Record<string, string>
+}): Promise<{ ok: true } | { ok: false; problems: StageProblem[] }> {
+  const listProblems = validateStageList(input.stages)
+  if (listProblems.length > 0) {
+    return { ok: false, problems: listProblems }
+  }
+
+  const { stages: oldStages, cardCountByStageId } = await readStagesForEdit(input.pipelineId, input.businessId)
+
+  const plan = planStageSave(
+    oldStages,
+    input.stages,
+    cardCountByStageId,
+    new Map(Object.entries(input.destinations)),
+  )
+
+  const strandedProblems = strandedStageProblems(oldStages, plan, cardCountByStageId)
+  if (strandedProblems.length > 0) {
+    return { ok: false, problems: strandedProblems }
+  }
+
+  const supabase = getClient()
+  const { error } = await supabase.rpc("save_pipeline_stages", {
+    p_business_id: input.businessId,
+    p_pipeline_id: input.pipelineId,
+    p_stages: input.stages.map((s) => ({
+      id: s.id,
+      key: s.key,
+      name: s.name,
+      kind: s.kind,
+      amber_after_days: s.amberAfterDays,
+      red_after_days: s.redAfterDays,
+    })),
+    p_move_cards: plan.moveCards.map((m) => ({
+      from_stage_id: m.fromStageId,
+      to_stage_id: m.toStageId,
+    })),
+  })
+  // NOT a bare `throw error` — a raw PostgREST object logs as [object
+  // Object] and the reason is gone by the time anyone reads it (same
+  // convention as `listPipelines` above). Reachable here only when something
+  // bypassed `validateStageList` / `strandedStageProblems` above, since the
+  // ordinary path already refused before this call — migration 00276's own
+  // header calls this exact scenario out as its threat model.
+  if (error) throw new Error(`save_pipeline_stages failed: ${error.message}`)
+
+  return { ok: true }
 }
