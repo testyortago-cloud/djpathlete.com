@@ -5,6 +5,7 @@
 // 80 chars; returns null on an empty transcript or any parsing/connectivity issue
 // so the caller degrades gracefully (the render just omits the hook card).
 import Anthropic from "@anthropic-ai/sdk"
+import { createMessageCompat, assertModelProvider } from "../ai/openrouter-message.js"
 
 const MODEL = "claude-haiku-4-5-20251001"
 // Mirror the render-worker's hook cap (slice(0, 80)).
@@ -44,13 +45,11 @@ export function sanitizeHook(raw: string): string {
 export async function suggestHookFromTranscript(transcript: string): Promise<string | null> {
   if (!transcript || transcript.trim().length === 0) return null
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set")
-  const client = new Anthropic({ apiKey })
+  assertModelProvider()
 
   let response
   try {
-    response = await client.messages.create({
+    response = await createMessageCompat({
       model: MODEL,
       max_tokens: 100,
       system: SYSTEM_PROMPT,

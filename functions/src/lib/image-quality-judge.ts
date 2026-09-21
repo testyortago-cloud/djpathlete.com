@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { MODEL_HAIKU } from "../ai/anthropic.js"
+import { createMessageCompat, assertModelProvider } from "../ai/openrouter-message.js"
 
 // Anything strictly below this triggers one regeneration on a fresh seed.
 export const QUALITY_RETRY_THRESHOLD = 7
@@ -41,15 +42,13 @@ export interface JudgeResult {
 }
 
 export async function judgeImageQuality(input: JudgeInput): Promise<JudgeResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set")
-  const client = new Anthropic({ apiKey })
+  assertModelProvider()
 
   const mediaType: AllowedMediaType = (ALLOWED_MEDIA_TYPES as readonly string[]).includes(input.mime)
     ? (input.mime as AllowedMediaType)
     : "image/webp"
 
-  const response = await client.messages.create({
+  const response = await createMessageCompat({
     model: MODEL_HAIKU,
     max_tokens: 400,
     system: SYSTEM,

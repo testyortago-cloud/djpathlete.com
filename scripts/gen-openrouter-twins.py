@@ -11,6 +11,7 @@ PAIRS = [
     ("lib/ai/openrouter.ts", "functions/src/ai/openrouter.ts"),
     ("lib/ai/openrouter-request.ts", "functions/src/ai/openrouter-request.ts"),
     ("lib/ai/openrouter-agent.ts", "functions/src/ai/openrouter-agent.ts"),
+    ("lib/ai/openrouter-message.ts", "functions/src/ai/openrouter-message.ts"),
 ]
 
 HEADER = (

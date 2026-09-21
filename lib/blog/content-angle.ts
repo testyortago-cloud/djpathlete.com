@@ -8,6 +8,7 @@
 // skips the # CONTENT ANGLE block when input.content_angle is missing.
 
 import { MODEL_SONNET_5 } from "@/lib/ai/models"
+import { createMessageCompat, assertModelProvider, hasModelProvider } from "@/lib/ai/openrouter-message"
 
 const SYSTEM_PROMPT = `You are reading a topic summary and producing a contrarian content angle for a strength & conditioning coaching blog.
 
@@ -37,14 +38,11 @@ export async function extractContentAngle(input: {
 }): Promise<ContentAngle | null> {
   if (!input.title) return null
 
-  const { default: Anthropic } = await import("@anthropic-ai/sdk")
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    console.warn("[content-angle] ANTHROPIC_API_KEY missing, returning null")
+  if (!hasModelProvider()) {
+    console.warn("[content-angle] no model provider configured, returning null")
     return null
   }
 
-  const client = new Anthropic({ apiKey })
   const userMessage = [
     `Topic title: ${input.title}`,
     input.summary ? `Topic summary: ${input.summary}` : "",
@@ -55,7 +53,7 @@ export async function extractContentAngle(input: {
     .join("\n")
 
   try {
-    const response = await client.messages.create({
+    const response = await createMessageCompat({
       model: MODEL_SONNET_5,
       max_tokens: 400,
       system: SYSTEM_PROMPT,

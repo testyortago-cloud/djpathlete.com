@@ -3,6 +3,7 @@ import { getStorage } from "firebase-admin/storage"
 import Anthropic from "@anthropic-ai/sdk"
 import { getSupabase } from "./lib/supabase.js"
 import { generateAltText } from "./lib/image-alt-text.js"
+import { createMessageCompat, assertModelProvider } from "./ai/openrouter-message.js"
 
 const MODEL = "claude-sonnet-4-6"
 
@@ -91,10 +92,8 @@ export async function handleImageVision(jobId: string): Promise<void> {
     const altText = await generateAltText(buffer, mimeType)
 
     // Structured analysis via inline Claude call
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set")
-    const client = new Anthropic({ apiKey })
-    const response = await client.messages.create({
+    assertModelProvider()
+    const response = await createMessageCompat({
       model: MODEL,
       max_tokens: 600,
       system: ANALYSIS_SYSTEM_PROMPT,

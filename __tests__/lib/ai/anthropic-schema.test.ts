@@ -5,6 +5,17 @@
 // killed strategist memos, ask-agent Q&A, and nightly ad recommendations.
 // callAgent must force the provider's jsonTool mode (schema as a tool
 // input_schema — the mechanism the functions/ runtime uses in production).
+// THESE TEST THE ANTHROPIC FALLBACK PATH, DELIBERATELY.
+//
+// callAgent now prefers OpenRouter, and with OPENROUTER_API_KEY set it never
+// reaches generateObject at all — the mock below would simply never fire, and
+// every assertion here would pass vacuously or fail confusingly. Clearing the
+// key selects the fallback, which is the path these assertions describe and
+// which still runs whenever OpenRouter is unreachable.
+//
+// The equivalent guarantees on the PRIMARY path (image ordering, cache
+// breakpoint placement, forced tool choice) are covered by
+// __tests__/lib/ai/openrouter-request.test.ts.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { z } from "zod"
 
@@ -21,6 +32,8 @@ vi.mock("ai", async (importOriginal) => {
 import { callAgent } from "@/lib/ai/anthropic"
 
 beforeEach(() => {
+  // Select the Anthropic fallback — see the note at the top of this file.
+  delete process.env.OPENROUTER_API_KEY
   generateObjectMock.mockReset()
   generateObjectMock.mockResolvedValue({
     object: { answer: "ok" },

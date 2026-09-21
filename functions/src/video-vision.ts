@@ -14,6 +14,7 @@ import { join } from "node:path"
 import Anthropic from "@anthropic-ai/sdk"
 import ffmpegPath from "ffmpeg-static"
 import { getSupabase } from "./lib/supabase.js"
+import { createMessageCompat, assertModelProvider, type CompatContent } from "./ai/openrouter-message.js"
 
 const FRAME_COUNT = 8
 const MODEL = "claude-sonnet-4-6"
@@ -116,11 +117,9 @@ async function extractFrames(videoPath: string, framesDir: string): Promise<stri
 }
 
 async function describeFrames(framePaths: string[]): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set")
-  const client = new Anthropic({ apiKey })
+  assertModelProvider()
 
-  const content: Anthropic.ContentBlockParam[] = []
+  const content: Exclude<CompatContent, string> = []
   for (const p of framePaths) {
     const b64 = readFileSync(p).toString("base64")
     content.push({
@@ -133,7 +132,7 @@ async function describeFrames(framePaths: string[]): Promise<string> {
     text: "These are 8 evenly-spaced frames from a training video. Describe what is being demonstrated per the system instructions.",
   })
 
-  const response = await client.messages.create({
+  const response = await createMessageCompat({
     model: MODEL,
     max_tokens: 800,
     system: VISION_SYSTEM_PROMPT,

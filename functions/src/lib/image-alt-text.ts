@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk"
+import { createMessageCompat, assertModelProvider } from "../ai/openrouter-message.js"
 
 const MODEL = "claude-sonnet-4-6"
 const ALT_TEXT_MAX_CHARS = 180
@@ -13,11 +14,9 @@ Rules:
 - Output nothing except the JSON object — no preamble, no markdown fence.`
 
 export async function generateAltText(buffer: Buffer, mimeType: string): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set")
-  const client = new Anthropic({ apiKey })
+  assertModelProvider()
 
-  const response = await client.messages.create({
+  const response = await createMessageCompat({
     model: MODEL,
     max_tokens: 200,
     system: SYSTEM_PROMPT,

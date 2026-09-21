@@ -92,38 +92,61 @@ to `LanguageModel`. The package version lines are not aligned across that
 ecosystem, and there is no `openai-compatible` release on the v3 provider line —
 using it would force an `ai` v6 → v7 upgrade touching every AI feature in the app.
 
-## NOT covered: 14 files still call Anthropic directly
+## Coverage: complete
 
-**These keep working today, but they read `ANTHROPIC_API_KEY` and nothing else.
-If Anthropic funding stops, these break while everything else keeps running.**
-That is the one thing to know before assuming the migration is complete.
+Every production call site now goes through OpenRouter with Anthropic as the
+fallback. `grep -rn "new Anthropic(" lib app functions/src scripts` returns only
+the four provider-layer files, and those ARE the fallback implementation.
 
-```
-app/api/admin/marketing/faqs/ai/route.ts
-functions/src/image-caption-generation.ts
-functions/src/image-vision.ts
-functions/src/video-vision.ts
-functions/src/lib/hook-suggestion.ts
-functions/src/lib/image-alt-text.ts
-functions/src/lib/image-quality-judge.ts
-lib/ai/hook-suggestion.ts
-lib/ai/quote-extraction.ts
-lib/ai/tool-loop.ts
-lib/blog/content-angle.ts
-lib/blog/keyword-proposal.ts
-scripts/backfill-exercise-metadata.ts
-scripts/enrich-ai-metadata.ts
-```
+Two layers, both with twins:
 
-Each builds its own `new Anthropic()` and calls `messages.create` with a bespoke
-shape — mostly vision work (images, video frames) plus one agentic tool loop.
-They were left alone because converting fourteen bespoke multimodal call sites
-with no key to test against trades a working feature for an unverified one,
-fourteen times over. They are mechanical to convert once a key exists.
+| Layer | Used by | Covers |
+|---|---|---|
+| `callAgent` | 57 files | program/week generation, strategy agents, blog, bookkeeper |
+| `createMessageCompat` | 14 files | vision, captions, alt-text, quality judge, hooks, quotes, blog helpers, the FAQ route, the agentic tool loop, 2 scripts |
 
-Also still on Anthropic: `streamChat` / `streamAgent` in `lib/ai/anthropic.ts`.
-Those stream to the browser through the AI SDK and are blocked by the same
-provider-version conflict.
+`createMessageCompat` is a drop-in for `client.messages.create`: same params in,
+Anthropic-shaped message out. That kept each conversion to a one-line edit with
+the downstream handling untouched, instead of fourteen chances to change
+behaviour by accident in code that already worked. It speaks tools in both
+directions, because two scripts use forced tool choice as structured output and
+`lib/ai/tool-loop.ts` is a real agentic loop that feeds `tool_use` blocks back in
+as `tool_result`.
+
+The old `if (!process.env.ANTHROPIC_API_KEY) throw` guards were REMOVED, not
+kept. They became wrong the moment OpenRouter became primary — an OpenRouter-only
+deployment is now the expected configuration, and those guards would have
+rejected it while the provider sat there working. `assertModelProvider()` accepts
+either key.
+
+### Verified live, 2026-09-21
+
+Every converted shape, against the real provider:
+
+    text            1.8s   -> "converted"
+    image           2.1s   -> "Black DJI logo on white background."   (read a real PNG)
+    forced tool     2.8s   -> {"pattern":"squat","is_compound":true}  stop=tool_use
+    tool_result     1.3s   -> coherent follow-up after a tool round-trip
+
+### Still on Anthropic, deliberately
+
+`streamChat` / `streamAgent` in `lib/ai/anthropic.ts`. They stream to the browser
+through the Vercel AI SDK, and are blocked by the provider-version conflict
+described above — not by anything about OpenRouter itself.
+
+### Tests
+
+Four suites had to move with the transport:
+
+- `hook-suggestion` / `quote-extraction` mocked `@anthropic-ai/sdk`; they now mock
+  `createMessageCompat`. Every assertion survived unchanged, which is the shim's
+  contract holding.
+- `anthropic-images` / `anthropic-schema` assert the AI SDK request shape
+  (jsonTool, cached system block, image ordering). callAgent now prefers
+  OpenRouter, so with a key set `generateObject` is never reached and those mocks
+  would never fire. They now clear `OPENROUTER_API_KEY` to select the fallback
+  path they actually describe, and say so at the top. The equivalent guarantees
+  on the PRIMARY path are covered by `__tests__/lib/ai/openrouter-request.test.ts`.
 
 ## Model mapping
 
