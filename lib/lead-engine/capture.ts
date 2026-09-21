@@ -71,6 +71,15 @@ export type CaptureLeadInput = {
    */
   timezone?: string | null
   /**
+   * G20. Fill `contacts.name` when the contact has none; never replace one it
+   * already has. Passed straight through to
+   * `RecordContactEventInput.nameFillOnly`, which is where the reasoning
+   * lives. Opt-in: only an entry point whose name comes from somewhere OTHER
+   * than the form in front of the person — today just the session-gated
+   * questionnaire, whose only name is the account's — should set it.
+   */
+  nameFillOnly?: boolean
+  /**
    * G11. The fixed moment this lead's follow-up counts down to —
    * `events.start_date`, supplied by the two event routes. Passed straight
    * through to `RecordContactEventInput.anchorAt` and on to
@@ -114,6 +123,7 @@ export async function captureLead(input: CaptureLeadInput): Promise<string | nul
       attributionSessionId: input.attributionSessionId,
       userId: input.userId,
       timezone: input.timezone,
+      nameFillOnly: input.nameFillOnly,
       anchorAt: input.anchorAt,
       metadata: { ...(input.metadata ?? {}), ...(input.attribution ?? {}) },
     })

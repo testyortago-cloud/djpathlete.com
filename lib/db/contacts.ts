@@ -115,6 +115,8 @@ export type RecordContactEventInput = {
   userId?: string | null
   /** See `UpsertContactIdentityInput.timezone` — passed straight through. */
   timezone?: string | null
+  /** See `UpsertContactIdentityInput.nameFillOnly` — passed straight through. */
+  nameFillOnly?: boolean
   metadata?: Record<string, unknown>
   /**
    * G11. `events.start_date` when this event is an event signup — the moment
@@ -144,7 +146,7 @@ async function findMatchCandidates(
   if (email) {
     const { data, error } = await supabase
       .from("contacts")
-      .select("id,email,phone_e164,created_at,first_touch_session_id,user_id,timezone")
+      .select("id,email,phone_e164,created_at,first_touch_session_id,user_id,timezone,name")
       .eq("business_id", businessId)
       .eq("email", email)
     if (error) throw error
@@ -154,7 +156,7 @@ async function findMatchCandidates(
   if (phone) {
     const { data, error } = await supabase
       .from("contacts")
-      .select("id,email,phone_e164,created_at,first_touch_session_id,user_id,timezone")
+      .select("id,email,phone_e164,created_at,first_touch_session_id,user_id,timezone,name")
       .eq("business_id", businessId)
       .eq("phone_e164", phone)
     if (error) throw error
@@ -322,6 +324,56 @@ function firstTouchSessionPatch(
 }
 
 /**
+ * The contact's display name (G20). Unlike the three patches around it this is
+ * NOT the default — `name` is the one identity column here that has always
+ * been written unconditionally, so every caller that does not ask for
+ * `fillOnly` keeps overwrite semantics exactly as before.
+ *
+ * WHY IT IS OPT-IN RATHER THAN THE NEW DEFAULT. Every pre-existing caller
+ * (contact form, inquiry, newsletter, shop, the two event routes, the Stripe
+ * webhook) receives a name the person typed on THAT form, moments earlier —
+ * the freshest evidence of what they call themselves, and worth preferring
+ * over an older value. The questionnaire is the first caller for which that is
+ * not true: it is session-gated, so the only name it has is the ACCOUNT's, and
+ * an account name is not fresher than a name the same person typed on a camp
+ * enquiry last week. Making fill-only global would quietly freeze the first
+ * name six entry points ever recorded.
+ *
+ * A blank-but-not-null name ("" or "   ") counts as no name, and it has to
+ * count that way in BOTH directions. `contacts.name` is plain nullable text
+ * with no CHECK, so an empty string is what a form field submitted empty
+ * actually stores:
+ *   - as the EXISTING value, treating it as "already named" would make the
+ *     column permanently unfillable for that person;
+ *   - as the SUBMITTED value, writing it would blank a column three admin
+ *     screens render with a `?? fallback` — and this is reachable, not
+ *     theoretical: `registerSchema` is `z.string().min(1)` with no `.trim()`
+ *     and lib/auth.ts composes the session name from those fields, so "   "
+ *     is a name the questionnaire route can genuinely hand over.
+ * Fill-only writing the very thing it defines as "no name" would be the
+ * function contradicting its own contract.
+ *
+ * Both blank rules live INSIDE the `fillOnly` branch on purpose. On the
+ * default path this function must be byte-for-byte what the six pre-existing
+ * callers already did (`name: input.name ?? undefined`), blank submissions
+ * included — tightening that here would change what the contact form,
+ * inquiry, newsletter, shop, event and Stripe callers write, which is a
+ * separate decision from this gap.
+ */
+function namePatch(
+  existingName: string | null | undefined,
+  submitted: string | null | undefined,
+  fillOnly: boolean,
+): Record<string, unknown> {
+  if (submitted == null) return {}
+  if (fillOnly) {
+    if (submitted.trim() === "") return {}
+    if (existingName != null && existingName.trim() !== "") return {}
+  }
+  return { name: submitted }
+}
+
+/**
  * The person's own timezone (G06), fill-only and validated — same shape as
  * `firstTouchSessionPatch` above, for the same reason.
  *
@@ -408,6 +460,14 @@ export type UpsertContactIdentityInput = {
    * quiet hours in this person's morning rather than the coach's.
    */
   timezone?: string | null
+  /**
+   * G20. Treat `name` the way `userId`/`timezone` are already treated — fill a
+   * contact that has none, never replace one that has. OPT-IN and false by
+   * default, so every caller written before this flag existed keeps the
+   * overwrite behaviour it was built on; see `namePatch` for why that default
+   * is the correct one rather than the timid one.
+   */
+  nameFillOnly?: boolean
   businessId: string
 }
 
@@ -494,7 +554,7 @@ export async function upsertContactIdentity(input: UpsertContactIdentityInput): 
       ...firstTouchSessionPatch(existing?.first_touch_session_id, input.attributionSessionId),
       ...timezonePatch(existing?.timezone, input.timezone),
       ...(await userIdPatch(existing?.user_id, () => resolveLink(existing?.email ?? email))),
-      name: input.name ?? undefined,
+      ...namePatch(existing?.name, input.name, input.nameFillOnly === true),
       updated_at: new Date().toISOString(),
     })
   } else {
@@ -548,7 +608,17 @@ export async function upsertContactIdentity(input: UpsertContactIdentityInput): 
       ...(await userIdPatch(existing?.user_id ?? mergedCandidate?.user_id, () =>
         resolveLink(existing?.email ?? email),
       )),
-      name: input.name ?? undefined,
+      // G20. Read against the SURVIVOR'S OWN name only, unlike the three
+      // patches above. Those read both pre-merge rows because `merge_contacts`
+      // moves their columns, so a survivor's null may mean "the RPC just
+      // filled it". It does not touch `name` (same as `timezone`), so the
+      // survivor's own value is still its value here.
+      //
+      // And unlike `timezone`, the loser's name is NOT rescued before the row
+      // is destroyed. That would be a new behaviour for every caller, not just
+      // the opt-in one — nothing rescues a name today — and it is not what
+      // this gap claims. Worth doing; worth doing deliberately.
+      ...namePatch(existing?.name, input.name, input.nameFillOnly === true),
       updated_at: new Date().toISOString(),
     })
   }
@@ -641,6 +711,7 @@ export async function recordContactEvent(
     attributionSessionId: input.attributionSessionId,
     userId: input.userId,
     timezone: input.timezone,
+    nameFillOnly: input.nameFillOnly,
     businessId,
   })
 

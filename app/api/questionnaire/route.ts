@@ -4,6 +4,8 @@ import { getProfileByUserId, updateProfile, createProfile } from "@/lib/db/clien
 import { questionnaireSchema } from "@/lib/validators/questionnaire"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { recordAudit } from "@/lib/audit/record"
+import { captureLead } from "@/lib/lead-engine/capture"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export async function GET() {
   try {
@@ -40,6 +42,49 @@ export async function POST(request: Request) {
     }
 
     const data = parsed.data
+
+    // G20. Join the contact spine. Before this, a completed questionnaire --
+    // one of the richest statements of intent this product collects -- wrote
+    // `client_profiles` and pushed the person to GoHighLevel and left NO trace
+    // on the contact timeline at all, so the engine could neither see it nor
+    // follow it up.
+    //
+    // Declared here and called on BOTH write branches below. The create branch
+    // returns early, so a single call placed after it would miss every
+    // RE-submission -- and re-submitting a questionnaire is the ordinary case,
+    // not the edge one.
+    //
+    // `captureLead` never throws (lib/lead-engine/capture.ts swallows and logs
+    // its own failures), so a spine failure can never cost the submitter the
+    // answers they just filled in.
+    //
+    // NOTE THE DIFFERENCE FROM THE ASSESSMENT ROUTE, which is deliberate and
+    // currently unresolved. app/api/assessment/submit/route.ts is also
+    // session-gated and attaches ONLY to a contact that already exists, under
+    // the 8 Sept ruling that minting a contact for a registered client is a
+    // product decision. This route MINTS. That is what gap G20 asks for, and
+    // G21 is the open decision on whether the assessment route should match.
+    // If G21 is decided as "create when missing", these two converge on
+    // `captureLead`; if it is upheld, this route is the deliberate exception
+    // and should say so here rather than be quietly reverted to match.
+    const joinContactSpine = async (clientProfileId: string | null) => {
+      await captureLead({
+        source: "questionnaire",
+        email: session.user.email,
+        // The account's name, not something typed on this form -- so it fills
+        // a contact that has none and never replaces a name the same person
+        // gave a different surface. See `namePatch` in lib/db/contacts.ts.
+        name: session.user.name,
+        nameFillOnly: true,
+        userId,
+        // The session carries a userId only; `users` has no `business_id` and
+        // there is no per-coach relationship to resolve a client's own tenant
+        // from today. Same seam, for the same reason, as the assessment
+        // submission's contact lookup -- inventoried in lib/tenancy/platform.ts.
+        businessId: platformBusinessId(),
+        metadata: { client_profile_id: clientProfileId },
+      })
+    }
 
     // Store goals as a clean comma-separated list (no more pipe-delimited mess)
     const profileUpdates = {
@@ -122,6 +167,8 @@ export async function POST(request: Request) {
         // GHL sync failure should not affect questionnaire submission
       }
 
+      await joinContactSpine(newProfile.id ?? null)
+
       await recordAudit({
         action: "questionnaire.submitted",
         category: "client_action",
@@ -154,6 +201,8 @@ export async function POST(request: Request) {
     } catch {
       // GHL sync failure should not affect questionnaire submission
     }
+
+    await joinContactSpine(updated?.id ?? null)
 
     await recordAudit({
       action: "questionnaire.submitted",

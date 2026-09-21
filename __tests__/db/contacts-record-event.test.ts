@@ -1302,3 +1302,247 @@ describe("mergeContacts", () => {
     ).rejects.toThrow("merge_contacts boom")
   })
 })
+
+// G20. The questionnaire is the first entry point whose submitter is ALWAYS a
+// logged-in account, so the only name it has to offer is the account's, not
+// something the person typed on this form. That makes it the first caller for
+// which overwriting matters — and `contacts.name` turns out to be the one
+// identity column in `upsertContactIdentity` that is NOT fill-only. `user_id`,
+// `first_touch_session_id` and `timezone` all are, which is exactly why the
+// gap ledger assumed this one was too. It is not: every branch writes
+// `name: input.name ?? undefined`, so any supplied name wins outright.
+//
+// `nameFillOnly` is therefore OPT-IN and defaults to false. The default is not
+// timidity — flipping the shared behaviour would silently change what the
+// contact form, inquiry, newsletter, shop, event and Stripe callers do with a
+// name, and each of those receives a name the person typed on THAT form, which
+// is the freshest evidence available. The questionnaire's is not.
+describe("recordContactEvent — nameFillOnly (G20)", () => {
+  const BIZ = "00000000-0000-0000-0000-000000000001"
+
+  it("fills the name on a contact that has none", async () => {
+    state.rows.push({
+      id: "contact-1",
+      business_id: BIZ,
+      email: "quiet@example.com",
+      phone_e164: null,
+      name: null,
+      created_at: "2026-01-01T00:00:00Z",
+    })
+
+    await recordContactEvent({
+      email: "quiet@example.com",
+      name: "Jamie Rivera",
+      source: "questionnaire",
+      businessId: BIZ,
+      nameFillOnly: true,
+    })
+
+    expect(state.rows[0].name).toBe("Jamie Rivera")
+  })
+
+  it("does NOT overwrite a name the contact already has", async () => {
+    state.rows.push({
+      id: "contact-1",
+      business_id: BIZ,
+      email: "named@example.com",
+      phone_e164: null,
+      name: "Jay from the camp form",
+      created_at: "2026-01-01T00:00:00Z",
+    })
+
+    await recordContactEvent({
+      email: "named@example.com",
+      name: "Jamie Rivera",
+      source: "questionnaire",
+      businessId: BIZ,
+      nameFillOnly: true,
+    })
+
+    expect(state.rows[0].name).toBe("Jay from the camp form")
+  })
+
+  // `contacts.name` is plain nullable text with no CHECK, so a form field
+  // submitted empty stores "" rather than NULL, and whitespace survives too.
+  // Treating either as "already named" would make the column permanently
+  // unfillable for that person — the fill-only guard would keep declining to
+  // fill a name that is not there.
+  it.each([
+    ["an empty string", ""],
+    ["whitespace only", "   "],
+  ])("treats %s as no name and fills it", async (_label, existing) => {
+    state.rows.push({
+      id: "contact-1",
+      business_id: BIZ,
+      email: "blank@example.com",
+      phone_e164: null,
+      name: existing,
+      created_at: "2026-01-01T00:00:00Z",
+    })
+
+    await recordContactEvent({
+      email: "blank@example.com",
+      name: "Jamie Rivera",
+      source: "questionnaire",
+      businessId: BIZ,
+      nameFillOnly: true,
+    })
+
+    expect(state.rows[0].name).toBe("Jamie Rivera")
+  })
+
+  // The same rule in the OTHER direction, and the half that was missing: a
+  // blank SUBMITTED name is not a name either. `registerSchema` is
+  // `z.string().min(1)` with no `.trim()`, and lib/auth.ts composes the
+  // session name from those fields, so "   " is a value this route can really
+  // hand over. Writing it would blank the `?? fallback` labels the contacts
+  // table, the contact detail page and the SMS thread all render from
+  // `contacts.name` — fill-only would have written the very thing it defines
+  // as "no name".
+  it.each([
+    ["an empty string", ""],
+    ["whitespace only", "   "],
+  ])("declines to write %s over a name the contact does not have", async (_label, submitted) => {
+    state.rows.push({
+      id: "contact-1",
+      business_id: BIZ,
+      email: "blank-in@example.com",
+      phone_e164: null,
+      name: null,
+      created_at: "2026-01-01T00:00:00Z",
+    })
+
+    await recordContactEvent({
+      email: "blank-in@example.com",
+      name: submitted,
+      source: "questionnaire",
+      businessId: BIZ,
+      nameFillOnly: true,
+    })
+
+    expect(state.rows[0].name).toBeNull()
+  })
+
+  // The control that makes the test above mean something: WITHOUT the flag the
+  // same submission overwrites. If this ever goes green alongside the one
+  // above, `nameFillOnly` has stopped being a switch and become the only
+  // behaviour — a silent change to six other entry points.
+  it("still overwrites when the flag is absent, so every existing caller is unchanged", async () => {
+    state.rows.push({
+      id: "contact-1",
+      business_id: BIZ,
+      email: "named@example.com",
+      phone_e164: null,
+      name: "Jay from the camp form",
+      created_at: "2026-01-01T00:00:00Z",
+    })
+
+    await recordContactEvent({
+      email: "named@example.com",
+      name: "Jamie Rivera",
+      source: "contact_form",
+      businessId: BIZ,
+    })
+
+    expect(state.rows[0].name).toBe("Jamie Rivera")
+  })
+
+  // The MERGE branch writes its own copy of this patch, and it had no test:
+  // the mutation sweep for this gap flipped that branch's `nameFillOnly` to a
+  // hard `false` and every suite stayed green, because no fixture above ever
+  // reaches the merge path with a name on either row. That is exactly how the
+  // same branch's `timezonePatch` line went untested — see "on a merge, the
+  // survivor keeps its own timezone" above.
+  it("on a merge, fill-only still protects the survivor's own name", async () => {
+    state.rows.push({
+      id: "survivor-name",
+      business_id: BIZ,
+      email: "survivor@example.com",
+      phone_e164: "+16176504548",
+      user_id: null,
+      timezone: null,
+      name: "Jay from the camp form",
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.rows.push({
+      id: "loser-name",
+      business_id: BIZ,
+      email: "loser@example.com",
+      phone_e164: null,
+      user_id: null,
+      timezone: null,
+      name: null,
+      created_at: "2021-01-01T00:00:00Z",
+    })
+
+    const out = await recordContactEvent({
+      email: "loser@example.com",
+      phone: "617-650-4548",
+      name: "Jamie Rivera",
+      source: "questionnaire",
+      businessId: BIZ,
+      nameFillOnly: true,
+    })
+
+    expect(out.merged).toBe(true)
+    expect(state.rows.find((r) => r.id === "survivor-name").name).toBe("Jay from the camp form")
+  })
+
+  it("on a merge, fills the survivor's name when it has none", async () => {
+    state.rows.push({
+      id: "survivor-blank",
+      business_id: BIZ,
+      email: "survivor@example.com",
+      phone_e164: "+16176504548",
+      user_id: null,
+      timezone: null,
+      name: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.rows.push({
+      id: "loser-blank",
+      business_id: BIZ,
+      email: "loser@example.com",
+      phone_e164: null,
+      user_id: null,
+      timezone: null,
+      name: null,
+      created_at: "2021-01-01T00:00:00Z",
+    })
+
+    const out = await recordContactEvent({
+      email: "loser@example.com",
+      phone: "617-650-4548",
+      name: "Jamie Rivera",
+      source: "questionnaire",
+      businessId: BIZ,
+      nameFillOnly: true,
+    })
+
+    expect(out.merged).toBe(true)
+    expect(state.rows.find((r) => r.id === "survivor-blank").name).toBe("Jamie Rivera")
+  })
+
+  // Same reasoning as the user_id and first_touch_session_id projection tests
+  // above, and the reason they exist: this harness is projection-BLIND — it
+  // hands back whole seeded rows whatever the select string asked for. So the
+  // fill-only test passes even if `name` is missing from the real projection,
+  // while in production `existing.name` would read `undefined`, the guard
+  // could not tell that from "no name yet", and fill-only would silently
+  // degrade to the overwrite it exists to prevent.
+  it("asks for the name column, so the fill-only guard has something to read", async () => {
+    await recordContactEvent({
+      email: "projection@example.com",
+      phone: "617-650-4548",
+      source: "questionnaire",
+      businessId: BIZ,
+      nameFillOnly: true,
+    })
+
+    const contactSelects = state.selects.filter((s) => s.table === "contacts")
+    expect(contactSelects).toHaveLength(2)
+    for (const sel of contactSelects) {
+      expect(sel.columns).toContain("name")
+    }
+  })
+})

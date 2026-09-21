@@ -10,6 +10,7 @@ const older: MatchCandidate = {
   first_touch_session_id: null,
   user_id: null,
   timezone: null,
+  name: null,
 }
 const newer: MatchCandidate = {
   id: "22222222-2222-2222-2222-222222222222",
@@ -19,6 +20,7 @@ const newer: MatchCandidate = {
   first_touch_session_id: null,
   user_id: null,
   timezone: null,
+  name: null,
 }
 
 describe("decideMerge", () => {
@@ -73,6 +75,7 @@ describe("decideMerge", () => {
       first_touch_session_id: null,
       user_id: null,
       timezone: null,
+      name: null,
     }
     expect(decideMerge([unrelated], "new@example.com", null)).toEqual({ kind: "create" })
   })
@@ -93,6 +96,7 @@ describe("decideMerge", () => {
       first_touch_session_id: null,
       user_id: null,
       timezone: null,
+      name: null,
     }
     expect(decideMerge([phoneOnly], null, "+16176504548")).toEqual({ kind: "create" })
   })
@@ -106,6 +110,7 @@ describe("decideMerge", () => {
       first_touch_session_id: null,
       user_id: null,
       timezone: null,
+      name: null,
     }
     const sameTime2: MatchCandidate = {
       id: "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz",
@@ -115,6 +120,7 @@ describe("decideMerge", () => {
       first_touch_session_id: null,
       user_id: null,
       timezone: null,
+      name: null,
     }
     expect(decideMerge([sameTime1, sameTime2], "test@example.com", "+11234567890")).toEqual({
       kind: "merge",
@@ -132,6 +138,7 @@ describe("decideMerge", () => {
       first_touch_session_id: null,
       user_id: null,
       timezone: null,
+      name: null,
     }
     const sameTime2: MatchCandidate = {
       id: "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz",
@@ -141,6 +148,7 @@ describe("decideMerge", () => {
       first_touch_session_id: null,
       user_id: null,
       timezone: null,
+      name: null,
     }
     expect(decideMerge([sameTime2, sameTime1], "test@example.com", "+11234567890")).toEqual({
       kind: "merge",
