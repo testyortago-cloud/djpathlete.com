@@ -31,6 +31,7 @@
 // Spec: docs/superpowers/specs/2026-08-23-lead-engine-stage3-chat-design.md §2.1
 
 import Anthropic from "@anthropic-ai/sdk"
+import { createMessageCompat, type AnthropicBlock, type CompatContent } from "@/lib/ai/openrouter-message"
 
 export type ToolCallRecord = { name: string; input: Record<string, unknown> }
 
@@ -55,14 +56,10 @@ export type ToolLoopResult = {
 // public unauthenticated route does not drag `@ai-sdk/anthropic`, `ai` and
 // `p-retry` into its bundle for one constructor. No key check of our own: the
 // SDK's own "ANTHROPIC_API_KEY is missing" error says it better than we would.
-let _client: Anthropic | null = null
-
-function getToolLoopClient(): Anthropic {
-  if (!_client) {
-    _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  }
-  return _client
-}
+// The transport now lives in createMessageCompat (OpenRouter first, direct
+// Anthropic as the fallback), so this module no longer builds a client of its
+// own. `Anthropic` is still imported for its Tool type, which is the shape the
+// callers already pass in.
 
 /**
  * What a failed lookup tells the model. Fixed wording, never the thrown error:
@@ -81,9 +78,7 @@ export async function runWithTools(opts: {
   maxTokens: number
   maxToolRounds: number
 }): Promise<ToolLoopResult> {
-  const client = getToolLoopClient()
-
-  let apiMessages: Anthropic.MessageParam[] = opts.messages.map((m) => ({
+  let apiMessages: Array<{ role: "user" | "assistant"; content: CompatContent }> = opts.messages.map((m) => ({
     role: m.role,
     content: m.content,
   }))
@@ -99,7 +94,7 @@ export async function runWithTools(opts: {
   let stoppedOnRoundLimit = false
 
   for (let round = 0; round < opts.maxToolRounds; round++) {
-    const message = await client.messages.create({
+    const message = await createMessageCompat({
       model: opts.model,
       max_tokens: opts.maxTokens,
       system: opts.system,
@@ -116,7 +111,9 @@ export async function runWithTools(opts: {
 
     if (message.stop_reason !== "tool_use") break
 
-    const toolUseBlocks = message.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
+    const toolUseBlocks = message.content.filter(
+      (b): b is Extract<(typeof message.content)[number], { type: "tool_use" }> => b.type === "tool_use",
+    )
     if (toolUseBlocks.length === 0) break
 
     for (const block of toolUseBlocks) {
@@ -146,7 +143,7 @@ export async function runWithTools(opts: {
       }),
     )
 
-    const toolResultContent: Anthropic.ToolResultBlockParam[] = results.map((r) => ({
+    const toolResultContent: AnthropicBlock[] = results.map((r) => ({
       type: "tool_result" as const,
       tool_use_id: r.id,
       content: r.content,

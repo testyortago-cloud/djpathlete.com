@@ -11,6 +11,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import * as dotenv from "dotenv"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
+import { createMessageCompat, type CompatMessage } from "@/lib/ai/openrouter-message"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -22,10 +23,6 @@ dotenv.config({ path: resolve(__dirname, "../.env.local") })
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 // ─── Anthropic client ─────────────────────────────────────────────────────────
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-})
 
 // ─── CLI flags ────────────────────────────────────────────────────────────────
 
@@ -186,10 +183,10 @@ function buildUserMessage(exercise: ExerciseRow): string {
 
 // ─── Call Anthropic API ─────────────────────────────────────────────────────
 
-async function callWithRetry(userMessage: string): Promise<Anthropic.Message> {
+async function callWithRetry(userMessage: string): Promise<CompatMessage> {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      return await anthropic.messages.create({
+      return await createMessageCompat({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 4096,
         system: SYSTEM_PROMPT,

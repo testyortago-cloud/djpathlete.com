@@ -1,5 +1,11 @@
 import type { CompressedExercise, ExerciseSlot, ProgramWeek, ExerciseAssignment, ValidationResult } from "./types.js"
-import { callAgent, MODEL_OPUS, MODEL_SONNET } from "./anthropic.js"
+import {
+  callAgent,
+  MODEL_SONNET,
+  MODEL_PROGRAM_ARCHITECT,
+  MODEL_EXERCISE_SELECTOR,
+  PROGRAM_AGENT_EFFORT,
+} from "./anthropic.js"
 import { isAbortError, type Deadline } from "../lib/deadline.js"
 import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints } from "./exercise-filter.js"
 import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
@@ -45,8 +51,18 @@ import {
   findUncoveredPatterns,
   remapUncoveredSlotPatterns,
   buildPoolPatternSection,
+  findEquipmentViolations,
+  buildEquipmentWarnings,
+  resolveEffectiveEquipment,
 } from "./shared-helpers.js"
 import type { ProfileAnalysis } from "./types.js"
+import {
+  findIsometricRepsIssues,
+  findRepeatedMovementFamilies,
+  buildIsometricWarning,
+  buildMovementFamilyWarning,
+  buildHallucinatedIdWarning,
+} from "./program-quality.js"
 import {
   DEFAULT_DAY_CONCURRENCY,
   SELECTOR_CHUNK_THRESHOLD,
@@ -108,6 +124,18 @@ export interface WeekGenerationRequest {
   pool_mode?: "preferred" | "strict"
   /** When set, ignore the client profile and rely on coach instructions */
   ignore_profile?: boolean
+  /**
+   * Equipment available for THIS generation only — the coach's answer to "what
+   * can they actually reach this week", which a travelling client's stored
+   * profile cannot express. Replaces `profile.available_equipment` rather than
+   * widening it, and an empty array is a real answer ("nothing at all"), not
+   * "unset". Never written back to the profile: travel is temporary.
+   *
+   * `null` is how "no override" arrives from Firestore, which rejects
+   * `undefined` as a field value — hence the Array.isArray() test rather than
+   * a `!== undefined` one.
+   */
+  equipment_override?: string[] | null
 }
 
 export interface WeekGenerationResult {
@@ -182,7 +210,7 @@ const SLOT_SCHEMA = `{
               "movement_pattern": "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion" | "conditioning",
               "target_muscles": [string],
               "sets": number,
-              "reps": string (e.g., "8-10", "30s", "10 cal", "3+3+3", "3/2/1/3/2/1"),
+              "reps": string. A HOLD IS ALWAYS A TIME, NEVER A COUNT: when movement_pattern is "isometric", or the exercise is a plank / hold / iso variant, write a duration ("30s", "40 sec", "30s each side") and never a rep count ("10", "8-10", "6 each side") — a plank has no reps. Everything else is a count: "8-10", "10 cal", "3+3+3", "3/2/1/3/2/1".
               "rest_seconds": number,
               "rpe_target": number | null,
               "tempo": string | null,
@@ -717,7 +745,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     buildArchitectPrompt(isSingleDay ? "day" : "week"),
     architectMessage,
     weekSkeletonSchema,
-    { model: MODEL_OPUS, cacheSystemPrompt: true, signal: deadline?.signal },
+    { model: MODEL_PROGRAM_ARCHITECT, effort: PROGRAM_AGENT_EFFORT, cacheSystemPrompt: true, signal: deadline?.signal },
   )
   tokenUsage.architect = architectResult.tokens_used
   tokenUsage.cache_creation += architectResult.cache_creation_tokens ?? 0
@@ -780,7 +808,9 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
   await updateJobProgress("selecting_exercises", 4, `Selecting exercises for ${totalSlots} slots`)
 
-  const availableEquipment = profile?.available_equipment ?? ([] as string[])
+  // An explicit empty override means "nothing at all" (a hotel room with no
+  // gym) and must not fall through to the client's stored kit — see
+  // resolveEffectiveEquipment for the full precedence.
   const exerciseIdSet = new Set(allExercises.map((e) => e.id))
 
   // Resolve client difficulty for filtering and ceiling construction
@@ -804,7 +834,17 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   const instructionIntent = await extractInstructionIntent(combinedInstructions)
   const intentResolution = resolveIntentToExerciseIds(instructionIntent, allExercises)
   const unlockedIds = intentResolution.unlockedIds
-  const effectiveEquipment = [...new Set([...availableEquipment, ...instructionIntent.required_equipment])]
+  const resolvedEquipment = resolveEffectiveEquipment({
+    override: request.equipment_override,
+    profileEquipment: profile?.available_equipment ?? [],
+    intentRequired: instructionIntent.required_equipment,
+    intentOnly: instructionIntent.only_equipment,
+  })
+  const effectiveEquipment = resolvedEquipment.equipment
+  console.log(
+    `[week-orchestrator] Equipment source=${resolvedEquipment.source} strict=${resolvedEquipment.strict}: ` +
+      (effectiveEquipment.length > 0 ? effectiveEquipment.join(", ") : "NOTHING (bodyweight only)"),
+  )
   console.log(
     `[week-orchestrator] Instruction intent: ${unlockedIds.size} unlocked, ${intentResolution.bannedIds.size} banned` +
       (intentResolution.unmatched.length > 0 ? `, unmatched: ${intentResolution.unmatched.join("; ")}` : ""),
@@ -925,6 +965,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       effectiveEquipment,
       poolActive,
       unlockedIds,
+      resolvedEquipment.strict,
     )
     if (exercisesForSelection.length !== beforeCount) {
       console.log(
@@ -1073,13 +1114,18 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
 
   const exerciseLibrary = formatExerciseLibrary(filtered)
 
+  // effectiveEquipment, NOT the profile: telling the selector it has a full gym
+  // while handing it a bodyweight-only library is the contradiction that
+  // produced the original bug.
   const constraintsContext = JSON.stringify({
-    available_equipment: availableEquipment,
+    available_equipment: effectiveEquipment,
     client_difficulty: profile?.experience_level ?? (request.ignore_profile ? "advanced" : "intermediate"),
   })
 
   // Exercise Selector with dedup retry loop
   let assignment: ExerciseAssignment | null = null
+  // Accumulated across retries and day-chunks — see the strip site below.
+  let hallucinatedIdCount = 0
 
   // Invariant across the retry loop — request-level inputs don't change between attempts.
   const coachInstructionsSection = buildCoachInstructionsSection(request.admin_instructions)
@@ -1136,7 +1182,13 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
           EXERCISE_SELECTOR_PROMPT,
           selectorVariableSuffix,
           exerciseAssignmentSchema,
-          { cacheSystemPrompt: true, cachedUserPrefix: selectorCachedPrefix, signal: deadline?.signal },
+          {
+            model: MODEL_EXERCISE_SELECTOR,
+            effort: PROGRAM_AGENT_EFFORT,
+            cacheSystemPrompt: true,
+            cachedUserPrefix: selectorCachedPrefix,
+            signal: deadline?.signal,
+          },
         )
         tokenUsage.selector += selectorResult.tokens_used
         tokenUsage.cache_creation += selectorResult.cache_creation_tokens ?? 0
@@ -1149,6 +1201,10 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
         const strippedCount = validCount - passAssignment.assignments.length
         if (strippedCount > 0) {
           console.warn(`[week-orchestrator] Stripped ${strippedCount} hallucinated exercise IDs`)
+          // The day is now SHORT by that many slots and nothing else says so.
+          // Before 2026-09-21 this was a console line only, so a coach received
+          // a day with a hole in it and no indication anything had gone wrong.
+          hallucinatedIdCount += strippedCount
         }
 
         // Verify dedup compliance — both cross-week AND within-week duplicates
@@ -1261,8 +1317,10 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   // loop falls back to "accept with warning". Enforce the invariant
   // programmatically so the same exercise_id never repeats within the week —
   // neither twice on one day nor across two days (warm-up / cool-down excepted).
+  // The swapper CHOOSES replacement exercises, so it needs the restricted set —
+  // otherwise a dedup swap can put equipment back into a bodyweight week.
   const dedupSwap = dedupAssignmentsInPlace(assignment.assignments, skeleton.weeks[0], filtered, {
-    equipment: availableEquipment,
+    equipment: effectiveEquipment,
     difficulty: clientDifficultyLevel,
   })
   if (dedupSwap.swapped_count > 0 || dedupSwap.unresolved.length > 0) {
@@ -1293,6 +1351,76 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     warnings.push(
       `${dedupSwap.unresolved.length} slot(s) repeat an exercise — no unused alternative was available: ${detail}.`,
     )
+  }
+
+  // Equipment the finished week assumes but the client does not have. Checked
+  // against the FULL library and AFTER the post-hoc dedup swaps, because a swap
+  // can introduce an exercise the candidate filter never vetted. On this path
+  // there is no validateProgram pass, so this is the only thing standing between
+  // a wrong week and the client's phone.
+  // Quality checks the structural verifiers cannot see. The dedup verifier
+  // compares exercise IDs, so it reports 0% while a session prescribes three
+  // hip-bridge variants; and nothing at all looked at whether a HOLD was given
+  // a rep count. Both were found by reading two models' real output on
+  // 2026-09-21 — the counters said "0 warnings" for every one of them.
+  {
+    // NOT named dayLabel — that is an imported helper mapping 1..7 to a
+    // weekday name, and shadowing it here would break the callers below.
+    const scopeLabel = isSingleDay && targetDayName ? targetDayName : `Week ${newWeekNumber}`
+
+    warnings.push(...buildHallucinatedIdWarning(hallucinatedIdCount, scopeLabel))
+
+    const repsBySlotId = new Map<string, string | null | undefined>()
+    for (const week of skeleton.weeks) {
+      for (const day of week.days) {
+        for (const slot of day.slots) repsBySlotId.set(slot.slot_id, slot.reps)
+      }
+    }
+    const isoIssues = findIsometricRepsIssues(assignment.assignments, allExercises, repsBySlotId)
+    if (isoIssues.length > 0) {
+      console.warn(
+        `[week-orchestrator] ${isoIssues.length} isometric(s) prescribed with reps: ` +
+          isoIssues.map((i) => `${i.exercise_name}="${i.reps}"`).join("; "),
+      )
+      warnings.push(...buildIsometricWarning(isoIssues))
+    }
+
+    // Grouped PER DAY: the same movement on two different days is variety, not
+    // repetition. Only a single session training one pattern repeatedly is.
+    const nameById = new Map(allExercises.map((e) => [e.id, e.name]))
+    const slotDay = new Map<string, number>()
+    for (const week of skeleton.weeks) {
+      for (const day of week.days) {
+        for (const slot of day.slots) slotDay.set(slot.slot_id, day.day_of_week)
+      }
+    }
+    const namesByDay = new Map<number, string[]>()
+    for (const a of assignment.assignments) {
+      const d = slotDay.get(a.slot_id)
+      const name = nameById.get(a.exercise_id)
+      if (d === undefined || !name) continue
+      namesByDay.set(d, [...(namesByDay.get(d) ?? []), name])
+    }
+    for (const [day, names] of namesByDay) {
+      const families = findRepeatedMovementFamilies(names)
+      if (families.length === 0) continue
+      console.warn(
+        `[week-orchestrator] ${dayLabel(day)} repeats movement families: ` +
+          families.map((f) => f.exercise_names.join("+")).join("; "),
+      )
+      warnings.push(...buildMovementFamilyWarning(dayLabel(day), families))
+    }
+  }
+
+  {
+    const violations = findEquipmentViolations(assignment.assignments, allExercises, effectiveEquipment)
+    if (violations.length > 0) {
+      console.warn(
+        `[week-orchestrator] ${violations.length} equipment violation(s): ` +
+          violations.map((v) => `${v.exercise_name} needs ${v.missing.join("+")}`).join("; "),
+      )
+      warnings.push(...buildEquipmentWarnings(violations, effectiveEquipment))
+    }
   }
 
   // ── Step 4: Save to database ───────────────────────────────────────────

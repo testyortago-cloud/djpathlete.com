@@ -6,6 +6,7 @@ import {
   buildCaptionPrompt,
   type CaptionPlatform,
 } from "./lib/image-caption-prompts.js"
+import { createMessageCompat, assertModelProvider } from "./ai/openrouter-message.js"
 
 const MODEL = "claude-sonnet-4-6"
 const MAX_TOKENS = 800
@@ -113,12 +114,10 @@ export async function handleImageCaptionGeneration(jobId: string): Promise<void>
       }),
     )
 
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set")
-    const client = new Anthropic({ apiKey })
+    assertModelProvider()
 
     const system = buildCaptionPrompt(platform, ordered.length)
-    const response = await client.messages.create({
+    const response = await createMessageCompat({
       model: MODEL,
       max_tokens: MAX_TOKENS,
       system,

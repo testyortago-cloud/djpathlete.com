@@ -78,6 +78,13 @@ export interface WeekContinuationSeed {
   pool_exercise_ids?: string[] | null
   pool_mode?: "preferred" | "strict"
   ignore_profile?: boolean
+  /**
+   * Carried across the chain on purpose. A coach who generated week 1 for a
+   * client in a hotel means it for weeks 2..N of that same trip; dropping it
+   * here would revert every continuation week to the client's home gym without
+   * saying so.
+   */
+  equipment_override?: string[] | null
 }
 
 /**
@@ -95,6 +102,8 @@ export interface WeekContinuationRequest {
   pool_exercise_ids: string[] | null
   pool_mode: "preferred" | "strict"
   ignore_profile: boolean
+  /** null means "no override" — Array.isArray() is what the orchestrator tests. */
+  equipment_override: string[] | null
 }
 
 export interface WeekContinuationInput {
@@ -143,6 +152,7 @@ export function buildWeekContinuationInput(
       pool_exercise_ids: seed.pool_exercise_ids ?? null,
       pool_mode: seed.pool_mode ?? "preferred",
       ignore_profile: seed.ignore_profile ?? false,
+      equipment_override: seed.equipment_override ?? null,
     },
     requestedBy,
     notify_email: isFinalWeek ? (continuation.notify_email ?? null) : null,

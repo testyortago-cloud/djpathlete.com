@@ -4,6 +4,8 @@ import type { AgentCallResult } from "./types.js"
 import pRetry from "p-retry"
 import { jsonrepair } from "jsonrepair"
 import { isAbortError } from "../lib/deadline.js"
+import { isOpenRouterConfigured, shouldFallBackToAnthropic } from "./openrouter.js"
+import { callAgentViaOpenRouter } from "./openrouter-agent.js"
 
 export { Anthropic }
 
@@ -35,6 +37,71 @@ export const MODEL_SONNET_5 = "claude-sonnet-5"
  * on and cannot be disabled; depth is controlled with `output_config.effort`.
  */
 export const MODEL_FABLE = "claude-fable-5-1"
+
+/**
+ * The two agents that decide what a training week actually contains: the
+ * Architect (slot structure) and the Exercise Selector (which exercise fills
+ * each slot). Both orchestrators — new-program and add-a-week — read these, so
+ * the pipeline cannot drift into using different models for the same job.
+ *
+ * Moved to Fable 5.1 on 2026-09-21 at the owner's request. Three things that
+ * are easy to get wrong here:
+ *
+ * 1. The Selector previously passed NO model at all and silently defaulted to
+ *    MODEL_SONNET. "Which model picks the exercises" was not written down
+ *    anywhere — it was the parameter default.
+ * 2. Fable 400s on forced tool choice, so callAgent routes it through the
+ *    `output_config.format` branch instead. That is handled, not incidental —
+ *    see modelRejectsForcedToolChoice above.
+ * 3. Thinking is always on for this family, so these calls are slower per
+ *    attempt than Sonnet was. The Selector runs inside a retry loop against a
+ *    450s budget (WEEK_GENERATION_BUDGET_MS); if generations start timing out,
+ *    this pair is the first thing to move back, not the retry count, and not
+ *    the budget — its ~90s gap under the 540s Eventarc ceiling is what lets a
+ *    blown run report "failed" instead of wedging in "processing".
+ *
+ * BENCHMARKED 2026-09-21 — Fable 5.1 vs GPT-6 Astra, identical request, same
+ * client and history, one run each scope:
+ *
+ *              week: time / arch+sel tokens      day: time / arch+sel tokens
+ *   Fable 5.1   288.7s / 18,915 + 44,576         133.7s / 16,757 + 37,142
+ *   Astra       188.9s / 13,802 + 25,610         125.9s / 11,601 + 21,432
+ *
+ * Astra is ~35% faster and ~40% cheaper in tokens at the SAME list price
+ * ($10/$50), and it did not hallucinate an exercise id — Fable invented one in
+ * the week run, which was stripped and left a silent hole in the day. Both
+ * honoured the equipment constraint perfectly (0 violations in all four runs).
+ *
+ * WHAT THE BENCHMARK DID NOT SETTLE, because both models did it: prescribing
+ * REPS for isometric holds, "each side" on bilateral movements, and repeating a
+ * movement family inside one session. Two vendors making identical mistakes is
+ * a PROMPT problem, so those were fixed in the prompt and in program-quality.ts
+ * rather than by choosing a model. Do not re-litigate them as a model choice.
+ *
+ * Astra's own weaknesses, from that one run: it dropped pulling entirely from an
+ * upper-body day, and its single-day output had no warm-up block and ordered
+ * activation before warm_up. Worth watching.
+ *
+ * n=1 per configuration. Repoint with PROGRAM_ARCHITECT_MODEL /
+ * EXERCISE_SELECTOR_MODEL to re-run the comparison without editing code.
+ */
+export const MODEL_GPT6_ASTRA = "gpt-6-astra"
+
+/**
+ * Overridable so a head-to-head can be run without editing code — set
+ * PROGRAM_ARCHITECT_MODEL / EXERCISE_SELECTOR_MODEL for one run and compare.
+ * PRODUCTION LEAVES BOTH UNSET; the default is the pair above. An unmapped id
+ * throws in toOpenRouterModel rather than silently falling back, so a typo here
+ * fails loudly instead of quietly benchmarking the wrong model.
+ */
+export const MODEL_PROGRAM_ARCHITECT = process.env.PROGRAM_ARCHITECT_MODEL || MODEL_GPT6_ASTRA
+export const MODEL_EXERCISE_SELECTOR = process.env.EXERCISE_SELECTOR_MODEL || MODEL_GPT6_ASTRA
+
+/**
+ * Thinking depth for the two agents above. Only reaches the wire on the
+ * structured-outputs branch, which is the only branch these models take.
+ */
+export const PROGRAM_AGENT_EFFORT = "medium" as const
 
 /**
  * True for models that 400 on `tool_choice: {type: "tool" | "any"}`.
@@ -286,10 +353,56 @@ function callAgentWithModel<T>(
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
   const client = getClient()
   const toolSchema = toToolInputSchema(schema)
-  if (toolSchema) console.log(`[callAgent] Using structured tool_use output (model: ${modelId})`)
+  // Name the branch, not just the intent. This used to print "tool_use" for
+  // every schema-bearing call, including the Fable/Mythos ones that never take
+  // the tool path — which reads as proof that forced tool choice worked.
+  if (toolSchema) {
+    const branch = modelRejectsForcedToolChoice(modelId) ? "output_config.format" : "tool_use"
+    console.log(`[callAgent] Structured output via ${branch} (model: ${modelId})`)
+  }
+
+  // OpenRouter is the primary provider; the Anthropic implementation below is
+  // the fallback. `useOpenRouter` is hoisted OUT of the retry callback on
+  // purpose: once a call has fallen back for a provider-level reason (no
+  // credit, bad key, outage), every later attempt in THIS call goes straight to
+  // Anthropic instead of paying another failed round-trip to OpenRouter first.
+  let useOpenRouter = isOpenRouterConfigured()
 
   return pRetry(
     async () => {
+      if (useOpenRouter) {
+        try {
+          return await callAgentViaOpenRouter(
+            modelId,
+            systemPrompt,
+            userMessage,
+            schema,
+            toolSchema,
+            normalizeEnumFields,
+            {
+              maxTokens,
+              cacheSystemPrompt: options?.cacheSystemPrompt,
+              cachedUserPrefix: options?.cachedUserPrefix,
+              images: options?.images,
+              documents: options?.documents,
+              effort: options?.effort,
+              signal: options?.signal,
+              useResponseFormat: modelRejectsForcedToolChoice(modelId),
+            },
+          )
+        } catch (e) {
+          // Only provider-availability faults fall back. A 400 or a bad model
+          // slug is OUR bug and fails identically on Anthropic, so falling back
+          // would double its cost and hide it behind a working response.
+          if (!shouldFallBackToAnthropic(e)) throw e
+          useOpenRouter = false
+          console.warn(
+            `[callAgent] OpenRouter unavailable (${e instanceof Error ? e.message.slice(0, 160) : e}) — ` +
+              `falling back to direct Anthropic for the rest of this call (model: ${modelId})`,
+          )
+        }
+      }
+
       const systemContent: Anthropic.Messages.TextBlockParam[] = [
         {
           type: "text" as const,

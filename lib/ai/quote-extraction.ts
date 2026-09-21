@@ -5,6 +5,7 @@
 // caller's orchestration can decide how to surface the failure.
 
 import Anthropic from "@anthropic-ai/sdk"
+import { createMessageCompat, assertModelProvider } from "@/lib/ai/openrouter-message"
 
 const MODEL = "claude-sonnet-4-6"
 const MAX_QUOTE_LENGTH = 140
@@ -27,13 +28,11 @@ export async function extractQuotesFromTranscript(
 ): Promise<string[]> {
   if (!transcript || transcript.trim().length === 0) return []
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set")
-  const client = new Anthropic({ apiKey })
+  assertModelProvider()
 
   let response
   try {
-    response = await client.messages.create({
+    response = await createMessageCompat({
       model: MODEL,
       max_tokens: 1200,
       system: SYSTEM_PROMPT,

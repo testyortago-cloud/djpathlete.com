@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
+// Mocks createMessageCompat, not the Anthropic SDK: these callers no longer
+// build a client of their own, they go through the OpenRouter-first shim.
+// The call SHAPE is unchanged (same params in, Anthropic-shaped message out),
+// which is the whole point of the shim — so every assertion below still holds.
 const mockCreate = vi.fn()
-vi.mock("@anthropic-ai/sdk", () => ({
-  default: class {
-    messages = { create: mockCreate }
-  },
+vi.mock("@/lib/ai/openrouter-message", () => ({
+  createMessageCompat: (...args: unknown[]) => mockCreate(...args),
+  assertModelProvider: () => {},
+  hasModelProvider: () => true,
 }))
 
 describe("suggestHookFromTranscript", () => {

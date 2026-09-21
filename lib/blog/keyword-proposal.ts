@@ -5,6 +5,7 @@
 // imports. Keep the system prompt identical between the two files.
 
 import { MODEL_SONNET_5 } from "@/lib/ai/models"
+import { createMessageCompat, assertModelProvider, hasModelProvider } from "@/lib/ai/openrouter-message"
 
 const STOPWORD_PREFIXES = ["the ", "a ", "an ", "how to "]
 
@@ -30,14 +31,11 @@ Examples:
 Output ONLY a JSON object: { "primary_keyword": "<the phrase>" }.`
 
 export async function proposePrimaryKeyword(input: { title: string; summary?: string }): Promise<string> {
-  const { default: Anthropic } = await import("@anthropic-ai/sdk")
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    console.warn("[keyword-proposal] ANTHROPIC_API_KEY missing, falling back to title strip")
+  if (!hasModelProvider()) {
+    console.warn("[keyword-proposal] no model provider configured, falling back to title strip")
     return fallbackKeywordFromTitle(input.title)
   }
 
-  const client = new Anthropic({ apiKey })
   const userMessage = [
     `Title: ${input.title}`,
     input.summary ? `Summary: ${input.summary}` : "",
@@ -48,7 +46,7 @@ export async function proposePrimaryKeyword(input: { title: string; summary?: st
     .join("\n")
 
   try {
-    const response = await client.messages.create({
+    const response = await createMessageCompat({
       model: MODEL_SONNET_5,
       max_tokens: 200,
       system: SYSTEM_PROMPT,

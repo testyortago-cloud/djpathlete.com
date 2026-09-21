@@ -4,6 +4,17 @@
 // mutant this kills is an `images` option that is accepted and then dropped —
 // which would leave the feature silently text-only with a green suite and a
 // working UI.
+// THESE TEST THE ANTHROPIC FALLBACK PATH, DELIBERATELY.
+//
+// callAgent now prefers OpenRouter, and with OPENROUTER_API_KEY set it never
+// reaches generateObject at all — the mock below would simply never fire, and
+// every assertion here would pass vacuously or fail confusingly. Clearing the
+// key selects the fallback, which is the path these assertions describe and
+// which still runs whenever OpenRouter is unreachable.
+//
+// The equivalent guarantees on the PRIMARY path (image ordering, cache
+// breakpoint placement, forced tool choice) are covered by
+// __tests__/lib/ai/openrouter-request.test.ts.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { z } from "zod"
 
@@ -25,6 +36,8 @@ const schema = z.object({ answer: z.string() })
 const IMAGE = { mediaType: "image/jpeg", data: "QUJD" }
 
 beforeEach(() => {
+  // Select the Anthropic fallback — see the note at the top of this file.
+  delete process.env.OPENROUTER_API_KEY
   generateObjectMock.mockReset()
   streamObjectMock.mockReset()
   generateObjectMock.mockResolvedValue({

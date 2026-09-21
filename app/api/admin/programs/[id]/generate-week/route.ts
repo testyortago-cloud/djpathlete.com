@@ -6,6 +6,8 @@ import { FieldValue } from "firebase-admin/firestore"
 import { getActiveUserIdsForProgram } from "@/lib/db/assignments"
 import { findInFlightWeekGeneration } from "@/lib/ai-jobs"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { EQUIPMENT_OPTIONS } from "@/lib/validators/exercise"
+import { enqueueGenerationTask, GENERATION_QUEUES } from "@/lib/ai-task-queue"
 
 const generateWeekSchema = z.object({
   assignment_id: z.string().uuid().optional(),
@@ -26,6 +28,16 @@ const generateWeekSchema = z.object({
   pool_mode: z.enum(["preferred", "strict"]).optional(),
   /** When set, AI ignores the client profile and relies on coach instructions */
   ignore_profile: z.boolean().optional(),
+  /**
+   * Equipment available for THIS week only — e.g. a client training in a hotel
+   * room. REPLACES the client's stored `available_equipment` rather than adding
+   * to it, and is never written back to their profile.
+   *
+   * `[]` is a meaningful value ("nothing at all"), so this must stay
+   * `.optional()` and never gain a `.default([])` — a default would turn every
+   * ordinary generation into a bodyweight-only one.
+   */
+  equipment_override: z.array(z.enum(EQUIPMENT_OPTIONS)).max(EQUIPMENT_OPTIONS.length).optional(),
   /** When set, the Firebase function emails this address on completion / failure. */
   notify_email: z.string().email().optional().nullable(),
 })
@@ -122,6 +134,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await jobRef.set({
       type: "week_generation",
       status: "pending",
+      // Executed by weekGenerationTask (Cloud Tasks, 1800s), NOT by the
+      // Firestore create trigger (Eventarc, 540s hard cap). The trigger checks
+      // this field and yields, so the job cannot run twice.
+      dispatch: "task",
       input: {
         request: {
           program_id: programId,
@@ -133,6 +149,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           pool_exercise_ids: result.data.pool_exercise_ids ?? null,
           pool_mode: result.data.pool_mode ?? "preferred",
           ignore_profile: result.data.ignore_profile ?? false,
+          // Spread, NOT `?? null`. The orchestrator distinguishes "coach set an
+          // override" from "coach said nothing", and `null` is not `undefined` —
+          // defaulting here would mark every ordinary generation as overridden
+          // and hard-filter it to bodyweight.
+          ...(result.data.equipment_override !== undefined && {
+            equipment_override: result.data.equipment_override,
+          }),
         },
         requestedBy: session.user.id,
         notify_email: result.data.notify_email ?? null,
@@ -143,6 +166,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     })
+
+    // Hand the job to Cloud Tasks. `dispatch: "task"` above tells the Firestore
+    // create trigger to leave it alone, so this enqueue is now the ONLY thing
+    // that will run it — a failure here leaves a job nothing will ever pick up,
+    // which the coach experiences as a spinner that never resolves. Mark it
+    // failed and say so, rather than answering 202 for work that will not start.
+    try {
+      await enqueueGenerationTask(GENERATION_QUEUES.week, jobRef.id)
+    } catch (enqueueError) {
+      const detail = enqueueError instanceof Error ? enqueueError.message : String(enqueueError)
+      console.error("[generate-week] enqueue failed:", detail)
+      await jobRef.update({
+        status: "failed",
+        error: `Could not queue the generation: ${detail}`,
+        updatedAt: FieldValue.serverTimestamp(),
+      })
+      return NextResponse.json(
+        { error: "Could not queue the generation. The AI functions may not be deployed yet." },
+        { status: 503 },
+      )
+    }
 
     // Seed RTDB node for real-time updates
     try {

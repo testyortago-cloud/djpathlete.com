@@ -8,6 +8,9 @@ import type { AgentCallResult } from "@/lib/ai/types"
 import { MODEL_SONNET } from "@/lib/ai/models"
 import { AI_CHAT_MAX_TOKENS } from "@/lib/admin-ai-config"
 import pRetry from "p-retry"
+import { toJSONSchema } from "zod"
+import { isOpenRouterConfigured, shouldFallBackToAnthropic } from "@/lib/ai/openrouter"
+import { callAgentViaOpenRouter } from "@/lib/ai/openrouter-agent"
 
 export { Anthropic }
 
@@ -146,6 +149,21 @@ function promptOrMessages(
 
 // ─── callAgent: structured output via generateObject ─────────────────────────
 
+/**
+ * Zod schema to the plain JSON Schema OpenRouter's tool definition expects.
+ * Returns null when the schema is not an object type, which sends the call down
+ * the text-JSON path instead of producing an invalid tool definition.
+ */
+function toToolSchema(schema: ZodSchema): Record<string, unknown> | null {
+  try {
+    const raw = toJSONSchema(schema, { unrepresentable: "any" }) as Record<string, unknown>
+    const { $schema: _s, "~standard": _std, ...rest } = raw
+    return rest.type === "object" ? rest : null
+  } catch {
+    return null
+  }
+}
+
 export async function callAgent<T>(
   systemPrompt: string,
   userMessage: string,
@@ -160,8 +178,57 @@ export async function callAgent<T>(
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
   const modelId = options?.model ?? MODEL_SONNET
 
+  // OpenRouter first, direct Anthropic as the fallback. Hoisted out of the
+  // retry callback so that once a call has fallen back for a provider-level
+  // reason, the remaining attempts do not each pay another failed round-trip.
+  //
+  // This path deliberately does NOT go through the AI SDK. `@ai-sdk/openai-compatible`
+  // ships @ai-sdk/provider v4 while @ai-sdk/anthropic (which `ai@6` is pinned
+  // against) ships v3, so its model object is not assignable to `LanguageModel`
+  // — the two package version lines are not aligned across the ecosystem.
+  // Using the raw OpenAI SDK sidesteps an `ai` v6 -> v7 upgrade that would
+  // touch every AI feature in the app.
+  let useOpenRouter = isOpenRouterConfigured()
+
   const result = await pRetry(
     async () => {
+      if (useOpenRouter) {
+        try {
+          const or = await callAgentViaOpenRouter(
+            modelId,
+            systemPrompt,
+            userMessage,
+            schema,
+            toToolSchema(schema),
+            (d) => d,
+            {
+              maxTokens,
+              cacheSystemPrompt: options?.cacheSystemPrompt,
+              images: options?.images?.map((i) => ({ media_type: i.mediaType, data: i.data })),
+            },
+          )
+          // Shaped like generateObject's result so the accounting below is
+          // reached by exactly one path, not two.
+          return {
+            object: or.content,
+            usage: { inputTokens: or.tokens_used, outputTokens: 0 },
+            providerMetadata: {
+              anthropic: {
+                cacheCreationInputTokens: or.cache_creation_tokens,
+                cacheReadInputTokens: or.cache_read_tokens,
+              },
+            },
+          } as unknown as Awaited<ReturnType<typeof generateObject>>
+        } catch (e) {
+          if (!shouldFallBackToAnthropic(e)) throw e
+          useOpenRouter = false
+          console.warn(
+            `[callAgent] OpenRouter unavailable (${e instanceof Error ? e.message.slice(0, 160) : e}) — ` +
+              `falling back to direct Anthropic for the rest of this call (model: ${modelId})`,
+          )
+        }
+      }
+
       // TWO COMPLETE CALLS, NOT A CONDITIONAL SPREAD. See `promptOrMessages`
       // above: the AI SDK's `Prompt` type is a union whose branches carry
       // `messages?: never` / `prompt?: never`, so spreading its result here

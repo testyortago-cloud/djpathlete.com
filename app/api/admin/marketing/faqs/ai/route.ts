@@ -10,6 +10,7 @@ import { resolveFaqPage } from "@/lib/faq/pages"
 import { listFaqsForPage } from "@/lib/db/faqs"
 import { buildFaqAiPrompt } from "@/lib/faq/ai-prompt"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { createMessageCompat, assertModelProvider } from "@/lib/ai/openrouter-message"
 
 const MODEL = "claude-sonnet-4-6"
 
@@ -66,11 +67,9 @@ export async function POST(request: Request) {
 
   let text: string
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set")
-    const client = new Anthropic({ apiKey })
+    assertModelProvider()
 
-    const response = await client.messages.create({
+    const response = await createMessageCompat({
       model: MODEL,
       max_tokens: 600,
       messages: [

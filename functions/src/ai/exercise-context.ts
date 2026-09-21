@@ -105,19 +105,35 @@ export function filterByProgressionPhase(
  * contain exercises the client can actually perform.
  *
  * - Full-gym clients (>= FULL_GYM_THRESHOLD items selected): no filtering, since
- *   the validator also skips availability checks for them.
- * - Bodyweight exercises are ALWAYS kept (the "backfill" so push/squat patterns
- *   stay coverable even when a client has little or no equipment).
+ *   the validator also skips availability checks for them. `strict` opts out of
+ *   that short-circuit — see below.
  * - Exercises with no required equipment are always kept.
  * - Otherwise an exercise is kept only if EVERY required item is available
  *   (compared via normalizeEquipment, identical to the validator).
+ *
+ * `is_bodyweight` deliberately grants NO exemption here, though it used to.
+ * The flag describes how an exercise is LOADED, not what it needs to exist:
+ * 310 of the library's 420 bodyweight-flagged rows also list equipment (TRX,
+ * pull-up bar, bench, cable machine). Short-circuiting on the flag let every
+ * one of them past this filter, which is how a "hotel, no equipment" week
+ * shipped with TRX glides, hanging leg raises and a cable-machine stretch in
+ * it (2026-09-21). Pattern coverage — the reason the exemption existed — still
+ * holds without it: with zero equipment the library covers push/squat/hinge/
+ * lunge/rotation/isometric/locomotion. Pull has only 3 and carry has 0, which
+ * is a fact about training without a bar, not a filter bug — `ensurePatternBalance`
+ * and the coach-facing warnings surface it rather than papering over it.
+ *
+ * `strict` marks an EXPLICIT coach override rather than a profile-derived guess.
+ * Ticking 25 of 31 boxes is a deliberate statement about the other 6, so the
+ * full-gym short-circuit must not silently hand back the barbell.
  */
 export function filterByAvailableEquipment(
   exercises: CompressedExercise[],
   availableEquipment: string[],
   unlockedIds?: Set<string>,
+  strict = false,
 ): CompressedExercise[] {
-  if (availableEquipment.length >= FULL_GYM_THRESHOLD) return exercises
+  if (!strict && availableEquipment.length >= FULL_GYM_THRESHOLD) return exercises
 
   const equipmentSet = new Set(availableEquipment.map(normalizeEquipment))
   return exercises.filter((ex) => {
@@ -125,7 +141,6 @@ export function filterByAvailableEquipment(
     // is empty whenever no profile exists — which silently reduces the library
     // to bodyweight-only. An explicit instruction outranks that guess.
     if (unlockedIds?.has(ex.id)) return true
-    if (ex.is_bodyweight) return true
     if (!ex.equipment_required || ex.equipment_required.length === 0) return true
     return ex.equipment_required.every((eq) => equipmentSet.has(normalizeEquipment(eq)))
   })
