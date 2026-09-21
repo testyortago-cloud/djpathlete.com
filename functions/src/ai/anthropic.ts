@@ -4,6 +4,8 @@ import type { AgentCallResult } from "./types.js"
 import pRetry from "p-retry"
 import { jsonrepair } from "jsonrepair"
 import { isAbortError } from "../lib/deadline.js"
+import { isOpenRouterConfigured, shouldFallBackToAnthropic } from "./openrouter.js"
+import { callAgentViaOpenRouter } from "./openrouter-agent.js"
 
 export { Anthropic }
 
@@ -340,8 +342,48 @@ function callAgentWithModel<T>(
     console.log(`[callAgent] Structured output via ${branch} (model: ${modelId})`)
   }
 
+  // OpenRouter is the primary provider; the Anthropic implementation below is
+  // the fallback. `useOpenRouter` is hoisted OUT of the retry callback on
+  // purpose: once a call has fallen back for a provider-level reason (no
+  // credit, bad key, outage), every later attempt in THIS call goes straight to
+  // Anthropic instead of paying another failed round-trip to OpenRouter first.
+  let useOpenRouter = isOpenRouterConfigured()
+
   return pRetry(
     async () => {
+      if (useOpenRouter) {
+        try {
+          return await callAgentViaOpenRouter(
+            modelId,
+            systemPrompt,
+            userMessage,
+            schema,
+            toolSchema,
+            normalizeEnumFields,
+            {
+              maxTokens,
+              cacheSystemPrompt: options?.cacheSystemPrompt,
+              cachedUserPrefix: options?.cachedUserPrefix,
+              images: options?.images,
+              documents: options?.documents,
+              effort: options?.effort,
+              signal: options?.signal,
+              useResponseFormat: modelRejectsForcedToolChoice(modelId),
+            },
+          )
+        } catch (e) {
+          // Only provider-availability faults fall back. A 400 or a bad model
+          // slug is OUR bug and fails identically on Anthropic, so falling back
+          // would double its cost and hide it behind a working response.
+          if (!shouldFallBackToAnthropic(e)) throw e
+          useOpenRouter = false
+          console.warn(
+            `[callAgent] OpenRouter unavailable (${e instanceof Error ? e.message.slice(0, 160) : e}) — ` +
+              `falling back to direct Anthropic for the rest of this call (model: ${modelId})`,
+          )
+        }
+      }
+
       const systemContent: Anthropic.Messages.TextBlockParam[] = [
         {
           type: "text" as const,

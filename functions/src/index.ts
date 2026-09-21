@@ -31,6 +31,12 @@ const googleAdsLoginCustomerId = defineSecret("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
 const coachEmail = defineSecret("COACH_EMAIL")
 const resendFromEmail = defineSecret("RESEND_FROM_EMAIL")
 const brollWebhookSecret = defineSecret("BROLL_WEBHOOK_SECRET")
+// Primary provider for every model call. MUST be bound to any function that
+// calls a model: a secret that is declared but not listed in that function's
+// `secrets` is simply absent from process.env inside it, so
+// isOpenRouterConfigured() would read false and every call would silently go
+// to direct Anthropic — the migration would look deployed and do nothing.
+const openrouterApiKey = defineSecret("OPENROUTER_API_KEY")
 
 const googleAdsSecrets = [
   supabaseUrl,
@@ -45,7 +51,15 @@ const googleAdsSecrets = [
   appUrl,
 ]
 
-const allSecrets = [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, resendApiKey, coachEmail, resendFromEmail]
+const allSecrets = [
+  openrouterApiKey,
+  anthropicApiKey,
+  supabaseUrl,
+  supabaseServiceRoleKey,
+  resendApiKey,
+  coachEmail,
+  resendFromEmail,
+]
 // resendFromEmail is REQUIRED here even though this list is otherwise minimal.
 // A secret that is declared but not bound to a function is simply absent from
 // process.env inside it, so `?? "<default>"` silently wins — newsletterSend sent

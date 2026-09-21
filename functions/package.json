@@ -27,6 +27,7 @@
     "firebase-functions": "^6.3.0",
     "google-ads-api": "^23.0.0",
     "jsonrepair": "^3.13.2",
+    "openai": "^6.49.0",
     "p-retry": "^7.1.1",
     "resend": "^6.9.3",
     "sharp": "^0.33.5",
