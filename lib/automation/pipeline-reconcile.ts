@@ -250,6 +250,24 @@ export async function runPipelineReconcile(): Promise<PipelineReconcileSummary> 
  *    "booking"})` — trivial today (that rule always answers `coaching`, so
  *    the result is byte-identical to the old hardcoded key) but no longer a
  *    SEPARATE hardcoded assumption from the rest of the routing table.
+ *
+ *    IT IS TRIVIAL ONLY BECAUSE NO `serviceType` IS PASSED HERE, and that is
+ *    the thing to notice rather than the answer. The LIVE path
+ *    (lib/bookings/ingest.ts) does pass one, so an assessment booking already
+ *    routes to the Assessment board there while a replay of the same booking
+ *    routes to Coaching here — a pre-existing divergence, harmless only
+ *    because this pass writes to `defaultPipelineKey` alone. G24 widened the
+ *    service-type rules to send `"camp"`/`"clinic"` to Camps & Clinics, which
+ *    joins the same divergence and is equally inert for the same reason: the
+ *    Calendly adapter emits only `"assessment"` or null, and `bookings` has
+ *    no `service_type` column to replay from at all.
+ *
+ *    THE DAY G22 ADDS THAT COLUMN, this call is a live bug rather than a
+ *    dormant one: a camp booking would route to Camps & Clinics live and be
+ *    replayed onto Coaching here, producing a DUPLICATE card that the
+ *    per-pipeline unique constraint cannot block, because the two cards sit
+ *    on different pipelines. Pass the row's `service_type` here in the same
+ *    change that persists it.
  *  - Payments are NOT routed per row. This loop pre-resolves ONE board's
  *    `pipelineId`/`stages` (below) and reuses them as the "does this contact
  *    already have an OPEN card" precondition for every payment in the batch —

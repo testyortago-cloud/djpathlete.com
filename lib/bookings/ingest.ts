@@ -86,7 +86,18 @@ export type BookingIngestInput = {
   /**
    * What the booking is FOR, when the vendor gives us anything to say so.
    * Handed straight to `routeToPipeline`, which sends `"assessment"` to the
-   * Assessment board and everything else (including null) to Coaching.
+   * Assessment board, `"camp"` and `"clinic"` to Camps & Clinics (G24), and
+   * everything else (including null) to Coaching.
+   *
+   * ONLY `"assessment"` AND null ARE REACHABLE TODAY — see the paragraph
+   * below. The camp/clinic arm is inert on this path until `bookings` gains a
+   * real `service_type` (G22). WHOEVER WIRES THAT: the reconciler's
+   * booking-replay divergence note (lib/automation/pipeline-reconcile.ts)
+   * still names assessment alone, and it is what stops a booking being
+   * replayed onto the wrong board. A camp booking routed here but replayed as
+   * Coaching there gets a DUPLICATE card, which the per-pipeline unique
+   * constraint cannot block because the two cards are on different pipelines.
+   * Update both together.
    *
    * TODAY THERE IS EXACTLY ONE SIGNAL, AND IT IS A STRING MATCH ON A HUMAN
    * LABEL. Calendly's payload carries no service field at all — the only fact
