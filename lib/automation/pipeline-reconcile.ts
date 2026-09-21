@@ -24,8 +24,10 @@ import {
   resolvePipeline,
   readMostRecentOpportunity,
   listReconciledSourceIds,
+  PipelineNotConfiguredError,
   DEFAULT_PIPELINE_KEY,
 } from "@/lib/db/pipeline"
+import type { StageRow } from "@/lib/lead-engine/pipeline-move"
 import { NO_PIPELINE_CARD_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
 import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
 import { platformBusinessId } from "@/lib/tenancy/platform"
@@ -246,48 +248,47 @@ export async function runPipelineReconcile(): Promise<PipelineReconcileSummary> 
  * this pass has NOT been widened to reconcile the other two boards. It is
  * now used two different ways, not one, and the difference is load-bearing:
  *
- *  - Bookings are routed for real, per row, via `routeToPipeline({event:
- *    "booking"})` — trivial today (that rule always answers `coaching`, so
- *    the result is byte-identical to the old hardcoded key) but no longer a
- *    SEPARATE hardcoded assumption from the rest of the routing table.
+ *  - Bookings are routed PER ROW, from the booking's own `service_type`
+ *    (migration 00273, G22), so a replay lands on the same board the live
+ *    webhook chose.
  *
- *    IT IS TRIVIAL ONLY BECAUSE NO `serviceType` IS PASSED HERE, and that is
- *    the thing to notice rather than the answer. The LIVE path
- *    (lib/bookings/ingest.ts) does pass one, so an assessment booking already
- *    routes to the Assessment board there while a replay of the same booking
- *    routes to Coaching here — a pre-existing divergence, harmless only
- *    because this pass writes to `defaultPipelineKey` alone. G24 widened the
- *    service-type rules to send `"camp"`/`"clinic"` to Camps & Clinics, which
- *    joins the same divergence.
+ *    THAT IS G26, AND IT IS WHY THIS PASS IS SAFE TO ENABLE. Before it, the
+ *    live path passed a `serviceType` and this one could not, so an assessment
+ *    booking's card was opened on Assessment and the replay resolved Coaching,
+ *    found no open card there, took the CREATE branch and wrote a DUPLICATE —
+ *    which `opportunities_one_open_per_contact_pipeline` cannot block, because
+ *    the two cards sit on different pipelines. G24 widened the same rules to
+ *    send `"camp"`/`"clinic"` to Camps & Clinics, which would have joined the
+ *    identical divergence.
+ *  - Payments are ALSO routed per row now, and the OPEN-card precondition is
+ *    read on the payment's OWN board. This loop used to pre-resolve one
+ *    board's `pipelineId`/`stages` and reuse them for every payment, which was
+ *    correct only while every payment that wins a card routed to that same
+ *    board — untrue since gap #C1 (2026-09-08) took `event_signup` out of
+ *    `NO_PIPELINE_CARD_PAYMENT_TYPES` so it could win its own card on
+ *    `camps_clinics`. The stopgap was a guard that counted any payment routing
+ *    elsewhere as `failed` and skipped it: a camp registration, which is
+ *    exactly what this reconciler exists to repair, reported as a fault on
+ *    every single pass. Boards are now resolved lazily and cached per pass, so
+ *    that guard is gone and there is nothing left to skip.
  *
- *    **THE COLUMN NOW EXISTS AND THIS CALL STILL IGNORES IT.** Migration 00273
- *    (G22) added `bookings.service_type` and `stampServiceType` writes it, so
- *    the reason this read had nothing to pass is gone — what remains is that
- *    nobody has taught this loop to select it. Until they do, a camp booking
- *    routes to Camps & Clinics live and would be replayed onto Coaching here,
- *    producing a DUPLICATE card the per-pipeline unique constraint cannot
- *    block because the two sit on different pipelines. **That is G26, and it
- *    is what `cron_pipeline_reconcile_enabled` is waiting for** — do not turn
- *    the cron on before this reads the column.
- *  - Payments are NOT routed per row. This loop pre-resolves ONE board's
- *    `pipelineId`/`stages` (below) and reuses them as the "does this contact
- *    already have an OPEN card" precondition for every payment in the batch —
- *    correct only because every payment this loop actually WINS a card for
- *    routes to that SAME board. Unlike before gap #C1's fix (2026-09-08),
- *    that is no longer guaranteed by `NO_PIPELINE_CARD_PAYMENT_TYPES` alone:
- *    `event_signup` (which routes to `camps_clinics`) is deliberately NOT a
- *    member of that set any more, because it now legitimately wins a card —
- *    just not on this board. The guard immediately below is what actually
- *    keeps the invariant true: each payment's routed key is checked AGAINST
- *    `defaultPipelineKey` before it is used, and if the two disagree — for
- *    `event_signup` today, or for `NO_PIPELINE_CARD_PAYMENT_TYPES` and
- *    `routeToPipeline`'s table drifting apart for any other type in the
- *    future — the payment is skipped and counted as `failed`, with a reason
- *    naming the real board, rather than being checked against, or written
- *    onto, the wrong one. That is a deliberate, in-scope-only fix: teaching
- *    this pass to actually reconcile `camps_clinics` (re-fetching a second
- *    `pipelineId`/`stages` and re-running the OPEN-card precondition per
- *    board) is gap #C2 (no board reader) and stays out of scope here.
+ * `cron_pipeline_reconcile_enabled` REMAINS OFF until the owner turns it on.
+ * That is an outward action and theirs to take.
+ *
+ * ONE RESIDUAL, AND IT IS BOUNDED. `booking.service_type ?? null` cannot tell
+ * "never stamped" from "coaching", and migration 00273 shipped with no
+ * backfill — so a booking ingested between 2026-09-13 (when the live webhook
+ * started passing a service type) and 00273's deploy carries NULL here while
+ * its card sits on Assessment, and a replay would still duplicate it onto
+ * Coaching. The window is closed going forward (every booking is stamped now)
+ * and bounded behind by PIPELINE_RECONCILE_WINDOW_DAYS.
+ *
+ * MEASURED, not assumed: production had **zero** bookings of any status in the
+ * last 30 days when this shipped (2026-09-21), so that residual is currently
+ * empty. Re-measure before enabling the cron rather than trusting this line —
+ * `select count(*) from bookings where created_at >= now() - interval '30 days'
+ * and service_type is null and status in ('scheduled','completed')` is the
+ * whole question.
  */
 async function reconcileForBusiness(
   businessId: string,
@@ -302,35 +303,24 @@ async function reconcileForBusiness(
   let wonFromPayments = 0
   let failed = 0
 
-  // Never varies per booking IN THIS PASS — this call carries no
-  // checkoutType/serviceType to route on, so it is resolved once rather than
-  // inside the loop. That is a statement about this call only; it is NO LONGER
-  // true that a booking routes to `coaching` system-wide.
+  // G26. Resolved PER BOOKING, from the row's own `service_type` (migration
+  // 00273), instead of once for the whole pass. The hoisted version was the
+  // divergence itself: the live webhook opens an assessment booking's card on
+  // Assessment, a replay resolved Coaching, `decideMove` found no open card
+  // there and took the CREATE branch — a DUPLICATE card for one booking, which
+  // `opportunities_one_open_per_contact_pipeline` cannot block because the two
+  // sit on different pipelines.
   //
-  // DIVERGENCE, since 2026-09-13 (lib/bookings/ingest.ts). The booking webhook
-  // now passes a `serviceType`, so an assessment booking's card is opened on
-  // `assessment`, while this pass still routes every booking to `coaching`.
-  // `listReconciledSourceIds` filters `.eq("trigger","reconciler")`, so the
-  // webhook's card is invisible to the ledger above and cannot suppress the
-  // replay: the replay resolves Coaching, `decideMove` finds no open card
-  // there (it is on Assessment), and takes the CREATE branch — a DUPLICATE
-  // card for one booking. `opportunities_one_open_per_contact_pipeline` is
-  // keyed on (contact_id, pipeline_id) and does not constrain it. Before the
-  // webhook could route elsewhere, the replay always found the card on this
-  // same board and no-opped, which is why that hazard is new rather than
-  // long-standing.
-  // No guard is possible here: this pass cannot know a booking's service type
-  // (`bookings` has no such column and does not store the Calendly event
-  // name), so the key comparison the payments loop below uses would compare
-  // `coaching` against `coaching` and never fire. KEEP
-  // `cron_pipeline_reconcile_enabled` OFF (it defaults false and production
-  // has no row) until gap #C2 — a per-board reader, so this pass reconciles
-  // every board instead of one — closes.
-  const bookingRouting = routeToPipeline({ event: "booking" })
-  const bookingPipelineKey = bookingRouting.kind === "routed" ? bookingRouting.pipelineKey : defaultPipelineKey
-
+  // `resolvePipelineWithFallback` inside `applyPipelineEvent` handles a tenant
+  // that has no such board (every business seeded before migration 00257): the
+  // event lands on Coaching with a warning rather than throwing, which is the
+  // same rule the live path already follows.
+  //
   for (const booking of bookings) {
     if (!booking.id || processed.bookingIds.has(booking.id)) continue
+
+    const bookingRouting = routeToPipeline({ event: "booking", serviceType: booking.service_type ?? null })
+    const bookingPipelineKey = bookingRouting.kind === "routed" ? bookingRouting.pipelineKey : defaultPipelineKey
 
     try {
       const contactId = await findContactByIdentifiers({
@@ -360,7 +350,47 @@ async function reconcileForBusiness(
   }
 
   if (payments.length > 0) {
-    const { pipelineId, stages } = await resolvePipeline(defaultPipelineKey, businessId)
+    // G26. ONE ENTRY PER BOARD this pass actually touches, resolved lazily and
+    // reused. The open-card precondition below has to be read on the payment's
+    // OWN board — an open Coaching card must not satisfy a camp payment — and
+    // resolving inside the loop would re-read the same board for every row.
+    //
+    // A board this tenant does not have resolves to Coaching's stages via
+    // `resolvePipelineWithFallback`'s rule, applied here explicitly because
+    // this read happens BEFORE `applyPipelineEvent` and so cannot borrow it.
+    const boardCache = new Map<string, { pipelineId: string; stages: StageRow[] }>()
+
+    // The DEFAULT board is resolved EAGERLY, outside the per-payment try/catch
+    // below, and that placement is load-bearing rather than incidental. A
+    // business whose own coaching board is missing is genuinely broken, and
+    // throwing here aborts this business's whole pass so the multi-business
+    // loop records it in `failures[]` and the cron run is marked failed against
+    // the business's name. Resolved lazily inside the loop instead, the same
+    // fault would be caught per row and reported as "one payment failed" —
+    // a broken tenant wearing a transient error's clothes.
+    boardCache.set(defaultPipelineKey, await resolvePipeline(defaultPipelineKey, businessId))
+
+    const resolveBoard = async (key: string) => {
+      const cached = boardCache.get(key)
+      if (cached) return cached
+      let resolved: { pipelineId: string; stages: StageRow[] }
+      try {
+        resolved = await resolvePipeline(key, businessId)
+      } catch (err) {
+        if (!(err instanceof PipelineNotConfiguredError)) throw err
+        // A NON-default board this tenant was never seeded with — every
+        // business created before migration 00257. Same rule as
+        // `resolvePipelineWithFallback` on the live path: land on Coaching
+        // with a warning rather than throw. Applied here explicitly because
+        // this read happens before `applyPipelineEvent` and cannot borrow it.
+        console.warn(
+          `[pipeline-reconcile] board "${key}" is not configured for business ${businessId} — falling back to "${defaultPipelineKey}"`,
+        )
+        resolved = boardCache.get(defaultPipelineKey)!
+      }
+      boardCache.set(key, resolved)
+      return resolved
+    }
 
     for (const payment of payments) {
       if (!payment.id || processed.paymentIds.has(payment.id)) continue
@@ -369,26 +399,22 @@ async function reconcileForBusiness(
         const paymentType = payment.metadata?.type
         if (typeof paymentType === "string" && NO_PIPELINE_CARD_PAYMENT_TYPES.has(paymentType)) continue
 
-        // See this function's doc comment: this loop's OPEN-card precondition
-        // (`pipelineId`/`stages` above) is scoped to `defaultPipelineKey`
-        // alone. A payment whose OWN routed key disagrees with that must be
-        // skipped rather than checked against — and potentially written
-        // onto — the wrong board.
         const routing = routeToPipeline({
           event: "payment",
           checkoutType: typeof paymentType === "string" ? paymentType : null,
         })
         const routedPipelineKey = routing.kind === "routed" ? routing.pipelineKey : defaultPipelineKey
-        if (routedPipelineKey !== defaultPipelineKey) {
-          failed += 1
-          console.error(
-            `[pipeline-reconcile] payment ${payment.id} routes to "${routedPipelineKey}" but this pass only reconciles "${defaultPipelineKey}" — skipped rather than risking a wrong-board write`,
-          )
-          continue
-        }
 
+        // G26. This used to count a payment routing anywhere but Coaching as
+        // FAILED and skip it, because the precondition below was pre-resolved
+        // for one board. That meant `event_signup` — a camp registration, the
+        // very thing the reconciler exists to repair — was reported as a fault
+        // on every pass. The precondition is now read on the payment's OWN
+        // board, so there is nothing left to skip.
         const contactId = await findContactByIdentifiers({ userId: payment.user_id, businessId })
         if (!contactId) continue
+
+        const { pipelineId, stages } = await resolveBoard(routedPipelineKey)
 
         // Critical 1's restored precondition: only WIN a card that already
         // exists and is OPEN. `current === null` (no deal at all) or

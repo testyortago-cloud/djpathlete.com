@@ -2250,6 +2250,33 @@ describe("applyPipelineEvent", () => {
       expect(errors).toHaveBeenCalled()
     })
 
+    // THE RECONCILER MUST NOT SWEEP, added with G26 — which is the change that
+    // made this reachable, by no longer skipping payments that route off the
+    // default board.
+    //
+    // The sweep means "they have JUST bought, so their other enquiries are
+    // moot". A reconciler pass replays a payment missed up to 30 days ago, and
+    // the cards it would close are TODAY's: somebody whose camp payment went
+    // astray three weeks ago, and who has since opened a fresh coaching
+    // enquiry, would have that new enquiry closed `paid_elsewhere` at zero
+    // value by a replay of the old sale. Had the webhook arrived on time the
+    // sweep would have run then, against the cards open then — it is a "now"
+    // action with no honest replay.
+    it("does not sweep on a reconciler replay, only on the live hook", async () => {
+      seedThreeBoardsWithTwoOpenEnquiries()
+
+      await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 300000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: "coaching",
+        source: "reconciler",
+      })
+
+      expect(store.opportunities.find((o) => o.id === "opp-camps-open")?.outcome).toBeNull()
+      expect(store.opportunities.find((o) => o.id === "opp-assessment-open")?.outcome).toBeNull()
+    })
+
     // A LOST close must not sweep, and this needs its own fixture because
     // every test above closes as WON: gating the sweep on `decision.outcome
     // === "won"` could be deleted entirely and they would all still pass.

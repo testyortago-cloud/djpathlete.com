@@ -544,6 +544,17 @@ export interface Booking {
   /** The invitee's own Calendly links, shown as row actions on /admin/bookings. Null for GHL rows. */
   reschedule_url: string | null
   cancel_url: string | null
+  /**
+   * Migration 00273 (G22). What this booking is FOR — one of
+   * `lib/validators/inquiry.ts`'s SERVICE_TYPES, or null when the vendor gave
+   * nothing to say so (the ordinary case: the Calendly adapter only ever
+   * recognises "assessment", and GoHighLevel carries nothing comparable).
+   *
+   * Written best-effort by `stampServiceType` in lib/bookings/ingest.ts and
+   * read by the pipeline reconciler (G26), so a replayed booking routes to the
+   * same board the live webhook chose instead of always landing on Coaching.
+   */
+  service_type: string | null
 }
 
 export interface Payment {
