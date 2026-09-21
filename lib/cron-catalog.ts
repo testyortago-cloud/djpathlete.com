@@ -220,7 +220,7 @@ export const CRON_CATALOG: readonly CronJob[] = [
     name: "pipeline-reconcile",
     label: "Pipeline board repair",
     description:
-      "Every hour, checks for a booking or a payment whose card move failed to record and fixes it — so a dropped hook never leaves a deal silently missing from the board. OFF by default, and it should stay off for now: it can add a second card for the same person on a different board from the one they are already on, leaving you two cards for one deal to tidy up by hand.",
+      "Every hour, checks for a booking or a payment whose card move failed to record and fixes it — so a dropped hook never leaves a deal silently missing from the board. Safe to turn on since 21 September 2026: it used to be able to add a second card for the same person on a different board, and that is fixed — it now reads the board a booking was actually for.",
     schedule: "20 * * * *",
     timezone: "UTC",
     humanSchedule: "Every hour at :20",
