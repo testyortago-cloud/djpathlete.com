@@ -3,9 +3,42 @@
 OpenRouter is now the primary provider for every call that goes through the
 shared `callAgent`. Direct Anthropic remains as an automatic fallback.
 
-**None of this has been run against a live OpenRouter key.** Everything below is
-type-checked and covered by request-shape tests; whether OpenRouter *behaves* as
-documented is exactly what the checklist at the end is for.
+## Live results, 2026-09-21
+
+Run against a real key. **The account is unfunded** ($0 purchased), so the two
+passes below ran on a residual free allowance of roughly 800 tokens and anything
+larger 402s.
+
+VERIFIED:
+
+- The key authenticates and the slug mapping is right — `anthropic/claude-sonnet-4.6`
+  and `anthropic/claude-haiku-4.5` both answered.
+- **Forced `tool_choice` works on OpenRouter.** This was the biggest unknown: the
+  failure mode is silent (the model answers prose instead of calling the tool)
+  and it would have surfaced as a confusing Zod error. It works. ~3.2s for a
+  trivial call.
+- Structured output parses and passes Zod.
+- Usage accounting parses (`tokens=803`).
+- **The fallback fires and classifies correctly.** A Fable call 402'd at
+  OpenRouter, was recognised as a provider fault, fell back to direct Anthropic
+  inside the same call, and Anthropic's own credit 400 was then correctly NOT
+  retried. The final error is Anthropic-shaped, which is the proof the fallback
+  ran rather than the OpenRouter error being rethrown.
+
+STILL UNVERIFIED — all blocked on the balance, not on the code:
+
+- **Fable 5.1**, which is both the architect and the exercise selector. At
+  $10/$50 per MTok it 402s immediately on this balance, so the model that does
+  the actual program generation has never run through OpenRouter.
+- **Prompt caching / hit rate.** Anthropic only caches prompts above ~1024
+  tokens, so it cannot be exercised on a free allowance at all. This is the
+  expensive unknown: a 0% hit rate multiplies the cost of every generation.
+- A full week generation, and latency against the 450s / 1500s budgets.
+
+**BOTH PROVIDERS ARE CURRENTLY UNFUNDED.** OpenRouter is at $0 and Anthropic
+reports "credit balance is too low", so generation fails on both paths right now.
+Topping up OpenRouter alone is enough to restore service — the fallback is for
+outages, not for funding.
 
 ## The switch
 
