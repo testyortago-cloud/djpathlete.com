@@ -710,6 +710,44 @@ export async function POST(request: Request) {
               // way to know.
               const contact = await findContactWithBusinessByIdentifiers({ userId: payment.user_id, email: null })
               if (contact) {
+                // G25. WHICH SALE is being reversed, so the refund amends the
+                // card that actually holds it rather than whichever card
+                // closed most recently. A refund object names a charge and a
+                // payment intent and nothing else — the Won card is keyed by
+                // the CHECKOUT SESSION (`opportunities.source_event_id`), and
+                // no local table maps one to the other: `payments` has no
+                // `stripe_session_id` column, and 0 of its 59 production rows
+                // carry one in `metadata`. Stripe itself is the only place
+                // that mapping exists.
+                //
+                // Best-effort on purpose. A failed or empty lookup yields
+                // null, which is exactly the "no preference" input
+                // `resolveWonPipelineKey` already handles by falling back to
+                // most-recent-Won — i.e. precisely today's behaviour. Never
+                // allowed to throw: correcting a reporting number must not
+                // fail the webhook and trigger a Stripe retry, which is the
+                // same discipline every other hook on this route follows.
+                let refundedSessionId: string | null = null
+                try {
+                  const sessions = await stripe.checkout.sessions.list(
+                    { payment_intent: stripePaymentId, limit: 1 },
+                    // An EXPLICIT short timeout, because the try/catch below
+                    // catches a throw but cannot catch slowness, and the
+                    // Stripe SDK's own default is 80s — long enough for this
+                    // one optional lookup to hold the webhook open past
+                    // Stripe's own delivery timeout and earn a retry. This is
+                    // the only network call on a path that had none, and it
+                    // buys a preference, not a correctness requirement: five
+                    // seconds or fall back.
+                    { timeout: 5000 },
+                  )
+                  refundedSessionId = sessions.data[0]?.id ?? null
+                } catch (err) {
+                  console.error(
+                    "[stripe-webhook] could not resolve the checkout session for a refund; falling back to the most recent Won card",
+                    (err as Error).message,
+                  )
+                }
                 // Task 3 (spec §3.1) — deliberately NO pipelineKey here.
                 // routeToPipeline refuses unconditionally for `event:
                 // "refund"` (lib/lead-engine/pipeline-route.ts's module
@@ -731,7 +769,15 @@ export async function POST(request: Request) {
                     occurredAt: new Date(),
                   },
                   businessId: contact.businessId,
-                  metadata: { stripe_charge_id: charge.id, amount_refunded: charge.amount_refunded },
+                  metadata: {
+                    stripe_charge_id: charge.id,
+                    amount_refunded: charge.amount_refunded,
+                    // Omitted entirely when it could not be resolved, rather
+                    // than written as null: this key is also read by
+                    // `deriveSourceEventId`, and "absent" is the shape that
+                    // path already treats as no source event.
+                    ...(refundedSessionId ? { stripe_session_id: refundedSessionId } : {}),
+                  },
                 })
               }
             } catch (err) {
