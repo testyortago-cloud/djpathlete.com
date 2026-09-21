@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Travel equipment constraint — review sheet</title>
+    <style>
+      :root {
+        --ink: #14302f;
+        --muted: #5d6f6e;
+        --accent: #c4762f;
+        --line: #e2e6e5;
+        --bg: #f7f8f8;
+        --ok: #1f7a4d;
+        --bad: #b23b3b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 48px 24px 96px;
+        background: var(--bg);
+        color: var(--ink);
+        font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      }
+      .wrap { max-width: 1080px; margin: 0 auto; }
+      h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.01em; }
+      .sub { color: var(--muted); margin: 0 0 32px; }
+      h2 { font-size: 21px; margin: 44px 0 10px; }
+      figure { margin: 0 0 40px; }
+      figure img {
+        width: 100%;
+        display: block;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+      }
+      figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+      table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+      th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
+      th { background: #eef1f0; font-weight: 600; }
+      tr:last-child td { border-bottom: 0; }
+      code { background: #eef1f0; padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+      .ok { color: var(--ok); font-weight: 600; }
+      .bad { color: var(--bad); font-weight: 600; }
+      .note { border-left: 3px solid var(--accent); padding: 4px 0 4px 16px; margin: 20px 0; color: var(--muted); }
+      .warn { background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; padding: 14px 16px; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Travel equipment constraint</h1>
+      <p class="sub">
+        Branch <code>worktree-travel-equipment-constraint</code> · captured 2026-09-21 against the real admin app on
+        <code>localhost:3050</code>, dev clone only. Light theme only — the admin UI has no dark variant.
+      </p>
+
+      <h2>What was wrong</h2>
+      <p>
+        A coach asked for a "hotel no equipment week" for a travelling client and <em>also</em> typed "body weight
+        focused". The generated week contained dumbbell, kettlebell, TRX, cable-machine, plyo-box and weight-plate work.
+        In production that week was 42 slots, <span class="bad">31 of which needed equipment</span>.
+      </p>
+      <p>Two independent causes, and fixing only the first would not have helped:</p>
+      <table>
+        <tr><th>#</th><th>Cause</th><th>Consequence</th></tr>
+        <tr>
+          <td>1</td>
+          <td>The equipment set came only from the client's saved profile, unioned with equipment named in the coach's text — a union that can only <em>grow</em>.</td>
+          <td>"No equipment" names nothing to remove, so nothing was removed. There was no control anywhere to say otherwise.</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><code>filterByAvailableEquipment</code> returned early on the <code>is_bodyweight</code> flag, before checking what the exercise actually requires.</td>
+          <td><strong>310 of the library's 420</strong> bodyweight-flagged exercises also list equipment. All 310 bypassed the filter — TRX glides, hanging leg raises, a cable-machine stretch.</td>
+        </tr>
+      </table>
+
+      <h2>1 — The control, switched off</h2>
+      <figure>
+        <img src="01-control-off-by-default.png" alt="Generate Week dialog with the new equipment switch turned off" />
+        <figcaption>Off is the default. Every generation that already works is untouched.</figcaption>
+      </figure>
+
+      <h2>2 — Switched on, pre-filled from the client's profile</h2>
+      <figure>
+        <img src="02-switched-on-real-kit.png" alt="The equipment picker showing 23 of 31 items pre-ticked" />
+        <figcaption>
+          Reads the client's saved questionnaire live: 23 of 31 ticked. The coach removes what the hotel does not have
+          rather than building the list from nothing.
+        </figcaption>
+      </figure>
+
+      <h2>3 — The hotel case</h2>
+      <figure>
+        <img src="03-hotel-nothing-available.png" alt="The equipment picker with nothing selected" />
+        <figcaption>
+          An empty list is a real answer, not a missing one, and the dialog says so before any credits are spent.
+        </figcaption>
+      </figure>
+
+      <h2>4 — A packed bag</h2>
+      <figure>
+        <img src="04-packed-a-mat-and-a-band.png" alt="The equipment picker with only a yoga mat and resistance band selected" />
+        <figcaption>Two items ticked. The live run with exactly these two used a mat and a band and nothing else.</figcaption>
+      </figure>
+
+      <h2>Live verification — four real generations</h2>
+      <p>
+        Run through the real orchestrator against the dev clone, not the dev server: the web route only queues a
+        Firestore job, and the <em>deployed</em> function would have run the old code. Same program, same target week,
+        same client (<code>testyortago@gmail.com</code>, given a 23-item gym so that restricting it means something).
+      </p>
+      <table>
+        <tr>
+          <th>Run</th><th>Constraint</th><th>Source</th><th>Library</th><th>Slots</th>
+          <th>Needing unavailable kit</th><th>Time</th>
+        </tr>
+        <tr>
+          <td>1</td><td>typed: "hotel with no gym. Body weight focused."</td><td>instructions</td>
+          <td>917 → 100</td><td>23</td><td class="ok">0</td><td>239.2s</td>
+        </tr>
+        <tr>
+          <td>2</td><td>control — ordinary progression, no constraint</td><td>profile</td>
+          <td>917 → 897</td><td>25</td><td class="bad">23 (correct)</td><td>195.6s</td>
+        </tr>
+        <tr>
+          <td>3</td><td>ticked: yoga mat + resistance band</td><td>override</td>
+          <td>917 → 257</td><td>19</td><td class="ok">0</td><td>155.6s</td>
+        </tr>
+        <tr>
+          <td>4</td><td>ticked nothing, but named "pull ups"</td><td>override</td>
+          <td>917 → 104</td><td>25</td><td class="ok">2, both warned</td><td>213.6s</td>
+        </tr>
+      </table>
+      <p class="note">
+        Run 2 is the presence control. Remove the constraint and the same program, week and client produce barbell,
+        cable machine, TRX, dumbbell and pull-up-bar work — the reported bug, on demand. Without it, "zero equipment
+        exercises" would only prove the generator was having a quiet day.
+      </p>
+
+      <h2>The warning, from run 4</h2>
+      <p>
+        The coach ticked nothing but asked for pull ups by name. A named exercise still outranks the equipment list —
+        so the week was generated and the coach was told, rather than the run being thrown away:
+      </p>
+      <p class="warn">
+        2 exercises in this week need equipment that was not available — pull_up_bar. For example "Pull ups_Back" (slot
+        w3d2s4). You set no equipment at all was available this week. Swap these out, or re-generate with the equipment
+        list corrected.
+      </p>
+
+      <h2>Not captured</h2>
+      <p>
+        The warnings panel is not shown in a browser here. Rendering it for real needs a completed generation job, which
+        needs the deployed Firebase function — a production deploy, which was out of scope overnight. The warning text
+        itself is covered by unit tests and was produced by the live run above.
+      </p>
+    </div>
+  </body>
+</html>

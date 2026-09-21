@@ -22,6 +22,7 @@ import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
 import { NotifyWhenDoneToggle } from "@/components/admin/NotifyWhenDoneToggle"
 import { GenerationWarnings, extractWarnings } from "@/components/admin/GenerationWarnings"
+import { EquipmentOverrideField } from "@/components/admin/EquipmentOverrideField"
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -77,6 +78,9 @@ export function GenerationDialog(props: GenerationDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [usePool, setUsePool] = useState(true)
   const [strictPool, setStrictPool] = useState(false)
+  // null = no override (use the client's stored profile). An array, INCLUDING
+  // an empty one, is an explicit statement about what they can reach.
+  const [equipmentOverride, setEquipmentOverride] = useState<string[] | null>(null)
   const [notifyWhenDone, setNotifyWhenDone] = useState(true)
   const { addJob } = useAiJobsDock()
 
@@ -177,6 +181,9 @@ export function GenerationDialog(props: GenerationDialogProps) {
           pool_exercise_ids: poolExerciseIds,
           pool_mode: strictPool ? "strict" : "preferred",
         }),
+        // Only sent when the coach switched it on. `[]` is meaningful ("nothing
+        // at all"), so the key's PRESENCE is the signal, never its length.
+        ...(equipmentOverride !== null && { equipment_override: equipmentOverride }),
       }
 
       if (isWeek) {
@@ -431,6 +438,13 @@ export function GenerationDialog(props: GenerationDialogProps) {
               />
               <p className="text-xs text-muted-foreground">{helperText}</p>
             </div>
+
+            <EquipmentOverrideField
+              clientId={props.clientId}
+              value={equipmentOverride}
+              onChange={setEquipmentOverride}
+              disabled={isSubmitting}
+            />
 
             <NotifyWhenDoneToggle
               checked={notifyWhenDone}

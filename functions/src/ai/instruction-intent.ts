@@ -10,6 +10,17 @@ export const instructionIntentSchema = z.object({
   excluded_equipment: z.array(z.string()),
   named_exercises: z.array(z.string()),
   excluded_exercises: z.array(z.string()),
+  /**
+   * The coach restricted the session to ONLY these items. `[]` means bodyweight
+   * only; `null` means no restriction was stated.
+   *
+   * This is the difference between "avoid barbells" (excluded_equipment, which
+   * names what to drop) and "hotel, no equipment" — which names nothing at all
+   * and so was invisible to every other field here. A whole week shipped to a
+   * travelling client full of TRX and cable work because of that gap
+   * (2026-09-21).
+   */
+  only_equipment: z.array(z.string()).nullable(),
 })
 
 export type InstructionIntent = z.infer<typeof instructionIntentSchema>
@@ -19,6 +30,7 @@ export const EMPTY_INTENT: InstructionIntent = {
   excluded_equipment: [],
   named_exercises: [],
   excluded_exercises: [],
+  only_equipment: null,
 }
 
 export interface IntentResolution {
@@ -153,7 +165,40 @@ export function fallbackIntent(instructions: string): InstructionIntent {
     const pattern = new RegExp(`\\b${term.replace(/_/g, "[ _]")}s?\\b`)
     if (pattern.test(lower)) found.add(term)
   }
+  // only_equipment stays null: the fallback runs when the model is
+  // unreachable, and reducing a week to bodyweight on a keyword match — with
+  // nothing able to read polarity — is a worse failure than doing nothing.
   return { ...EMPTY_INTENT, required_equipment: [...found] }
+}
+
+// ─── Restriction cue (deterministic guard) ──────────────────────────────────
+
+/**
+ * Phrases that can plausibly cap a session's equipment.
+ *
+ * This is a VETO over the model, not a detector: `only_equipment` is honoured
+ * only when the coach's own words contain one of these. The model is good at
+ * reading intent and occasionally confident about intent that is not there, and
+ * the cost of a false positive here is asymmetric — an entire week collapsed to
+ * floor exercises for a client with a full gym, versus a restriction the coach
+ * simply restates. Cheap to widen when a real phrase is found missing; do not
+ * widen it speculatively.
+ */
+const RESTRICTION_CUES = [
+  /\bonly\b/,
+  /\bno\s+(equipment|gear|gym|kit|weights)\b/,
+  /\bwithout\s+(any\s+)?(equipment|gear|weights)\b/,
+  /\bequipment[-\s]?free\b/,
+  /\bbody\s?weight\b/,
+  /\bhotel\b/,
+  /\btravel(l)?(ing|ed)?\b/,
+  /\bon the road\b/,
+  /\bat home\b/,
+]
+
+export function hasRestrictionCue(instructions: string): boolean {
+  const lower = instructions.toLowerCase()
+  return RESTRICTION_CUES.some((re) => re.test(lower))
 }
 
 // ─── Extraction ─────────────────────────────────────────────────────────────
@@ -166,6 +211,11 @@ Return four lists:
 - excluded_equipment: equipment the coach explicitly wants avoided.
 - named_exercises: specific exercises or exercise families the coach explicitly asked FOR. Use the coach's own words ("bench press", "Olympic lifts", "med ball throws"). Include a family name when the coach names a category rather than one lift.
 - excluded_exercises: specific exercises or families the coach explicitly wants avoided.
+- only_equipment: the COMPLETE list of equipment the session is restricted to, when the coach limits the setting rather than naming things to avoid. Use [] when they can use nothing but their own bodyweight. Use null — NOT [] — when no such restriction is stated.
+
+only_equipment answers a different question from the lists above. "Avoid barbells" names one thing to drop, so it is excluded_equipment and only_equipment stays null. "Hotel room, no equipment" and "bodyweight only" name nothing to drop and instead cap the whole session, so only_equipment is []. "Bands only" caps it too, so only_equipment is ["resistance_band"]. A phrase like "bodyweight focused" or "mostly bodyweight" is a restriction: the coach is telling you the setting, not expressing a preference.
+
+Set only_equipment to null whenever you are unsure. An incorrect [] empties a whole week down to floor exercises, which is far more damaging than missing a restriction the coach can restate.
 
 POLARITY IS THE ENTIRE POINT. "No barbell back squats" means excluded, NOT required. "Minimize bilateral pressing" means excluded. "Avoid overhead work" means excluded. Read each clause's polarity before assigning it to a list. Getting this backwards is the single worst failure you can make.
 
@@ -180,6 +230,10 @@ function normalizeIntent(raw: InstructionIntent): InstructionIntent {
     excluded_equipment: [...new Set(clean(raw.excluded_equipment).map(normalizeEquipment))],
     named_exercises: clean(raw.named_exercises),
     excluded_exercises: clean(raw.excluded_exercises),
+    only_equipment:
+      raw.only_equipment === null || raw.only_equipment === undefined
+        ? null
+        : [...new Set(clean(raw.only_equipment).map(normalizeEquipment))],
   }
 }
 
@@ -203,9 +257,21 @@ export async function extractInstructionIntent(
       { model: MODEL_HAIKU, maxTokens: 2000, signal: opts?.signal },
     )
     const intent = normalizeIntent(result.content)
+
+    // The model does not get the last word on a restriction — see
+    // RESTRICTION_CUES for why this veto exists.
+    if (intent.only_equipment !== null && !hasRestrictionCue(instructions)) {
+      console.warn(
+        `[instruction-intent] DISCARDING only_equipment=[${intent.only_equipment.join(", ")}] — ` +
+          `no restriction cue in the coach's own words. Instructions: ${JSON.stringify(instructions.slice(0, 200))}`,
+      )
+      intent.only_equipment = null
+    }
+
     console.log(
       `[instruction-intent] extracted — require: [${intent.required_equipment.join(", ")}], ` +
         `exclude: [${intent.excluded_equipment.join(", ")}], ` +
+        `only: ${intent.only_equipment === null ? "null" : `[${intent.only_equipment.join(", ")}]`}, ` +
         `named: ${intent.named_exercises.length}, excluded: ${intent.excluded_exercises.length}`,
     )
     return intent

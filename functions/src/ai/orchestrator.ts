@@ -10,7 +10,14 @@ import type {
   ProgramCategory,
   ProgramDifficulty,
 } from "./types.js"
-import { callAgent, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET } from "./anthropic.js"
+import {
+  callAgent,
+  MODEL_HAIKU,
+  MODEL_SONNET,
+  MODEL_PROGRAM_ARCHITECT,
+  MODEL_EXERCISE_SELECTOR,
+  PROGRAM_AGENT_EFFORT,
+} from "./anthropic.js"
 import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints } from "./exercise-filter.js"
 import { estimateTokens } from "./token-utils.js"
 import {
@@ -68,6 +75,7 @@ import {
   remapUncoveredSlotPatterns,
   planExclusions,
   buildPoolPatternSection,
+  resolveEffectiveEquipment,
 } from "./shared-helpers.js"
 
 const MAX_RETRIES = 2
@@ -526,17 +534,30 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // Hard-exclude exercises requiring unavailable equipment. Uses the SAME
     // equipment list the validator enforces, so the candidate pool and
     // validateProgram always agree (no spurious equipment_violation errors).
-    // Bodyweight/no-equipment exercises are always kept; full-gym clients skip.
-    // Skipped in strict pool mode — honor the coach's curated pool over the
-    // (often empty) equipment profile.
+    // No-equipment exercises are always kept; full-gym clients skip — unless the
+    // equipment set is STRICT (an explicit override, or a restriction read out of
+    // the coach's instructions), which opts out of both short-circuits.
+    // Otherwise skipped in strict pool mode — honor the coach's curated pool
+    // over the (often empty) equipment profile.
     const availableEquipment = request.equipment_override ?? profile?.available_equipment ?? []
     // Equipment the coach explicitly asked for counts as available. The profile
     // list is a guess and is EMPTY whenever no profile exists, which silently
-    // reduces the whole library to bodyweight-only.
-    const effectiveEquipment = [...new Set([...availableEquipment, ...instructionIntent.required_equipment])]
-    if (!poolActive) {
+    // reduces the whole library to bodyweight-only. An explicit override is not
+    // a guess, so prose-inferred equipment does not widen it.
+    const resolvedEquipment = resolveEffectiveEquipment({
+      override: request.equipment_override,
+      profileEquipment: profile?.available_equipment ?? [],
+      intentRequired: instructionIntent.required_equipment,
+      intentOnly: instructionIntent.only_equipment,
+    })
+    const effectiveEquipment = resolvedEquipment.equipment
+    console.log(
+      `[orchestrator:sync] Equipment source=${resolvedEquipment.source} strict=${resolvedEquipment.strict}: ` +
+        (effectiveEquipment.length > 0 ? effectiveEquipment.join(", ") : "NOTHING (bodyweight only)"),
+    )
+    if (!poolActive || resolvedEquipment.strict) {
       const beforeCount = compressed.length
-      compressed = filterByAvailableEquipment(compressed, effectiveEquipment, unlockedIds)
+      compressed = filterByAvailableEquipment(compressed, effectiveEquipment, unlockedIds, resolvedEquipment.strict)
       if (compressed.length !== beforeCount) {
         console.log(
           `[orchestrator:sync] Equipment filter: ${beforeCount} → ${compressed.length} (available: ${effectiveEquipment.length > 0 ? effectiveEquipment.join(", ") : "none/bodyweight-only"})`,
@@ -605,7 +626,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       PROGRAM_ARCHITECT_PROMPT,
       agent2UserMessage,
       programSkeletonSchema,
-      { model: MODEL_OPUS, cacheSystemPrompt: true, signal: deadline?.signal },
+      { model: MODEL_PROGRAM_ARCHITECT, effort: PROGRAM_AGENT_EFFORT, cacheSystemPrompt: true, signal: deadline?.signal },
     )
     tokenUsage.agent2 = agent2Result.tokens_used
     tokenUsage.cache_creation += agent2Result.cache_creation_tokens ?? 0
@@ -648,7 +669,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         metadata: { step: 2, log_id: log.id },
         tokens_input: null,
         tokens_output: agent2Result.tokens_used,
-        model_used: MODEL_OPUS,
+        model_used: MODEL_PROGRAM_ARCHITECT,
       },
     ])
       .then((saved) => {
@@ -915,7 +936,13 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
             EXERCISE_SELECTOR_PROMPT,
             agent3VariableSuffix,
             exerciseAssignmentSchema,
-            { cacheSystemPrompt: true, cachedUserPrefix: agent3StablePrefix, signal: deadline?.signal },
+            {
+              model: MODEL_EXERCISE_SELECTOR,
+              effort: PROGRAM_AGENT_EFFORT,
+              cacheSystemPrompt: true,
+              cachedUserPrefix: agent3StablePrefix,
+              signal: deadline?.signal,
+            },
           )
           tokenUsage.agent3 += agent3Result.tokens_used
           tokenUsage.cache_creation += agent3Result.cache_creation_tokens ?? 0
@@ -1209,6 +1236,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
                 pool_exercise_ids: request.pool_exercise_ids ?? null,
                 pool_mode: request.pool_mode ?? "preferred",
                 ignore_profile: request.ignore_profile ?? false,
+                equipment_override: request.equipment_override ?? null,
               },
               nextWeek,
               continuation,

@@ -312,15 +312,21 @@ import { filterByAvailableEquipment } from "./exercise-context.js"
  * programs and would otherwise collapse the pool to bodyweight-only exercises.
  * In preferred/normal mode, enforce equipment availability as before so the
  * candidate set matches what the client can actually perform.
+ *
+ * `strict` (an explicit per-generation equipment override) beats the pool
+ * bypass. A curated pool is a preference; "they are in a hotel room this week"
+ * is a fact about the world, and a pool assembled before the trip cannot know
+ * about it. The coach still sees a warning naming every pool exercise dropped.
  */
 export function filterCandidateEquipment(
   exercises: CompressedExercise[],
   availableEquipment: string[],
   poolActive: boolean,
   unlockedIds?: Set<string>,
+  strict = false,
 ): CompressedExercise[] {
-  if (poolActive) return exercises
-  return filterByAvailableEquipment(exercises, availableEquipment, unlockedIds)
+  if (poolActive && !strict) return exercises
+  return filterByAvailableEquipment(exercises, availableEquipment, unlockedIds, strict)
 }
 
 /**
@@ -680,4 +686,125 @@ export function buildExerciseRows(
       }
     })
     .filter((r) => r !== null) as Record<string, unknown>[]
+}
+
+// ─── Effective equipment (precedence) ───────────────────────────────────────
+
+export interface EffectiveEquipment {
+  equipment: string[]
+  /**
+   * True when this set is a deliberate statement rather than a profile guess.
+   * Turns off the full-gym short-circuit and the strict-pool bypass in
+   * filterCandidateEquipment — both of which exist to stop a GUESS from
+   * over-filtering, and neither of which should override an answer.
+   */
+  strict: boolean
+  source: "override" | "instructions" | "profile"
+}
+
+/**
+ * What equipment this generation may actually use, and how much we trust it.
+ *
+ * Precedence, strongest first:
+ *
+ * 1. `override` — the coach ticked boxes for this run. Replaces the profile and
+ *    is NOT widened by equipment inferred from their prose, or unticking
+ *    "dumbbell" while writing "hotel week" would hand the dumbbells back.
+ * 2. `intentOnly` — a restriction read out of their instructions ("bodyweight
+ *    only", "bands only"). Narrows the profile. Already vetoed by
+ *    hasRestrictionCue upstream, so reaching here means the coach's own words
+ *    contained a restriction.
+ * 3. the profile, widened by equipment they named. The profile is a guess —
+ *    empty whenever no profile exists — so naming equipment adds to it.
+ *
+ * Before 2026-09-21 only rule 3 existed, and the union could only ever GROW the
+ * set. "Hotel, no equipment" therefore had no way to shrink it, which is how a
+ * travelling client received a week of TRX, cable and dumbbell work.
+ */
+export function resolveEffectiveEquipment(opts: {
+  override?: string[] | null
+  profileEquipment: string[]
+  intentRequired: string[]
+  intentOnly: string[] | null
+}): EffectiveEquipment {
+  if (Array.isArray(opts.override)) {
+    return { equipment: [...new Set(opts.override)], strict: true, source: "override" }
+  }
+  if (opts.intentOnly !== null) {
+    return { equipment: [...new Set(opts.intentOnly)], strict: true, source: "instructions" }
+  }
+  return {
+    equipment: [...new Set([...opts.profileEquipment, ...opts.intentRequired])],
+    strict: false,
+    source: "profile",
+  }
+}
+
+// ─── Equipment violations (coach-facing) ────────────────────────────────────
+
+import { normalizeEquipment } from "./validate.js"
+
+export interface EquipmentViolation {
+  slot_id: string
+  exercise_name: string
+  /** The required items that are NOT available — not the exercise's whole list. */
+  missing: string[]
+}
+
+/**
+ * Exercises the selector chose that the client cannot actually perform.
+ *
+ * This is the last line of defence, and on the add-a-week path it is the ONLY
+ * one: `validateProgram` is imported by week-orchestrator.ts but never called,
+ * so nothing else compares the finished week against the equipment it assumes.
+ * A "hotel, no equipment" week shipped with TRX glides and a cable-machine
+ * stretch in it on 2026-09-21 without a single warning (see
+ * filterByAvailableEquipment for why the candidate pool let them through).
+ *
+ * Reports rather than blocks: a coach who deliberately unlocked an exercise by
+ * name, or who is one dumbbell short, wants to see the list and decide — not
+ * lose the whole generation and its credits to a refusal.
+ */
+export function findEquipmentViolations(
+  assignments: Array<{ slot_id: string; exercise_id: string; exercise_name: string }>,
+  exercises: CompressedExercise[],
+  availableEquipment: string[],
+): EquipmentViolation[] {
+  const byId = new Map(exercises.map((e) => [e.id, e]))
+  const available = new Set(availableEquipment.map(normalizeEquipment))
+  const violations: EquipmentViolation[] = []
+
+  for (const assigned of assignments) {
+    const exercise = byId.get(assigned.exercise_id)
+    // An id the library does not contain is a different fault (a hallucinated
+    // or retired exercise) and is already reported by the resolver.
+    if (!exercise) continue
+    const missing = (exercise.equipment_required ?? []).filter((eq) => !available.has(normalizeEquipment(eq)))
+    if (missing.length > 0) {
+      violations.push({ slot_id: assigned.slot_id, exercise_name: exercise.name, missing })
+    }
+  }
+
+  return violations
+}
+
+/**
+ * Turn violations into one coach-facing line, written for someone reading it in
+ * a hurry between sessions: how many, which equipment, and one exercise name
+ * they can actually search for in the week.
+ */
+export function buildEquipmentWarnings(violations: EquipmentViolation[], availableEquipment: string[]): string[] {
+  if (violations.length === 0) return []
+
+  const equipment = [...new Set(violations.flatMap((v) => v.missing))].sort()
+  const had =
+    availableEquipment.length > 0
+      ? `available this week: ${[...new Set(availableEquipment.map(normalizeEquipment))].sort().join(", ")}`
+      : "no equipment at all was available this week"
+
+  return [
+    `${violations.length} exercise${violations.length === 1 ? "" : "s"} in this week need equipment that was not ` +
+      `available — ${equipment.join(", ")}. For example "${violations[0].exercise_name}" (slot ${violations[0].slot_id}). ` +
+      `You set ${had}. Swap these out, or re-generate with the equipment list corrected.`,
+  ]
 }

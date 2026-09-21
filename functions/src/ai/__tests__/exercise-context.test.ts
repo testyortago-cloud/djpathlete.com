@@ -72,7 +72,7 @@ describe("filterByDifficultyLevel — hard exclusion", () => {
 describe("filterByAvailableEquipment — hard exclusion", () => {
   const exercises = [
     mkEquip("none", []), // no equipment required
-    mkEquip("bw", ["dumbbell"], true), // bodyweight (kept despite listing equipment)
+    mkEquip("bw", ["dumbbell"], true), // bodyweight-FLAGGED, but still needs a dumbbell
     mkEquip("db", ["dumbbell"]),
     mkEquip("band", ["resistance_band"]),
     mkEquip("cable", ["cable_machine"]),
@@ -90,9 +90,11 @@ describe("filterByAvailableEquipment — hard exclusion", () => {
     expect(result.map((e) => e.id)).not.toContain("multi_partial")
   })
 
-  it("always keeps bodyweight and no-equipment exercises even with empty equipment", () => {
+  it("keeps ONLY genuinely equipment-free exercises when nothing is available", () => {
+    // "bw" is flagged is_bodyweight but still requires a dumbbell, so it goes.
+    // The flag describes how the exercise is LOADED, not what it needs to exist.
     const result = filterByAvailableEquipment(exercises, [])
-    expect(result.map((e) => e.id).sort()).toEqual(["bw", "none"])
+    expect(result.map((e) => e.id).sort()).toEqual(["none"])
   })
 
   it("normalizes equipment aliases (plural/short forms) before comparing", () => {
@@ -104,6 +106,54 @@ describe("filterByAvailableEquipment — hard exclusion", () => {
   it("skips filtering entirely for a full-gym client (>= threshold items)", () => {
     const fullGym = Array.from({ length: 25 }, (_, i) => `eq_${i}`)
     const result = filterByAvailableEquipment(exercises, fullGym)
+    expect(result).toHaveLength(exercises.length)
+  })
+})
+
+describe("filterByAvailableEquipment — is_bodyweight is not an exemption", () => {
+  // Every one of these is flagged is_bodyweight in the real library AND lists
+  // equipment. Before 2026-09-21 the flag short-circuited the filter, so all of
+  // them reached a "hotel, no equipment" week. 310 of the library's 420
+  // bodyweight-flagged rows are shaped like this.
+  const travelTrap = [
+    mkEquip("trx_glides", ["trx"], true),
+    mkEquip("hanging_leg_raise", ["pull_up_bar"], true),
+    mkEquip("copenhagens", ["bench"], true),
+    mkEquip("cable_stretch", ["cable_machine"], true),
+    mkEquip("push_up", [], true),
+    mkEquip("air_squat", [], false),
+  ]
+
+  it("excludes bodyweight-FLAGGED exercises that still need kit the client lacks", () => {
+    const result = filterByAvailableEquipment(travelTrap, [])
+    expect(result.map((e) => e.id).sort()).toEqual(["air_squat", "push_up"])
+  })
+
+  it("keeps a bodyweight-flagged exercise when its kit IS available", () => {
+    const result = filterByAvailableEquipment(travelTrap, ["trx", "bench"])
+    expect(result.map((e) => e.id).sort()).toEqual(["air_squat", "copenhagens", "push_up", "trx_glides"])
+  })
+
+  it("still lets a coach-named exercise through despite missing kit", () => {
+    const result = filterByAvailableEquipment(travelTrap, [], new Set(["trx_glides"]))
+    expect(result.map((e) => e.id).sort()).toEqual(["air_squat", "push_up", "trx_glides"])
+  })
+})
+
+describe("filterByAvailableEquipment — strict (explicit coach override)", () => {
+  const exercises = [mkEquip("none", []), mkEquip("barbell_squat", ["barbell"]), mkEquip("db_press", ["dumbbell"])]
+
+  it("honours a 25+ item override instead of treating it as a full gym", () => {
+    // Ticking 25 of 31 boxes is a deliberate statement about the other 6.
+    // Without `strict` the full-gym short-circuit would return the barbell too.
+    const allButBarbell = Array.from({ length: 25 }, (_, i) => `eq_${i}`).concat("dumbbell")
+    const result = filterByAvailableEquipment(exercises, allButBarbell, undefined, true)
+    expect(result.map((e) => e.id).sort()).toEqual(["db_press", "none"])
+  })
+
+  it("without strict, the same list short-circuits and keeps everything", () => {
+    const allButBarbell = Array.from({ length: 25 }, (_, i) => `eq_${i}`).concat("dumbbell")
+    const result = filterByAvailableEquipment(exercises, allButBarbell, undefined, false)
     expect(result).toHaveLength(exercises.length)
   })
 })

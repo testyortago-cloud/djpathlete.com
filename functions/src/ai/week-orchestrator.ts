@@ -1,5 +1,11 @@
 import type { CompressedExercise, ExerciseSlot, ProgramWeek, ExerciseAssignment, ValidationResult } from "./types.js"
-import { callAgent, MODEL_OPUS, MODEL_SONNET } from "./anthropic.js"
+import {
+  callAgent,
+  MODEL_SONNET,
+  MODEL_PROGRAM_ARCHITECT,
+  MODEL_EXERCISE_SELECTOR,
+  PROGRAM_AGENT_EFFORT,
+} from "./anthropic.js"
 import { isAbortError, type Deadline } from "../lib/deadline.js"
 import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints } from "./exercise-filter.js"
 import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
@@ -45,6 +51,9 @@ import {
   findUncoveredPatterns,
   remapUncoveredSlotPatterns,
   buildPoolPatternSection,
+  findEquipmentViolations,
+  buildEquipmentWarnings,
+  resolveEffectiveEquipment,
 } from "./shared-helpers.js"
 import type { ProfileAnalysis } from "./types.js"
 import {
@@ -108,6 +117,18 @@ export interface WeekGenerationRequest {
   pool_mode?: "preferred" | "strict"
   /** When set, ignore the client profile and rely on coach instructions */
   ignore_profile?: boolean
+  /**
+   * Equipment available for THIS generation only — the coach's answer to "what
+   * can they actually reach this week", which a travelling client's stored
+   * profile cannot express. Replaces `profile.available_equipment` rather than
+   * widening it, and an empty array is a real answer ("nothing at all"), not
+   * "unset". Never written back to the profile: travel is temporary.
+   *
+   * `null` is how "no override" arrives from Firestore, which rejects
+   * `undefined` as a field value — hence the Array.isArray() test rather than
+   * a `!== undefined` one.
+   */
+  equipment_override?: string[] | null
 }
 
 export interface WeekGenerationResult {
@@ -717,7 +738,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     buildArchitectPrompt(isSingleDay ? "day" : "week"),
     architectMessage,
     weekSkeletonSchema,
-    { model: MODEL_OPUS, cacheSystemPrompt: true, signal: deadline?.signal },
+    { model: MODEL_PROGRAM_ARCHITECT, effort: PROGRAM_AGENT_EFFORT, cacheSystemPrompt: true, signal: deadline?.signal },
   )
   tokenUsage.architect = architectResult.tokens_used
   tokenUsage.cache_creation += architectResult.cache_creation_tokens ?? 0
@@ -780,7 +801,10 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
   await updateJobProgress("selecting_exercises", 4, `Selecting exercises for ${totalSlots} slots`)
 
-  const availableEquipment = profile?.available_equipment ?? ([] as string[])
+  // An explicit empty override means "nothing at all" (a hotel room with no
+  // gym) and must not fall through to the client's stored kit — see
+  // resolveEffectiveEquipment for the full precedence.
+  const availableEquipment = request.equipment_override ?? profile?.available_equipment ?? ([] as string[])
   const exerciseIdSet = new Set(allExercises.map((e) => e.id))
 
   // Resolve client difficulty for filtering and ceiling construction
@@ -804,7 +828,17 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   const instructionIntent = await extractInstructionIntent(combinedInstructions)
   const intentResolution = resolveIntentToExerciseIds(instructionIntent, allExercises)
   const unlockedIds = intentResolution.unlockedIds
-  const effectiveEquipment = [...new Set([...availableEquipment, ...instructionIntent.required_equipment])]
+  const resolvedEquipment = resolveEffectiveEquipment({
+    override: request.equipment_override,
+    profileEquipment: profile?.available_equipment ?? [],
+    intentRequired: instructionIntent.required_equipment,
+    intentOnly: instructionIntent.only_equipment,
+  })
+  const effectiveEquipment = resolvedEquipment.equipment
+  console.log(
+    `[week-orchestrator] Equipment source=${resolvedEquipment.source} strict=${resolvedEquipment.strict}: ` +
+      (effectiveEquipment.length > 0 ? effectiveEquipment.join(", ") : "NOTHING (bodyweight only)"),
+  )
   console.log(
     `[week-orchestrator] Instruction intent: ${unlockedIds.size} unlocked, ${intentResolution.bannedIds.size} banned` +
       (intentResolution.unmatched.length > 0 ? `, unmatched: ${intentResolution.unmatched.join("; ")}` : ""),
@@ -925,6 +959,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       effectiveEquipment,
       poolActive,
       unlockedIds,
+      resolvedEquipment.strict,
     )
     if (exercisesForSelection.length !== beforeCount) {
       console.log(
@@ -1136,7 +1171,13 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
           EXERCISE_SELECTOR_PROMPT,
           selectorVariableSuffix,
           exerciseAssignmentSchema,
-          { cacheSystemPrompt: true, cachedUserPrefix: selectorCachedPrefix, signal: deadline?.signal },
+          {
+            model: MODEL_EXERCISE_SELECTOR,
+            effort: PROGRAM_AGENT_EFFORT,
+            cacheSystemPrompt: true,
+            cachedUserPrefix: selectorCachedPrefix,
+            signal: deadline?.signal,
+          },
         )
         tokenUsage.selector += selectorResult.tokens_used
         tokenUsage.cache_creation += selectorResult.cache_creation_tokens ?? 0
@@ -1293,6 +1334,22 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     warnings.push(
       `${dedupSwap.unresolved.length} slot(s) repeat an exercise — no unused alternative was available: ${detail}.`,
     )
+  }
+
+  // Equipment the finished week assumes but the client does not have. Checked
+  // against the FULL library and AFTER the post-hoc dedup swaps, because a swap
+  // can introduce an exercise the candidate filter never vetted. On this path
+  // there is no validateProgram pass, so this is the only thing standing between
+  // a wrong week and the client's phone.
+  {
+    const violations = findEquipmentViolations(assignment.assignments, allExercises, effectiveEquipment)
+    if (violations.length > 0) {
+      console.warn(
+        `[week-orchestrator] ${violations.length} equipment violation(s): ` +
+          violations.map((v) => `${v.exercise_name} needs ${v.missing.join("+")}`).join("; "),
+      )
+      warnings.push(...buildEquipmentWarnings(violations, effectiveEquipment))
+    }
   }
 
   // ── Step 4: Save to database ───────────────────────────────────────────

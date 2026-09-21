@@ -37,6 +37,35 @@ export const MODEL_SONNET_5 = "claude-sonnet-5"
 export const MODEL_FABLE = "claude-fable-5-1"
 
 /**
+ * The two agents that decide what a training week actually contains: the
+ * Architect (slot structure) and the Exercise Selector (which exercise fills
+ * each slot). Both orchestrators — new-program and add-a-week — read these, so
+ * the pipeline cannot drift into using different models for the same job.
+ *
+ * Moved to Fable 5.1 on 2026-09-21 at the owner's request. Three things that
+ * are easy to get wrong here:
+ *
+ * 1. The Selector previously passed NO model at all and silently defaulted to
+ *    MODEL_SONNET. "Which model picks the exercises" was not written down
+ *    anywhere — it was the parameter default.
+ * 2. Fable 400s on forced tool choice, so callAgent routes it through the
+ *    `output_config.format` branch instead. That is handled, not incidental —
+ *    see modelRejectsForcedToolChoice above.
+ * 3. Thinking is always on for this family, so these calls are slower per
+ *    attempt than Sonnet was. The Selector runs inside a retry loop against a
+ *    450s budget; if generations start timing out, this pair is the first
+ *    thing to move back, not the retry count.
+ */
+export const MODEL_PROGRAM_ARCHITECT = MODEL_FABLE
+export const MODEL_EXERCISE_SELECTOR = MODEL_FABLE
+
+/**
+ * Thinking depth for the two agents above. Only reaches the wire on the
+ * structured-outputs branch, which is the only branch these models take.
+ */
+export const PROGRAM_AGENT_EFFORT = "medium" as const
+
+/**
  * True for models that 400 on `tool_choice: {type: "tool" | "any"}`.
  *
  * Matched on a model-family prefix rather than an exact id so a future
@@ -286,7 +315,13 @@ function callAgentWithModel<T>(
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
   const client = getClient()
   const toolSchema = toToolInputSchema(schema)
-  if (toolSchema) console.log(`[callAgent] Using structured tool_use output (model: ${modelId})`)
+  // Name the branch, not just the intent. This used to print "tool_use" for
+  // every schema-bearing call, including the Fable/Mythos ones that never take
+  // the tool path — which reads as proof that forced tool choice worked.
+  if (toolSchema) {
+    const branch = modelRejectsForcedToolChoice(modelId) ? "output_config.format" : "tool_use"
+    console.log(`[callAgent] Structured output via ${branch} (model: ${modelId})`)
+  }
 
   return pRetry(
     async () => {
