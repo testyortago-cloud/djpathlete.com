@@ -627,6 +627,20 @@ export const PAID_ELSEWHERE_REASON = "paid_elsewhere"
  * A sweep that stamped `manual` would permanently freeze a board the coach
  * never touched.
  *
+ * LIVE HOOK ONLY — not the reconciler, and that gate is new with G26 rather
+ * than caution. This sweep's whole premise is "they have JUST bought, so their
+ * other enquiries are moot". A reconciler pass replays a payment that was
+ * missed up to 30 days ago, and the cards it would close are TODAY's: somebody
+ * whose camp payment went astray three weeks ago, and who has since opened a
+ * fresh coaching enquiry, would have that new enquiry closed `paid_elsewhere`
+ * at zero value by a replay of the old sale. Had the webhook arrived on time
+ * the sweep would have run then, against the cards that were open then; it is
+ * a "now" action and there is no honest way to replay it later.
+ *
+ * Unreachable from the reconciler before G26, because that pass skipped every
+ * payment routing off the default board — which is exactly the skip G26
+ * removed.
+ *
  * Never throws, at two levels. Per CARD, so one board's transient failure
  * cannot strand the boards after it in the loop — the original version let a
  * single `throw` unwind past the remaining cards and leave them open behind
@@ -1212,7 +1226,7 @@ export async function applyPipelineEvent(input: {
       // G23. A card created ALREADY WON is a sale (a checkout that completed
       // before any enquiry card existed on the routed board), so the same
       // sweep applies as on the close branch below.
-      if (decision.outcome === "won") {
+      if (decision.outcome === "won" && source === "hook") {
         await closeOpenCardsOnOtherBoards({
           supabase,
           businessId,
@@ -1300,7 +1314,7 @@ export async function applyPipelineEvent(input: {
       // G23. Only a WIN sweeps. A card closed LOST leaves the other boards
       // exactly as they were — the person has not bought anything, so their
       // other enquiries are still live.
-      if (decision.outcome === "won") {
+      if (decision.outcome === "won" && source === "hook") {
         await closeOpenCardsOnOtherBoards({
           supabase,
           businessId,

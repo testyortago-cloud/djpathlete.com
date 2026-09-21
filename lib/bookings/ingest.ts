@@ -100,12 +100,12 @@ export type BookingIngestInput = {
    * migration 00273 (G22) gave `bookings` a real `service_type` column and
    * `stampServiceType` writes this value to it.
    *
-   * THE RECONCILER STILL DOES NOT READ IT. lib/automation/pipeline-reconcile.ts
-   * routes every booking it replays to `coaching`, because it was written when
-   * there was no column to read — so an assessment booking's card lands on
-   * Assessment here and that pass, finding nothing on Coaching, would open a
-   * SECOND card. Teaching it to pass the stored `service_type` is G26, and it
-   * is what `cron_pipeline_reconcile_enabled` is waiting for.
+   * THE RECONCILER READS IT (G26). lib/automation/pipeline-reconcile.ts routes
+   * each replayed booking from this stored value, so a replay lands on the
+   * same board this webhook chose. Before that it routed every booking to
+   * `coaching`, and an assessment booking carded here on Assessment would have
+   * been given a SECOND card there. Keep the two in step: a service type this
+   * adapter starts emitting is one the replay will route on too.
    *
    * TODAY THERE IS EXACTLY ONE SIGNAL, AND IT IS A STRING MATCH ON A HUMAN
    * LABEL. Calendly's payload carries no service field at all — the only fact
@@ -364,6 +364,15 @@ async function recordBookingOnTimeline(
  *
  * Skipped entirely when the vendor said nothing — writing an explicit null
  * over a column that is already null buys nothing and costs a round trip.
+ *
+ * WHAT A FAILED STAMP NOW COSTS, since G26. It is still warn-only, and must
+ * stay that way — a booking is a real person's real slot and must not be lost
+ * to a reporting column. But this write is no longer only for reporting: the
+ * reconciler routes a replayed booking from it, so a stamp that fails leaves
+ * that booking looking like Coaching to the replay while its card sits on
+ * Assessment, and the replay opens a DUPLICATE. The warning above is the only
+ * notice of that, which is why it names the booking id and the value it could
+ * not write. If duplicates ever show up on Coaching, grep for it first.
  */
 async function stampServiceType(
   ctx: IngestCtx,
@@ -490,13 +499,13 @@ async function runContactConsequences(ctx: IngestCtx, input: BookingIngestInput)
       // would think to look. A booking with no service type still routes to
       // Coaching, exactly as before.
       //
-      // ONE PATH HAS NOT BEEN TAUGHT THIS: lib/automation/pipeline-reconcile.ts
-      // still routes every booking it replays to `coaching`, because it cannot
-      // see a service type (`bookings` has no column for one). So an assessment
-      // booking's card lands here on Assessment and that pass, finding nothing
-      // on Coaching, would open a SECOND card. Its own comment above
-      // `const bookingRouting` carries the detail and the operator gate
-      // (`cron_pipeline_reconcile_enabled` stays off until gap #C2 closes).
+      // THE RECONCILER NOW AGREES (G26). lib/automation/pipeline-reconcile.ts
+      // reads each booking's stored `service_type` (migration 00273) and
+      // routes the replay the same way, so the card this call opens on
+      // Assessment is the card the replay finds. It used to route every
+      // replayed booking to `coaching`, find nothing there, and open a SECOND
+      // card — a duplicate the per-pipeline unique constraint cannot block,
+      // because the two sit on different pipelines.
       const routing = routeToPipeline({ event: "booking", serviceType: input.serviceType ?? null })
       await applyPipelineEvent({
         contactId,

@@ -144,14 +144,21 @@ export async function getBookingsForPipelineReconcile(
   statuses: BookingStatus[],
   sinceIso: string,
   businessId: string,
-): Promise<Pick<Booking, "id" | "contact_email" | "contact_phone" | "status" | "created_at">[]> {
+): Promise<Pick<Booking, "id" | "contact_email" | "contact_phone" | "status" | "created_at" | "service_type">[]> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("bookings")
-    .select("id, contact_email, contact_phone, status, created_at")
+    // `service_type` (G26) is what lets the reconciler route a replayed
+    // booking to the SAME board the live webhook chose. Without it in the
+    // projection the value reads `undefined`, which routes to Coaching exactly
+    // as the old hard-coded key did — the bug, silently intact.
+    .select("id, contact_email, contact_phone, status, created_at, service_type")
     .eq("business_id", businessId)
     .in("status", statuses)
     .gte("created_at", sinceIso)
   if (error) throw error
-  return (data ?? []) as Pick<Booking, "id" | "contact_email" | "contact_phone" | "status" | "created_at">[]
+  return (data ?? []) as Pick<
+    Booking,
+    "id" | "contact_email" | "contact_phone" | "status" | "created_at" | "service_type"
+  >[]
 }

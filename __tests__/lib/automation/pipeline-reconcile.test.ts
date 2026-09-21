@@ -66,17 +66,25 @@ vi.mock("@/lib/supabase", () => ({
       const gteFilters: Array<[string, any]> = []
       const ltFilters: Array<[string, any]> = []
       const inFilters: Array<[string, any[]]> = []
+      const isFilters: Array<[string, any]> = []
       let orderCol: string | null = null
       let orderAscending = true
       let limitN: number | null = null
       let mode: "select" | "insert" | "update" = "select"
       let payload: Row | null = null
+      /** Columns this query asked for; null means "*". Applied in `matched()`. */
+      let projection: string[] | null = null
 
       const passesFilters = (row: Row) =>
         filters.every(([col, val]) => row[col] === val) &&
         gteFilters.every(([col, val]) => row[col] >= val) &&
         ltFilters.every(([col, val]) => row[col] < val) &&
-        inFilters.every(([col, vals]) => vals.includes(row[col]))
+        inFilters.every(([col, vals]) => vals.includes(row[col])) &&
+        // `IS NULL`. Without it, G23's cross-board sweep — which G26 newly
+        // makes reachable from this pass — threw a TypeError that its own
+        // catch swallowed into a silent no-op, so nothing here exercised it
+        // and the tests would have passed whatever it did.
+        isFilters.every(([col, val]) => (val === null ? row[col] == null : row[col] === val))
 
       const matched = (): Row[] => {
         let result = rows.filter(passesFilters)
@@ -89,6 +97,20 @@ vi.mock("@/lib/supabase", () => ({
           if (!orderAscending) result.reverse()
         }
         if (limitN != null) result = result.slice(0, limitN)
+        // G26: PROJECTS for `bookings`, whose reader's correctness depends on
+        // which columns it asked for. This harness is otherwise
+        // projection-blind (whole seeded rows come back whatever the select
+        // string said), which meant dropping `service_type` from the real
+        // projection left every test green while the reconciler read
+        // `undefined` and routed every booking to Coaching — the exact bug
+        // G26 exists to fix, silently intact.
+        if (table === "bookings" && projection) {
+          result = result.map((row) => {
+            const out: Row = {}
+            for (const col of projection!) out[col] = row[col]
+            return out
+          })
+        }
         return result
       }
 
@@ -130,7 +152,15 @@ vi.mock("@/lib/supabase", () => ({
       }
 
       const api: any = {
-        select: () => api,
+        select: (columns?: string) => {
+          if (columns && columns !== "*") {
+            projection = columns
+              .split(",")
+              .map((c) => c.trim())
+              .filter(Boolean)
+          }
+          return api
+        },
         insert: (p: Row) => {
           mode = "insert"
           payload = p
@@ -155,6 +185,10 @@ vi.mock("@/lib/supabase", () => ({
         },
         in: (col: string, vals: any[]) => {
           inFilters.push([col, vals])
+          return api
+        },
+        is: (col: string, val: any) => {
+          isFilters.push([col, val])
           return api
         },
         order: (col: string, opts?: { ascending?: boolean }) => {
@@ -222,7 +256,8 @@ import { runPipelineReconcile, PIPELINE_RECONCILE_WINDOW_DAYS } from "@/lib/auto
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { DEFAULT_PIPELINE_KEY } from "@/lib/db/pipeline"
 import { REBOOKING_SUPPRESSION_DAYS } from "@/lib/lead-engine/pipeline-move"
-import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
+import { routeToPipeline, ASSESSMENT_KEY, CAMPS_CLINICS_KEY } from "@/lib/lead-engine/pipeline-route"
+import { NO_PIPELINE_CARD_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
 
 const DAY_MS = 86_400_000
 
@@ -325,6 +360,50 @@ function seedBoard(businessId = SINGLETON_BUSINESS_ID, pipelineId = "pipe-1", st
   )
 }
 
+/**
+ * G26. A NON-default board, so the reconciler can be asked to reconcile more
+ * than one. Same four-stage shape as `seedBoard`; only the key and the ids
+ * differ.
+ */
+function seedOtherBoard(key: string, pipelineId: string, businessId = SINGLETON_BUSINESS_ID) {
+  store.pipelines.push({ id: pipelineId, business_id: businessId, key, name: key, status: "active" })
+  store.pipeline_stages.push(
+    {
+      id: `${pipelineId}-stage-open`,
+      business_id: businessId,
+      pipeline_id: pipelineId,
+      key: "interested",
+      name: "Interested",
+      position: 1,
+      kind: "open",
+      amber_after_days: 3,
+      red_after_days: 7,
+    },
+    {
+      id: `${pipelineId}-stage-won`,
+      business_id: businessId,
+      pipeline_id: pipelineId,
+      key: "won",
+      name: "Won",
+      position: 2,
+      kind: "won",
+      amber_after_days: null,
+      red_after_days: null,
+    },
+    {
+      id: `${pipelineId}-stage-lost`,
+      business_id: businessId,
+      pipeline_id: pipelineId,
+      key: "lost",
+      name: "Lost",
+      position: 3,
+      kind: "lost",
+      amber_after_days: null,
+      red_after_days: null,
+    },
+  )
+}
+
 function seedContact(id: string, overrides: Row = {}) {
   store.contacts.push({
     id,
@@ -388,6 +467,12 @@ function seedBooking(id: string, overrides: Row = {}) {
     ghl_appointment_id: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    // Migration 00273 (G22). Present-and-null rather than absent, matching a
+    // real row: null is the ORDINARY value (the Calendly adapter only ever
+    // recognises "assessment", GoHighLevel carries nothing comparable), and a
+    // fixture missing the key entirely would let a reader that forgot to
+    // select it look identical to one that read a genuine null.
+    service_type: null,
     ...overrides,
   })
 }
@@ -412,6 +497,277 @@ function seedPayment(id: string, overrides: Row = {}) {
 function stageEventsFor(opportunityId: string): Row[] {
   return store.opportunity_stage_events.filter((e) => e.opportunity_id === opportunityId)
 }
+
+// G26. The reconciler replayed every booking onto Coaching and refused every
+// payment that routed anywhere else. Both were true because it could not see
+// past one board: `bookings` had no `service_type` to route on (fixed by G22's
+// migration 00273), and the payments loop pre-resolved ONE board's stages as
+// its open-card precondition.
+//
+// The consequence was not a tidy limitation. Since the live webhook started
+// passing a service type, an assessment booking's card is opened on Assessment
+// — and a replay that resolves Coaching finds no open card there, takes the
+// CREATE branch, and writes a DUPLICATE. `opportunities_one_open_per_contact_pipeline`
+// is keyed on (contact_id, pipeline_id) and cannot block it, because the two
+// cards sit on different pipelines. That is why `cron_pipeline_reconcile_enabled`
+// has stayed off.
+describe("runPipelineReconcile — every board, not just Coaching (G26)", () => {
+  it("replays an assessment booking onto the Assessment board, not Coaching", async () => {
+    seedBoard()
+    seedOtherBoard(ASSESSMENT_KEY, "pipe-assessment")
+    seedContact("c-1", { email: "lead@example.com" })
+    seedBooking("bk-1", { contact_email: "lead@example.com", status: "scheduled", service_type: "assessment" })
+
+    const summary = await runPipelineReconcile()
+
+    expect(summary.createdFromBookings).toBe(1)
+    expect(store.opportunities).toHaveLength(1)
+    expect(store.opportunities[0].pipeline_id).toBe("pipe-assessment")
+  })
+
+  // THE DUPLICATE-CARD CASE THE CRON FLAG IS WAITING ON, pinned directly. The
+  // live webhook already carded this booking on Assessment; the replay must
+  // find it there and no-op, not open a second card on Coaching.
+  it("does not duplicate a booking the live webhook already carded on another board", async () => {
+    seedBoard()
+    seedOtherBoard(ASSESSMENT_KEY, "pipe-assessment")
+    seedContact("c-1", { email: "lead@example.com" })
+    seedOpportunity("opp-live", "c-1", {
+      pipeline_id: "pipe-assessment",
+      stage_id: "pipe-assessment-stage-open",
+    })
+    seedBooking("bk-1", { contact_email: "lead@example.com", status: "scheduled", service_type: "assessment" })
+
+    const summary = await runPipelineReconcile()
+
+    expect(summary.createdFromBookings).toBe(0)
+    expect(store.opportunities).toHaveLength(1)
+  })
+
+  // The control, and the thing that must not regress: a booking with no
+  // service type is still Coaching, exactly as before.
+  it("still replays a booking with no service type onto Coaching", async () => {
+    seedBoard()
+    seedOtherBoard(ASSESSMENT_KEY, "pipe-assessment")
+    seedContact("c-1", { email: "lead@example.com" })
+    seedBooking("bk-1", { contact_email: "lead@example.com", status: "scheduled", service_type: null })
+
+    await runPipelineReconcile()
+
+    expect(store.opportunities).toHaveLength(1)
+    expect(store.opportunities[0].pipeline_id).toBe("pipe-1")
+  })
+
+  // Per BOOKING, not once per pass. A hoisted routing resolved before the loop
+  // gives every booking the same board — which is exactly what this replaced.
+  it("routes each booking on its own service type within one pass", async () => {
+    seedBoard()
+    seedOtherBoard(ASSESSMENT_KEY, "pipe-assessment")
+    seedContact("c-1", { email: "one@example.com" })
+    seedContact("c-2", { email: "two@example.com" })
+    seedBooking("bk-assessment", { contact_email: "one@example.com", service_type: "assessment" })
+    seedBooking("bk-plain", { contact_email: "two@example.com", service_type: null })
+
+    await runPipelineReconcile()
+
+    expect(store.opportunities.find((o) => o.contact_id === "c-1")?.pipeline_id).toBe("pipe-assessment")
+    expect(store.opportunities.find((o) => o.contact_id === "c-2")?.pipeline_id).toBe("pipe-1")
+  })
+
+  // G24 routed camp and clinic service types to Camps & Clinics. A replay has
+  // to agree, or it reintroduces the same divergence one board over.
+  it.each([["camp"], ["clinic"]])("replays a %s booking onto Camps & Clinics", async (serviceType) => {
+    seedBoard()
+    seedOtherBoard(CAMPS_CLINICS_KEY, "pipe-camps")
+    seedContact("c-1", { email: "lead@example.com" })
+    seedBooking("bk-1", { contact_email: "lead@example.com", service_type: serviceType })
+
+    await runPipelineReconcile()
+
+    expect(store.opportunities[0].pipeline_id).toBe("pipe-camps")
+  })
+
+  // A tenant seeded before migration 00257 has only `coaching`. The replay must
+  // land somewhere real rather than throwing — the same fallback rule
+  // `resolvePipelineWithFallback` applies on the live path.
+  it("falls back to Coaching when the routed board is not seeded for this tenant", async () => {
+    seedBoard()
+    seedContact("c-1", { email: "lead@example.com" })
+    seedBooking("bk-1", { contact_email: "lead@example.com", service_type: "assessment" })
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const summary = await runPipelineReconcile()
+
+    expect(summary.failed).toBe(0)
+    expect(store.opportunities).toHaveLength(1)
+    expect(store.opportunities[0].pipeline_id).toBe("pipe-1")
+    warn.mockRestore()
+  })
+
+  describe("event_signup payments", () => {
+    // Previously counted as `failed` and skipped, with an error naming the
+    // board it should have gone to — a payment the reconciler existed to
+    // repair, reported as a fault instead.
+    it("wins the open card on Camps & Clinics instead of counting the payment failed", async () => {
+      seedBoard()
+      seedOtherBoard(CAMPS_CLINICS_KEY, "pipe-camps")
+      seedContact("c-1", { email: "lead@example.com", user_id: "user-1" })
+      seedOpportunity("opp-camp", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "pipe-camps-stage-open",
+      })
+      seedPayment("pay-1", {
+        user_id: "user-1",
+        amount_cents: 45000,
+        status: "succeeded",
+        metadata: { type: "event_signup" },
+      })
+
+      const summary = await runPipelineReconcile()
+
+      expect(summary.failed).toBe(0)
+      expect(summary.wonFromPayments).toBe(1)
+      const card = store.opportunities.find((o) => o.id === "opp-camp")
+      expect(card?.outcome).toBe("won")
+      expect(card?.value_cents).toBe(45000)
+    })
+
+    // The open-card precondition still applies, and it is now checked against
+    // the payment's OWN board. Without a card there, the reconciler must not
+    // invent one — that is spec §6 case 2's scope, not a general "create".
+    it("does not create a card on the routed board when none is open there", async () => {
+      seedBoard()
+      seedOtherBoard(CAMPS_CLINICS_KEY, "pipe-camps")
+      seedContact("c-1", { email: "lead@example.com", user_id: "user-1" })
+      seedPayment("pay-1", {
+        user_id: "user-1",
+        status: "succeeded",
+        metadata: { type: "event_signup" },
+      })
+
+      const summary = await runPipelineReconcile()
+
+      expect(summary.failed).toBe(0)
+      expect(summary.wonFromPayments).toBe(0)
+      expect(store.opportunities).toHaveLength(0)
+    })
+
+    // The precondition must be read on the payment's own board, not the
+    // default one. An OPEN coaching card must not let a camp payment through
+    // to win something on a board it was never checked against.
+    it("does not let an open COACHING card satisfy a camp payment's precondition", async () => {
+      seedBoard()
+      seedOtherBoard(CAMPS_CLINICS_KEY, "pipe-camps")
+      seedContact("c-1", { email: "lead@example.com", user_id: "user-1" })
+      seedOpportunity("opp-coaching", "c-1", { pipeline_id: "pipe-1", stage_id: "stage-consulted" })
+      seedPayment("pay-1", {
+        user_id: "user-1",
+        status: "succeeded",
+        metadata: { type: "event_signup" },
+      })
+
+      const summary = await runPipelineReconcile()
+
+      expect(summary.wonFromPayments).toBe(0)
+      expect(store.opportunities.find((o) => o.id === "opp-coaching")?.outcome).toBeNull()
+    })
+
+    // The PAYMENT half of the not-seeded fallback. The booking test above goes
+    // through `applyPipelineEvent`'s own `resolvePipelineWithFallback`; this
+    // path resolves a board BEFORE that call, to read the open-card
+    // precondition against, so it needs the same rule of its own — every
+    // tenant created before migration 00257 has `coaching` and nothing else.
+    //
+    // Landing on Coaching rather than throwing is spec §3.2's fallback applied
+    // consistently ("an unroutable event lands on Coaching — it must not throw
+    // and must not vanish"), and it matches what the live webhook already does
+    // for the same payment.
+    it("falls back to Coaching for a payment whose board this tenant does not have", async () => {
+      seedBoard() // NO camps board for this tenant
+      seedContact("c-1", { email: "lead@example.com", user_id: "user-1" })
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" })
+      seedPayment("pay-1", {
+        user_id: "user-1",
+        amount_cents: 45000,
+        status: "succeeded",
+        metadata: { type: "event_signup" },
+      })
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+      const summary = await runPipelineReconcile()
+
+      expect(summary.failed).toBe(0)
+      expect(summary.wonFromPayments).toBe(1)
+      expect(store.opportunities.find((o) => o.id === "opp-1")?.outcome).toBe("won")
+      // Loud, not silent — the tenant is missing a board somebody expected.
+      // Asserting THIS module's prefix, not just the board name:
+      // `resolvePipelineWithFallback` warns with the same key from
+      // lib/db/pipeline.ts, so a bare `stringContaining(CAMPS_CLINICS_KEY)`
+      // stayed green with the reconciler's own warning deleted.
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(`[pipeline-reconcile] board "${CAMPS_CLINICS_KEY}"`),
+      )
+      warn.mockRestore()
+    })
+
+    // G23's cross-board sweep closes a contact's OTHER open cards when a
+    // payment wins one. G26 made that reachable from the reconciler for the
+    // first time, by no longer skipping payments that route off the default
+    // board — and a replay must NOT do it.
+    //
+    // The sweep means "they have just bought, so their other enquiries are
+    // moot". A reconciler pass replays a payment missed up to 30 days ago,
+    // and the cards it would close are TODAY's: somebody whose camp payment
+    // went astray three weeks ago, and who has since opened a fresh coaching
+    // enquiry, would have that new enquiry closed `paid_elsewhere` at zero
+    // value by a replay of the old sale.
+    it("does not close today's other cards when replaying an old payment", async () => {
+      seedBoard()
+      seedOtherBoard(CAMPS_CLINICS_KEY, "pipe-camps")
+      seedContact("c-1", { email: "lead@example.com", user_id: "user-1" })
+      seedOpportunity("opp-camp", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "pipe-camps-stage-open",
+      })
+      // A coaching enquiry opened SINCE the payment went astray.
+      seedOpportunity("opp-coaching-new", "c-1", { pipeline_id: "pipe-1", stage_id: "stage-consult-booked" })
+      seedPayment("pay-1", {
+        user_id: "user-1",
+        amount_cents: 45000,
+        status: "succeeded",
+        metadata: { type: "event_signup" },
+      })
+
+      const summary = await runPipelineReconcile()
+
+      // The camp card is repaired, which is what this pass is for...
+      expect(summary.wonFromPayments).toBe(1)
+      expect(store.opportunities.find((o) => o.id === "opp-camp")?.outcome).toBe("won")
+      // ...and the newer coaching enquiry is left completely alone.
+      const coaching = store.opportunities.find((o) => o.id === "opp-coaching-new")
+      expect(coaching?.outcome).toBeNull()
+      expect(coaching?.outcome_reason).toBeNull()
+    })
+
+    // Unchanged: a payment type on the denylist still wins nothing anywhere.
+    it("still skips a payment type that wins no card at all", async () => {
+      seedBoard()
+      seedOtherBoard(CAMPS_CLINICS_KEY, "pipe-camps")
+      seedContact("c-1", { email: "lead@example.com", user_id: "user-1" })
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" })
+      seedPayment("pay-1", {
+        user_id: "user-1",
+        status: "succeeded",
+        metadata: { type: [...NO_PIPELINE_CARD_PAYMENT_TYPES][0] },
+      })
+
+      const summary = await runPipelineReconcile()
+
+      expect(summary.wonFromPayments).toBe(0)
+      expect(store.opportunities.find((o) => o.id === "opp-1")?.outcome).toBeNull()
+    })
+  })
+})
 
 describe("runPipelineReconcile", () => {
   it("creates a card for a booking whose contact has no opportunity", async () => {
@@ -547,68 +903,76 @@ describe("runPipelineReconcile", () => {
     consoleErrorSpy.mockRestore()
   })
 
-  // Gap #C1 fix (2026-09-08, whole-branch review Critical): before this fix,
-  // "event_signup" was silently excluded here too, absorbed into "not
-  // evidence of a deal" — which stopped being true once event_signup started
-  // winning its own card on camps_clinics (Task A, same branch). It is no
-  // longer a member of NO_PIPELINE_CARD_PAYMENT_TYPES, so THIS reconciler
-  // pass — scoped to "coaching" only — now reaches its own wrong-board guard
-  // for real, unmocked, and skips it with an honest, LOGGED reason instead.
-  // Actually reconciling the camps board itself is gap #C2 (no board reader)
-  // and stays out of scope for this fix; this test pins that the skip still
-  // happens, but for the true reason now, not a stale one.
-  it("skips a real event_signup payment via the wrong-board guard, not the old non-coaching denylist", async () => {
+  // RETARGETED BY G26 (2026-09-21). This test used to pin the wrong-board
+  // guard: an `event_signup` payment was counted FAILED and skipped with a
+  // logged reason, because this pass pre-resolved one board's stages as every
+  // payment's precondition. Gap #C1's note called reconciling the camps board
+  // itself "gap #C2, out of scope for this fix" — G26 is that fix, so the
+  // guard is gone and the skip with it.
+  //
+  // The INTENT behind the original is still worth pinning and is what this now
+  // asserts: a camp payment must never win the contact's COACHING card. It is
+  // proven the other way round now — by the payment reaching its own board and
+  // leaving the coaching deal-in-progress untouched — because the card that
+  // SHOULD be looked at is the camp one, not nothing.
+  it("does not win a coaching card with a camp payment, now that it reconciles the camps board", async () => {
     seedBoard()
+    seedOtherBoard(CAMPS_CLINICS_KEY, "pipe-camps")
     seedContact("c-1", { email: "lead1@example.com", user_id: "user-1" })
-    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" }) // open — would otherwise be won
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" }) // open coaching deal
     seedPayment("pay-camp", { user_id: "user-1", amount_cents: 8000, metadata: { type: "event_signup" } })
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
 
     const summary = await runPipelineReconcile()
 
+    // Nothing won: there is no OPEN card on the camps board to win, and the
+    // coaching one is not this payment's to touch.
     expect(summary.wonFromPayments).toBe(0)
-    expect(summary.failed).toBeGreaterThan(0) // counted, not silently absorbed
     expect(store.opportunities.find((o) => o.id === "opp-1")!.outcome).toBeNull()
-    // Proves it took the LOGGED wrong-board path, not a silent early skip —
-    // the coaching deal-in-progress was never even read against.
-    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("camps_clinics"))
+    // And no longer reported as a FAULT. A camp registration is exactly what
+    // this reconciler exists to repair; counting it failed on every pass was
+    // the old limitation announcing itself.
+    expect(summary.failed).toBe(0)
+    expect(consoleErrorSpy).not.toHaveBeenCalled()
     consoleErrorSpy.mockRestore()
   })
 
-  // Task 3: this loop pre-resolves ONE board's pipelineId/stages (the
-  // "coaching" default) and reuses it as every payment's OPEN-card
-  // precondition. That is safe today only because every payment type that
-  // actually WINS a card routes to that same board. `routeToPipeline`'s
-  // table names one further checkoutType that does not ("event_signup",
-  // proven for real above) — this simulates a SECOND, hypothetical one
-  // directly (routeToPipeline mocked for one call) to prove the guard keeps
-  // firing for any future divergence, not just today's one known case,
-  // rather than silently checking — or writing — the wrong board.
-  it("skips a payment whose OWN routed key disagrees with this pass's board, rather than risking a wrong-board write", async () => {
+  // RETARGETED BY G26 (2026-09-21). This used to prove the wrong-board GUARD
+  // kept firing for any future divergence, not just `event_signup`. The guard
+  // existed because the loop pre-resolved ONE board's stages; G26 resolves the
+  // payment's own board instead, so there is no divergence left to guard
+  // against and a skip would now be the bug.
+  //
+  // The intent — "a payment must never be checked against, or written onto,
+  // the wrong board" — is unchanged and still worth proving for a checkout
+  // type nobody has named yet. It is proven the other way round: the
+  // hypothetical type routes to Camps & Clinics, the OPEN COACHING card is
+  // left completely alone, and the pass reports no fault.
+  it("reads a payment against its OWN board, for a checkout type nobody has named yet", async () => {
     seedBoard()
+    seedOtherBoard(CAMPS_CLINICS_KEY, "pipe-camps")
     seedContact("c-1", { email: "lead1@example.com", user_id: "user-1" })
-    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" }) // open — would otherwise be won
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" }) // open COACHING card
     seedPayment("pay-drift", { user_id: "user-1", amount_cents: 9900, metadata: { type: "camp_registration" } })
     // "camp_registration" is NOT in NO_PIPELINE_CARD_PAYMENT_TYPES, so the
-    // loop reaches the routing check below. This pass also calls
-    // routeToPipeline once for BOOKINGS regardless of whether any exist, so
-    // the fake result is conditioned on the exact payment subject rather
-    // than "the next call" — order-independent, and every other subject
-    // shape (including the booking call) keeps its real, unmocked answer.
+    // loop reaches the routing call below. This pass also calls
+    // routeToPipeline for BOOKINGS, so the fake result is conditioned on the
+    // exact payment subject rather than "the next call" — order-independent,
+    // and every other subject shape keeps its real, unmocked answer.
     const realRouting = vi.mocked(routeToPipeline).getMockImplementation()!
     vi.mocked(routeToPipeline).mockImplementation((subject) =>
       subject.event === "payment" && subject.checkoutType === "camp_registration"
-        ? { kind: "routed", pipelineKey: "camps_clinics" }
+        ? { kind: "routed", pipelineKey: CAMPS_CLINICS_KEY }
         : realRouting(subject),
     )
 
     const summary = await runPipelineReconcile()
     vi.mocked(routeToPipeline).mockImplementation(realRouting) // restore, not just clear
 
+    // Nothing won — there is no open card on the camps board — and crucially
+    // the coaching card was neither read against nor written to.
     expect(summary.wonFromPayments).toBe(0)
-    expect(summary.failed).toBeGreaterThan(0)
-    // The open card was left completely alone — neither checked against nor
-    // written to under the wrong board's assumption.
+    expect(summary.failed).toBe(0)
     expect(store.opportunities.find((o) => o.id === "opp-1")!.outcome).toBeNull()
     expect(stageEventsFor("opp-1")).toHaveLength(0)
   })

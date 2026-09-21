@@ -481,6 +481,39 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 
 ### G26 · The pipeline repair cron must stay off · **M** (after G22)
 - `lib/automation/pipeline-reconcile.ts` reconciles every board, routes bookings by the persisted `service_type`, and handles `event_signup` payments instead of counting them failed. Then the owner sets `cron_pipeline_reconcile_enabled` true (outward action). Test: an assessment booking already carded on Assessment is not duplicated on Coaching.
+- **BUILT 2026-09-21.** No migration (G22's `00273` is what it reads). All three parts shipped:
+  bookings route per row from the stored `service_type`, payments resolve their OWN board for the
+  open-card precondition, and the wrong-board guard that counted every `event_signup` as `failed` is
+  gone — a camp registration is exactly what this pass exists to repair, and it was reported as a
+  fault on every tick.
+  - **The duplicate-card test the flag was waiting on is pinned directly:** an assessment booking
+    already carded on Assessment by the live webhook is found there by the replay and NOT duplicated
+    onto Coaching.
+  - **G23's cross-board sweep must NOT fire on a replay — found by the code review, and it was a
+    defect this row created.** Removing the payment skip made `closeOpenCardsOnOtherBoards`
+    reachable from the reconciler for the first time. That sweep means "they have JUST bought"; a
+    replay carries a payment missed up to 30 days ago, so somebody whose camp payment went astray
+    three weeks back and has since opened a FRESH coaching enquiry would have that new enquiry
+    closed `paid_elsewhere` at zero value. The sweep is now gated on `source === "hook"`.
+  - **A fourth projection-blind fake, and a fourth real bug hidden by one.** Dropping `service_type`
+    from the reconciler's bookings projection left every test green while the reader got `undefined`
+    and routed everything to Coaching — this gap, silently intact. That fake now PROJECTS. The same
+    fake also had no `.is()`, so G23's sweep threw and was swallowed on every won payment: the
+    behaviour this row newly makes reachable was entirely unexercised.
+  - **The DEFAULT board stays resolved EAGERLY, outside the per-payment try.** A business whose own
+    coaching board is missing is genuinely broken, and throwing there is what puts it in
+    `failures[]` and names it on the cron run. Resolved lazily with the rest, the same fault would
+    have read as "one payment failed" — a broken tenant wearing a transient error's clothes.
+  - **ONE BOUNDED RESIDUAL, measured rather than waved away.** `service_type ?? null` cannot tell
+    "never stamped" from "coaching", and 00273 shipped with no backfill — so a booking ingested
+    between 2026-09-13 and that deploy would still duplicate. **Production had ZERO bookings of any
+    status in the last 30 days**, so the residual is currently empty; the window is closed going
+    forward and bounded behind by the scan window. The exact re-measurement query is in the module
+    comment.
+  - `cron_pipeline_reconcile_enabled` **is still OFF and stays the owner's call** — flipping it is an
+    outward action. What changed is that the hazard blocking it is gone.
+  - Whole suite green at the 7-test baseline (1075 files / 11574 tests); tsc 238/54 per-file
+    identical; build exit 0; **11 mutants, 11 killed**.
 
 ### G27 · "Gone quiet" measures stage age, not silence · **S**
 - Amber stays stage-entry age; red becomes "no contact activity for `red_after_days`" from the latest non-engine timeline event. Add the missing render test for the dot and labels (`pipeline-board.test.tsx` has none).
@@ -676,9 +709,13 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 26 done · 10 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 G22 G23 G24 G25 G27.
-Open: G21 G26 G28 G29 G30 G31 G32 G33 G34 G35.
+**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 27 done · 9 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 G22 G23 G24 G25 G26 G27.
+Open: G21 G28 G29 G30 G31 G32 G33 G34 G35.
+
+**Phase 3 is COMPLETE** — every row in it (G20, G22, G23, G24, G25, G26, G27) is built, reviewed,
+merged and pushed. What remains open is Phase 4 (G30–G35), the two rows blocked on an owner decision
+(G21, G28) and G29, which was scheduled for after Phases 0–2 and is an L.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
