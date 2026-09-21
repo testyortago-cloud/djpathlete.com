@@ -192,6 +192,7 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
   - The **Click id** column stays, because `gclid` is still part of the grouping key — dropping it renders two genuinely different gclid-only campaigns as identical "— / —" rows, a bug the DAL's own comment records being fixed once already.
   - **TWO MUTANTS SURVIVED AND BOTH TIMES THE TEST WAS AT FAULT.** `Number(requested) || null` passed every window test because `Number("junk")` is `NaN` and `NaN || null` is `null` — the same all-time answer the "junk" case asserted; there is now a `?days=99999999` case. And raising `PAGE`/`IN_CHUNK` to 100000 passed everything, because the Supabase fake returned whatever it was asked for — **the fake now ENFORCES the limits (truncates at 1000, 414s an over-long `.in()`)**, which is what makes those constants testable at all.
   - Whole suite 1068 files / 11308 tests with the 7-test red baseline; tsc 238/54 per-file identical; build exit 0; **7 mutants, 7 killed**.
+  - **THE LEADS COLUMN WILL READ ~0 FOR A WHILE, and that is the data rather than the code.** Leads are contacts whose `first_touch_session_id` is set, and production holds **1 of 170** (re-measured 2026-09-21). The column is correct and fills as new captures arrive — `captureLead` writes the column when the capture carries an attribution session — but almost every existing contact was imported from GHL or captured before the column existed. Do not read an empty Leads column as a broken page, and do not "fix" it by widening what counts as a lead.
 
 ### G16 · Templates fill in the name only; `brand_color` never reaches email · **S** · DONE (merged + pushed 2026-09-21) — `{{sport}}`/`{{goals}}` deliberately not shipped
 - **Shipped when:** merge fields `{{first_name}}` (derived), `{{sport}}`, `{{goals}}`, `{{service}}`, `{{camp_name}}` read from `enrolment_metadata` (G10); an unknown token renders blank and the step editor's placeholder guard flags it at save; the sequence layout in `lib/lead-engine/email.ts:306-357` uses `brand_color` / `accent_color` with the current hexes as the fallback.
@@ -254,11 +255,25 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 
 ## Phase 3 — Entry points and the pipeline
 
+> **These rows' claims were SPOT-VERIFIED on 2026-09-21 and hold up** — unlike three of the four
+> Phase 2 rows built that day, which each named a column, a join or a source that does not exist or
+> is already counted. So the rot was concentrated in the rows being worked, not spread through the
+> document. Checked against production and the code, not re-read from the row:
+> `bookings.service_type` does **not** exist (G22 correct); `app/api/questionnaire/route.ts` makes
+> **zero** calls to `captureLead`/`recordContactEvent` (G20 correct); `routeToPipeline` has an
+> `assessment` arm and an `event_signup` PAYMENT arm but **no camp/clinic ENQUIRY arm**, so those
+> fall to the Coaching default (G24 correct); both `recordContactEvent` mentions in the assessment
+> route are comments saying why it is not called (G21 correct); `sms_sender_phone` is
+> `z.string().trim().max(32)` with no E.164 normalisation (G33 correct); and all seven funnel tables
+> plus `faqs`, `programs`, `testimonials` and `marketing_attribution` genuinely have no
+> `business_id` (G31 and G35 correct). **Re-verify anyway before building — this note ages.**
+
 ### G20 · Questionnaire is not connected · **S**
 - `app/api/questionnaire/route.ts` writes `client_profiles` + GHL only. Ship `captureLead({source:"questionnaire"})` with the session user's email, name fill-only, timeline row. Test: route writes the spine.
 
 ### G21 · Assessment only annotates an existing contact · **S, decision**
 - The 8 Sept ruling chose attach-only. The quotation counts assessment as an entry point and, with G04, every submitter is a linked client anyway. **Recommend reversing the ruling:** create when missing. Owner confirms; then `app/api/assessment/submit/route.ts:76-82` calls `recordContactEvent`.
+- **THE RULING'S OWN RATIONALE IS NOW OUT OF DATE, found 2026-09-21.** Verified: both mentions of `recordContactEvent` in that route are COMMENTS explaining why it is not called, so the row's description of the behaviour is accurate. But one of those comments argues from "`contacts.user_id` has no originating writer anywhere in this repo … A userId-only lookup finds nobody, ever (0 of 170 production contacts have a user_id)". **G04 gave it a writer and backfilled: production is now 43 of 170.** Re-measure before re-litigating this decision — the premise it turns on changed, and the recommendation to reverse is on firmer ground than the row knew. The stale comment should be corrected in the same change.
 
 ### G22 · Bookings never create a contact or a timeline row; no service type is stored · **M**
 - **Shipped when:** `ingestBooking` (`lib/bookings/ingest.ts:294-355`) captures a contact (`source:"booking"`, new `ContactEventSource` member) when none matches, writes `booking_scheduled` / `booking_cancelled` timeline rows, and persists `bookings.service_type text` (reader: the reconciler in G26 and `routeToPipeline`) from the Calendly event-name match and the GHL calendar.
@@ -333,7 +348,7 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 
 - `lib/db/funnels.ts:572` names `SINGLETON_BUSINESS_ID` in prose, so `CLAUDE.md`'s count command returns 6. Reword the comment (retire it in G31) or change the documented count.
 - Add a "superseded 2026-09-19" banner to `docs/full-engine-scope-vs-built.md` and `docs/lead-engine-audit-2026-09-13.md`.
-- Supabase reports RLS disabled on 13 tables (`events`, `event_signups` among them). Enabling RLS without policies blocks all access; needs policies first. Separate security task, not a lead-engine gap.
+- **RLS is disabled on 13 tables — re-verified against `pg_class.relrowsecurity` on 2026-09-21, and the list is worth reading rather than counting:** `agent_tool_baselines, assessment_questions, assessment_results, chief_strategist_memos, coach_ai_policy, event_signups, events, exercise_blocks, generated_exercise_usage, membership_plans, program_week_access, program_week_pricing, repo_migrations`. Two of those hold personal data about minors — `assessment_results` (athlete performance and health answers) and `event_signups` (parent name, email, phone, athlete name and age). Enabling RLS without policies blocks all access, so policies come first. Filed here as housekeeping; **it reads more like a security task than a tidy-up, and the next session should say so to the owner rather than inheriting the label.** Not a lead-engine gap either way.
 - `lead_magnets` has 0 rows; the lead-magnet entry point has nothing to serve until the owner creates one.
 
 ---
