@@ -539,7 +539,6 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // the coach's instructions), which opts out of both short-circuits.
     // Otherwise skipped in strict pool mode — honor the coach's curated pool
     // over the (often empty) equipment profile.
-    const availableEquipment = request.equipment_override ?? profile?.available_equipment ?? []
     // Equipment the coach explicitly asked for counts as available. The profile
     // list is a guess and is EMPTY whenever no profile exists, which silently
     // reduces the whole library to bodyweight-only. An explicit override is not
@@ -685,10 +684,12 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       `${skeleton.weeks.length} weeks × ${skeleton.weeks[0]?.days.length ?? 0} days — ${totalSlots} exercise slots`,
     )
 
-    // Pre-filter exercises (availableEquipment computed earlier, with the equipment filter)
+    // Pre-filter exercises. effectiveEquipment, NOT the profile: telling the
+    // selector it has a full gym while handing it a restricted library is the
+    // contradiction that produced the original travel-week bug.
     const constraintsContext = JSON.stringify({
       exercise_constraints: analysis.exercise_constraints,
-      available_equipment: availableEquipment,
+      available_equipment: effectiveEquipment,
       client_difficulty: profile?.experience_level ?? "beginner",
     })
 
@@ -1081,7 +1082,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       // week (and therefore per day)" invariant programmatically before the
       // week is committed — warm-up / cool-down anchors excepted.
       const weekDedupSwap = dedupAssignmentsInPlace(weekAssignment.assignments, weekSkeleton, thisWeekLibrary, {
-        equipment: availableEquipment,
+        equipment: effectiveEquipment,
         difficulty: clientDifficultySync,
       })
       if (weekDedupSwap.swapped_count > 0 || weekDedupSwap.unresolved.length > 0) {

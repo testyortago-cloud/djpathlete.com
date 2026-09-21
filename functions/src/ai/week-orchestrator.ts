@@ -804,7 +804,6 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   // An explicit empty override means "nothing at all" (a hotel room with no
   // gym) and must not fall through to the client's stored kit — see
   // resolveEffectiveEquipment for the full precedence.
-  const availableEquipment = request.equipment_override ?? profile?.available_equipment ?? ([] as string[])
   const exerciseIdSet = new Set(allExercises.map((e) => e.id))
 
   // Resolve client difficulty for filtering and ceiling construction
@@ -1108,8 +1107,11 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
 
   const exerciseLibrary = formatExerciseLibrary(filtered)
 
+  // effectiveEquipment, NOT the profile: telling the selector it has a full gym
+  // while handing it a bodyweight-only library is the contradiction that
+  // produced the original bug.
   const constraintsContext = JSON.stringify({
-    available_equipment: availableEquipment,
+    available_equipment: effectiveEquipment,
     client_difficulty: profile?.experience_level ?? (request.ignore_profile ? "advanced" : "intermediate"),
   })
 
@@ -1302,8 +1304,10 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   // loop falls back to "accept with warning". Enforce the invariant
   // programmatically so the same exercise_id never repeats within the week —
   // neither twice on one day nor across two days (warm-up / cool-down excepted).
+  // The swapper CHOOSES replacement exercises, so it needs the restricted set —
+  // otherwise a dedup swap can put equipment back into a bodyweight week.
   const dedupSwap = dedupAssignmentsInPlace(assignment.assignments, skeleton.weeks[0], filtered, {
-    equipment: availableEquipment,
+    equipment: effectiveEquipment,
     difficulty: clientDifficultyLevel,
   })
   if (dedupSwap.swapped_count > 0 || dedupSwap.unresolved.length > 0) {
