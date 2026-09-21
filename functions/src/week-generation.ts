@@ -65,11 +65,19 @@ export async function handleWeekGeneration(jobId: string, budgetMs: number): Pro
     console.log(`[week-generation] Starting for job ${jobId}`)
     const result = await generateWeekSync(input.request, input.requestedBy, jobId, deadline)
 
+    // `warnings` belongs here, not just in the return value: ai_jobs.result is
+    // the ONLY surface the coach's dialog reads (useAiJob → extractWarnings).
+    // It was omitted once already, and because the orchestrator's return value
+    // carried it correctly, every check upstream of this object looked clean
+    // while the panel rendered nothing. Always an array, never undefined —
+    // Firestore rejects undefined, and the reader treats a missing key as
+    // "no warnings", which is the silence this fixes.
     const resultPayload = {
       new_week_number: result.new_week_number,
       exercises_added: result.exercises_added,
       token_usage: result.token_usage,
       duration_ms: result.duration_ms,
+      warnings: result.warnings ?? [],
     }
 
     await jobRef.update({
