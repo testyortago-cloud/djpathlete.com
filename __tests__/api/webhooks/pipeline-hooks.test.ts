@@ -69,12 +69,18 @@ const verifyMock = vi.fn()
 const createPaymentMock = vi.fn(async (..._a: any[]) => ({ id: "pay-1" }))
 const getPaymentByStripeIdMock = vi.fn(async (..._a: any[]) => null as any)
 const getUserByEmailMock = vi.fn(async (..._a: any[]) => null as any)
+const listCheckoutSessionsMock = vi.fn(async (..._a: any[]) => ({ data: [] as { id: string }[] }))
 
 vi.mock("@/lib/stripe", () => ({
   verifyWebhookSignature: (...a: unknown[]) => verifyMock(...a),
   resolveSessionPaymentIntent: vi.fn(
     async (session: { payment_intent?: string | null }) => session.payment_intent ?? null,
   ),
+  // G25. The refund hook asks Stripe which checkout session a payment intent
+  // belongs to, because no local table maps one to the other. Defaults to "no
+  // session found", which is the shape every test written before this gap
+  // implicitly assumed — so they keep asserting the same metadata.
+  stripe: { checkout: { sessions: { list: (...a: unknown[]) => listCheckoutSessionsMock(...a) } } },
 }))
 vi.mock("@/lib/db/payments", () => ({
   createPayment: (...a: unknown[]) => createPaymentMock(...a),
@@ -573,6 +579,80 @@ describe("Stripe webhook — pipeline", () => {
         businessId: "bbb",
         metadata: { stripe_charge_id: "ch_test_1", amount_refunded: 15000 },
       })
+    })
+
+    // G25. A refund object names a charge and a payment intent, never the
+    // checkout session — and the Won card is keyed by the SESSION
+    // (`opportunities.source_event_id`). No local table maps one to the other:
+    // `payments` has no `stripe_session_id` column and 0 of its 59 production
+    // rows carry one in `metadata`, so Stripe itself is the only place that
+    // mapping exists. Without it a camp refund subtracts from a coaching card
+    // purely because that card closed more recently.
+    it("resolves the refunded checkout session from the payment intent and passes it on", async () => {
+      getPaymentByStripeIdMock.mockResolvedValueOnce({ id: "pay-1", user_id: "user-1" })
+      findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-refund-1", businessId: "bbb" })
+      listCheckoutSessionsMock.mockResolvedValueOnce({ data: [{ id: "cs_test_camp_place" }] })
+      verifyMock.mockReturnValueOnce(chargeRefundedEvent({ amount_refunded: 15000 }))
+      vi.spyOn(console, "error").mockImplementation(() => {})
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeStripeReq())
+
+      expect(res.status).toBe(200)
+      // Asked about THIS refund's payment intent, not some other key — and
+      // under an EXPLICIT timeout. The try/catch around the call can catch a
+      // throw but not slowness, and the Stripe SDK's own default is 80s,
+      // which is long enough for one optional lookup to hold the webhook open
+      // past Stripe's delivery timeout and earn a retry. The timeout is what
+      // makes this call's "never fail the webhook" comment true rather than
+      // aspirational, so it is asserted rather than trusted.
+      expect(listCheckoutSessionsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ payment_intent: "pi_test_refund_1" }),
+        expect.objectContaining({ timeout: expect.any(Number) }),
+      )
+      expect(applyPipelineEventMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: {
+            stripe_charge_id: "ch_test_1",
+            amount_refunded: 15000,
+            stripe_session_id: "cs_test_camp_place",
+          },
+        }),
+      )
+    })
+
+    // Degrading to today's behaviour is the CORRECT outcome here, not a
+    // second-best one: no session means no preference, and
+    // `resolveWonPipelineKey` then falls back to most-recent-Won exactly as
+    // it always did. What must never happen is the webhook failing — Stripe
+    // would retry, and a reporting number is not worth that.
+    it.each([
+      ["the lookup finds no session", async () => ({ data: [] })],
+      [
+        "the lookup throws",
+        async () => {
+          throw new Error("stripe is down")
+        },
+      ],
+    ])("still amends the card, with no session id, when %s", async (_label, impl) => {
+      getPaymentByStripeIdMock.mockResolvedValueOnce({ id: "pay-1", user_id: "user-1" })
+      findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-refund-1", businessId: "bbb" })
+      listCheckoutSessionsMock.mockImplementationOnce(impl as any)
+      verifyMock.mockReturnValueOnce(chargeRefundedEvent({ amount_refunded: 15000 }))
+      vi.spyOn(console, "error").mockImplementation(() => {})
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeStripeReq())
+
+      expect(res.status).toBe(200)
+      expect(applyPipelineEventMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          // The key is ABSENT, not null: `deriveSourceEventId` reads this same
+          // key, and "absent" is the shape it already treats as no source
+          // event.
+          metadata: { stripe_charge_id: "ch_test_1", amount_refunded: 15000 },
+        }),
+      )
     })
 
     // Fix round 1, Important 2: the contact's resolved business, not the

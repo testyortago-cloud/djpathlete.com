@@ -361,6 +361,46 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 
 ### G25 · A coaching refund can amend a camp card · **S**
 - `resolveWonPipelineKey` (`lib/db/pipeline.ts:530-553`): prefer the Won card whose `metadata.stripe_session_id` matches the refunded charge's session; fall back to newest only when none matches. Test both.
+- **BUILT 2026-09-21.** No migration. **The row named a column that does not exist**, and re-measuring
+  changed the shape of the fix:
+  - **`opportunities` has NO `metadata` column.** The session id lives in `source_event_id`
+    (migration 00225), which `deriveSourceEventId` writes from the EVENT metadata's
+    `stripe_session_id` on create — the first of `SOURCE_EVENT_ID_KEYS`. Production agrees: both Won
+    cards carry a `cs_live_…` id there.
+  - **The refund carries no session id to match with.** `charge.refunded` gives a charge and a
+    payment intent; `SOURCE_EVENT_ID_KEYS`' own comment says refunds pass `stripe_charge_id` and
+    deliberately excludes it. No local table bridges the two — `payments` has no
+    `stripe_session_id` column and **0 of its 59 production rows** carry one in `metadata`. So the
+    webhook now asks Stripe (`checkout.sessions.list({payment_intent})`), best-effort, under an
+    explicit 5s timeout, and passes the answer through. A failed or empty lookup yields no key,
+    which is exactly the "no preference" input the resolver already handles.
+  - **Nothing to backfill and nothing broken today: production has 4 opportunities, 2 Won, and ZERO
+    contacts with more than one Won card.** This is prevention, not an incident.
+  - **A limitation the row did not know about, found by the code review.** `source_event_id` is
+    stamped only by the CREATE branch, so it is set on a card a checkout created ALREADY WON. The
+    `close` branch never writes it — so a card OPENED by an inquiry/booking/quiz and later CLOSED
+    Won by a payment carries null and can never match. Today that costs nothing (both production Won
+    cards were created already-Won), but **G24 routing camp and clinic enquiries onto their own
+    board makes the open-then-close shape more common.** Not fixed here on purpose: `source_event_id`
+    is a CREATION idempotency key under a partial unique index, and stamping the closing session id
+    onto it would overload one column with a second meaning and collide with a later delivery of
+    that session's create. **The clean fix is a separate nullable column written by the close
+    branch — a migration, and a gap of its own.**
+  - **A determinism defect in the first cut, also found by review, fixed rather than documented.**
+    `amount_refunded` is cumulative per CHARGE and the ledger baseline is charge-scoped but
+    card-agnostic, so two deliveries of one charge resolving to DIFFERENT cards split the refund
+    (delivery 1 takes $40 off the camp card; delivery 2 fails its lookup, lands on coaching, and
+    takes $60 off THAT). Now the strongest signal is checked first: **the card a previous delivery
+    of this same charge already amended**, read from the stage-event ledger — local, no network,
+    same answer every time. That also closes a PRE-EXISTING version of the split (a new Won card
+    closing between two deliveries moved "most recent Won").
+  - **Still not solved, stated plainly:** this resolves the BOARD, not the CARD. Two Won cards on the
+    SAME board still amend the newer one. Unreachable today; closing it means threading the resolved
+    opportunity id into the amend.
+  - Whole suite green at the 7-test baseline (1075 files / 11491 tests); tsc 238/54 per-file
+    identical; build exit 0; **18 mutants, 17 killed and one declared EQUIVALENT** (the anchor's
+    opportunity-read tenant predicate is masked by the pipelines read that follows it — defence in
+    depth, not an independent guard, and the sweep script says so rather than hiding it).
 
 ### G26 · The pipeline repair cron must stay off · **M** (after G22)
 - `lib/automation/pipeline-reconcile.ts` reconciles every board, routes bookings by the persisted `service_type`, and handles `event_signup` payments instead of counting them failed. Then the owner sets `cron_pipeline_reconcile_enabled` true (outward action). Test: an assessment booking already carded on Assessment is not duplicated on Coaching.
@@ -523,9 +563,9 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 22 done · 14 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 G24.
-Open: G21 G22 G23 G25 G26 G27 G28 G29 G30 G31 G32 G33 G34 G35.
+**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 23 done · 13 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 G24 G25.
+Open: G21 G22 G23 G26 G27 G28 G29 G30 G31 G32 G33 G34 G35.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs

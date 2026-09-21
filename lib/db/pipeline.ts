@@ -281,6 +281,67 @@ export async function readMostRecentWonOpportunity(
  * refunds are a rare path, so a table-wide scan costs nothing a bounded
  * window would meaningfully save.
  */
+/**
+ * Which board a PREVIOUS delivery of this same Stripe charge already amended,
+ * read from the same `opportunity_stage_events` ledger
+ * `highestRecordedRefundAmount` reads — no network, no Stripe call, and the
+ * same answer every time.
+ *
+ * WHY THIS OUTRANKS EVERYTHING ELSE for a refund's board. Stripe's
+ * `amount_refunded` is cumulative per CHARGE, and `highestRecordedRefundAmount`
+ * is charge-scoped and card-agnostic: it says how many cents this app already
+ * applied, not where. So if two deliveries of one charge resolve to DIFFERENT
+ * cards, the second computes its delta against the first's ledger and applies
+ * it somewhere else — a $40 partial refund lands on the camp card, the later
+ * $60 lands on the coaching card with delta 6000, and now the camp card is
+ * stuck at 6000 while the coaching card has lost $60 it genuinely earned.
+ *
+ * Two things can make deliveries disagree. The pre-existing one: a new Won
+ * card closing BETWEEN the two deliveries moves "most recent Won". The one
+ * G25 would otherwise add: the checkout-session lookup succeeding on one
+ * delivery and failing on the next. Anchoring to the card this charge already
+ * touched removes both, and is why this is checked FIRST rather than as
+ * another fallback — a refund follows the card its own earlier deliveries
+ * amended, ahead of any fresh derivation.
+ *
+ * Returns null when this charge has amended nothing yet (the ordinary first
+ * delivery), when the ledger names an opportunity that no longer resolves, or
+ * when the row belongs to another tenant — all of which mean "derive it
+ * normally", never "fail".
+ */
+async function resolveChargeAmendedPipelineKey(chargeId: string, businessId: string): Promise<string | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("opportunity_stage_events")
+    .select("opportunity_id, metadata, created_at")
+    .eq("business_id", businessId)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+
+  const priorOpportunityId = ((data ?? []) as Row[]).find((row) => {
+    const metadata = (row.metadata ?? {}) as Record<string, unknown>
+    return metadata.stripe_charge_id === chargeId && typeof metadata.amount_refunded === "number"
+  })?.opportunity_id as string | undefined
+  if (!priorOpportunityId) return null
+
+  const { data: oppData, error: oppErr } = await supabase
+    .from("opportunities")
+    .select("pipeline_id")
+    .eq("business_id", businessId)
+    .eq("id", priorOpportunityId)
+  if (oppErr) throw oppErr
+  const pipelineId = ((oppData ?? []) as Row[])[0]?.pipeline_id as string | undefined
+  if (!pipelineId) return null
+
+  const { data: pipelineData, error: pipelineErr } = await supabase
+    .from("pipelines")
+    .select("key")
+    .eq("business_id", businessId)
+    .eq("id", pipelineId)
+  if (pipelineErr) throw pipelineErr
+  return (((pipelineData ?? []) as Row[])[0]?.key as string | undefined) ?? null
+}
+
 export async function highestRecordedRefundAmount(chargeId: string, businessId: string): Promise<number> {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -515,38 +576,125 @@ const SYSTEM_ACTOR = { id: null, email: null, role: "system" as const }
  * created. The actual Won opportunity is the only ground truth, so this
  * reads it directly instead of guessing.
  *
+ * `sourceEventId` (G25) is the checkout session the refund is reversing, when
+ * the caller can name one. THE CARD CARRYING THAT ID IS THE GROUND TRUTH, and
+ * recency is only the fallback: a contact who bought a camp place in June and
+ * a coaching block in September, then refunds the CAMP, had that refund
+ * subtract from the coaching card purely because it closed more recently.
+ * Nothing threw and nothing logged — the coach just saw a coaching deal worth
+ * less than it earned, and a camp deal still worth full price.
+ *
+ * NOTE THE COLUMN. The gap row called this `metadata.stripe_session_id`;
+ * `opportunities` has no `metadata` column at all. The session id lives in
+ * `source_event_id` (migration 00225), which `deriveSourceEventId` writes from
+ * the EVENT metadata's `stripe_session_id` on create — it is the first of
+ * `SOURCE_EVENT_ID_KEYS`. Production agrees: both Won cards carry a
+ * `cs_live_…` id there.
+ *
+ * Matched together with `business_id`, `contact_id` AND `outcome = 'won'`,
+ * none of which is redundant. A Stripe session id is globally unique, so
+ * matching on it alone would look authoritative while crossing a tenant or
+ * person boundary; and a non-Won card carrying the same id (an open card the
+ * checkout created before the payment landed) must never resurrect a board
+ * from a sale that was never won.
+ *
  * "Most recent" is by `closed_at` — the same tie-break
- * `readMostRecentWonOpportunity` uses, not `created_at`. Same stated
- * limitation that function already carries (spec §14): a refund only ever
- * names a `payment_intent`, not the checkout session the Won card was
- * created from, so a contact with two Won deals — even on two different
- * boards — gets whichever is most recently WON amended, which may be the
- * wrong one. Accepted, not solved here.
+ * `readMostRecentWonOpportunity` uses, not `created_at`.
+ *
+ * WHICH WON CARDS THIS CAN ACTUALLY MATCH — read this before believing the
+ * preference is general. `source_event_id` is stamped ONLY by the `create`
+ * branch (`deriveSourceEventId`), so it is set on a card a checkout created
+ * ALREADY WON. The `close` branch never writes it, so a card that was OPENED
+ * by an inquiry, booking or quiz and later CLOSED Won by a payment carries
+ * null here and can never match — that sale's refund falls straight back to
+ * most-recent-Won, which is the very bug this exists to fix.
+ *
+ * Today that boundary costs nothing: production has 2 Won cards and BOTH
+ * carry a `cs_live_…` id, because both were created already-Won by a
+ * checkout. It will start costing something as more cards are opened first
+ * and closed later — G24 routing camp and clinic ENQUIRIES onto their own
+ * board makes exactly that shape more common.
+ *
+ * FIXING IT IS NOT A ONE-LINE ADDITION TO THE CLOSE BRANCH, which is why it
+ * is not done here. `source_event_id` is a CREATION idempotency key under a
+ * partial unique index (00225) — `deriveSourceEventId` writes it so two
+ * concurrent deliveries of one external event cannot both make a card.
+ * Stamping the closing session id onto it would overload one column with a
+ * second meaning ("which sale won this card"), and a later delivery of that
+ * session's create would then collide with a card it did not create. The
+ * clean fix is a SEPARATE nullable column written by the close branch, which
+ * is a migration and a gap of its own.
+ *
+ * ALSO NOT SOLVED, a smaller version of the same bug: this resolves the
+ * BOARD, not the CARD. `applyPipelineEvent` then asks
+ * `readMostRecentWonOpportunity` for the most recent Won card ON that board,
+ * so a contact with TWO Won cards on the SAME board still has the newer one
+ * amended regardless of which sale was refunded. Closing that means
+ * threading the resolved opportunity id through to the amend itself rather
+ * than re-deriving it from recency. Not reachable today — production has 4
+ * opportunities, 2 Won, and zero contacts with more than one Won card
+ * anywhere — so this is prevention either way, and the cross-board half is
+ * the half the gap named.
  *
  * Returns `null` when the contact has no Won opportunity anywhere for this
  * business — a real answer (there is genuinely nothing to follow), never a
  * stand-in for a failed read; every Supabase error here is thrown.
  */
-export async function resolveWonPipelineKey(contactId: string, businessId: string): Promise<string | null> {
+export async function resolveWonPipelineKey(
+  contactId: string,
+  businessId: string,
+  sourceEventId?: string | null,
+): Promise<string | null> {
   const supabase = getClient()
 
-  const { data: oppData, error: oppErr } = await supabase
-    .from("opportunities")
-    .select("pipeline_id, closed_at")
-    .eq("business_id", businessId)
-    .eq("contact_id", contactId)
-    .eq("outcome", "won")
-    .order("closed_at", { ascending: false })
-    .limit(1)
-  if (oppErr) throw oppErr
-  const oppRow = ((oppData ?? []) as Row[])[0]
-  if (!oppRow) return null
+  let pipelineId: string | null = null
+
+  // An empty string is "no id", identically to null/undefined — the same
+  // absent/empty equivalence `routeToPipeline` applies to `checkoutType`, and
+  // for the same reason: "" cannot match a real session id, so treating it as
+  // a distinct kind of lookup would only mean an extra query that always
+  // misses before falling back to where it was going anyway.
+  if (sourceEventId) {
+    const { data, error } = await supabase
+      .from("opportunities")
+      .select("pipeline_id")
+      .eq("business_id", businessId)
+      .eq("contact_id", contactId)
+      .eq("outcome", "won")
+      .eq("source_event_id", sourceEventId)
+      .limit(1)
+    // A column this read cannot see is "no preference", not a failure. The
+    // sibling INSERT already tolerates the same error for its own deploy ramp
+    // (`isMissingColumnError`, the retry below `deriveSourceEventId`); the
+    // asymmetry matters more here, because this is a READ whose only job is
+    // to IMPROVE on a fallback that is still perfectly good. Throwing would
+    // abandon the whole refund correction — the caller swallows it — to
+    // protect a preference, which is strictly worse than not having the
+    // preference.
+    if (error && !isMissingColumnError(error)) throw error
+    if (!error) pipelineId = (((data ?? []) as Row[])[0]?.pipeline_id as string | undefined) ?? null
+  }
+
+  if (!pipelineId) {
+    const { data: oppData, error: oppErr } = await supabase
+      .from("opportunities")
+      .select("pipeline_id, closed_at")
+      .eq("business_id", businessId)
+      .eq("contact_id", contactId)
+      .eq("outcome", "won")
+      .order("closed_at", { ascending: false })
+      .limit(1)
+    if (oppErr) throw oppErr
+    const oppRow = ((oppData ?? []) as Row[])[0]
+    if (!oppRow) return null
+    pipelineId = oppRow.pipeline_id as string
+  }
 
   const { data: pipelineData, error: pipelineErr } = await supabase
     .from("pipelines")
     .select("key")
     .eq("business_id", businessId)
-    .eq("id", oppRow.pipeline_id)
+    .eq("id", pipelineId)
   if (pipelineErr) throw pipelineErr
   const pipelineRow = ((pipelineData ?? []) as Row[])[0]
   return (pipelineRow?.key as string | undefined) ?? null
@@ -573,7 +721,7 @@ export async function resolveWonPipelineKey(contactId: string, businessId: strin
  * ever changes.
  */
 async function resolveRoutedPipelineKey(
-  input: { pipelineKey?: string; contactId: string },
+  input: { pipelineKey?: string; contactId: string; metadata?: Record<string, unknown> },
   businessId: string,
   isRefund: boolean,
 ): Promise<string> {
@@ -581,7 +729,31 @@ async function resolveRoutedPipelineKey(
 
   const routing = routeToPipeline({ event: "refund" })
   if (routing.kind === "routed") return routing.pipelineKey
-  return (await resolveWonPipelineKey(input.contactId, businessId)) ?? DEFAULT_PIPELINE_KEY
+  // G25. The refund's own `stripe_session_id`, when the caller could resolve
+  // one, names the SALE being reversed — so the board is the one holding that
+  // sale's card, not whichever card happened to close most recently. Read
+  // from `metadata` rather than taken as a parameter, matching how
+  // `stripe_charge_id` already reaches `highestRecordedRefundAmount` further
+  // down this same function: opt-in, no key means no preference, and nothing
+  // changes for a caller that cannot name one.
+  //
+  // Safe despite `deriveSourceEventId` reading the same key: that runs only on
+  // the CREATE branch, and `decideMove`'s refund arm returns exclusively
+  // `noop` or `amend` — a refund can never create a card.
+  //
+  // Checked in order, strongest evidence first:
+  //   1. the card a PREVIOUS delivery of this same charge already amended —
+  //      see `resolveChargeAmendedPipelineKey` for why a redelivery must not
+  //      be allowed to pick a different card than its own predecessor;
+  //   2. the card carrying the refunded checkout session;
+  //   3. most recent Won, the behaviour before this gap.
+  const chargeId = typeof input.metadata?.stripe_charge_id === "string" ? input.metadata.stripe_charge_id : null
+  const priorKey = chargeId ? await resolveChargeAmendedPipelineKey(chargeId, businessId) : null
+  if (priorKey) return priorKey
+
+  const sourceEventId =
+    typeof input.metadata?.stripe_session_id === "string" ? input.metadata.stripe_session_id : null
+  return (await resolveWonPipelineKey(input.contactId, businessId, sourceEventId)) ?? DEFAULT_PIPELINE_KEY
 }
 
 /**

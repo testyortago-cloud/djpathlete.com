@@ -225,6 +225,26 @@ vi.mock("@/lib/supabase", () => ({
         if (mode === "update") return doUpdate()
         const injected = selectErrorByTable[table]
         if (injected) return { data: null, error: injected }
+        // A PostgREST schema-cache miss is not write-only: a SELECT that
+        // FILTERS on the unknown column fails the same way an INSERT naming it
+        // does. Until G25 nothing read `source_event_id`, so simulating the
+        // write alone was enough; `resolveWonPipelineKey` now filters on it,
+        // and without this the tolerance on that read could not be pinned.
+        if (
+          table === "opportunities" &&
+          !opportunitiesHasSourceEventId &&
+          filters.some(([col]) => col === "source_event_id")
+        ) {
+          return {
+            data: null,
+            error: {
+              code: "PGRST204",
+              message: "Could not find the 'source_event_id' column of 'opportunities' in the schema cache",
+              details: null,
+              hint: null,
+            },
+          }
+        }
         return { data: matched(), error: null }
       }
 
@@ -533,6 +553,11 @@ function seedOpportunity(id: string, contactId: string, overrides: Row = {}): Ro
     closed_trigger: null,
     closed_by_user_id: null,
     created_at: new Date().toISOString(),
+    // Present-and-null rather than absent, matching the real column
+    // (migration 00225, `text` nullable under a partial unique index). A
+    // seeded row missing the key entirely would read `undefined`, which is
+    // not what a real row with no source event looks like.
+    source_event_id: null,
     _seq: store.opportunities.length,
     ...overrides,
   }
@@ -775,6 +800,255 @@ describe("resolveWonPipelineKey", () => {
     const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID)
 
     expect(key).toBe(CAMPS_CLINICS_KEY)
+  })
+
+  // G25. "Most recent Won" is the right answer only when there is nothing
+  // better to go on. When the refund can say WHICH sale it is reversing, the
+  // card carrying that sale's id is the ground truth and recency is a guess.
+  //
+  // THE COLUMN IS `source_event_id`, NOT `metadata.stripe_session_id` as the
+  // gap row said — `opportunities` has no `metadata` column at all. The
+  // Stripe webhook passes `{ stripe_session_id: session.id }` in the EVENT
+  // metadata, and `deriveSourceEventId` writes it to `source_event_id` on
+  // create (it is the first of SOURCE_EVENT_ID_KEYS). Production confirms the
+  // shape: both Won cards carry a `cs_live_…` id there.
+  describe("preferring the card that actually carries this sale (G25)", () => {
+    function seedTwoWonCardsOnDifferentBoards() {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      // The CAMP sale: older, and the one being refunded.
+      seedOpportunity("opp-camps-won", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        closed_at: new Date(Date.now() - 20 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_camp_place",
+      })
+      // The COACHING sale: newer, and the one "most recent Won" would pick.
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        closed_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_coaching_block",
+      })
+    }
+
+    it("follows the matching sale onto its own board, even when a NEWER Won card exists elsewhere", async () => {
+      seedTwoWonCardsOnDifferentBoards()
+
+      const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID, "cs_test_camp_place")
+
+      expect(key).toBe(CAMPS_CLINICS_KEY)
+    })
+
+    // The direction that proves the match is doing the work rather than the
+    // ordering happening to agree with it.
+    it("follows the matching sale to coaching when THAT is the one refunded", async () => {
+      seedTwoWonCardsOnDifferentBoards()
+
+      const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID, "cs_test_coaching_block")
+
+      expect(key).toBe("coaching")
+    })
+
+    it("falls back to the most recent Won card when the id matches nothing", async () => {
+      seedTwoWonCardsOnDifferentBoards()
+
+      const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID, "cs_test_a_sale_from_another_system")
+
+      expect(key).toBe("coaching")
+    })
+
+    // The old behaviour, unchanged. Every caller that cannot name a sale —
+    // and until this gap that was every caller — still gets "most recent Won".
+    it("falls back to the most recent Won card when no id is given at all", async () => {
+      seedTwoWonCardsOnDifferentBoards()
+
+      const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID)
+
+      expect(key).toBe("coaching")
+    })
+
+    it.each([
+      ["an empty string", ""],
+      ["null", null],
+    ])("treats %s as no id rather than as an id that matches nothing", async (_label, sourceEventId) => {
+      seedTwoWonCardsOnDifferentBoards()
+
+      const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID, sourceEventId)
+
+      expect(key).toBe("coaching")
+    })
+
+    // A refund must never resurrect a board from a card that was never won.
+    // Without the `outcome = 'won'` filter on the matching query, an open or
+    // lost card carrying the same id would answer here.
+    it("ignores a matching card that is not Won, and falls back", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-camps-open", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-interested",
+        source_event_id: "cs_test_camp_place",
+      })
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_coaching_block",
+      })
+
+      const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID, "cs_test_camp_place")
+
+      expect(key).toBe("coaching")
+    })
+
+    // The match must stay inside the tenant AND inside the contact: a session
+    // id is globally unique in Stripe, so a match on it alone would look
+    // authoritative while crossing either boundary.
+    it("does not match another tenant's card carrying the same id", async () => {
+      seedBoard()
+      seedCampsBoard(OTHER_BUSINESS_ID)
+      seedContact("c-1")
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_coaching_block",
+      })
+      seedOpportunity("opp-other-won", "c-other", {
+        business_id: OTHER_BUSINESS_ID,
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_camp_place",
+      })
+
+      const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID, "cs_test_camp_place")
+
+      expect(key).toBe("coaching")
+    })
+
+    // ISOLATES THE TENANT PREDICATE FROM THE CONTACT PREDICATE, the same way
+    // "does not leak another business's board name when an opportunity's
+    // pipeline_id points cross-tenant" below isolates the pipeline lookup.
+    // The test above cannot do it: it scopes the other tenant's card to
+    // another CONTACT too, so `contact_id` alone already excludes it and
+    // dropping `business_id` from the query leaves every test green. (That
+    // mutant survived the first sweep for exactly this reason.)
+    //
+    // So this simulates the inconsistency directly — an opportunity carrying
+    // contact `c-1` but a DIFFERENT `business_id` — which nothing in the
+    // schema forbids: `opportunities.business_id` and `.contact_id` are
+    // independent columns with no constraint tying them to the same tenant,
+    // unreachable today only because every write goes through this file.
+    it("does not match a row carrying this contact under a DIFFERENT business", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_coaching_block",
+      })
+      seedOpportunity("opp-cross-tenant", "c-1", {
+        business_id: OTHER_BUSINESS_ID, // the inconsistency
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_camp_place",
+      })
+
+      const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID, "cs_test_camp_place")
+
+      expect(key).toBe("coaching")
+    })
+
+    it("does not match another CONTACT's card carrying the same id", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedContact("c-2")
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_coaching_block",
+      })
+      seedOpportunity("opp-camps-won-other-person", "c-2", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_camp_place",
+      })
+
+      const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID, "cs_test_camp_place")
+
+      expect(key).toBe("coaching")
+    })
+
+    // A column the read cannot see must degrade to "no preference", not blow
+    // the whole refund correction away. The caller swallows a throw here
+    // (app/api/stripe/webhook/route.ts), so throwing would silently abandon a
+    // correction that the plain most-recent-Won fallback could still have
+    // made — giving up the whole thing to protect an optimisation.
+    it("falls back to most-recent-Won when the source_event_id column is not in the schema cache", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-camps-won", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        closed_at: new Date(Date.now() - 20 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_camp_place",
+      })
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        closed_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_coaching_block",
+      })
+      opportunitiesHasSourceEventId = false
+
+      const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID, "cs_test_camp_place")
+
+      expect(key).toBe("coaching")
+    })
+
+    it("returns null when the id matches nothing and there is no Won card to fall back to", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-open", "c-1", { stage_id: "stage-consult-booked" })
+
+      const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID, "cs_test_camp_place")
+
+      expect(key).toBeNull()
+    })
   })
 
   it("is scoped to the given business — a Won card on another tenant's board is invisible", async () => {
@@ -1708,6 +1982,325 @@ describe("applyPipelineEvent", () => {
       const coaching = store.opportunities.find((o) => o.id === "opp-coaching-won")
       expect(coaching?.value_cents).toBe(300000)
       expect(coaching?.outcome).toBe("won")
+    })
+
+    // G25, and the INVERSE of the test directly above — which only works
+    // because the camp card happens to be the more recently closed one. Turn
+    // the dates around and "most recent Won" confidently picks the wrong
+    // card: the athlete bought a camp place in the summer, signed a coaching
+    // block in September, and the camp refund lands on the coaching deal.
+    // Nothing throws; the coach just sees a coaching deal worth less than it
+    // earned and a camp deal still at full price.
+    //
+    // The whole chain end-to-end: webhook metadata -> resolveRoutedPipelineKey
+    // -> resolveWonPipelineKey's source_event_id match -> the board -> the
+    // card that is actually amended. The resolver's own unit tests cannot see
+    // the threading, and the webhook test cannot see which row changes.
+    it("follows the refunded sale to the OLDER camp card rather than the newer coaching one", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-camps-won", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        value_cents: 8000,
+        closed_at: new Date(Date.now() - 90 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_camp_place",
+      })
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 300000,
+        closed_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_coaching_block",
+      })
+
+      const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 8000, occurredAt: new Date() },
+        metadata: {
+          stripe_charge_id: "ch_camp_refund_2",
+          amount_refunded: 8000,
+          stripe_session_id: "cs_test_camp_place",
+        },
+      })
+
+      expect(decision).toMatchObject({ kind: "amend", valueCents: 0, outcomeReason: "refunded" })
+      expect(opportunityId).toBe("opp-camps-won")
+      expect(store.opportunities.find((o) => o.id === "opp-camps-won")?.value_cents).toBe(0)
+      const coaching = store.opportunities.find((o) => o.id === "opp-coaching-won")
+      expect(coaching?.value_cents).toBe(300000)
+      expect(coaching?.outcome).toBe("won")
+    })
+
+    // The control for the test above: the SAME fixture with no session id
+    // reproduces the old behaviour, so the test above is proving the match
+    // and not something about the fixture. This is the bug G25 closes, pinned
+    // as the thing that used to happen.
+    it("without a session id, the same refund lands on the newer coaching card", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-camps-won", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        value_cents: 8000,
+        closed_at: new Date(Date.now() - 90 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_camp_place",
+      })
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 300000,
+        closed_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_coaching_block",
+      })
+
+      const { opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 8000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_camp_refund_3", amount_refunded: 8000 },
+      })
+
+      expect(opportunityId).toBe("opp-coaching-won")
+      expect(store.opportunities.find((o) => o.id === "opp-camps-won")?.value_cents).toBe(8000)
+    })
+
+    // G25, second delivery. Stripe's `amount_refunded` is CUMULATIVE per
+    // charge and `highestRecordedRefundAmount` is charge-scoped but
+    // card-agnostic — it says how many cents were already applied, not where.
+    // So two deliveries of one charge resolving to DIFFERENT cards splits the
+    // refund: the second computes its delta against the first's ledger and
+    // subtracts it somewhere else. A refund must therefore follow the card its
+    // own earlier deliveries already amended, ahead of any fresh derivation.
+    it("a second partial refund follows the FIRST delivery's card, even when the session lookup fails", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-camps-won", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        value_cents: 10000,
+        closed_at: new Date(Date.now() - 90 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_camp_place",
+      })
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 300000,
+        closed_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_coaching_block",
+      })
+
+      // Delivery 1: $40 of the camp place, session resolved.
+      await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 4000, occurredAt: new Date() },
+        metadata: {
+          stripe_charge_id: "ch_split_1",
+          amount_refunded: 4000,
+          stripe_session_id: "cs_test_camp_place",
+        },
+      })
+      expect(store.opportunities.find((o) => o.id === "opp-camps-won")?.value_cents).toBe(6000)
+
+      // Delivery 2: cumulative $100, and THIS time Stripe could not be asked
+      // which session the charge belongs to — so no `stripe_session_id`.
+      const { opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 10000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_split_1", amount_refunded: 10000 },
+      })
+
+      // Both halves land on the camp card, and the coaching card never sees a
+      // cent of someone else's refund.
+      expect(opportunityId).toBe("opp-camps-won")
+      expect(store.opportunities.find((o) => o.id === "opp-camps-won")?.value_cents).toBe(0)
+      expect(store.opportunities.find((o) => o.id === "opp-coaching-won")?.value_cents).toBe(300000)
+    })
+
+    // The anchor's ledger read is tenant-scoped, and that predicate is load
+    // bearing on its own. Simulates the inconsistency directly — a stage
+    // event belonging to ANOTHER business whose `opportunity_id` names a card
+    // in THIS one — because a fixture that put both the event and the card in
+    // the other tenant would be excluded by the opportunity read's own
+    // predicate instead, and the mutant would survive.
+    //
+    // (The opportunity read's predicate and the pipelines read's predicate
+    // mask each other the same way: dropping either alone changes no
+    // behaviour, because the next lookup in the chain re-scopes. That is
+    // defence in depth rather than three independent guards, and the
+    // pipelines one is pinned separately by "does not leak another business's
+    // board name when an opportunity's pipeline_id points cross-tenant".)
+    it("does not anchor to another tenant's ledger row naming one of this tenant's cards", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-camps-won", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        value_cents: 10000,
+        closed_at: new Date(Date.now() - 90 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+      })
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 300000,
+        closed_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+      })
+      store.opportunity_stage_events.push({
+        id: "evt-cross-tenant",
+        business_id: OTHER_BUSINESS_ID, // the inconsistency
+        opportunity_id: "opp-camps-won",
+        from_stage_id: null,
+        to_stage_id: null,
+        trigger: "payment",
+        metadata: { stripe_charge_id: "ch_anchor_tenant", amount_refunded: 1000 },
+        created_at: new Date().toISOString(),
+        _seq: store.opportunity_stage_events.length,
+      })
+
+      const { opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 5000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_anchor_tenant", amount_refunded: 5000 },
+      })
+
+      // Falls through to most-recent-Won rather than anchoring on a row it
+      // should not be able to see.
+      expect(opportunityId).toBe("opp-coaching-won")
+    })
+
+    // Prior deliveries of ONE charge can name different cards only in ledger
+    // history written before the anchor existed — which is exactly the data
+    // in production today. The newest is the right one: it is the card the
+    // most recent delivery actually amended, so it is the card whose
+    // value_cents the charge-scoped ledger baseline already reflects.
+    it("anchors to the MOST RECENT prior delivery when older history names another card", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-camps-won", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        value_cents: 10000,
+        closed_at: new Date(Date.now() - 90 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+      })
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 300000,
+        closed_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+      })
+      store.opportunity_stage_events.push({
+        id: "evt-older",
+        business_id: SINGLETON_BUSINESS_ID,
+        opportunity_id: "opp-coaching-won",
+        from_stage_id: null,
+        to_stage_id: null,
+        trigger: "payment",
+        metadata: { stripe_charge_id: "ch_anchor_order", amount_refunded: 1000 },
+        created_at: new Date(Date.now() - 10 * DAY_MS).toISOString(),
+        _seq: store.opportunity_stage_events.length,
+      })
+      store.opportunity_stage_events.push({
+        id: "evt-newer",
+        business_id: SINGLETON_BUSINESS_ID,
+        opportunity_id: "opp-camps-won",
+        from_stage_id: null,
+        to_stage_id: null,
+        trigger: "payment",
+        metadata: { stripe_charge_id: "ch_anchor_order", amount_refunded: 2000 },
+        created_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+        _seq: store.opportunity_stage_events.length,
+      })
+
+      const { opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 5000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_anchor_order", amount_refunded: 5000 },
+      })
+
+      expect(opportunityId).toBe("opp-camps-won")
+    })
+
+    // The anchor is per CHARGE, not per contact: an unrelated second refund
+    // must still derive its own board rather than inheriting the first's.
+    it("does not anchor a DIFFERENT charge's refund to the first charge's card", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-camps-won", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        value_cents: 10000,
+        closed_at: new Date(Date.now() - 90 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_camp_place",
+      })
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 300000,
+        closed_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+        source_event_id: "cs_test_coaching_block",
+      })
+
+      await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 4000, occurredAt: new Date() },
+        metadata: {
+          stripe_charge_id: "ch_camp_only",
+          amount_refunded: 4000,
+          stripe_session_id: "cs_test_camp_place",
+        },
+      })
+
+      const { opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 5000, occurredAt: new Date() },
+        metadata: {
+          stripe_charge_id: "ch_coaching_only",
+          amount_refunded: 5000,
+          stripe_session_id: "cs_test_coaching_block",
+        },
+      })
+
+      expect(opportunityId).toBe("opp-coaching-won")
+      expect(store.opportunities.find((o) => o.id === "opp-coaching-won")?.value_cents).toBe(295000)
+      // The camp card keeps only its own $40 reduction.
+      expect(store.opportunities.find((o) => o.id === "opp-camps-won")?.value_cents).toBe(6000)
     })
 
     // The load-bearing proof: a caller-supplied `pipelineKey` for a refund
