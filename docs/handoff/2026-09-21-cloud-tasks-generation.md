@@ -68,12 +68,19 @@ gcloud tasks queues list --location=us-central1
 # 3. Then the app (Vercel).
 ```
 
-## The IAM grant
+## The IAM grants — there are TWO, and the second is easy to miss
 
-Enqueuing needs **`cloudtasks.tasks.create`** on the service account the Next app
-runs as (the one in `FIREBASE_SERVICE_ACCOUNT_KEY`). Without it every generation
-returns 503 and the job is marked failed with the underlying permission error —
-visible, but generation is down until it is granted.
+Enqueuing needs BOTH of these on the service account the Next app runs as (the
+`client_email` in `FIREBASE_SERVICE_ACCOUNT_KEY`). Granting only the first looks
+complete and still fails, which is exactly what happened on 2026-09-21:
+
+```
+The principal (user or service account) lacks IAM permission
+"iam.serviceAccounts.actAs" for the resource
+"firebase-adminsdk-fbsvc@<project>.iam.gserviceaccount.com"
+```
+
+**1. Create tasks:**
 
 ```bash
 SA=<client_email from FIREBASE_SERVICE_ACCOUNT_KEY>
@@ -81,6 +88,24 @@ gcloud projects add-iam-policy-binding <project-id> \
   --member="serviceAccount:$SA" \
   --role="roles/cloudtasks.enqueuer"
 ```
+
+**2. Act as itself.** Cloud Tasks calls the function with an OIDC token minted
+for a service account, so whoever enqueues must be allowed to ACT AS that
+account — here, itself. This is a binding ON the service account, not on the
+project, which is why it is a different command shape and easy to skip:
+
+```bash
+gcloud iam service-accounts add-iam-policy-binding "$SA" \
+  --member="serviceAccount:$SA" \
+  --role="roles/iam.serviceAccountUser" \
+  --project=<project-id>
+```
+
+Either one missing gives a 503 with the job marked failed. That is the designed
+failure — visible, recoverable, and it does NOT leave the job stranded as
+"pending" (which would block the coach from retrying by hand). Verified in
+production on 2026-09-21: the Eventarc trigger correctly ignored the
+`dispatch:"task"` doc, so nothing double-ran.
 
 If you would rather not also grant `cloudfunctions.functions.get` (the Admin SDK
 uses it to resolve the function's URL), set this env var on Vercel and the SDK
