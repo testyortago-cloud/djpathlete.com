@@ -26,6 +26,7 @@ vi.mock("@/lib/tenancy/resolve", () => ({ resolveAdminTenant: vi.fn() }))
 vi.mock("@/lib/db/sms-messages", () => ({ getSmsThread: vi.fn() }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
 vi.mock("@/lib/db/contact-detail", () => ({ getContactById: vi.fn() }))
+vi.mock("@/lib/db/contacts", () => ({ findContactByIdentifiers: vi.fn() }))
 vi.mock("@/lib/db/contact-consents", () => ({ isSuppressed: vi.fn() }))
 vi.mock("next/navigation", () => ({
   notFound: vi.fn(() => {
@@ -47,6 +48,7 @@ import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { getSmsThread } from "@/lib/db/sms-messages"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { getContactById } from "@/lib/db/contact-detail"
+import { findContactByIdentifiers } from "@/lib/db/contacts"
 import { isSuppressed } from "@/lib/db/contact-consents"
 import { SmsComposer } from "@/components/admin/sms/SmsComposer"
 import AdminSmsThreadPage from "@/app/(admin)/admin/sms/[phone]/page"
@@ -90,7 +92,64 @@ beforeEach(() => {
     sms_sender_phone: "",
   })
   ;(getContactById as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+  ;(findContactByIdentifiers as ReturnType<typeof vi.fn>).mockResolvedValue(null)
   ;(isSuppressed as ReturnType<typeof vi.fn>).mockResolvedValue(false)
+})
+
+// ---------------------------------------------------------------------------
+// G28 made `contactId` load-bearing. Until the consent gate existed it only
+// decided which contact the thread linked to; now the send route uses it to
+// look up consent, so deriving it wrongly REFUSES a real person.
+// ---------------------------------------------------------------------------
+describe("AdminSmsThreadPage — resolving the contact for the consent gate", () => {
+  it("falls back to a lookup BY PHONE when no message carries a contact link", async () => {
+    // The failure this closes: the "Text" link on a contact's own page opens
+    // a thread with no messages yet. Deriving the contact only from
+    // `sms_messages.contact_id` gave null, so the consent check refused
+    // somebody who HAD granted SMS consent -- and the override send then
+    // wrote `contact_id: null` onto the new row, so the next visit derived
+    // null again and they could never be texted without the override.
+    ;(getSmsThread as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    ;(findContactByIdentifiers as ReturnType<typeof vi.fn>).mockResolvedValue("contact-by-phone")
+
+    const tree = await renderPage(encodeURIComponent(PHONE))
+
+    expect(findContactByIdentifiers).toHaveBeenCalledWith({ phone: PHONE, businessId: BUSINESS_ID })
+    expect(composerProps(tree)).toMatchObject({ contactId: "contact-by-phone" })
+  })
+
+  it("looks up the NORMALISED phone and carries the tenant", async () => {
+    // Both halves matter. `sms_messages` and `contacts` key on E.164, and a
+    // lookup with no business predicate would reach another coach's contact.
+    ;(getSmsThread as ReturnType<typeof vi.fn>).mockResolvedValue([])
+
+    await renderPage("2025550123")
+
+    expect(findContactByIdentifiers).toHaveBeenCalledWith({ phone: PHONE, businessId: BUSINESS_ID })
+  })
+
+  it("PREFERS the link already on the thread, and does not look up at all", async () => {
+    // The presence control for the fallback: an existing link is what the
+    // writers already resolved, and re-deriving it by phone could disagree
+    // with it (two contacts can share a number after a partial merge).
+    ;(getSmsThread as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "m1", contact_id: "contact-from-thread", direction: "inbound", body: "hi", created_at: "2026-01-01" },
+    ])
+
+    const tree = await renderPage(encodeURIComponent(PHONE))
+
+    expect(findContactByIdentifiers).not.toHaveBeenCalled()
+    expect(composerProps(tree)).toMatchObject({ contactId: "contact-from-thread" })
+  })
+
+  it("passes null when nobody is on file at all, rather than inventing a contact", async () => {
+    ;(getSmsThread as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    ;(findContactByIdentifiers as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+
+    const tree = await renderPage(encodeURIComponent(PHONE))
+
+    expect(composerProps(tree)).toMatchObject({ contactId: null })
+  })
 })
 
 describe("AdminSmsThreadPage", () => {

@@ -32,6 +32,7 @@ import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { getSmsThread } from "@/lib/db/sms-messages"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { getContactById } from "@/lib/db/contact-detail"
+import { findContactByIdentifiers } from "@/lib/db/contacts"
 import { isSuppressed } from "@/lib/db/contact-consents"
 import { normalisePhone } from "@/lib/lead-engine/identity"
 import { smsEnvPresent } from "@/lib/lead-engine/sms"
@@ -67,11 +68,22 @@ export default async function AdminSmsThreadPage({ params }: { params: Promise<{
     isSuppressed(phone, businessId),
   ])
 
-  // The contact link comes off the messages rather than off a lookup by
-  // phone: `sms_messages.contact_id` is what the writers already resolved,
-  // and the thread exists whether or not anybody is on file. The newest row
-  // carrying a link wins — an older row may pre-date the contact's creation.
-  const contactId = [...messages].reverse().find((row) => row.contact_id)?.contact_id ?? null
+  // The contact link comes off the messages first: `sms_messages.contact_id`
+  // is what the writers already resolved, and the newest row carrying a link
+  // wins — an older row may pre-date the contact's creation.
+  //
+  // THEN FALL BACK TO A LOOKUP BY PHONE, which this page used not to do.
+  // That was harmless while `contactId` only decided threading; G28 made it
+  // load-bearing for a legal gate, and the omission became a real defect:
+  // a thread with no messages yet (the "Text" link on a contact's own page)
+  // resolved to null, so the consent check refused a contact who HAD
+  // granted SMS consent. Worse, the override send then wrote
+  // `contact_id: null` onto the new row, so the next visit re-derived null
+  // and that person could never be texted without the override again.
+  // `findContactByIdentifiers({ phone })` is the same lookup the inbound
+  // webhook already performs — the page was the odd one out.
+  const linkedFromThread = [...messages].reverse().find((row) => row.contact_id)?.contact_id ?? null
+  const contactId = linkedFromThread ?? (await findContactByIdentifiers({ phone, businessId }))
   const contact = contactId ? await getContactById(contactId, businessId) : null
 
   // The same precedence the sequence engine uses: the contact's own zone if

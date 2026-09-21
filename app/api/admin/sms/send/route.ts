@@ -49,6 +49,7 @@ import {
   SmsNotConfiguredError,
   SmsTooLongError,
   SmsUnparseablePhoneError,
+  SmsNoConsentError,
 } from "@/lib/lead-engine/sms"
 import { appOrigin } from "@/lib/lead-engine/origin"
 
@@ -62,6 +63,12 @@ const sendSchema = z.object({
   // below), because "the admin was warned and sent anyway" is a real
   // business event worth keeping.
   confirmQuietHours: z.boolean().optional(),
+  // G28: the coach ticked "Send anyway" on a contact with no recorded
+  // consent. Unlike `confirmQuietHours` this one CHANGES THE OUTCOME — the
+  // send is refused without it — so it is recorded on the audit row as
+  // `consent_override: true`, not merely noted. It overrides consent only:
+  // `sendManualSms` checks suppression before it, and a STOP still refuses.
+  consentOverride: z.boolean().optional(),
 })
 
 export const POST = withAudit(
@@ -74,6 +81,13 @@ export const POST = withAudit(
       if (id) meta.target_id = id
       if (res.headers.get("x-audit-quiet-hours-confirmed") === "true") {
         meta.confirmed_quiet_hours = true
+      }
+      // G28. Stamped only on a send that ACTUALLY went out having skipped
+      // the consent check, so the audit trail answers "who was texted
+      // without recorded permission, and who decided that" -- which is the
+      // entire point of allowing the override at all.
+      if (res.headers.get("x-audit-consent-override") === "true") {
+        meta.consent_override = true
       }
       return meta
     },
@@ -108,7 +122,7 @@ export const POST = withAudit(
       )
     }
 
-    const { phone, body, contactId, confirmQuietHours } = parsed.data
+    const { phone, body, contactId, confirmQuietHours, consentOverride } = parsed.data
 
     // A contact id is trusted straight through to `insertSmsMessage`'s
     // thread. Confirm it is THIS business's contact before it can be
@@ -146,6 +160,7 @@ export const POST = withAudit(
         contactId: contactId ?? null,
         sentBy: session.user.id,
         appendOptOut,
+        consentOverride: consentOverride === true,
         statusCallbackUrl: `${appOrigin()}/api/webhooks/twilio/status`,
       })
 
@@ -175,6 +190,13 @@ export const POST = withAudit(
       if (confirmQuietHours) {
         res.headers.set("x-audit-quiet-hours-confirmed", "true")
       }
+      // Set only on the SUCCESS path, so the flag records a text that was
+      // actually sent without consent -- not merely that a checkbox was
+      // posted on a request that went on to be refused for some other
+      // reason.
+      if (consentOverride) {
+        res.headers.set("x-audit-consent-override", "true")
+      }
       return res
     } catch (err) {
       if (err instanceof SmsSuppressedError) {
@@ -189,6 +211,32 @@ export const POST = withAudit(
           {
             error: "This number has opted out of texts. You cannot message them.",
             reason: "suppressed",
+          },
+          { status: 409 },
+        )
+      }
+      if (err instanceof SmsNoConsentError) {
+        // G28. Its own refusal slug, like `suppressed` -- a business event,
+        // not a `sent_manual` row with `outcome: failure`, which would be a
+        // send action pretending a send happened.
+        await recordAudit({
+          action: "sms.send_refused",
+          category: "marketing",
+          outcome: "failure",
+          request,
+          metadata: { reason: "no_consent", phone, contact_id: contactId ?? null },
+        })
+        return NextResponse.json(
+          {
+            // Written for the coach, not the compliance officer: it says
+            // what is missing and what they can do, and it does NOT imply
+            // the person refused -- nobody has asked them yet.
+            error:
+              "There is no record that this person agreed to be texted. You can send anyway if you have a reason to — it will be recorded against your name.",
+            reason: "no_consent",
+            // The client uses this to offer the "Send anyway" path rather
+            // than guessing from the message text.
+            canOverride: true,
           },
           { status: 409 },
         )

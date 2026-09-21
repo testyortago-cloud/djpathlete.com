@@ -18,7 +18,7 @@
 import type { BusinessSettings } from "@/lib/db/businesses"
 import type { EnrolmentMetadata } from "@/lib/lead-engine/enrolment-metadata"
 import { substituteMergeFields } from "@/lib/lead-engine/merge-fields"
-import { isSuppressed } from "@/lib/db/contact-consents"
+import { isSuppressed, hasConsent } from "@/lib/db/contact-consents"
 import { insertSmsMessage, markSmsMessageOutcome } from "@/lib/db/sms-messages"
 import { normalisePhone } from "@/lib/lead-engine/identity"
 import { countSmsSegments } from "@/lib/lead-engine/sms-segments"
@@ -269,6 +269,33 @@ export class SmsUnparseablePhoneError extends Error {
   }
 }
 
+/**
+ * G28. Thrown when the destination has no GRANTED `sms` consent row and the
+ * sender did not tick "Send anyway". Carries the NORMALISED phone so the
+ * route can name the number the same way every other refusal here does.
+ *
+ * DIFFERENT IN KIND FROM `SmsSuppressedError`, and the difference is the
+ * whole design. A suppression is a STOP — the person told us to go away, it
+ * is not a preference, and nothing in the product may override it. Missing
+ * consent is an ABSENCE of a recorded yes, which a coach with a real reason
+ * (a reply to an inbound question, a client they are mid-conversation with)
+ * can proceed past, on the record. So this one is overridable and that one
+ * is not.
+ *
+ * WHAT THIS COSTS ON DAY ONE, measured: `contact_consents` has ZERO rows in
+ * production, so this refuses EVERY manual text until consent starts being
+ * recorded. That is not a bug in the gate and it is not a surprise — the
+ * owner ruled for it knowing the count, on 2026-09-21.
+ */
+export class SmsNoConsentError extends Error {
+  readonly phone: string
+  constructor(phone: string) {
+    super(`cannot send: ${phone} has no recorded consent to be texted`)
+    this.name = "SmsNoConsentError"
+    this.phone = phone
+  }
+}
+
 /** A manual message longer than this is refused rather than silently billed. */
 const MANUAL_SMS_MAX_SEGMENTS = 10
 
@@ -297,10 +324,16 @@ export class SmsTooLongError extends Error {
 /**
  * Sends one manually typed message and records it.
  *
- * THREE CHECKS, failing on the first: suppression -> configuration ->
- * segment length. Suppression is first deliberately: it is the check with
- * legal consequences, and ordering configuration ahead of it would let an
- * unconfigured business mask a suppressed number behind a different error.
+ * FOUR CHECKS, failing on the first: suppression -> consent -> configuration
+ * -> segment length. The two with legal consequences come first, and in that
+ * order, deliberately: ordering configuration ahead of either would let an
+ * unconfigured business mask a suppressed or non-consenting number behind a
+ * different error that an admin then "fixes".
+ *
+ * SUPPRESSION IS AHEAD OF CONSENT, AND ONLY CONSENT IS OVERRIDABLE (G28).
+ * `consentOverride` is the coach's "Send anyway" tick; it skips the consent
+ * check and nothing else. A STOP is not a preference, so no tick reaches
+ * past the suppression check above it.
  * Ahead of all three, the phone is normalised to E.164 exactly once — the
  * STOP webhook (`app/api/webhooks/twilio/inbound/route.ts`) writes
  * suppressions keyed on Twilio's E.164 `From`, so checking (or recording)
@@ -343,6 +376,14 @@ export async function sendManualSms(args: {
   contactId?: string | null
   sentBy?: string | null
   appendOptOut: boolean
+  /**
+   * G28. `true` skips the consent check — the coach ticked "Send anyway".
+   * REQUIRED, not optional-defaulting-to-false: a new call site that forgets
+   * it should fail to compile rather than quietly inherit either policy.
+   * It skips CONSENT ONLY; suppression is checked before it and is never
+   * overridable.
+   */
+  consentOverride: boolean
   statusCallbackUrl?: string
 }): Promise<{ messageId: string | null; providerMessageId: string | null; text: string }> {
   const { businessId } = args
@@ -355,15 +396,39 @@ export async function sendManualSms(args: {
     throw new SmsUnparseablePhoneError(args.phone)
   }
 
-  // 1. Suppression.
+  // 1. Suppression. FIRST, AND BEFORE THE OVERRIDE CAN APPLY — a STOP is
+  // not a preference and "Send anyway" must never reach past it.
   if (await isSuppressed(phone, businessId)) {
     throw new SmsSuppressedError(phone)
   }
 
-  // 2. Configuration. Throws SmsNotConfiguredError.
+  // 2. Consent (G28). Second, ahead of configuration, for the same reason
+  // suppression is ahead of it: a legal refusal must not be masked by a
+  // credentials error, which an admin fixes and then texts someone who
+  // never agreed.
+  //
+  // NO CONTACT MEANS NO CONSENT. `contactId` is optional on this function,
+  // so without this branch the gate would be bypassed by texting a number
+  // that has no contact row — which is the easiest thing in the world to
+  // do from the compose box.
+  if (!args.consentOverride) {
+    if (!args.contactId) {
+      throw new SmsNoConsentError(phone)
+    }
+    // `hasConsent` THROWS on a read failure rather than returning false,
+    // deliberately (see its doc comment): "could not read" and "they said
+    // no" are different answers. That throw is left to propagate — the
+    // route maps it to the generic 502 "try again", which is the honest
+    // answer for an unreadable row.
+    if (!(await hasConsent(args.contactId, "sms"))) {
+      throw new SmsNoConsentError(phone)
+    }
+  }
+
+  // 3. Configuration. Throws SmsNotConfiguredError.
   assertSmsSendable(args.settings)
 
-  // 3. Segment length.
+  // 4. Segment length.
   const { text } = renderManualSms({ body: args.body, appendOptOut: args.appendOptOut })
   const counted = countSmsSegments(text)
   if (counted.segments > MANUAL_SMS_MAX_SEGMENTS) {

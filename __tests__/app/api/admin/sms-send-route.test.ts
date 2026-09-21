@@ -71,6 +71,7 @@ import {
   SmsNotConfiguredError,
   SmsTooLongError,
   SmsUnparseablePhoneError,
+  SmsNoConsentError,
   countSmsSegments,
   renderManualSms,
 } from "@/lib/lead-engine/sms"
@@ -410,5 +411,138 @@ describe("POST /api/admin/sms/send — contact must belong to this business", ()
   it("does not check ownership when no contactId is supplied", async () => {
     await post({ phone: "+15551230000", body: "hi" })
     expect(getContactByIdMock).not.toHaveBeenCalled()
+  })
+})
+
+// G28 — the consent gate as the ROUTE presents it. Owner ruled 2026-09-21.
+//
+// The gate itself lives in `sendManualSms` and is tested there (including
+// the invariant that the override cannot bypass a STOP). What is tested
+// HERE is the route's half of the contract: the status and machine-readable
+// reason the compose box branches on, the refusal audit row, and -- the one
+// that actually matters for accountability -- that an override which
+// resulted in a real text is stamped on the audit trail, and one that did
+// not is NOT.
+describe("POST /api/admin/sms/send — G28 consent gate", () => {
+  it("answers 409 with a machine-readable reason the client can branch on", async () => {
+    sendManualSmsMock.mockRejectedValue(new SmsNoConsentError("+12025550123"))
+
+    const res = await post({ phone: "+12025550123", body: "hi", contactId: CONTACT_ID })
+
+    expect(res.status).toBe(409)
+    const payload = await res.json()
+    expect(payload.reason).toBe("no_consent")
+    // The client offers "Send without permission on file" off THIS flag,
+    // never off the prose, which is free to change.
+    expect(payload.canOverride).toBe(true)
+    expect(payload.error).toBeTruthy()
+  })
+
+  it("records a refusal under its own slug, not as a failed send", async () => {
+    sendManualSmsMock.mockRejectedValue(new SmsNoConsentError("+12025550123"))
+
+    await post({ phone: "+12025550123", body: "hi", contactId: CONTACT_ID })
+
+    const refusal = recordAuditMock.mock.calls.find(
+      (c) => (c[0] as { action?: string })?.action === "sms.send_refused",
+    )
+    expect(refusal, "no sms.send_refused row was written").toBeTruthy()
+    expect(refusal?.[0]).toMatchObject({
+      action: "sms.send_refused",
+      outcome: "failure",
+      metadata: { reason: "no_consent", contact_id: CONTACT_ID },
+    })
+  })
+
+  it("does NOT pass an override that was never asked for", async () => {
+    sendManualSmsMock.mockResolvedValue({ messageId: "m1", providerMessageId: "SM1", text: "hi" })
+
+    await post({ phone: "+12025550123", body: "hi", contactId: CONTACT_ID })
+
+    expect(sendManualSmsMock.mock.calls[0][0]).toMatchObject({ consentOverride: false })
+  })
+
+  it("passes the override through when the coach ticked it", async () => {
+    sendManualSmsMock.mockResolvedValue({ messageId: "m1", providerMessageId: "SM1", text: "hi" })
+
+    await post({ phone: "+12025550123", body: "hi", contactId: CONTACT_ID, consentOverride: true })
+
+    expect(sendManualSmsMock.mock.calls[0][0]).toMatchObject({ consentOverride: true })
+  })
+
+  it("REJECTS a non-boolean override at the schema, and sends nothing", async () => {
+    // Measured, not assumed: `z.boolean().optional()` REJECTS `"yes"`, so
+    // the request 400s and never reaches `sendManualSms`. The earlier
+    // version of this test accepted either a 400 or a coerced-false send,
+    // which pinned neither.
+    //
+    // KNOWN EQUIVALENT MUTANT: because the schema guarantees the field is
+    // `true | false | undefined`, the route's `consentOverride === true` and
+    // a plain `Boolean(consentOverride)` behave identically, and swapping
+    // them survives this suite. That is not a coverage gap -- there is no
+    // input that distinguishes them. The `=== true` stays because it states
+    // the intent at the point of use rather than relying on a schema three
+    // screens away.
+    sendManualSmsMock.mockResolvedValue({ messageId: "m1", providerMessageId: "SM1", text: "hi" })
+
+    const res = await post({ phone: "+12025550123", body: "hi", contactId: CONTACT_ID, consentOverride: "yes" })
+
+    expect(res.status).toBe(400)
+    expect(sendManualSmsMock).not.toHaveBeenCalled()
+  })
+
+  // Asserted on the AUDIT ROW, not on the response header. `withAudit`
+  // strips every `x-audit-*` header before the response leaves the wrapper
+  // -- they are an internal handler->wrapper channel, deliberately not sent
+  // to the browser. Asserting the header would have been testing the
+  // plumbing; the row is the thing that has to be right.
+  function sentManualMetadata(): Record<string, unknown> | undefined {
+    const row = recordAuditMock.mock.calls.find((c) => (c[0] as { action?: string })?.action === "sms.sent_manual")
+    return (row?.[0] as { metadata?: Record<string, unknown> } | undefined)?.metadata
+  }
+
+  it("STAMPS consent_override on the audit row of a send that actually went out", async () => {
+    sendManualSmsMock.mockResolvedValue({ messageId: "m1", providerMessageId: "SM1", text: "hi" })
+
+    const res = await post({ phone: "+12025550123", body: "hi", contactId: CONTACT_ID, consentOverride: true })
+
+    expect(res.status).toBe(200)
+    expect(sentManualMetadata()).toMatchObject({ consent_override: true })
+    // And it is NOT leaked to the browser.
+    expect(res.headers.get("x-audit-consent-override")).toBeNull()
+  })
+
+  it("does NOT stamp consent_override when the send was refused anyway", async () => {
+    // The presence control is the test above. A request can carry the tick
+    // and still be refused -- by a STOP, most importantly. Stamping the
+    // flag then would put "texted without consent" in the audit trail for
+    // a text that was never sent.
+    sendManualSmsMock.mockRejectedValue(new SmsSuppressedError("+12025550123"))
+
+    const res = await post({ phone: "+12025550123", body: "hi", contactId: CONTACT_ID, consentOverride: true })
+
+    expect(res.status).toBe(409)
+    expect(sentManualMetadata() ?? {}).not.toHaveProperty("consent_override")
+  })
+
+  it("does not stamp consent_override on an ordinary send", async () => {
+    sendManualSmsMock.mockResolvedValue({ messageId: "m1", providerMessageId: "SM1", text: "hi" })
+
+    await post({ phone: "+12025550123", body: "hi", contactId: CONTACT_ID })
+
+    expect(sentManualMetadata() ?? {}).not.toHaveProperty("consent_override")
+  })
+
+  it("leaves an unreadable consent row as a 502, not a refusal", async () => {
+    // hasConsent throws rather than returning false when it cannot read.
+    // That must surface as "try again", never as "they have not agreed" --
+    // the two are different answers and only one is about the person.
+    sendManualSmsMock.mockRejectedValue(new Error("consents read failed"))
+
+    const res = await post({ phone: "+12025550123", body: "hi", contactId: CONTACT_ID })
+
+    expect(res.status).toBe(502)
+    const payload = await res.json()
+    expect(payload.reason).not.toBe("no_consent")
   })
 })
