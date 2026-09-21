@@ -58,15 +58,13 @@ export async function POST(request: Request) {
     // its own failures), so a spine failure can never cost the submitter the
     // answers they just filled in.
     //
-    // NOTE THE DIFFERENCE FROM THE ASSESSMENT ROUTE, which is deliberate and
-    // currently unresolved. app/api/assessment/submit/route.ts is also
-    // session-gated and attaches ONLY to a contact that already exists, under
-    // the 8 Sept ruling that minting a contact for a registered client is a
-    // product decision. This route MINTS. That is what gap G20 asks for, and
-    // G21 is the open decision on whether the assessment route should match.
-    // If G21 is decided as "create when missing", these two converge on
-    // `captureLead`; if it is upheld, this route is the deliberate exception
-    // and should say so here rather than be quietly reverted to match.
+    // THE ASSESSMENT ROUTE NOW MATCHES THIS ONE. It used to be the
+    // deliberate exception -- app/api/assessment/submit/route.ts is equally
+    // session-gated and, under the 8 Sept ruling, attached ONLY to a contact
+    // that already existed. G21 reversed that ruling on 2026-09-21 and both
+    // routes now mint through `captureLead`. The two are no longer allowed
+    // to drift: if one of them changes how it joins the spine, the other is
+    // part of that change.
     const joinContactSpine = async (clientProfileId: string | null) => {
       await captureLead({
         source: "questionnaire",
