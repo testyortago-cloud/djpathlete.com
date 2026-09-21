@@ -57,6 +57,13 @@ import {
 } from "./shared-helpers.js"
 import type { ProfileAnalysis } from "./types.js"
 import {
+  findIsometricRepsIssues,
+  findRepeatedMovementFamilies,
+  buildIsometricWarning,
+  buildMovementFamilyWarning,
+  buildHallucinatedIdWarning,
+} from "./program-quality.js"
+import {
   DEFAULT_DAY_CONCURRENCY,
   SELECTOR_CHUNK_THRESHOLD,
   buildAlreadySelectedSection,
@@ -203,7 +210,7 @@ const SLOT_SCHEMA = `{
               "movement_pattern": "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion" | "conditioning",
               "target_muscles": [string],
               "sets": number,
-              "reps": string (e.g., "8-10", "30s", "10 cal", "3+3+3", "3/2/1/3/2/1"),
+              "reps": string. A HOLD IS ALWAYS A TIME, NEVER A COUNT: when movement_pattern is "isometric", or the exercise is a plank / hold / iso variant, write a duration ("30s", "40 sec", "30s each side") and never a rep count ("10", "8-10", "6 each side") — a plank has no reps. Everything else is a count: "8-10", "10 cal", "3+3+3", "3/2/1/3/2/1".
               "rest_seconds": number,
               "rpe_target": number | null,
               "tempo": string | null,
@@ -1117,6 +1124,8 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
 
   // Exercise Selector with dedup retry loop
   let assignment: ExerciseAssignment | null = null
+  // Accumulated across retries and day-chunks — see the strip site below.
+  let hallucinatedIdCount = 0
 
   // Invariant across the retry loop — request-level inputs don't change between attempts.
   const coachInstructionsSection = buildCoachInstructionsSection(request.admin_instructions)
@@ -1192,6 +1201,10 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
         const strippedCount = validCount - passAssignment.assignments.length
         if (strippedCount > 0) {
           console.warn(`[week-orchestrator] Stripped ${strippedCount} hallucinated exercise IDs`)
+          // The day is now SHORT by that many slots and nothing else says so.
+          // Before 2026-09-21 this was a console line only, so a coach received
+          // a day with a hole in it and no indication anything had gone wrong.
+          hallucinatedIdCount += strippedCount
         }
 
         // Verify dedup compliance — both cross-week AND within-week duplicates
@@ -1345,6 +1358,60 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   // can introduce an exercise the candidate filter never vetted. On this path
   // there is no validateProgram pass, so this is the only thing standing between
   // a wrong week and the client's phone.
+  // Quality checks the structural verifiers cannot see. The dedup verifier
+  // compares exercise IDs, so it reports 0% while a session prescribes three
+  // hip-bridge variants; and nothing at all looked at whether a HOLD was given
+  // a rep count. Both were found by reading two models' real output on
+  // 2026-09-21 — the counters said "0 warnings" for every one of them.
+  {
+    // NOT named dayLabel — that is an imported helper mapping 1..7 to a
+    // weekday name, and shadowing it here would break the callers below.
+    const scopeLabel = isSingleDay && targetDayName ? targetDayName : `Week ${newWeekNumber}`
+
+    warnings.push(...buildHallucinatedIdWarning(hallucinatedIdCount, scopeLabel))
+
+    const repsBySlotId = new Map<string, string | null | undefined>()
+    for (const week of skeleton.weeks) {
+      for (const day of week.days) {
+        for (const slot of day.slots) repsBySlotId.set(slot.slot_id, slot.reps)
+      }
+    }
+    const isoIssues = findIsometricRepsIssues(assignment.assignments, allExercises, repsBySlotId)
+    if (isoIssues.length > 0) {
+      console.warn(
+        `[week-orchestrator] ${isoIssues.length} isometric(s) prescribed with reps: ` +
+          isoIssues.map((i) => `${i.exercise_name}="${i.reps}"`).join("; "),
+      )
+      warnings.push(...buildIsometricWarning(isoIssues))
+    }
+
+    // Grouped PER DAY: the same movement on two different days is variety, not
+    // repetition. Only a single session training one pattern repeatedly is.
+    const nameById = new Map(allExercises.map((e) => [e.id, e.name]))
+    const slotDay = new Map<string, number>()
+    for (const week of skeleton.weeks) {
+      for (const day of week.days) {
+        for (const slot of day.slots) slotDay.set(slot.slot_id, day.day_of_week)
+      }
+    }
+    const namesByDay = new Map<number, string[]>()
+    for (const a of assignment.assignments) {
+      const d = slotDay.get(a.slot_id)
+      const name = nameById.get(a.exercise_id)
+      if (d === undefined || !name) continue
+      namesByDay.set(d, [...(namesByDay.get(d) ?? []), name])
+    }
+    for (const [day, names] of namesByDay) {
+      const families = findRepeatedMovementFamilies(names)
+      if (families.length === 0) continue
+      console.warn(
+        `[week-orchestrator] ${dayLabel(day)} repeats movement families: ` +
+          families.map((f) => f.exercise_names.join("+")).join("; "),
+      )
+      warnings.push(...buildMovementFamilyWarning(dayLabel(day), families))
+    }
+  }
+
   {
     const violations = findEquipmentViolations(assignment.assignments, allExercises, effectiveEquipment)
     if (violations.length > 0) {

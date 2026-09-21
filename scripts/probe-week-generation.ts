@@ -9,7 +9,12 @@
  * main. Clicking Generate in a dev server tells you nothing about your branch.
  *
  *   npx tsx scripts/probe-week-generation.ts <label> \
- *     [--week 3] [--override "yoga_mat,resistance_band" | "" | NONE] [--instructions "..."]
+ *     [--week 3] [--day 1..7] [--override "yoga_mat,resistance_band" | "" | NONE]
+ *     [--instructions "..."]
+ *
+ *   --day    generate ONE day of that week instead of the whole week. Same
+ *            orchestrator, same budget; it is the scope the coach picks in
+ *            the Generate Day dialog.
  *
  *   --override NONE   no override at all (uses the client's stored profile)
  *   --override ""     an EMPTY override — "nothing at all", the hotel case
@@ -66,6 +71,9 @@ const equipment_override =
 
 const instructions = flag("instructions")
 const targetWeek = Number(flag("week") ?? 3)
+/** --day 1..7 generates that ONE day instead of the whole week. */
+const rawDay = flag("day")
+const targetDay = rawDay === undefined ? undefined : Number(rawDay)
 
 async function main() {
   const { generateWeekSync } = await import("../functions/src/ai/week-orchestrator.js")
@@ -73,6 +81,7 @@ async function main() {
 
   console.log(`\n=== PROBE ${label} ===`)
   console.log(`  target week:  ${targetWeek}`)
+  console.log(`  target day:   ${targetDay ?? "(whole week)"}`)
   console.log(
     `  override:     ${equipment_override === undefined ? "(none — use profile)" : JSON.stringify(equipment_override)}`,
   )
@@ -86,6 +95,7 @@ async function main() {
         client_id: CLIENT_ID,
         assignment_id: ASSIGNMENT_ID,
         target_week_number: targetWeek,
+        ...(targetDay !== undefined ? { target_day_of_week: targetDay } : {}),
         admin_instructions: instructions,
         ...(equipment_override !== undefined ? { equipment_override } : {}),
       },

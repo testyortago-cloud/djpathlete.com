@@ -251,7 +251,7 @@ Given a profile analysis and training parameters, you must output a JSON object 
               "movement_pattern": "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion" | "conditioning",
               "target_muscles": [string] (e.g., ["glutes", "hamstrings", "core"], ["rotator_cuff", "scapular_stabilizers"]),
               "sets": number,
-              "reps": string (e.g., "5", "8-10", "30s", "3x20m", "3 each side", "10 cal", "5+5+5"),
+              "reps": string. A HOLD IS ALWAYS A TIME, NEVER A COUNT: when movement_pattern is "isometric", or the exercise is a plank / hold / iso variant, write a duration ("30s", "40 sec", "30s each side") and never a rep count ("10", "8-10", "6 each side") — a plank has no reps, and "10" tells the athlete nothing. Everything else is a count: "5", "8-10", "3 each side", "10 cal", "5+5+5", "3x20m".
               "rest_seconds": number,
               "rpe_target": number | null (1-10 scale),
               "tempo": string | null (e.g., "3-1-2-0" = eccentric-pause-concentric-pause),

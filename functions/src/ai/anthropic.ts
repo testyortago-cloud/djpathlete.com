@@ -60,23 +60,42 @@ export const MODEL_FABLE = "claude-fable-5-1"
  *    the budget — its ~90s gap under the 540s Eventarc ceiling is what lets a
  *    blown run report "failed" instead of wedging in "processing".
  *
- * MEASURED 2026-09-21, week generation against the dev clone, both agents on
- * Fable at effort "medium":
+ * BENCHMARKED 2026-09-21 — Fable 5.1 vs GPT-6 Astra, identical request, same
+ * client and history, one run each scope:
  *
- *     week 3 (2 weeks of history)   155.6s / 195.6s / 213.6s / 239.2s   all OK
- *     week 4 (3 weeks of history)   FAILED at exactly 450.0s
+ *              week: time / arch+sel tokens      day: time / arch+sel tokens
+ *   Fable 5.1   288.7s / 18,915 + 44,576         133.7s / 16,757 + 37,142
+ *   Astra       188.9s / 13,802 + 25,610         125.9s / 11,601 + 21,432
  *
- * The week-4 failure is UNRESOLVED, not diagnosed. The control run that would
- * have isolated it — the same request on Opus/Sonnet — died on "credit balance
- * is too low", so there is no baseline to compare against and no basis for
- * saying Fable caused it rather than the larger prior-week context. 450.0s is
- * exactly the deadline and a credit 400 fails in seconds (BadRequestError is
- * explicitly not retried), so a genuine timeout is the likelier reading — but
- * it is a reading, not a measurement. Re-run the control before concluding:
- *   npx tsx scripts/probe-week-generation.ts label --week 4 --override NONE
+ * Astra is ~35% faster and ~40% cheaper in tokens at the SAME list price
+ * ($10/$50), and it did not hallucinate an exercise id — Fable invented one in
+ * the week run, which was stripped and left a silent hole in the day. Both
+ * honoured the equipment constraint perfectly (0 violations in all four runs).
+ *
+ * WHAT THE BENCHMARK DID NOT SETTLE, because both models did it: prescribing
+ * REPS for isometric holds, "each side" on bilateral movements, and repeating a
+ * movement family inside one session. Two vendors making identical mistakes is
+ * a PROMPT problem, so those were fixed in the prompt and in program-quality.ts
+ * rather than by choosing a model. Do not re-litigate them as a model choice.
+ *
+ * Astra's own weaknesses, from that one run: it dropped pulling entirely from an
+ * upper-body day, and its single-day output had no warm-up block and ordered
+ * activation before warm_up. Worth watching.
+ *
+ * n=1 per configuration. Repoint with PROGRAM_ARCHITECT_MODEL /
+ * EXERCISE_SELECTOR_MODEL to re-run the comparison without editing code.
  */
-export const MODEL_PROGRAM_ARCHITECT = MODEL_FABLE
-export const MODEL_EXERCISE_SELECTOR = MODEL_FABLE
+export const MODEL_GPT6_ASTRA = "gpt-6-astra"
+
+/**
+ * Overridable so a head-to-head can be run without editing code — set
+ * PROGRAM_ARCHITECT_MODEL / EXERCISE_SELECTOR_MODEL for one run and compare.
+ * PRODUCTION LEAVES BOTH UNSET; the default is the pair above. An unmapped id
+ * throws in toOpenRouterModel rather than silently falling back, so a typo here
+ * fails loudly instead of quietly benchmarking the wrong model.
+ */
+export const MODEL_PROGRAM_ARCHITECT = process.env.PROGRAM_ARCHITECT_MODEL || MODEL_GPT6_ASTRA
+export const MODEL_EXERCISE_SELECTOR = process.env.EXERCISE_SELECTOR_MODEL || MODEL_GPT6_ASTRA
 
 /**
  * Thinking depth for the two agents above. Only reaches the wire on the
