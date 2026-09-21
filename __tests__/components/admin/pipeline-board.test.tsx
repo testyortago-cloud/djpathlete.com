@@ -87,6 +87,108 @@ describe("<PipelineBoard>", () => {
     render(<PipelineBoard columns={COLUMNS} grantablePrograms={[]} />)
     expect(screen.getByText("Won")).toBeInTheDocument()
   })
+
+  // G27. The staleness dot had NO render test at all — the whole
+  // "who should I chase?" signal on this board was unpinned, so it could have
+  // rendered the wrong colour, the wrong words, or nothing, in silence.
+  //
+  // The dot is `role="img"` with an `aria-label`, so it is reachable by role
+  // and name. That matters beyond testability: a bare coloured circle is
+  // invisible to anyone using a screen reader and ambiguous to anyone who
+  // cannot distinguish the three colours, which for red/green is a large
+  // number of people. Asserting the ACCESSIBLE NAME rather than the CSS class
+  // pins the thing a human actually receives.
+  describe("the staleness dot", () => {
+    function columnsWithCards(): BoardColumn[] {
+      return [
+        {
+          ...COLUMNS[0],
+          cards: [
+            {
+              id: "opp-fresh",
+              contactId: "c-1",
+              contactName: "Jamie Rivera",
+              enteredStageAt: new Date().toISOString(),
+              staleness: "fresh",
+              valueCents: null,
+            },
+            {
+              id: "opp-amber",
+              contactId: "c-2",
+              contactName: "Alex Chen",
+              enteredStageAt: new Date().toISOString(),
+              staleness: "amber",
+              valueCents: null,
+            },
+            {
+              id: "opp-red",
+              contactId: "c-3",
+              contactName: "Sam Okafor",
+              enteredStageAt: new Date().toISOString(),
+              staleness: "red",
+              valueCents: null,
+            },
+          ],
+        },
+        COLUMNS[1],
+      ]
+    }
+
+    it.each([
+      ["fresh", "On track"],
+      ["amber", "Slowing down — a while in this step"],
+      ["red", "No reply from them lately"],
+    ])("labels a %s card %s", (_staleness, label) => {
+      render(<PipelineBoard columns={columnsWithCards()} grantablePrograms={[]} />)
+      expect(screen.getByRole("img", { name: label })).toBeInTheDocument()
+    })
+
+    // Each of the three is a DIFFERENT dot. Without this, a component that
+    // rendered "On track" for every card would pass all three tests above.
+    it("gives the three cards three different labels", () => {
+      render(<PipelineBoard columns={columnsWithCards()} grantablePrograms={[]} />)
+      const labels = screen.getAllByRole("img").map((el) => el.getAttribute("aria-label"))
+      expect(labels).toEqual(["On track", "Slowing down — a while in this step", "No reply from them lately"])
+    })
+
+    // The colour still has to be right for everyone who reads it by colour —
+    // and semantic tokens only, never a hardcoded hex (CLAUDE.md).
+    it.each([
+      ["On track", "bg-success"],
+      ["Slowing down — a while in this step", "bg-warning"],
+      ["No reply from them lately", "bg-error"],
+    ])("paints the %s dot with the %s token", (label, token) => {
+      render(<PipelineBoard columns={columnsWithCards()} grantablePrograms={[]} />)
+      expect(screen.getByRole("img", { name: label })).toHaveClass(token)
+    })
+
+    // A closed card is never stale — there is nothing left to chase — so the
+    // won and lost columns show no dot at all. `stalenessOf` already returns
+    // "fresh" for them, but a green dot on a won deal would still read as a
+    // live signal, so the component suppresses it by stage kind too.
+    it("shows no dot on a card in a closed column", () => {
+      const columns: BoardColumn[] = [
+        { ...COLUMNS[0], cards: [] },
+        {
+          ...COLUMNS[1],
+          cards: [
+            {
+              id: "opp-won",
+              contactId: "c-4",
+              contactName: "Dana Reyes",
+              enteredStageAt: new Date().toISOString(),
+              staleness: "fresh",
+              valueCents: 30000,
+            },
+          ],
+        },
+      ]
+      render(<PipelineBoard columns={columns} grantablePrograms={[]} />)
+
+      expect(screen.getByText("Dana Reyes")).toBeInTheDocument()
+      expect(screen.queryByRole("img")).not.toBeInTheDocument()
+    })
+  })
 })
 
 // app/(admin)/admin/pipeline/page.tsx — the server component that builds

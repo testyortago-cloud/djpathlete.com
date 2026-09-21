@@ -443,6 +443,42 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 
 ### G27 · "Gone quiet" measures stage age, not silence · **S**
 - Amber stays stage-entry age; red becomes "no contact activity for `red_after_days`" from the latest non-engine timeline event. Add the missing render test for the dot and labels (`pipeline-board.test.tsx` has none).
+- **BUILT 2026-09-21.** No migration. The row is correct on both halves: red measured stage age, and
+  `pipeline-board.test.tsx` had 7 tests and **zero** mention of staleness — the whole "who do I
+  chase?" signal was unpinned.
+  - **"Non-engine" is an ALLOW-LIST, not a deny-list, and the direction is the safety argument.**
+    `contact_timeline_events.kind` is plain text with no CHECK (00214), so a new kind starts being
+    written with nothing to announce it. A deny-list would let a new ENGINE kind silently count as
+    the person speaking and hold a stale card green for ever — this bug, reintroduced. An allow-list
+    merely fails to count a new PERSON kind, so a card goes red while they are talking to us: the
+    coach chases someone who replied, which is visible and recoverable. Production's shape makes the
+    split concrete: of 271 timeline rows, **256 are `ghl_import` or `sms_repermission_candidate`**
+    and only 12 are real activity.
+  - **`occurred_at`, not `created_at`** — found by the code review, and the kind of thing that ships
+    invisibly. The table carries both; they differ on only **2 of 271** production rows today, and
+    `contact_timeline_contact_idx` is `(contact_id, occurred_at DESC)`, so the wrong column also
+    walks past the index that exists for this query. A later backfill setting `occurred_at` to real
+    historical moments would have made the entire imported cohort read as "active today".
+  - **The read is scoped, ordered and PAGED.** An unbounded read of an append-only table truncates
+    silently at PostgREST's 1000-row cap, so the per-contact maximum would have been computed over
+    an arbitrary page and an actively-replying contact would flip to red for no visible reason. Both
+    bounding guards are pinned by a fixture with a full page of rows.
+  - **A BOOKING IS NOT COUNTED YET, and that is G22's to close.** No booking writes a timeline row at
+    all — neither the Calendly nor the GHL webhook — so someone who books a consult today with no
+    other recent activity shows red on the stage called "Consult Booked". **When G22 adds
+    `booking_scheduled` / `booking_cancelled` rows, add `"booking_scheduled"` to
+    `CONTACT_ACTIVITY_KINDS` in the same change.** Deliberately NOT patched by also anchoring on
+    `entered_stage_at`: a coach dragging a card would then make a silent person look fresh again,
+    which is where this bug came from. Payments already count (the Stripe capture writes
+    `entry_point`).
+  - **The dot's words changed too.** A red dot labelled "Stalled" sat directly above the card's only
+    number, "Entered today" — a contradiction the moment red stopped meaning stage age. Now
+    "Slowing down — a while in this step" and "No reply from them lately", which say which question
+    each colour answers.
+  - Whole suite green at the 7-test baseline (1075 files / 11535 tests); tsc 238/54 per-file
+    identical; build exit 0; **22 mutants, 20 killed and 2 declared EQUIVALENT** — the scoping filter
+    and the early-break counter mask each other, so a mutant that drops BOTH is included and killed
+    rather than pretending either is independently pinned.
 
 ### G28 · Manual texts are not consent-gated · **S, decision**
 - **Recommend:** block a manual send when no granted SMS consent row exists unless the coach ticks an audited **Send anyway** (`sms.sent_manual` metadata `consent_override:true`). Owner confirms the policy, then `sendManualSms` (`lib/lead-engine/sms.ts:330-472`) + composer + route.
@@ -599,9 +635,9 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 24 done · 12 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 G23 G24 G25.
-Open: G21 G22 G26 G27 G28 G29 G30 G31 G32 G33 G34 G35.
+**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 25 done · 11 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 G23 G24 G25 G27.
+Open: G21 G22 G26 G28 G29 G30 G31 G32 G33 G34 G35.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
