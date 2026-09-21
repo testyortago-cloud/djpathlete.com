@@ -76,6 +76,66 @@ describe("routeToPipeline — the routing table (spec §3.2)", () => {
   })
 })
 
+// G24. Someone asking about a camp or a clinic is asking about the thing the
+// Camps & Clinics board exists for, and until now they landed on Coaching —
+// only the PAYMENT for a camp place reached that board
+// (`checkoutType: "event_signup"`). So the board showed the sales and not the
+// enquiries, which is the half a coach actually has to work.
+//
+// `camp` and `clinic` are real members of `SERVICE_TYPES`
+// (lib/validators/inquiry.ts: in_person, online, assessment, clinic, camp),
+// so this is the enquiry form's own vocabulary, not a new one.
+describe("routeToPipeline — camp and clinic enquiries (G24)", () => {
+  it.each([["camp"], ["clinic"]])("routes a %s inquiry to the camps_clinics board", (serviceType) => {
+    expectRouted({ event: "inquiry", serviceType }, CAMPS_CLINICS_KEY)
+  })
+
+  // Matches the assessment arm's "however it arrives" shape rather than being
+  // gated on `event === "inquiry"`. Behaviourally this changes NOTHING today —
+  // no non-inquiry call site can supply these values. The Calendly adapter is
+  // the only producer of a booking `serviceType` and it emits `"assessment"`
+  // or null (string-match on the event-type name); GoHighLevel passes null;
+  // and no payment call site passes `serviceType` at all. It matters the day
+  // G22 gives `bookings` a real `service_type` column, when a camp booking
+  // must reach the camps board without anyone remembering to revisit this
+  // table.
+  it.each([["camp"], ["clinic"]])("routes a %s booking to camps_clinics too, however it arrives", (serviceType) => {
+    expectRouted({ event: "booking", serviceType }, CAMPS_CLINICS_KEY)
+  })
+
+  // The refund refusal is checked FIRST and unconditionally, and must stay
+  // that way: a refund's serviceType describes how the original payment would
+  // be routed today, not which board the card being amended actually lives on.
+  // Adding a service-type arm above that check would turn a loud refusal into
+  // a plausible, silent, possibly-wrong board.
+  it.each([["camp"], ["clinic"]])("still REFUSES a refund carrying serviceType %s", (serviceType) => {
+    expect(routeToPipeline({ event: "refund", serviceType })).toEqual({
+      kind: "refuse",
+      reason: "refund_board_must_come_from_the_opportunity_being_amended",
+    })
+  })
+
+  // The other three SERVICE_TYPES are unchanged. Without this, widening the
+  // arm to every service type would pass the two tests above.
+  it.each([["in_person"], ["online"]])("leaves a %s inquiry on coaching", (serviceType) => {
+    expectRouted({ event: "inquiry", serviceType }, DEFAULT_PIPELINE_KEY)
+  })
+
+  it("keeps assessment on its own board rather than folding it into camps_clinics", () => {
+    expectRouted({ event: "inquiry", serviceType: "assessment" }, ASSESSMENT_KEY)
+  })
+
+  // Exact match, not a substring: "camping", "clinical" and a label a coach
+  // typed are not the enquiry form's values, and must not silently reach a
+  // board on a `.includes()` that looked convenient.
+  it.each([["camping"], ["clinical"], ["Camp"], ["summer camp"]])(
+    "does not route %s — the match is exact, not fuzzy",
+    (serviceType) => {
+      expectRouted({ event: "inquiry", serviceType }, DEFAULT_PIPELINE_KEY)
+    },
+  )
+})
+
 describe("routeToPipeline — fallback behaviour", () => {
   it("falls back to coaching for an unknown checkoutType", () => {
     expectRouted({ event: "payment", checkoutType: "some_future_checkout_type_nobody_named_yet" }, DEFAULT_PIPELINE_KEY)

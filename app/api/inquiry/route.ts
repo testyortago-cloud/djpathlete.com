@@ -189,8 +189,10 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
     // §3.2): an inquiry is a person asking, not a sale — decideMove's inquiry
     // arm only ever opens a card in the first open stage, never one already
     // Won or Lost. Routed the same way every other event is (routeToPipeline):
-    // `service` ("assessment", ...) sends this to the Assessment board when it
-    // matches, Coaching otherwise. Wrapped exactly like the Stripe webhook's
+    // `service` sends this to the Assessment board for "assessment", to Camps
+    // & Clinics for "camp" or "clinic" (G24 — before that only the PAYMENT for
+    // a camp place reached that board, so it showed the sales and not the
+    // enquiries), and Coaching otherwise. Wrapped exactly like the Stripe webhook's
     // and the GHL booking webhook's own pipeline hooks — a misconfigured or
     // unseeded board must never turn "we received your application" into an
     // error for someone who already submitted it.

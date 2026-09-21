@@ -327,6 +327,37 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 
 ### G24 · Camp and clinic enquiries route to Coaching · **S**
 - `lib/lead-engine/pipeline-route.ts:196-208`: `inquiry` with `serviceType ∈ {camp, clinic}` → `camps_clinics`. Update `pipeline-route.test.ts:70`.
+- **BUILT 2026-09-21.** No migration. The row is correct and was re-measured: `camp` and `clinic`
+  really are members of `SERVICE_TYPES` (`in_person, online, assessment, clinic, camp`), and only
+  the PAYMENT for a camp place reached that board, so it showed the sales and not the enquiries.
+  - **Shipped "however it arrives", matching the assessment arm, rather than gated on
+    `event === "inquiry"` as the row's wording suggested.** Behaviourally this is IDENTICAL today,
+    measured rather than assumed: the Calendly adapter is the only producer of a booking
+    `serviceType` and emits `"assessment"` or null (a string match on the event-type name), GHL
+    passes null, and no payment call site passes `serviceType` at all. The difference materialises
+    the day G22 gives `bookings` a real `service_type` — at which point a camp booking reaches the
+    right board with nobody having to remember this table.
+  - **Placed AFTER the refund refusal, which stays first and unconditional.** A refund's
+    `serviceType` describes how the ORIGINAL payment would route today, not which board the card
+    being amended lives on. A mutant that moved the arm above the refusal is in the sweep.
+  - **Exact `===` matches, not a substring test.** `camping`, `clinical`, `Camp` and
+    `summer camp` are pinned as NON-matches — a `.includes()` would have looked convenient and
+    routed a coach's free-text label onto a real board.
+  - **Nothing to backfill: production has 3 inquiries total** (2 `in_person`, 1 `assessment`) and
+    **zero** camp/clinic. This is forward-looking; no existing card is mis-filed. All three boards
+    (`coaching`, `assessment`, `camps_clinics`) are seeded, active and have 4 stages each in
+    production, so the new cards land somewhere real and visible.
+  - **Two stale comments corrected, one of them load-bearing.** `lib/bookings/ingest.ts`'s
+    `serviceType` doc claimed everything but `assessment` goes to Coaching. And the reconciler's
+    booking-replay note said routing bookings is "trivial today" without saying WHY — it is trivial
+    only because that call passes no `serviceType` at all. **That is a trap for G22:** the live path
+    would route a camp booking to Camps & Clinics while the replay routes it to Coaching, producing
+    a duplicate card the per-pipeline unique constraint cannot block. Both files now say so, and say
+    to change them together.
+  - Also corrected: the module header claimed `inquiry` is not a `PipelineEvent` kind. It has been
+    one since `{ kind: "inquiry"; serviceType }` was added to the union.
+  - Whole suite green at the 7-test baseline (1075 files / 11470 tests); tsc 238/54 per-file
+    identical; build exit 0; **9 mutants, 9 killed**.
 
 ### G25 · A coaching refund can amend a camp card · **S**
 - `resolveWonPipelineKey` (`lib/db/pipeline.ts:530-553`): prefer the Won card whose `metadata.stripe_session_id` matches the refunded charge's session; fall back to newest only when none matches. Test both.
@@ -492,9 +523,9 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 20 done · 16 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b.
-Open: G20 G21 G22 G23 G24 G25 G26 G27 G28 G29 G30 G31 G32 G33 G34 G35.
+**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 22 done · 14 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 G24.
+Open: G21 G22 G23 G25 G26 G27 G28 G29 G30 G31 G32 G33 G34 G35.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs

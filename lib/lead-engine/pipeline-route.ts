@@ -18,8 +18,13 @@
 // The earlier (2026-09-01) design proposed a pure function that switched on
 // the bare `PipelineEvent` union. That cannot work: a `payment` event carries
 // only `amountCents`, `currency` and `occurredAt` — nothing saying what was
-// bought — and `event_signup` / `inquiry` are not `PipelineEvent` kinds at
-// all. A function switching on that union would compile, pass a green test
+// bought — and `event_signup` is not a `PipelineEvent` kind at all. (This
+// sentence used to say the same of `inquiry`; that stopped being true when
+// `{ kind: "inquiry"; serviceType }` was added to the union in
+// lib/lead-engine/pipeline-move.ts. The argument is unaffected — an inquiry
+// event carries its serviceType, but a payment still carries nothing saying
+// what was bought, which is what makes the RoutingSubject necessary.)
+// A function switching on that union would compile, pass a green test
 // suite, and silently return the default for every input: today's behaviour
 // wearing a new function's clothes. The fact this function needs to route a
 // payment onto Camps & Clinics — `session.metadata?.type === "event_signup"`
@@ -162,8 +167,14 @@ export type RoutingResult =
  * | `event: "payment"`, any other/absent `checkoutType`     | `coaching`    |
  * | `event: "quiz_result"`                                  | `coaching`    |
  * | `serviceType: "assessment"` (however it arrives)        | `assessment`  |
+ * | `serviceType: "camp"` or `"clinic"` (however it arrives)| `camps_clinics` |
  * | `event: "refund"`                                       | refused — see module header |
  * | anything unmatched                                      | `coaching`    |
+ *
+ * The two service-type rows are checked BEFORE the event-kind rows, so a
+ * service type always wins over what a bare payment or booking would
+ * otherwise get — and both are checked AFTER the refund refusal, which stays
+ * first and unconditional.
  *
  * Programme and shop purchases are not a special case in this table — they
  * are ordinary `payment` events with a `checkoutType` this function does not
@@ -195,6 +206,21 @@ export function routeToPipeline(subject: RoutingSubject): RoutingResult {
   // below so it can override what a bare payment would otherwise get.
   if (subject.serviceType === "assessment") {
     return { kind: "routed", pipelineKey: ASSESSMENT_KEY }
+  }
+
+  // G24, and the same "however it arrives" rule as assessment directly above.
+  // Until this existed, only the PAYMENT for a camp place reached the Camps &
+  // Clinics board (`checkoutType: "event_signup"` below) — so the board showed
+  // the sales and not the enquiries, which is the half a coach actually has to
+  // work. Someone asking about a camp or a clinic is asking about exactly what
+  // that board is for.
+  //
+  // Exact matches on `SERVICE_TYPES` members (lib/validators/inquiry.ts:
+  // in_person, online, assessment, clinic, camp), not a substring test:
+  // "camping" and a label a coach typed are not the enquiry form's values and
+  // must not reach a board by looking similar to one.
+  if (subject.serviceType === "camp" || subject.serviceType === "clinic") {
+    return { kind: "routed", pipelineKey: CAMPS_CLINICS_KEY }
   }
 
   if (subject.event === "payment" && subject.checkoutType === "event_signup") {
