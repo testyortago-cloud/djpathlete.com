@@ -1,0 +1,41 @@
+-- G22 — what a booking is FOR, stored rather than only inferred in flight.
+--
+-- Until now the only fact about what was booked lived in
+-- `BookingIngestInput.serviceType`, which exists for the length of one webhook
+-- call and is then gone. `routeToPipeline` reads it to pick a board, so a live
+-- assessment booking reaches the Assessment board — but nothing that looks at a
+-- booking AFTERWARDS can tell what it was. Two readers need that:
+--
+--   * lib/automation/pipeline-reconcile.ts, which replays bookings and today
+--     routes every single one to `coaching` because it has nothing to read.
+--     That divergence is why an assessment booking already risks a SECOND card
+--     on Coaching, and it is the reason `cron_pipeline_reconcile_enabled` is
+--     still off.
+--   * routeToPipeline itself, for any later re-derivation.
+--
+-- BE CLEAR ABOUT THE ORDER: this migration ships the WRITER only. The
+-- reconciler above is NOT changed here and still ignores the column — teaching
+-- it to select and pass `service_type` is G26, the very next row, and it is
+-- what the cron flag is waiting for. A column with a writer and no reader is
+-- normally a labelling gap in this repo; this one is a deliberate two-step,
+-- because the reader needs the column to exist before it can be written
+-- against, and saying so here is cheaper than someone rediscovering it.
+--
+-- NULLABLE, NO DEFAULT, NO BACKFILL. Null means "this booking predates the
+-- column, or the vendor told us nothing" — which is the honest answer and the
+-- one every reader already handles, because `serviceType` has always been
+-- optional in flight. A default would invent a service type for 100% of
+-- existing rows; a backfill would have to guess one from a free-text event
+-- name, which is exactly the guess the column exists to stop making.
+--
+-- Deliberately NOT a CHECK or an enum. The values it holds are
+-- `lib/validators/inquiry.ts`'s SERVICE_TYPES (in_person, online, assessment,
+-- clinic, camp), but the writer is a VENDOR PAYLOAD match — today a string
+-- match on a Calendly event-type name — and a coach renaming an event type must
+-- not start rejecting bookings at the database. The union is enforced where it
+-- can be recovered from, in TypeScript, not where the only outcome is a lost
+-- webhook.
+alter table bookings add column if not exists service_type text;
+
+comment on column bookings.service_type is
+  'G22. What this booking is for, when the vendor gave us anything to say so — one of lib/validators/inquiry.ts SERVICE_TYPES, or null. Written best-effort by lib/bookings/ingest.ts; read by lib/automation/pipeline-reconcile.ts so a replayed booking routes to the same board the live path chose. Intentionally unconstrained: the writer is a vendor-payload match, and a rename must not cost a booking.';

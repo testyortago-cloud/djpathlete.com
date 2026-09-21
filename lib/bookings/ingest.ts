@@ -37,7 +37,13 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { findAttributionForContact } from "@/lib/db/marketing-attribution"
 import { enqueueBookingConversion } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
-import { findContactByIdentifiers, getContactUserId, backfillContactTimezone } from "@/lib/db/contacts"
+import {
+  findContactByIdentifiers,
+  getContactUserId,
+  backfillContactTimezone,
+  recordEventForExistingContact,
+} from "@/lib/db/contacts"
+import { captureLead } from "@/lib/lead-engine/capture"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
@@ -90,14 +96,16 @@ export type BookingIngestInput = {
    * everything else (including null) to Coaching.
    *
    * ONLY `"assessment"` AND null ARE REACHABLE TODAY — see the paragraph
-   * below. The camp/clinic arm is inert on this path until `bookings` gains a
-   * real `service_type` (G22). WHOEVER WIRES THAT: the reconciler's
-   * booking-replay divergence note (lib/automation/pipeline-reconcile.ts)
-   * still names assessment alone, and it is what stops a booking being
-   * replayed onto the wrong board. A camp booking routed here but replayed as
-   * Coaching there gets a DUPLICATE card, which the per-pipeline unique
-   * constraint cannot block because the two cards are on different pipelines.
-   * Update both together.
+   * below — but that is now a limit of the ADAPTERS, not of the schema:
+   * migration 00273 (G22) gave `bookings` a real `service_type` column and
+   * `stampServiceType` writes this value to it.
+   *
+   * THE RECONCILER STILL DOES NOT READ IT. lib/automation/pipeline-reconcile.ts
+   * routes every booking it replays to `coaching`, because it was written when
+   * there was no column to read — so an assessment booking's card lands on
+   * Assessment here and that pass, finding nothing on Coaching, would open a
+   * SECOND card. Teaching it to pass the stored `service_type` is G26, and it
+   * is what `cron_pipeline_reconcile_enabled` is waiting for.
    *
    * TODAY THERE IS EXACTLY ONE SIGNAL, AND IT IS A STRING MATCH ON A HUMAN
    * LABEL. Calendly's payload carries no service field at all — the only fact
@@ -276,10 +284,106 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
   const contactId = await runContactConsequences(ctx, input)
 
   const { result, bookingId, clickIds } = await writeRow(ctx, input, existing, contactId)
+
+  // G22, and deliberately OUTSIDE the `created` branch below. A cancellation
+  // arrives as an UPDATE to a row that already exists, and "they cancelled" is
+  // exactly the half of a booking's life the engine most needs to see — put
+  // these in `runPostWriteEffects` and only the create would ever be recorded.
+  //
+  // ON TRANSITION ONLY, the same rule the audit row above already uses. A
+  // Calendly `invitee.created` retry against a row that is still `scheduled`,
+  // or a coach editing an appointment in GoHighLevel (whose route defaults the
+  // status to `scheduled`), would otherwise write a SECOND `booking_scheduled`
+  // — and since G27 that row resets the gone-quiet clock, so a redelivery
+  // would make a silent person look like they had just been in touch.
+  const statusChanged = existing == null || (existing.status ?? null) !== input.status
+  if (statusChanged) {
+    await recordBookingOnTimeline(ctx, input, bookingId, contactId)
+  }
+  await stampServiceType(ctx, input, bookingId)
+
   if (result.action === "created") {
     await runPostWriteEffects(ctx, input, bookingId, clickIds)
   }
   return result
+}
+
+/**
+ * G22. What just happened to this booking, on the person's own timeline.
+ *
+ * Only the two statuses the gap names. `completed` and `no_show` are
+ * COACH-RECORDED OUTCOMES rather than things the person did, and the pipeline
+ * already moves a card for them — inventing two more timeline kinds here would
+ * be a vocabulary nobody has agreed and scope this row did not ask for.
+ *
+ * Needs the booking id, so it runs after the row is written rather than beside
+ * the contact resolution. Never throws: the booking is recorded and a history
+ * row must not be able to fail a vendor webhook into a retry.
+ */
+async function recordBookingOnTimeline(
+  ctx: IngestCtx,
+  input: BookingIngestInput,
+  bookingId: string | null,
+  contactId: string | null,
+): Promise<void> {
+  if (!contactId) return
+  const kind =
+    input.status === "scheduled" ? "booking_scheduled" : input.status === "cancelled" ? "booking_cancelled" : null
+  if (!kind) return
+
+  try {
+    await recordEventForExistingContact({
+      contactId,
+      businessId: input.businessId,
+      kind,
+      source: "booking",
+      metadata: { booking_id: bookingId, booking_date: input.bookingDate, booking_source: input.source },
+    })
+  } catch (err) {
+    console.error(`${ctx.log} booking timeline row failed`, (err as Error).message)
+  }
+}
+
+/**
+ * G22. Persist what the booking was FOR, so something other than this one
+ * webhook call can tell.
+ *
+ * A SEPARATE best-effort UPDATE rather than a column on the INSERT, and that
+ * is the careful choice rather than the lazy one. `writeRow`'s insert already
+ * carries a retry for migration 00241's tenant columns, and its trigger
+ * (`isMissingTenantColumnsError`) matches on the ERROR CODE alone — so a
+ * missing `service_type` would fire that retry, the retry strips only the
+ * tenant columns, it would fail for the same reason a second time, and the
+ * booking would be LOST. Writing it here instead cannot touch the insert at
+ * all: worst case the stamp is skipped and the column stays null, which is
+ * exactly what every reader already handles.
+ *
+ * That matters for one deploy. Migrations reach production on push while
+ * Vercel is still building, so the code and migration 00273 land in whichever
+ * order the race decides.
+ *
+ * Skipped entirely when the vendor said nothing — writing an explicit null
+ * over a column that is already null buys nothing and costs a round trip.
+ */
+async function stampServiceType(
+  ctx: IngestCtx,
+  input: BookingIngestInput,
+  bookingId: string | null,
+): Promise<void> {
+  if (!bookingId || !input.serviceType) return
+
+  const { error } = await ctx.supabase
+    .from("bookings")
+    .update({ service_type: input.serviceType })
+    .eq("id", bookingId)
+  if (error) {
+    // PGRST204/42703 is the deploy race and is expected; anything else is a
+    // real fault. Both are warnings rather than throws for the same reason —
+    // the booking itself is already safely recorded.
+    console.warn(
+      `${ctx.log} could not stamp service_type "${input.serviceType}" on booking ${bookingId} (${error.code} ${error.message}); the booking is recorded`,
+    )
+  }
 }
 
 async function readAndGate(
@@ -337,8 +441,44 @@ async function runContactConsequences(ctx: IngestCtx, input: BookingIngestInput)
       phone: input.contact.phone,
       businessId: input.businessId,
     })
+
+    // G22. Nobody matched, so MINT one. Until this existed a booking could only
+    // ever attach: a stranger who booked a consult straight off the website
+    // left a `bookings` row and no trace on the spine at all — invisible to
+    // every sequence, absent from the contacts list, no timeline. Booking time
+    // is the single highest-intent thing a visitor can do, and it was the one
+    // entry point that could not create a lead.
+    //
+    // `captureLead` never throws (lib/lead-engine/capture.ts swallows and logs
+    // its own failures) and returns null when it has no identifier to work
+    // with or its write failed. Either way the booking itself still lands —
+    // the guard below already handles "no contact", because that has always
+    // been the ordinary outcome here.
+    const contactAlreadyExisted = contactId != null
+    if (!contactId) {
+      contactId = await captureLead({
+        source: "booking",
+        email: input.contact.email,
+        phone: input.contact.phone,
+        name: input.contact.name,
+        businessId: input.businessId,
+        timezone: input.inviteeTimezone,
+      })
+    }
+
     if (contactId) {
-      if (input.status === "scheduled" || input.status === "completed") {
+      // ONLY FOR A CONTACT THAT ALREADY EXISTED, and that condition is new with
+      // G22 rather than a tidy-up. `exitRunsForContact` exits EVERY active run
+      // for the contact, and `captureLead` above reaches `enrollIfTriggered` —
+      // so on a freshly minted contact this would exit the run it had just
+      // created, one line earlier. A person who booked would be enrolled and
+      // un-enrolled in the same request, and nothing would say why.
+      //
+      // Inert today: no sequence has `trigger_source = 'booking'` (checked
+      // against production), so the mint enrols nobody. It is a fuse, and the
+      // guard is cheaper than the incident. A brand-new contact has no prior
+      // runs to exit in any case, so this loses nothing.
+      if (contactAlreadyExisted && (input.status === "scheduled" || input.status === "completed")) {
         await exitRunsForContact(contactId, "booking", input.businessId)
       }
       // Task 3 (spec §3.2) put every event through the same routing table

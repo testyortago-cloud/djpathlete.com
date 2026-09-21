@@ -321,6 +321,47 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 ### G22 · Bookings never create a contact or a timeline row; no service type is stored · **M**
 - **Shipped when:** `ingestBooking` (`lib/bookings/ingest.ts:294-355`) captures a contact (`source:"booking"`, new `ContactEventSource` member) when none matches, writes `booking_scheduled` / `booking_cancelled` timeline rows, and persists `bookings.service_type text` (reader: the reconciler in G26 and `routeToPipeline`) from the Calendly event-name match and the GHL calendar.
 - **Test:** `ingest.test.ts` — stranger's booking → contact + timeline + card; `calendly-booking.test.ts` — `service_type` stored.
+- **BUILT 2026-09-21. MIGRATION `00273` — the first schema change of this phase**, applied to the dev
+  clone and verified before the code was written. Additive, nullable, no default, no backfill.
+  Re-measured first: `bookings.service_type` really was absent and `contact_id` really was present.
+  - **`booking` is a new `ContactEventSource`, and the type system made that a decision rather than
+    a default.** Two `Record<ContactEventSource, …>` maps refused to compile until it was answered:
+    `IS_PURCHASE_SOURCE` (false — booking time is not buying; a paid consult is a separate Stripe
+    event that writes its own `purchase` row) and `IS_SUPERSEDING_SOURCE` (true — a slot in their own
+    diary is the most deliberate act on that list). The second is **unreachable today**: no sequence
+    has `trigger_source = 'booking'`, checked against production, so a booking capture enrols nobody.
+    Recorded as such rather than left looking load-bearing.
+  - **A LATENT ORDERING TRAP, found while answering that.** `exitRunsForContact` exits EVERY active
+    run for a contact, and `captureLead` reaches `enrollIfTriggered` — so on a freshly minted contact
+    the ingest would have enrolled and un-enrolled the same person in one request, with nothing
+    saying why. The exit is now gated on the contact having ALREADY existed, which also loses
+    nothing: a brand-new contact has no prior runs.
+  - **Timeline rows are for the ENGINE, not the screen — found by the code review.**
+    `mergeTimeline` already merges the `bookings` table through `describeBooking`, status included
+    ("Booked a call for 8 Sep — cancelled"). Rendering the new rows as well printed the same fact
+    twice at two different timestamps. They are written (G27 measures silence from
+    `contact_timeline_events`, and before this a booking left no trace there at all) and **skipped
+    at render**.
+  - **On TRANSITION only**, the same rule the audit row already used. A Calendly `invitee.created`
+    retry against a still-`scheduled` row, or a coach editing a GHL appointment, would otherwise
+    write a second `booking_scheduled` — and since G27 that row **resets the gone-quiet clock**, so a
+    redelivery would make a silent person look like they had just been in touch.
+  - **`service_type` is a separate best-effort UPDATE, not a column on the INSERT**, and that is the
+    careful choice. `writeRow`'s insert already carries a retry for 00241's tenant columns whose
+    trigger matches on the ERROR CODE alone — so a missing `service_type` would fire that retry, the
+    retry strips only tenant columns, it would fail identically a second time, and **the booking
+    would be lost**. Writing it afterwards cannot touch the insert at all.
+  - **G27's documented blind spot is closed:** `booking_scheduled` joined `CONTACT_ACTIVITY_KINDS`,
+    so somebody who books a consult today no longer shows red on the stage called "Consult Booked".
+    `booking_cancelled` is deliberately NOT on it — a cancel can be the coach's doing as easily as
+    theirs.
+  - **The writer ships without its reader, deliberately and in writing.** `pipeline-reconcile.ts`
+    still routes every replayed booking to `coaching`; teaching it to read the new column is **G26**,
+    and it is what `cron_pipeline_reconcile_enabled` is waiting for. The migration, the ingest and
+    the reconciler all now say so — the three comments that previously claimed the column did not
+    exist have been corrected.
+  - Whole suite green at the 7-test baseline (1075 files / 11560 tests); tsc 238/54 per-file
+    identical; build exit 0; **22 mutants, 22 killed**.
 
 ### G23 · A payment does not close the enquiry card on another board · **S**
 - After the Won card is created on the routed board, close any open card for the same contact on other boards as `won` with `value_cents 0` and `outcome_reason paid_elsewhere` (no double-counting). Test in `pipeline-hooks.test.ts`.
@@ -635,9 +676,9 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 25 done · 11 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 G23 G24 G25 G27.
-Open: G21 G22 G26 G28 G29 G30 G31 G32 G33 G34 G35.
+**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 26 done · 10 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 G22 G23 G24 G25 G27.
+Open: G21 G26 G28 G29 G30 G31 G32 G33 G34 G35.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs

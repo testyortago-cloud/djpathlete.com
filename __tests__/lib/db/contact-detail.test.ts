@@ -214,6 +214,38 @@ describe("mergeTimeline", () => {
     expect(merged.map((entry) => entry.origin)).toEqual(["event", "booking", "payment"])
   })
 
+  // G22 gave bookings a `contact_timeline_events` row, which the ENGINE needs
+  // — G27 measures "have they gone quiet?" from that table, and before G22 a
+  // booking left no trace in it at all. This screen does not need them: it
+  // already merges the `bookings` table itself, with the status included
+  // ("Booked a call for 8 Sep — cancelled"). Rendering both would print the
+  // same fact twice, at two different timestamps, because the booking line
+  // sits at the SLOT's time and the event row at the moment it was recorded.
+  it.each([["booking_scheduled"], ["booking_cancelled"]])(
+    "does not render %s, which the bookings table already shows",
+    (kind) => {
+      const merged = mergeTimeline({
+        events: [event({ id: "e1", kind, source: "booking", occurred_at: "2026-08-22T10:00:00.000Z" })],
+        payments: [],
+        bookings: [booking({ id: "b1", booking_date: "2026-08-21T14:00:00.000Z" })],
+      })
+
+      expect(merged.map((entry) => entry.key)).toEqual(["booking:b1"])
+    },
+  )
+
+  // The control: an ordinary event row on the same fixture IS rendered, so the
+  // test above is proving a targeted skip rather than a broken event loop.
+  it("still renders an ordinary event row alongside a booking", () => {
+    const merged = mergeTimeline({
+      events: [event({ id: "e1", kind: "entry_point", source: "booking", occurred_at: "2026-08-22T10:00:00.000Z" })],
+      payments: [],
+      bookings: [booking({ id: "b1", booking_date: "2026-08-21T14:00:00.000Z" })],
+    })
+
+    expect(merged.map((entry) => entry.key)).toEqual(["event:e1", "booking:b1"])
+  })
+
   // THE PRESENCE CONTROL for every "shows no payments" assertion elsewhere. A
   // broken payment join returns nothing for everyone, and an absence test alone
   // passes just as happily in that case.
@@ -318,6 +350,12 @@ describe("describeTimelineEvent", () => {
   it("names the entry point from its source", () => {
     expect(describeTimelineEvent(event({ id: "e", kind: "entry_point", source: "newsletter" })).title).toBe(
       "Signed up for the newsletter",
+    )
+  })
+
+  it("names the booking entry point from its source, rather than falling through to a raw slug", () => {
+    expect(describeTimelineEvent(event({ id: "e", kind: "entry_point", source: "booking" })).title).toBe(
+      "Booked a session",
     )
   })
 

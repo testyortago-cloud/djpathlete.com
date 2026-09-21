@@ -28,11 +28,18 @@ const recordAuditMock = vi.fn(async (..._a: any[]) => undefined)
 // the contact, fill-only.
 const backfillContactTimezoneMock = vi.fn(async (..._a: any[]) => true)
 
+// G22: a booking by somebody with no contact row now MINTS one, and every
+// booking leaves a timeline row saying what happened.
+const captureLeadMock = vi.fn(async (..._a: any[]) => null as string | null)
+const recordEventForExistingContactMock = vi.fn(async (..._a: any[]) => undefined)
+
 vi.mock("@/lib/db/contacts", () => ({
   findContactByIdentifiers: (...a: unknown[]) => findContactByIdentifiersMock(...a),
   getContactUserId: (...a: unknown[]) => getContactUserIdMock(...a),
   backfillContactTimezone: (...a: unknown[]) => backfillContactTimezoneMock(...a),
+  recordEventForExistingContact: (...a: unknown[]) => recordEventForExistingContactMock(...a),
 }))
+vi.mock("@/lib/lead-engine/capture", () => ({ captureLead: (...a: unknown[]) => captureLeadMock(...a) }))
 vi.mock("@/lib/db/sequences", () => ({ exitRunsForContact: (...a: unknown[]) => exitRunsForContactMock(...a) }))
 vi.mock("@/lib/db/pipeline", () => ({ applyPipelineEvent: (...a: unknown[]) => applyPipelineEventMock(...a) }))
 vi.mock("@/lib/ads/conversions", () => ({ enqueueBookingConversion: (...a: unknown[]) => enqueueBookingConversionMock(...a) }))
@@ -46,6 +53,7 @@ let notificationsInsert: ReturnType<typeof vi.fn>
 let businessMembersEq: ReturnType<typeof vi.fn>
 let businessSettingsMaybeSingle: ReturnType<typeof vi.fn>
 let lastInsertedRow: Record<string, unknown> | null = null
+let lastUpdatedRow: Record<string, unknown> | null = null
 // Records every .eq() applied to a `bookings` SELECT, in call order, so a
 // test can assert the PREDICATE readByKey applies — not merely that a row
 // came back. A mock that returns rows proves nothing about which rows the
@@ -71,7 +79,14 @@ vi.mock("@/lib/supabase", () => ({
             }
             return chain
           },
-          update: () => ({ eq: updateEq }),
+          // Records the PAYLOAD, not only the `.eq()` that follows it. An
+          // `update: () => ({ eq })` mock discards what was actually written,
+          // so a stamp that wrote null — or a different column entirely —
+          // passed a test asserting only which row was targeted.
+          update: (row: Record<string, unknown>) => {
+            lastUpdatedRow = row
+            return { eq: updateEq }
+          },
           insert: (row: Record<string, unknown>) => {
             lastInsertedRow = row
             return { select: () => ({ single: insertSingle }) }
@@ -113,6 +128,7 @@ function input(overrides: Partial<BookingIngestInput> = {}): BookingIngestInput 
 beforeEach(() => {
   vi.clearAllMocks()
   lastInsertedRow = null
+  lastUpdatedRow = null
   eqCalls = []
   selectMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
   insertSingle = vi.fn().mockResolvedValue({ data: { id: "bk-new" }, error: null })
@@ -131,6 +147,224 @@ beforeEach(() => {
   enqueueBookingConversionMock.mockReset().mockResolvedValue(null)
   findAttributionForContactMock.mockReset().mockResolvedValue(null)
   recordAuditMock.mockReset().mockResolvedValue(undefined)
+  captureLeadMock.mockReset().mockResolvedValue(null)
+  recordEventForExistingContactMock.mockReset().mockResolvedValue(undefined)
+})
+
+// G22. A booking used to be able to ATTACH to a contact and nothing more:
+// `findContactByIdentifiers` either found somebody or the booking left a
+// `bookings` row and no trace on the spine at all. So a stranger who booked a
+// consult straight off the website was invisible to every sequence, absent
+// from the contacts list, and had no timeline — the single highest-intent
+// thing a visitor can do, and the engine could not see it.
+describe("a booking joins the contact spine (G22)", () => {
+  it("mints a contact when nobody matches, with source 'booking'", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce(null)
+    captureLeadMock.mockResolvedValueOnce("contact-minted")
+
+    await ingestBooking(input())
+
+    expect(captureLeadMock).toHaveBeenCalledTimes(1)
+    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
+      source: "booking",
+      email: "priya@example.test",
+      phone: "+16176504548",
+      name: "Priya Raman",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
+  })
+
+  // The minted contact has to be USED, not merely created: the sequence exit,
+  // the pipeline card and the booking row's own `contact_id` all hang off it.
+  it("uses the minted contact for the pipeline card and the booking row", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce(null)
+    captureLeadMock.mockResolvedValueOnce("contact-minted")
+
+    await ingestBooking(input())
+
+    expect(applyPipelineEventMock.mock.calls[0][0]).toMatchObject({ contactId: "contact-minted" })
+    expect(lastInsertedRow).toMatchObject({ contact_id: "contact-minted" })
+  })
+
+  // Attach-only when a contact already exists — minting a second row for
+  // somebody already on the spine is the duplicate-contact bug, not the fix.
+  it("does not mint when a contact already matches", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-existing")
+
+    await ingestBooking(input())
+
+    expect(captureLeadMock).not.toHaveBeenCalled()
+    expect(applyPipelineEventMock.mock.calls[0][0]).toMatchObject({ contactId: "contact-existing" })
+  })
+
+  // captureLead returns null when it has nothing to identify a person by, and
+  // when its own write failed. Either way the booking still has to land.
+  it("carries on with no contact when the mint comes back empty", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce(null)
+    captureLeadMock.mockResolvedValueOnce(null)
+
+    const result = await ingestBooking(input())
+
+    expect(result).toEqual({ action: "created", bookingId: "bk-new" })
+    expect(applyPipelineEventMock).not.toHaveBeenCalled()
+    expect(lastInsertedRow).toMatchObject({ contact_id: null })
+  })
+
+  // A reschedule's cancel half skips every contact consequence (see the
+  // module header) — it must not mint either, or every reschedule would
+  // create a contact for the leg being thrown away.
+  it("does not mint for the cancel half of a reschedule", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce(null)
+
+    await ingestBooking(input({ rescheduled: true, status: "cancelled" }))
+
+    expect(captureLeadMock).not.toHaveBeenCalled()
+  })
+
+  // `exitRunsForContact` exits EVERY active run for a contact, and
+  // `captureLead` reaches `enrollIfTriggered`. Run them in that order on a
+  // freshly minted contact and the booking enrols them and un-enrols them in
+  // the same request, with nothing to say why. Inert today — no sequence has
+  // `trigger_source = 'booking'` — so this is a fuse, and the guard is
+  // cheaper than the incident.
+  it("does not exit sequence runs for a contact it just minted", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce(null)
+    captureLeadMock.mockResolvedValueOnce("contact-minted")
+
+    await ingestBooking(input({ status: "scheduled" }))
+
+    expect(exitRunsForContactMock).not.toHaveBeenCalled()
+  })
+
+  // The control: a contact who was already there DOES get their in-flight
+  // follow-up ended, which is the pre-existing behaviour and must survive.
+  it("still exits sequence runs for a contact that already existed", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-existing")
+
+    await ingestBooking(input({ status: "scheduled" }))
+
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-existing", "booking", SINGLETON_BUSINESS_ID)
+  })
+
+  describe("the timeline row", () => {
+    it.each([
+      ["scheduled", "booking_scheduled"],
+      ["cancelled", "booking_cancelled"],
+    ])("writes %s as %s", async (status, kind) => {
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-1")
+
+      await ingestBooking(input({ status: status as BookingIngestInput["status"] }))
+
+      expect(recordEventForExistingContactMock).toHaveBeenCalledTimes(1)
+      expect(recordEventForExistingContactMock.mock.calls[0][0]).toMatchObject({
+        contactId: "contact-1",
+        businessId: SINGLETON_BUSINESS_ID,
+        kind,
+        source: "booking",
+      })
+    })
+
+    // `completed` and `no_show` are COACH-RECORDED OUTCOMES, not things the
+    // person did, and the pipeline already records them as stage moves. G22
+    // names two kinds; inventing two more here would be scope this row did
+    // not ask for and a vocabulary nobody has agreed.
+    it.each([["completed"], ["no_show"]])("writes no timeline row for %s", async (status) => {
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-1")
+
+      await ingestBooking(input({ status: status as BookingIngestInput["status"] }))
+
+      expect(recordEventForExistingContactMock).not.toHaveBeenCalled()
+    })
+
+    // ON TRANSITION ONLY, the same rule the audit row already uses. A Calendly
+    // `invitee.created` retry against a row that is still `scheduled`, or a
+    // coach editing an appointment in GoHighLevel (whose route defaults the
+    // status to `scheduled`), would otherwise write a SECOND
+    // `booking_scheduled` — and since G27 that row resets the gone-quiet
+    // clock, so a redelivery would make a silent person look like they had
+    // just been in touch.
+    it("writes nothing when the status has not actually changed", async () => {
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-1")
+      selectMaybeSingle.mockResolvedValueOnce({
+        data: { id: "bk-existing", status: "scheduled", booking_date: "2026-09-08T14:00:00.000Z" },
+        error: null,
+      })
+
+      await ingestBooking(input({ status: "scheduled" }))
+
+      expect(recordEventForExistingContactMock).not.toHaveBeenCalled()
+    })
+
+    // The control: a REAL transition on an existing row still records.
+    it("writes when an existing booking actually changes status", async () => {
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-1")
+      selectMaybeSingle.mockResolvedValueOnce({
+        data: { id: "bk-existing", status: "scheduled", booking_date: "2026-09-08T14:00:00.000Z" },
+        error: null,
+      })
+
+      await ingestBooking(input({ status: "cancelled" }))
+
+      expect(recordEventForExistingContactMock).toHaveBeenCalledTimes(1)
+      expect(recordEventForExistingContactMock.mock.calls[0][0]).toMatchObject({ kind: "booking_cancelled" })
+    })
+
+    it("carries the booking's own date and id, so the row means something on its own", async () => {
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-1")
+
+      await ingestBooking(input())
+
+      expect(recordEventForExistingContactMock.mock.calls[0][0].metadata).toMatchObject({
+        booking_id: "bk-new",
+        booking_date: "2026-09-08T14:00:00.000Z",
+      })
+    })
+
+    it("writes nothing when there is no contact to write it against", async () => {
+      findContactByIdentifiersMock.mockResolvedValueOnce(null)
+      captureLeadMock.mockResolvedValueOnce(null)
+
+      await ingestBooking(input())
+
+      expect(recordEventForExistingContactMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("the service type is persisted (G22)", () => {
+    it("stamps what the booking was for onto the row", async () => {
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-1")
+
+      await ingestBooking(input({ serviceType: "assessment" }))
+
+      // WHICH row, and WHAT was written to it. Asserting only the `.eq()`
+      // passes just as well for a stamp that wrote null, or wrote a different
+      // column entirely.
+      expect(updateEq).toHaveBeenCalledWith("id", "bk-new")
+      expect(lastUpdatedRow).toEqual({ service_type: "assessment" })
+    })
+
+    // Never fails the booking. `service_type` reaches production one Vercel
+    // deploy before or after migration 00273 depending on which wins the race,
+    // and a booking must not be lost to a column that is about to exist.
+    it("does not fail the booking when the column is not there yet", async () => {
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-1")
+      updateEq.mockResolvedValue({ error: { code: "PGRST204", message: "column not in schema cache" } })
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+      const result = await ingestBooking(input({ serviceType: "assessment" }))
+
+      expect(result).toEqual({ action: "created", bookingId: "bk-new" })
+      warn.mockRestore()
+    })
+
+    it("writes nothing when the vendor said nothing about what was booked", async () => {
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-1")
+
+      await ingestBooking(input({ serviceType: null }))
+
+      expect(updateEq).not.toHaveBeenCalled()
+    })
+  })
 })
 
 describe("the 23505 race", () => {
