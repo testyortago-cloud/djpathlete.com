@@ -16,6 +16,14 @@ export type ContactEventSource =
   | "shop"
   | "assessment"
   | "questionnaire"
+  /**
+   * G22. Somebody booked time — a Calendly invitee, or a GoHighLevel
+   * appointment. Until this existed a booking could only ATTACH to a contact
+   * that already had a row (`findContactByIdentifiers`), so a stranger who
+   * booked straight off the website left a `bookings` row and nothing on the
+   * spine: no contact, no timeline, invisible to every sequence.
+   */
+  | "booking"
   | "step_up"
   | "ai_chat"
   | "inquiry"
@@ -66,6 +74,9 @@ const IS_PURCHASE_SOURCE: Record<ContactEventSource, boolean> = {
   shop: true,
   assessment: false,
   questionnaire: false,
+  // Booking time is not buying anything — a consult can be free, and a paid
+  // one is a separate Stripe event that writes its own `purchase` row.
+  booking: false,
   step_up: false,
   ai_chat: false,
   inquiry: false,
@@ -804,13 +815,29 @@ export async function recordEventForExistingContact(input: {
   contactId: string
   businessId: string
   source: ContactEventSource
+  /**
+   * G22. The timeline `kind`, defaulting to `entry_point` so every caller
+   * written before this argument existed is unchanged.
+   *
+   * `entry_point` means "this is how they arrived", which is the right row
+   * exactly once per person. A booking is different: the same contact can book,
+   * cancel and book again, and each is a distinct thing that happened to them —
+   * so those write `booking_scheduled` / `booking_cancelled` instead.
+   *
+   * `contact_timeline_events.kind` is plain `text` with NO check constraint
+   * (00214), so a new value needs no migration — but it DOES need an arm in
+   * `describeTimelineEvent` (lib/db/contact-detail.ts) or it renders through
+   * that function's default and reads as a shrug on the one screen a coach
+   * looks at.
+   */
+  kind?: string
   metadata?: Record<string, unknown>
 }): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase.from("contact_timeline_events").insert({
     business_id: input.businessId,
     contact_id: input.contactId,
-    kind: "entry_point",
+    kind: input.kind ?? "entry_point",
     source: input.source,
     metadata: input.metadata ?? {},
   })

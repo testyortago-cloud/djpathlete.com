@@ -376,22 +376,20 @@ export function decideMove(ctx: MoveContext, event: PipelineEvent): MoveDecision
  * to show "said no" as its own state is a different feature (G29's editor),
  * not something to smuggle in through a staleness dot.
  *
- * A BOOKING IS NOT ON THIS LIST, AND CANNOT BE YET. It is the one obvious
- * piece of contact activity missing, and the reason is that no booking writes
- * a `contact_timeline_events` row at all: neither the Calendly nor the GHL
- * webhook does, which lib/db/contact-detail.ts's own header says outright.
- * So somebody who books a consult today, whose last form was 30 days ago,
- * shows red on the stage called "Consult Booked". **G22 is the gap that adds
- * `booking_scheduled` / `booking_cancelled` timeline rows — add
- * `"booking_scheduled"` here in that same change** and this closes itself.
+ * BOOKINGS JOINED THIS LIST IN G22, which is the change that gave them a
+ * timeline row at all. Until then no booking wrote one — neither the Calendly
+ * nor the GHL webhook — so somebody who booked a consult today, whose last
+ * form was 30 days ago, showed red on the stage called "Consult Booked".
  *
- * It is deliberately NOT patched around by also anchoring on the card's
- * `entered_stage_at` (a booking advances the card, so the card moving would
- * look like contact). That would reintroduce the exact bug this measurement
- * exists to remove: a coach dragging a card would make a silent person look
- * fresh again, which is where "gone quiet measured stage age" came from in the
- * first place. Payments are already covered — the Stripe capture writes
- * `entry_point`, which is on the list.
+ * It was deliberately NOT patched around by anchoring on the card's
+ * `entered_stage_at` instead (a booking advances the card, so the card moving
+ * would have looked like contact). That would have reintroduced the exact bug
+ * this measurement exists to remove: a coach DRAGGING a card would make a
+ * silent person look fresh again, which is where "gone quiet measured stage
+ * age" came from in the first place. `entered_stage_at` moves for two very
+ * different reasons and only one of them is evidence of contact.
+ *
+ * Payments were already covered — the Stripe capture writes `entry_point`.
  */
 export const CONTACT_ACTIVITY_KINDS: readonly string[] = [
   // They submitted a form, bought, abandoned a checkout, took the quiz.
@@ -402,6 +400,11 @@ export const CONTACT_ACTIVITY_KINDS: readonly string[] = [
   "sms_start_received",
   "sms_help_received",
   "sms_consent_confirmed",
+  // They booked time (G22 gave bookings a timeline row; G27 reserved this
+  // line for it). `booking_cancelled` is deliberately NOT here: a cancel can
+  // be the coach's doing as easily as theirs, and this list means "the person
+  // did something", not "something happened to the booking".
+  "booking_scheduled",
   // They asked the chat assistant for a human.
   "chat_escalated",
   // They clicked the unsubscribe link, or the newsletter form's own opt-out.

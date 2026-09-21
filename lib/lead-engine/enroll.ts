@@ -108,6 +108,19 @@ export const IS_SUPERSEDING_SOURCE: Record<ContactEventSource, boolean> = {
   inquiry: true,
   checkout_abandoned: true,
   event_signup: true,
+  // G22. Booking time is the most deliberate act on this list — somebody put a
+  // slot in their own diary — so it plainly meets the rule above.
+  //
+  // UNREACHABLE TODAY, and recorded as such rather than left to look load
+  // bearing: no sequence has `trigger_source = 'booking'` (checked against
+  // production, not assumed), so a booking capture enrols nobody and there is
+  // nothing for it to supersede. The live mechanism by which a booking ends a
+  // follow-up is `exitRunsForContact(contactId, "booking", …)` in
+  // lib/bookings/ingest.ts, which is stronger: it exits every active run
+  // rather than only making way for a new one. This entry is the answer for
+  // the day somebody writes a booking-triggered sequence, and the Record type
+  // is what forced the question to be asked at all.
+  booking: true,
 
   funnel_form: false,
   funnel_checkout: false,

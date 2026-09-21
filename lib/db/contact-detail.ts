@@ -179,12 +179,33 @@ const SOURCE_LABELS: Record<string, string> = {
   checkout_abandoned: "Started a checkout and did not finish",
   quiz: "Finished the quiz",
   ai_chat: "Talked to the assistant on the website",
+  booking: "Booked a session",
   ghl_import: "Imported from the old system",
 }
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null
 }
+
+/**
+ * G22. Timeline kinds that the BOOKINGS TABLE already puts on this screen.
+ *
+ * `booking_scheduled` / `booking_cancelled` exist for the ENGINE, not for this
+ * page: G27 measures "have they gone quiet?" from `contact_timeline_events`,
+ * and before G22 a booking left no row there at all, so somebody who booked a
+ * consult today showed red on the stage called "Consult Booked".
+ *
+ * But `mergeTimeline` below ALREADY merges every `bookings` row through
+ * `describeBooking`, which renders the status too ("Booked a call for 8 Sep —
+ * cancelled"). Rendering the event rows as well would print the same fact
+ * twice, at two different timestamps — the booking line sits at the SLOT's
+ * time and the event row at the moment it was recorded — so one booked-then-
+ * cancelled consult would become four lines saying two things.
+ *
+ * Skipped here rather than never written: the rows are load-bearing for the
+ * engine, and the duplication is purely a rendering question.
+ */
+const KINDS_THE_BOOKINGS_TABLE_ALREADY_SHOWS = new Set(["booking_scheduled", "booking_cancelled"])
 
 /**
  * Turns one raw timeline row into a line a coach can read.
@@ -509,6 +530,9 @@ export function mergeTimeline(input: {
   const entries: TimelineEntry[] = []
 
   for (const row of input.events) {
+    // See KINDS_THE_BOOKINGS_TABLE_ALREADY_SHOWS: these rows are for the
+    // engine, and this screen renders the same booking from the bookings table.
+    if (KINDS_THE_BOOKINGS_TABLE_ALREADY_SHOWS.has(row.kind)) continue
     const described = describeTimelineEvent(row)
     entries.push({
       key: `event:${row.id}`,

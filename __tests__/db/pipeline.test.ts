@@ -3092,6 +3092,44 @@ describe("readBoard", () => {
       expect(cardFor(board, "c-1")?.staleness).toBe("red")
     })
 
+    // G22 closed G27's one documented blind spot. Until bookings wrote a
+    // timeline row at all, somebody who booked a consult today with no other
+    // recent activity showed RED on the stage literally called "Consult
+    // Booked" — the board telling the coach to chase the person who had just
+    // put a slot in their diary.
+    it("counts a booking as the person being active (G22 closing G27's blind spot)", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-consult-booked",
+        entered_stage_at: new Date(Date.now() - 40 * DAY_MS).toISOString(),
+      })
+      seedTimelineEvent("c-1", "booking_scheduled", 1)
+
+      const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
+
+      expect(cardFor(board, "c-1")?.staleness).toBe("amber")
+    })
+
+    // A CANCELLATION is deliberately not on the list. It can be the coach's
+    // doing as easily as theirs — a GHL appointment cancelled by staff writes
+    // the same row — and this list means "the person did something", not
+    // "something happened to the booking". Counting it would quieten a card
+    // for somebody who never touched it.
+    it("does NOT count a cancellation as the person being active", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-consult-booked",
+        entered_stage_at: new Date(Date.now() - 40 * DAY_MS).toISOString(),
+      })
+      seedTimelineEvent("c-1", "booking_cancelled", 1)
+
+      const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
+
+      expect(cardFor(board, "c-1")?.staleness).toBe("red")
+    })
+
     it("uses the MOST RECENT activity, not whichever row came back first", async () => {
       seedBoard()
       seedContact("c-1")

@@ -1146,14 +1146,27 @@ describe("enrollIfTriggered — one sequence at a time", () => {
   })
 
   describe("which sources supersede is a product decision, so it is pinned exactly", () => {
-    it("is exactly these four, and nothing has been added to it quietly", () => {
+    it("is exactly these five, and nothing has been added to it quietly", () => {
       // Membership is the owner's call (2026-09-20), not an implementation
       // detail: each entry decides whether a real person's live follow-up
       // gets thrown away. Asserting the whole set — rather than only that
-      // the four are present — is what stops a fifth being added without
+      // the members are present — is what stops another being added without
       // that decision being made again.
+      //
+      // `booking` joined on 2026-09-21 (G22), and this test is the reason the
+      // decision got made rather than defaulted: adding `booking` to
+      // `ContactEventSource` made `IS_SUPERSEDING_SOURCE` a compile error
+      // until somebody answered, and then failed HERE until somebody agreed.
+      // Booking time is the most deliberate act on the list — a slot in their
+      // own diary — so it meets the rule the others do.
+      //
+      // It is UNREACHABLE today, and that is recorded rather than glossed: no
+      // sequence has `trigger_source = 'booking'` (checked against production),
+      // so a booking capture enrols nobody and there is nothing to supersede.
+      // The live mechanism by which a booking ends a follow-up is
+      // `exitRunsForContact(contactId, "booking", …)` in lib/bookings/ingest.ts.
       expect([...SUPERSEDING_SOURCES].sort()).toEqual(
-        ["checkout_abandoned", "event_signup", "inquiry", "quiz"].sort(),
+        ["booking", "checkout_abandoned", "event_signup", "inquiry", "quiz"].sort(),
       )
     })
 

@@ -258,16 +258,17 @@ export async function runPipelineReconcile(): Promise<PipelineReconcileSummary> 
  *    routes to Coaching here — a pre-existing divergence, harmless only
  *    because this pass writes to `defaultPipelineKey` alone. G24 widened the
  *    service-type rules to send `"camp"`/`"clinic"` to Camps & Clinics, which
- *    joins the same divergence and is equally inert for the same reason: the
- *    Calendly adapter emits only `"assessment"` or null, and `bookings` has
- *    no `service_type` column to replay from at all.
+ *    joins the same divergence.
  *
- *    THE DAY G22 ADDS THAT COLUMN, this call is a live bug rather than a
- *    dormant one: a camp booking would route to Camps & Clinics live and be
- *    replayed onto Coaching here, producing a DUPLICATE card that the
- *    per-pipeline unique constraint cannot block, because the two cards sit
- *    on different pipelines. Pass the row's `service_type` here in the same
- *    change that persists it.
+ *    **THE COLUMN NOW EXISTS AND THIS CALL STILL IGNORES IT.** Migration 00273
+ *    (G22) added `bookings.service_type` and `stampServiceType` writes it, so
+ *    the reason this read had nothing to pass is gone — what remains is that
+ *    nobody has taught this loop to select it. Until they do, a camp booking
+ *    routes to Camps & Clinics live and would be replayed onto Coaching here,
+ *    producing a DUPLICATE card the per-pipeline unique constraint cannot
+ *    block because the two sit on different pipelines. **That is G26, and it
+ *    is what `cron_pipeline_reconcile_enabled` is waiting for** — do not turn
+ *    the cron on before this reads the column.
  *  - Payments are NOT routed per row. This loop pre-resolves ONE board's
  *    `pipelineId`/`stages` (below) and reuses them as the "does this contact
  *    already have an OPEN card" precondition for every payment in the batch —
