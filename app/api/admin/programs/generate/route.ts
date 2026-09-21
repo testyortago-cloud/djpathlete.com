@@ -5,6 +5,7 @@ import { getAdminFirestore, getAdminRtdb } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { createGenerationLog } from "@/lib/db/ai-generation-log"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { enqueueGenerationTask, GENERATION_QUEUES } from "@/lib/ai-task-queue"
 
 export async function POST(request: Request) {
   try {
@@ -54,6 +55,10 @@ export async function POST(request: Request) {
     await jobRef.set({
       type: "program_generation",
       status: "pending",
+      // Executed by programGenerationTask (Cloud Tasks, 1800s), NOT by the
+      // Firestore create trigger (Eventarc, 540s hard cap). The trigger checks
+      // this field and yields, so the job cannot run twice.
+      dispatch: "task",
       input: {
         request: result.data,
         requestedBy: session.user.id,
@@ -66,6 +71,27 @@ export async function POST(request: Request) {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     })
+
+    // Hand the job to Cloud Tasks. `dispatch: "task"` above tells the Firestore
+    // create trigger to leave it alone, so this enqueue is now the ONLY thing
+    // that will run it — a failure here leaves a job nothing will ever pick up,
+    // which the coach experiences as a spinner that never resolves. Mark it
+    // failed and say so, rather than answering 202 for work that will not start.
+    try {
+      await enqueueGenerationTask(GENERATION_QUEUES.program, jobRef.id)
+    } catch (enqueueError) {
+      const detail = enqueueError instanceof Error ? enqueueError.message : String(enqueueError)
+      console.error("[generate] enqueue failed:", detail)
+      await jobRef.update({
+        status: "failed",
+        error: `Could not queue the generation: ${detail}`,
+        updatedAt: FieldValue.serverTimestamp(),
+      })
+      return NextResponse.json(
+        { error: "Could not queue the generation. The AI functions may not be deployed yet." },
+        { status: 503 },
+      )
+    }
 
     // Seed RTDB node so client listener gets immediate data
     try {

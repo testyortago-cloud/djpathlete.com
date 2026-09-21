@@ -3,7 +3,13 @@ import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/fire
 import { onSchedule } from "firebase-functions/v2/scheduler"
 import { onRequest } from "firebase-functions/v2/https"
 import { onObjectFinalized } from "firebase-functions/v2/storage"
+import { onTaskDispatched } from "firebase-functions/v2/tasks"
 import { defineSecret } from "firebase-functions/params"
+import {
+  EVENT_TRIGGER_BUDGET_MS,
+  TASK_TRIGGER_BUDGET_MS,
+  TASK_FUNCTION_TIMEOUT_SECONDS,
+} from "./lib/generation-budget.js"
 
 // Initialize Firebase Admin
 initializeApp()
@@ -47,6 +53,21 @@ const allSecrets = [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, resend
 // the secret store could have fixed it.
 const sendSecrets = [supabaseUrl, supabaseServiceRoleKey, resendApiKey, resendFromEmail]
 
+/**
+ * A job doc carrying `dispatch: "task"` is executed by the Cloud Tasks function
+ * below, NOT by the Firestore trigger. Both triggers exist at once on purpose:
+ * the app and the functions deploy separately, so for a window there are job
+ * docs of both kinds in flight. Without this check every queued job would ALSO
+ * be picked up by its create trigger and generate twice — two AI runs, two
+ * charges, and two weeks written over each other.
+ *
+ * Once nothing writes a job without `dispatch`, the Firestore triggers for
+ * program_generation and week_generation can be deleted outright.
+ */
+function isTaskDispatched(data: FirebaseFirestore.DocumentData | undefined): boolean {
+  return data?.dispatch === "task"
+}
+
 // ─── Program Generation ────────────────────────────────────────────────────────
 // Triggered when a new ai_jobs doc is created with type "program_generation"
 // Runs the full 3-agent orchestration pipeline
@@ -62,9 +83,10 @@ export const programGeneration = onDocumentCreated(
   async (event) => {
     const data = event.data?.data()
     if (!data || data.type !== "program_generation") return
+    if (isTaskDispatched(data)) return
 
     const { handleProgramGeneration } = await import("./program-generation.js")
-    await handleProgramGeneration(event.params.jobId)
+    await handleProgramGeneration(event.params.jobId, EVENT_TRIGGER_BUDGET_MS)
   },
 )
 
@@ -393,11 +415,65 @@ export const weekGeneration = onDocumentCreated(
   async (event) => {
     const data = event.data?.data()
     if (!data || data.type !== "week_generation") return
+    if (isTaskDispatched(data)) return
 
     const { handleWeekGeneration } = await import("./week-generation.js")
-    await handleWeekGeneration(event.params.jobId)
+    await handleWeekGeneration(event.params.jobId, EVENT_TRIGGER_BUDGET_MS)
   },
 )
+
+// ─── Long-running generation via Cloud Tasks ────────────────────────────────
+// The Eventarc triggers above are capped at 540s and CANNOT be raised — deploy
+// rejects it. Task-queue functions get 1800s, which is the only way a run longer
+// than 9 minutes can finish at all.
+//
+// THREE settings here are load-bearing; changing any one of them silently
+// undoes the rest:
+//
+//   * retryConfig.maxAttempts = 1. Cloud Tasks retries any non-2xx by default.
+//     A generation that throws at minute 24 would be re-run from the top —
+//     another full-price Anthropic run, and a second week written over the
+//     first. The handler is NOT idempotent enough to absorb that on its own: it
+//     guards on status === "pending", but a retry after a FAILED run sees
+//     "failed" and stops, while a retry after a partial write does not unwrite
+//     it. One attempt, and the coach retries by hand if they want to.
+//   * timeoutSeconds = 1800, matched to TASK_TRIGGER_BUDGET_MS + slack.
+//   * the enqueue side must set dispatchDeadlineSeconds — Cloud Tasks cancels
+//     the request at its OWN deadline, which DEFAULTS TO 600s. See
+//     lib/generation-budget.ts.
+//
+// Queue name == exported function name. The queue is created by deploying this
+// function, so the app cannot enqueue until that deploy has landed.
+const taskQueueOptions = {
+  retryConfig: { maxAttempts: 1 },
+  // A generation holds a container for up to 30 minutes, so a burst of coaches
+  // clicking Generate should queue rather than fan out into parallel instances.
+  rateLimits: { maxConcurrentDispatches: 3 },
+  timeoutSeconds: TASK_FUNCTION_TIMEOUT_SECONDS,
+  memory: "1GiB" as const,
+  region: "us-central1",
+  secrets: allSecrets,
+}
+
+export const programGenerationTask = onTaskDispatched(taskQueueOptions, async (req) => {
+  const { jobId } = (req.data ?? {}) as { jobId?: string }
+  if (!jobId) {
+    console.error("[programGenerationTask] no jobId in task payload — dropping")
+    return
+  }
+  const { handleProgramGeneration } = await import("./program-generation.js")
+  await handleProgramGeneration(jobId, TASK_TRIGGER_BUDGET_MS)
+})
+
+export const weekGenerationTask = onTaskDispatched(taskQueueOptions, async (req) => {
+  const { jobId } = (req.data ?? {}) as { jobId?: string }
+  if (!jobId) {
+    console.error("[weekGenerationTask] no jobId in task payload — dropping")
+    return
+  }
+  const { handleWeekGeneration } = await import("./week-generation.js")
+  await handleWeekGeneration(jobId, TASK_TRIGGER_BUDGET_MS)
+})
 
 export const aiCoach = onDocumentCreated(
   {

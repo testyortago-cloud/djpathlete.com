@@ -195,6 +195,12 @@ async function enqueueWeekContinuation(
     await jobRef.set({
       type: "week_generation",
       status: "pending",
+      // Continuation weeks take the same Cloud Tasks path as the week a coach
+      // asks for by hand. Without this they would fall to the Firestore trigger
+      // and its 540s cap — so week 1 of a program would get 25 minutes and
+      // weeks 2..N would get 7.5, which is exactly the kind of difference
+      // nobody notices until a deep week times out on its own.
+      dispatch: "task",
       input: buildWeekContinuationInput(seed, targetWeek, continuation, requestedBy),
       result: null,
       error: null,
@@ -203,6 +209,33 @@ async function enqueueWeekContinuation(
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     })
+
+    try {
+      const { getFunctions } = await import("firebase-admin/functions")
+      const { DISPATCH_DEADLINE_SECONDS } = await import("../lib/generation-budget.js")
+      await getFunctions()
+        .taskQueue<{ jobId: string }>("weekGenerationTask")
+        .enqueue({ jobId: jobRef.id }, { dispatchDeadlineSeconds: DISPATCH_DEADLINE_SECONDS })
+    } catch (enqueueError) {
+      // The doc is already written and marked dispatch:"task", so the Firestore
+      // trigger will not touch it and nothing else will either. Leaving it
+      // "pending" is worse than deleting the whole idea of this week:
+      // findInFlightWeekGeneration counts pending as IN FLIGHT, so a stranded
+      // doc would tell the coach a generation is already running and refuse to
+      // let them start one by hand — the one recovery this function's contract
+      // promises. Mark it failed so it stops looking live.
+      const detail = enqueueError instanceof Error ? enqueueError.message : String(enqueueError)
+      console.error(`[orchestrator:sync] Continuation enqueue failed for ${jobRef.id}:`, detail)
+      await jobRef
+        .update({
+          status: "failed",
+          error: `Could not queue continuation week ${targetWeek}: ${detail}`,
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+        .catch(() => {})
+      return null
+    }
+
     console.log(
       `[orchestrator:sync] Queued continuation week ${targetWeek}/${continuation.final_week} as job ${jobRef.id}`,
     )

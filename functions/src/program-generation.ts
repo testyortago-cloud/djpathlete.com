@@ -5,19 +5,6 @@ import type { AiGenerationRequest, AssessmentContext } from "./ai/orchestrator.j
 import { notifyJobCompleted, notifyJobFailed } from "./lib/notify-job-done.js"
 import { createDeadline, DeadlineExceededError } from "./lib/deadline.js"
 
-/**
- * Wall-clock budget for the orchestration, strictly inside the function's
- * `timeoutSeconds` (540s — the hard Eventarc ceiling for event-triggered gen2
- * functions; see index.ts programGeneration). The ~90s gap leaves live
- * container time to record the outcome and email the coach; a hard platform
- * kill skips all of that and wedges the job in "processing" forever.
- *
- * A program is built one week at a time and cannot be finished in one
- * invocation past ~3 weeks, so blowing this budget is NOT a failure: the
- * orchestrator saves every week it finished and queues the rest (see
- * ai/generation-continuation.ts).
- */
-const PROGRAM_GENERATION_BUDGET_MS = 450_000 // 7.5 min
 
 /** Write real-time status to RTDB so the client can listen for instant updates */
 async function updateRtdb(jobId: string, data: Record<string, unknown>) {
@@ -29,7 +16,11 @@ async function updateRtdb(jobId: string, data: Record<string, unknown>) {
   }
 }
 
-export async function handleProgramGeneration(jobId: string): Promise<void> {
+/**
+ * @param budgetMs Wall-clock budget, chosen by the CALLER because it depends on
+ *   how the handler was triggered — see lib/generation-budget.ts.
+ */
+export async function handleProgramGeneration(jobId: string, budgetMs: number): Promise<void> {
   const db = getFirestore()
   const jobRef = db.collection("ai_jobs").doc(jobId)
 
@@ -64,7 +55,7 @@ export async function handleProgramGeneration(jobId: string): Promise<void> {
     notify_email?: string | null
   }
 
-  const deadline = createDeadline(PROGRAM_GENERATION_BUDGET_MS, "Program generation")
+  const deadline = createDeadline(budgetMs, "Program generation")
 
   try {
     console.log(`[program-generation] Starting for job ${jobId}`)

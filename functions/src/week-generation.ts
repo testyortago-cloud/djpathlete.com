@@ -5,17 +5,6 @@ import type { WeekGenerationRequest } from "./ai/week-orchestrator.js"
 import { notifyJobCompleted, notifyJobFailed } from "./lib/notify-job-done.js"
 import { createDeadline, DeadlineExceededError } from "./lib/deadline.js"
 
-/**
- * Wall-clock budget for the orchestration, strictly inside the function's
- * `timeoutSeconds` (540s — the hard Eventarc ceiling for event-triggered gen2
- * functions; see index.ts weekGeneration). The ~90s gap is deliberate: when the
- * budget blows we still need live container time to write status="failed" to
- * Firestore + RTDB and send the failure email. A hard platform kill skips all of
- * that and leaves the job wedged in "processing" forever, unrecoverable because
- * the trigger guard skips non-"pending" docs.
- */
-const WEEK_GENERATION_BUDGET_MS = 450_000 // 7.5 min
-
 /** Write real-time status to RTDB so the client can listen for instant updates */
 async function updateRtdb(jobId: string, data: Record<string, unknown>) {
   try {
@@ -26,7 +15,13 @@ async function updateRtdb(jobId: string, data: Record<string, unknown>) {
   }
 }
 
-export async function handleWeekGeneration(jobId: string): Promise<void> {
+/**
+ * @param budgetMs Wall-clock budget, chosen by the CALLER because it depends on
+ *   how the handler was triggered — see lib/generation-budget.ts. It must blow
+ *   before the platform kills the container, or the catch path below never runs
+ *   and the job wedges in "processing" forever.
+ */
+export async function handleWeekGeneration(jobId: string, budgetMs: number): Promise<void> {
   const db = getFirestore()
   const jobRef = db.collection("ai_jobs").doc(jobId)
 
@@ -64,7 +59,7 @@ export async function handleWeekGeneration(jobId: string): Promise<void> {
   const isDayJob = typeof input.request.target_day_of_week === "number"
   const isTargetedWeek = typeof input.request.target_week_number === "number"
 
-  const deadline = createDeadline(WEEK_GENERATION_BUDGET_MS, "Week generation")
+  const deadline = createDeadline(budgetMs, "Week generation")
 
   try {
     console.log(`[week-generation] Starting for job ${jobId}`)

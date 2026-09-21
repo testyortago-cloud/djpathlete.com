@@ -7,6 +7,7 @@ import { getActiveUserIdsForProgram } from "@/lib/db/assignments"
 import { findInFlightWeekGeneration } from "@/lib/ai-jobs"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { EQUIPMENT_OPTIONS } from "@/lib/validators/exercise"
+import { enqueueGenerationTask, GENERATION_QUEUES } from "@/lib/ai-task-queue"
 
 const generateWeekSchema = z.object({
   assignment_id: z.string().uuid().optional(),
@@ -133,6 +134,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await jobRef.set({
       type: "week_generation",
       status: "pending",
+      // Executed by weekGenerationTask (Cloud Tasks, 1800s), NOT by the
+      // Firestore create trigger (Eventarc, 540s hard cap). The trigger checks
+      // this field and yields, so the job cannot run twice.
+      dispatch: "task",
       input: {
         request: {
           program_id: programId,
@@ -161,6 +166,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     })
+
+    // Hand the job to Cloud Tasks. `dispatch: "task"` above tells the Firestore
+    // create trigger to leave it alone, so this enqueue is now the ONLY thing
+    // that will run it — a failure here leaves a job nothing will ever pick up,
+    // which the coach experiences as a spinner that never resolves. Mark it
+    // failed and say so, rather than answering 202 for work that will not start.
+    try {
+      await enqueueGenerationTask(GENERATION_QUEUES.week, jobRef.id)
+    } catch (enqueueError) {
+      const detail = enqueueError instanceof Error ? enqueueError.message : String(enqueueError)
+      console.error("[generate-week] enqueue failed:", detail)
+      await jobRef.update({
+        status: "failed",
+        error: `Could not queue the generation: ${detail}`,
+        updatedAt: FieldValue.serverTimestamp(),
+      })
+      return NextResponse.json(
+        { error: "Could not queue the generation. The AI functions may not be deployed yet." },
+        { status: 503 },
+      )
+    }
 
     // Seed RTDB node for real-time updates
     try {
