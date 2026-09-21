@@ -593,14 +593,14 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 | 1 | Approve the copy of the eight unreviewed sequences | G03 (live now), G11, G12, G17 |
 | 2 | One-sequence-at-a-time: option A, B or C | G14 |
 | 3 | ~~Gate manual texts on consent, with an audited override?~~ **RULED 2026-09-21: YES — gate it, with the audited "Send anyway" override.** See below. | G28 |
-| 4 | Hard bounce suppresses the address? | G09 |
+| 4 | ~~Hard bounce suppresses the address?~~ **RULED 2026-09-21: YES — HARD bounces only. Soft bounces are ignored entirely.** See §Rulings. | G09 |
 | 5 | ~~Assessment submitters become contacts?~~ **RULED 2026-09-21: YES — mint the contact, matching the questionnaire.** See below. | G21 |
 | 6 | Chat booking: accept hand-over wording, or schedule native booking | G19 |
 | 7 | Email-consent wording on the funnel, quiz and inquiry forms (0 consent rows today) | G17 in practice |
-| 8 | The 73 stranded re-permission runs: re-date and send, leave, or re-ask | — |
-| 9 | Notifications: who receives inquiry, funnel, quiz and chat alerts per tenant | G30 |
-| 10 | `sms_help_text` and the Twilio HELP auto-reply wording | — |
-| 11 | Tenant coaches editing their own settings | G34 |
+| 8 | ~~The 73 stranded re-permission runs~~ **RULED 2026-09-21: RE-DATE AND SEND.** This is what creates the SMS consent rows G28 now requires. | G28 in practice |
+| 9 | ~~Notifications: who receives alerts per tenant~~ **RULED 2026-09-21: the tenant's own `reply_to`.** | G30 |
+| 10 | ~~`sms_help_text` and the Twilio HELP auto-reply wording~~ **RULED 2026-09-21: drafted to carrier convention, owner approves the words before it is configured.** | — |
+| 11 | ~~Tenant coaches editing their own settings~~ **RULED 2026-09-21: record the decision, write NO code — it belongs in the SaaS direction spec.** | G34 (stays open, deliberately) |
 
 ### Rulings recorded 2026-09-21
 
@@ -790,3 +790,86 @@ builds from a clean checkout), but it will bite anyone who had the dev server ru
 **A trap this session paid for twice:** a suite SELECTION can hide a red test. `__tests__/lib/tenancy` was outside two broad runs, and both times something real was hiding there. Run the whole suite before calling a row done. **It happened a third time on 2026-09-21**: G13's verification used `__tests__/lib/db` + `lib/lead-engine` + `components/admin`, which excludes `__tests__/app` — where `contacts-page-tenancy.test.tsx` was red AND making a live network call, because it mocks three sibling reads and not the new one.
 
 **`__tests__/db/social-post-media.test.ts` WAS intermittently red and is now fixed — do not re-add it to the list above.** It failed on two of four full runs (`post_type` 'carousel' → 'text') while passing 10/10 in isolation, which looks exactly like a flake and is not one. `backfill_social_post_media()` (migration `00093`) sets `post_type = 'text'` for every post with no media at position 0, no `media_url` and no `source_video_id` — and it is **not a trigger, it runs when MIGRATIONS ARE APPLIED**. These tests hit the shared dev clone, so any session applying a migration mid-run executes it over everyone's in-flight fixtures, and between `newPost("carousel")` and the first `attachMedia` the fixture is exactly the post that function exists to correct. Fixed at `01ee31ce` by re-stating `post_type` AFTER the media exists, which removes the window rather than narrowing it. **Proved on the dev clone by running the backfill's own `WHERE` clause — never its `UPDATE`, so the probe could not disturb another session: `true` before the first `attachMedia`, `false` after.** When a live-DB test fails only under load, grep the migrations for the column being asserted before calling it flaky.
+
+---
+
+## §Rulings — the second batch, 2026-09-21
+
+Eight more decisions taken in the same session that shipped the RLS lockdown, G21 and
+G28. Recorded here with the measured premise each was taken on, because a ruling whose
+premise is not written down is the thing that goes stale and gets re-litigated — decision
+5 (G21) had already done exactly that.
+
+**THREE OF THESE HAVE NO ROW IN THE TABLE ABOVE, deliberately.** The flag
+(`cron_pipeline_reconcile_enabled`), `{{sport}}` and the outstanding copy were all real
+owner decisions the table never listed. They are recorded here rather than appended as
+rows 12–14, because that insertion point is where a concurrent branch adds its own
+section and the two collide in every merge. If the table is ever renumbered, give them
+rows then.
+
+**Decision 8 — the 73 stranded re-permission runs: RE-DATE AND SEND.**
+Measured on production 2026-09-21: **73 runs, 73 distinct people, all created 2026-08-22,
+all `status = 'failed'` at `attempts = 1`.** Nothing was ever sent to any of them. A query
+keyed on `status = 'active'` returns 0 and looks clean — it is not.
+The sequence is **one email**, subject *"Can we text you?"*, followed by a `stop` step.
+**This decision and G28 are the same decision.** G28 now refuses every manual text because
+`contact_consents` has zero rows; `sms_repermission` is the mechanism that puts rows in
+that table. Leaving the 73 stranded means the G28 override is needed forever.
+Not yet built. It is a data change against production, so it gets a script, a dev-clone
+rehearsal and a read-back before it runs — the same shape as `scripts/exit-sequence-run.mjs`
+in G02. **Diagnose the attempt-1 failure cause first**: re-dating a run that will fail the
+same way again just re-strands it.
+
+**Decision 12 (new) — `cron_pipeline_reconcile_enabled`: TURN IT ON.**
+Verified: there is **no row** in `system_settings`; it is off by absence and the code
+defaults false. G26 removed the duplicate-card hazard that was blocking it, and the
+residual check its module comment documents re-ran at **0** (production has 5 bookings
+all-time, 0 in the last 30 days). Owner said turn it on. Still to do, and outward-facing.
+
+**Decision 9 — alert recipients: the tenant's own `reply_to`.**
+Today all of it is hard-wired to DJP Athlete (`to: sales@`, `cc: darren@`, funnel alerts
+always darren@ first, `from: RESEND_FROM_EMAIL`, DJP-wordmarked layout). Each alert takes
+a `businessId`, sends from that tenant's `sender_name <sender_email>`, replies to their
+`reply_to`, addresses the coach at `reply_to`, and renders their `display_name` /
+`logo_url` / `postal_address`. **One address per tenant — no new column, no new UI.** The
+funnel's existing `notify_emails` was offered as an addition and not taken; if a coach
+later needs per-campaign routing, that column is already there. Unblocks G30.
+
+**Decision 11 — tenant coaches editing their own settings: RECORD, DO NOT BUILD.**
+Honours the `CLAUDE.md` invariant. This is a scoping question for the SaaS direction spec,
+not something to settle inside a task that happens to touch permissions. **G34 stays open
+deliberately** — that is the ruling, not an omission. The narrow version (a coach edits
+only their own branding, no new roles or tiers) was offered and explicitly not taken.
+
+**Decision 4 — hard bounce suppresses: YES, HARD ONLY.**
+A hard bounce means the address does not exist; a soft bounce means a full mailbox or a
+temporary server fault. **Soft bounces are ignored entirely** — no counter, no
+suppress-after-N. Treating them alike would cut off people whose inbox was full that
+morning. The qualifier is the guard: anything reading this must check the bounce TYPE, not
+that a bounce happened. Unblocks G09.
+
+**Decision 10 — `sms_help_text` / Twilio HELP reply: drafted to carrier convention.**
+Shape: who is texting, what it is about, HELP for help, STOP to opt out, rates may apply —
+built from the tenant's own business name. **Owner approves the exact words before it is
+configured.** Remember that Twilio auto-replies are invisible to the API, so the handset
+may see more than the code sent; verification has to be done on a real handset, and SMS
+cannot currently be tested from the Philippines.
+
+**Decision 13 (new) — `{{sport}}`: add it, merge field AND branching.**
+The code is one `ENROLMENT_METADATA_KEYS` entry plus one line in
+`app/api/inquiry/route.ts`. **The decision was never the code** — adding it also widens
+what a coach can branch on, so `sport` becomes a routing input rather than a word in an
+email. Owner took that knowingly; the branching is the point. Before building, measure
+what fraction of inquiries actually carry a sport value: a branch on a usually-empty field
+sends everyone down the else arm. Note `{{goals}}` remains deliberately unshipped.
+
+**Decision 14 (new) — outstanding copy (G12, G17, G18): Claude drafts, owner approves in the admin.**
+Written in plain English for the athlete or parent reading it, not for the person who
+built the app. G17's six texts are editable live at `/admin/sequences/<key>` with **no
+deploy**. Nothing can send while `contact_consents` is empty, so there is no urgency and
+no risk in drafting first. G18 still needs the `ai_chat` sequence itself, which is the last
+Phase 2 row open.
+
+### What these rulings do NOT cover
+Decisions 1, 2, 6 and 7 are untouched by this batch. Decision 3 (G28) and decision 5 (G21)
+were ruled earlier the same day and are recorded above the table.
