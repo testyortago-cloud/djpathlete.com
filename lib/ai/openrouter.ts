@@ -125,22 +125,50 @@ export function toReasoningEffort(effort: "low" | "medium" | "high" | "max"): "l
   return effort === "max" ? "high" : effort
 }
 
+/** Node/undici socket-level failures that mean "could not reach the provider". */
+const NETWORK_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EPIPE",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_SOCKET",
+])
+
 /**
  * Should a failed OpenRouter call be retried against direct Anthropic?
  *
  * ONLY for faults that are about the provider being unreachable, unpaid or
- * overloaded. A 400 means WE built a bad request — the same request would fail
- * identically on Anthropic, so falling back would just double the cost of every
- * bug and hide it behind a working response. An abort is the caller's deadline
- * and must not be retried at all.
+ * overloaded.
+ *
+ * A STATUS-LESS ERROR IS NOT AUTOMATICALLY A NETWORK FAULT, and treating it as
+ * one is how a migration silently un-migrates itself. The first version of this
+ * returned true for anything without a `.status`, which swept up our OWN bugs:
+ * a TypeError in the request builder, or the `No OpenRouter slug` throw two
+ * functions above, would each be read as "provider unreachable" and every
+ * affected call would be quietly served by Anthropic. The system looks healthy,
+ * the bill moves to the other provider, and nothing says why. So a status-less
+ * error now falls back only when it names itself as a connection failure —
+ * either the SDK's connection error classes or a socket-level errno.
+ *
+ * A 400 or 404 means WE built a bad request; the same request fails identically
+ * on Anthropic, so falling back would double the cost of the bug and hide it
+ * behind a working response. An abort is the caller's deadline and is never
+ * retried.
  */
 export function shouldFallBackToAnthropic(error: unknown): boolean {
-  const e = error as { name?: string; status?: number } | null
+  const e = error as { name?: string; status?: number; code?: string } | null
   if (!e) return false
   if (e.name === "AbortError") return false
 
   const status = typeof e.status === "number" ? e.status : undefined
-  if (status === undefined) return true // network / DNS / socket — provider unreachable
+  if (status === undefined) {
+    if (typeof e.code === "string" && NETWORK_ERROR_CODES.has(e.code)) return true
+    // APIConnectionError / APIConnectionTimeoutError from the OpenAI SDK.
+    return typeof e.name === "string" && /^APIConnection(Timeout)?Error$/.test(e.name)
+  }
   if (status === 401 || status === 402 || status === 403) return true // key, credit, permission
   if (status === 408 || status === 429) return true // timeout, rate limit
   return status >= 500

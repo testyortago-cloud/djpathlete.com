@@ -101,6 +101,49 @@ gcloud iam service-accounts add-iam-policy-binding "$SA" \
   --project=<project-id>
 ```
 
+**3. Invoke the function.** Cloud Tasks delivers the task by calling the Cloud
+Run service behind the function, and the OIDC identity must be allowed to invoke
+it. A fresh task-queue function deploys with an EMPTY IAM policy
+(`etag: ACAB`, no bindings), so this is never there by default:
+
+```bash
+for FN in weekgenerationtask programgenerationtask; do
+  gcloud run services add-iam-policy-binding "$FN" \
+    --member="serviceAccount:$SA" \
+    --role="roles/run.invoker" \
+    --region=us-central1 --project=<project-id>
+done
+```
+
+Note the service names are LOWERCASE — Cloud Run lowercases the function name.
+
+Each grant only reveals the next, because each is enforced at a different
+boundary: Cloud Tasks API (enqueuer) → IAM at token-mint time (actAs) → Cloud
+Run at delivery (invoker). Granting one and stopping looks like progress and
+still fails.
+
+## DEPLOY ALL FUNCTIONS, NOT JUST THE NEW ONES
+
+`firebase deploy --only functions:weekGenerationTask` deploys exactly that one
+and leaves every other function on OLD code — including `weekGeneration`, whose
+whole job in this migration is to CHECK `dispatch:"task"` AND STAND DOWN. An old
+`weekGeneration` has no such check, so it picks up every queued job and runs it
+with stale code. That happened on 2026-09-21: the task function 403'd (missing
+invoker, above) while the old Eventarc trigger quietly ran the same jobs on the
+pre-migration model. Once invoker is granted, BOTH fire on the same job — two AI
+runs, two charges, two weeks written over each other.
+
+```bash
+cd functions && firebase deploy --only functions --project <project-id>
+```
+
+The tells that a function is running old code, from its logs:
+
+  * a model id that is not the current default
+  * `[callAgent] Using structured tool_use output` — the current line reads
+    `[callAgent] Structured output via <branch>`
+  * no OpenRouter attempt and no fallback line at all
+
 Either one missing gives a 503 with the job marked failed. That is the designed
 failure — visible, recoverable, and it does NOT leave the job stranded as
 "pending" (which would block the coach from retrying by hand). Verified in
@@ -121,7 +164,14 @@ It is optional. Unset, the lookup happens and needs the extra read permission.
 
 Generate a week and watch the function logs.
 
-- `weekGenerationTask` should log, and `weekGeneration` should not.
+- `weekGenerationTask` should log, and `weekGeneration` should log NOTHING AT
+  ALL — its guard returns before any work. `firebase functions:log` may not
+  surface application stdout; read Cloud Logging directly instead:
+
+  ```bash
+  gcloud logging read 'resource.labels.service_name="weekgeneration"' \
+    --limit=5 --format="value(textPayload)" --project=<project-id> --freshness=10m
+  ```
 - If **both** log for one job, the `dispatch` guard is not working — stop and fix
   it before running anything else, because every generation is now billing twice.
 - A long run should now be able to pass 540s. It could not before.

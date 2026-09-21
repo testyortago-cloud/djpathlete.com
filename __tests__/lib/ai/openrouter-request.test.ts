@@ -179,7 +179,9 @@ describe("normalizeUsage", () => {
 
 describe("shouldFallBackToAnthropic", () => {
   it.each([
-    ["no status (network/DNS)", {}],
+    // A bare status-less object is NOT in this list any more — see the
+    // "does NOT fall back on OUR OWN bug" case below for why.
+    ["network refusal", { code: "ECONNREFUSED" }],
     ["401 bad key", { status: 401 }],
     ["402 out of credit", { status: 402 }],
     ["429 rate limited", { status: 429 }],
@@ -201,5 +203,25 @@ describe("shouldFallBackToAnthropic", () => {
 
   it("does NOT fall back on an abort — that is the caller's deadline", () => {
     expect(shouldFallBackToAnthropic({ name: "AbortError" })).toBe(false)
+  })
+
+  it("falls back on a socket-level errno", () => {
+    expect(shouldFallBackToAnthropic({ code: "ECONNREFUSED" })).toBe(true)
+    expect(shouldFallBackToAnthropic({ code: "UND_ERR_CONNECT_TIMEOUT" })).toBe(true)
+  })
+
+  it("falls back on the SDK's connection error classes", () => {
+    expect(shouldFallBackToAnthropic({ name: "APIConnectionError" })).toBe(true)
+    expect(shouldFallBackToAnthropic({ name: "APIConnectionTimeoutError" })).toBe(true)
+  })
+
+  it("does NOT fall back on OUR OWN bug that happens to carry no status", () => {
+    // This is the important one. The first version returned true for anything
+    // status-less, so a TypeError in the request builder — or the "No
+    // OpenRouter slug" throw — read as "provider unreachable" and every
+    // affected call was quietly served by Anthropic. The migration looks done,
+    // the bill moves, and nothing says why.
+    expect(shouldFallBackToAnthropic(new TypeError("x is not a function"))).toBe(false)
+    expect(shouldFallBackToAnthropic(new Error('No OpenRouter slug for model "claude-sonnet-9"'))).toBe(false)
   })
 })
