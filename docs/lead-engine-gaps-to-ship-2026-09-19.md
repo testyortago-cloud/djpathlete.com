@@ -8,7 +8,8 @@ This is the build ledger. One row per gap, in the order to build. Each row says 
 - One branch per gap (or per phase for the S items). Done means: acceptance met, the named test fails on `main` and passes on the branch, `tsc` at the 238/54 baseline with an identical per-file set, `npm run build` exit 0, a whole-branch review, committed. **Nothing is pushed, merged to `main`, or run against production without the owner's word.**
 - Read `CLAUDE.md` (white-label rules, tables, sequence management) and the top five `JOURNAL.md` entries first. Re-measure production before trusting any count here — it moves.
 - Every new column named below has its reader named next to it. Do not add one without.
-- Migrations: **`00264` is the highest on `main` (merged + applied to production). `00265` and `00266` are BOTH already claimed in unmerged worktrees** — `00265_media_thumbnails.sql` in `.claude/worktrees/media-thumbnails-and-insights/`, `00266_sequence_run_enrolment_metadata.sql` in `.claude/worktrees/g10-enrolment-metadata/` (a peer session, 2026-09-20). **The next free number is `00267`, and it must be re-checked immediately before merging** — a number is only visibly taken if you look in every worktree, and git merges two colliding numbers perfectly cleanly. Tolerate the old schema for one deploy. Apply to the dev clone.
+- Migrations: **`00272_sequence_text_steps.sql` is the highest on `main` (merged + applied to production) as of 2026-09-21. The next free number is `00273`, and it must be re-checked immediately before merging** — a number is only visibly taken if you look in every worktree, and git merges two colliding numbers perfectly cleanly. Three worktrees still hold unmerged commits (`content-scheduling`, `funnel-step-roles`, `native-booking-research`); check them. Tolerate the old schema for one deploy. Apply to the dev clone.
+  - **`apply-migrations.yml` is PATH-FILTERED, which is why a code-only push is safe.** The 2026-09-21 push of four gaps carried no migration file, and that workflow's last run is still on `74ea3f43`. Before any push to `main`, count them: `git diff --name-only origin/main..HEAD | grep -c supabase/migrations/`. It is the difference between a code deploy and a schema change.
 
 ---
 
@@ -145,9 +146,17 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
   - Migration guards: refuses to delete a step that has ever sent a message (`sequence_messages_step_id_fkey` cascades); renumbers through a +1000 range because `(sequence_id, position)` is unique; SKIPS rather than fails a tenant whose copy is a shape it does not recognise; raises when NOTHING matched; and checks positions are CONTIGUOUS 0..5, because a dropped renumber leaves a step stranded at 1004 where the count is still six and `decideStep` silently completes the run.
   - Whole suite 1054 files / **11140 tests** with the 7-test red baseline; tsc 238/54 per-file identical; build exit 0; **16 mutants across two sweeps, 16 killed**.
 
-### G13 · Sequence status is not on any leads list · **M**
+### G13 · Sequence status is not on any leads list · **M** · DONE (merged + pushed 2026-09-21)
 - **Shipped when:** `lib/db/contacts-list.ts` joins each contact's latest run (active first) and `ContactsTable.tsx` renders a **Follow-up** column ("New Lead Nurture · step 3 of 8", "Bought", "Booked a call", "Opted out", "—") using `DataTableBadge`; the funnel leads board (`components/admin/funnels/LeadsBoard.tsx`, `lib/db/funnel-leads.ts`) shows the same by contact id; a filter "in a sequence".
 - **Test:** `contacts-table.test.tsx` renders each state; the DAL test pins the latest-run selection (active beats exited beats completed).
+- **BUILT + MERGED + PUSHED 2026-09-21**, commit `1f8f16a6`, merged at `c93447e7`. No migration. New files: `lib/lead-engine/sequence-status.ts` (pure labeller), `lib/db/contact-sequence-status.ts` (the per-page read).
+  - **THE LEADS BOARD CANNOT BE KEYED ON CONTACT ID — this row asked for a join that does not exist.** `funnel_submissions` carries `id, funnel_id, step_id, form_key, email, name, phone, payload, attribution_session_id, ip_address, user_agent, lead_user_id, created_at, status, notes, status_changed_at, kind, quiz_attempt_id` (read off production, not off a migration): no `contact_id`, and no `business_id` either. Keyed on the lowercased EMAIL instead, matched to a tenant-scoped contact. Every failure of that match UNDER-reports ("—") and can never show another person's status; a phone-only submission shows "—" rather than a second, worse copy of `lib/phone.ts` on a display path. The real fix is `funnel_submissions.contact_id` with a writer on the capture path, alongside **G31**.
+  - **The badge counts MESSAGES, not steps.** "step 3 of 8" was in this row and is wrong on the data: a sequence's rows are `email, sms, wait, branch, stop, tag, alert`, `new_lead_nurture` is EIGHT rows that send FOUR messages, and `alert` goes to the coach (G12), not the lead. It reads "New Lead Nurture · 1 of 4 sent" — counted as SENT because every other phrasing is wrong at one end ("step 1 of 4" overstates somebody who has had nothing; "step 4 of 4" understates somebody parked on the wait after the last message).
+  - **`failed` is a first-class badge ("Stopped early"), and this row never mentioned the status.** It is **73 of the 77 runs in production** — the incident CLAUDE.md records — so rendering them as "—" would have told the coach those 73 people are simply not in a follow-up when the truth is theirs broke.
+  - **Latest-run selection is "ACTIVE first, then most recently ENROLLED"**, not this row's "active beats exited beats completed": a fixed status order shows a January opt-out above a March completion. Status order and then run id survive as tie-breaks, which is what makes the ordering TOTAL — two runs from one transaction share a byte-identical `now()` and the read has no `.order()`, so without it the winner is PostgREST's row order and the badge can name a different sequence on every refresh.
+  - `contactIdsInSequence` PAGES: PostgREST caps a select at ~1000 rows by truncating, so unpaged the 1001st person would be hidden by the filter while the footer, narrowed by the same id list, agreed with the truncated set.
+  - **A review finding worth repeating: the new read reddened `__tests__/app/admin/contacts-page-tenancy.test.tsx`**, which mocks three sibling reads and not this one — so it escaped the mocks and made a LIVE network call from a unit test. My verification had used a suite SELECTION (`__tests__/lib/db`, `lib/lead-engine`, `components/admin`) that excluded `__tests__/app`. Run the whole suite.
+  - Whole suite 1071 files / 11326 tests with the 7-test red baseline; tsc 238/54 per-file identical; build exit 0; **6 mutants, 6 killed**.
 
 ### G14 · "Nobody in two sequences at once" is not enforced · **S code** · BUILT (option B)
 - **Today:** a contact is enrolled into every matching sequence; the younger run is deferred 5 minutes per tick so the oldest sends first (`lib/lead-engine/guardrails.ts:169-185`).
@@ -171,18 +180,40 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
   - Nine further findings fixed: one event can no longer supersede a sequence it MATCHED (even when the enrolment into it was refused by the unique index) — the first cut's test asserted the opposite; the two extra reads are skipped entirely when no sequence matches the source, so their failure paths cannot reach an enrolment that was never going to happen; `IS_SUPERSEDING_SOURCE` is a `Record<ContactEventSource, boolean>` rather than a `Set<string>`, so a source added to the union is a compile error rather than a silent "refuses"; the timeline fallback no longer claims a cooldown for a reason it does not recognise; the refusal note blames a deterministic run when several are in the way; and `supersedeRuns`' comment, `enrollIfTriggered`'s docstring and the skip log line all said things that were no longer true.
   - **Not fixed, recorded:** the rule is best-effort under concurrency. Two simultaneous captures for one contact both read the active runs before either inserts, so both enrol — two active runs, old one double-exited. No unique index can express "one active run per contact" and there is no transaction around a contact event; the failure is the pre-G14 state, which `siblingRunDefer` serialises. Noted in the code beside the read.
 
-### G15 · Campaign → revenue shows won deals only · **M**
+### G15 · Campaign → revenue shows won deals only · **M** · DONE (merged + pushed 2026-09-21)
 - **Shipped when:** `lib/automation/campaign-revenue.ts` adds **Leads** (contacts whose `first_touch_session_id` belongs to the campaign, created in the window), **Registrations** (opportunities created in the window, any outcome, plus paid `event_signups`), keeps Won deals / Won value; organic `/go` sessions are grouped by landing path (the funnel slug) instead of collapsing into "— / — / —"; a 30 / 90 / all-time window on the page.
 - **Test:** `campaign-revenue.test.ts` fixture: one campaign → 14 leads, 6 registrations, $2,340; organic funnel rows keyed by slug.
+- **BUILT + MERGED + PUSHED 2026-09-21**, commit `e2bbd302`, merged at `4009fce6`. No migration.
+  - **"PLUS PAID `event_signups`" IS WRONG AND WAS REMOVED — it double-counted every camp ticket.** A completed `event_signup` checkout already mints a pipeline card: `NO_PIPELINE_CARD_CHECKOUT_TYPES` in `app/api/stripe/webhook/route.ts` is `{shop_order, save_card}` and nothing else, and that file's own comment says outright that `event_signup` "now DOES win a pipeline card once completed". So every paid signup is ALREADY one of the opportunities counted. Worse than the double count: the two halves attributed through DIFFERENT KEYS (`source_session_id` for the opportunity, `gclid` for the signup — `event_signups` has no `session_id` and no `utm_*` columns), so one ticket could be counted into two different campaigns. A test seeds a signup row and proves it changes no number.
+  - **The two windows are deliberately different, and there is a test for it:** leads and registrations count when they were CREATED, won deals when they CLOSED. A deal that arrived in March and closed in September is March's registration and September's revenue.
+  - Organic `/go` landings get their own row keyed by slug, as this row asked. The line is drawn at `/go/` deliberately — grouping every organic landing by path would turn each marketing page into a row and empty the unattributed bucket of its meaning. A funnel's STEPS collapse to one row, and a utm campaign always wins over the slug.
+  - An empty return now means the window held NOTHING (no lead, no enquiry, no deal). It used to mean "nothing won", which hid a window full of leads behind "No won deals yet".
+  - Every read PAGES and the attribution lookup CHUNKS at 200 — "all time" scans the whole contacts table, and a silently truncated attribution read is the nastier half: dropped rows do not vanish from the report, they re-classify a campaign's leads as Unattributed. `funnelSlugFromLandingUrl` no longer throws on a slug that is not valid percent-encoding (`/go/100%off` would have 500'd the report permanently; `landing_url` is browser-written).
+  - The **Click id** column stays, because `gclid` is still part of the grouping key — dropping it renders two genuinely different gclid-only campaigns as identical "— / —" rows, a bug the DAL's own comment records being fixed once already.
+  - **TWO MUTANTS SURVIVED AND BOTH TIMES THE TEST WAS AT FAULT.** `Number(requested) || null` passed every window test because `Number("junk")` is `NaN` and `NaN || null` is `null` — the same all-time answer the "junk" case asserted; there is now a `?days=99999999` case. And raising `PAGE`/`IN_CHUNK` to 100000 passed everything, because the Supabase fake returned whatever it was asked for — **the fake now ENFORCES the limits (truncates at 1000, 414s an over-long `.in()`)**, which is what makes those constants testable at all.
+  - Whole suite 1068 files / 11308 tests with the 7-test red baseline; tsc 238/54 per-file identical; build exit 0; **7 mutants, 7 killed**.
 
-### G16 · Templates fill in the name only; `brand_color` never reaches email · **S**
+### G16 · Templates fill in the name only; `brand_color` never reaches email · **S** · DONE (merged + pushed 2026-09-21) — `{{sport}}`/`{{goals}}` deliberately not shipped
 - **Shipped when:** merge fields `{{first_name}}` (derived), `{{sport}}`, `{{goals}}`, `{{service}}`, `{{camp_name}}` read from `enrolment_metadata` (G10); an unknown token renders blank and the step editor's placeholder guard flags it at save; the sequence layout in `lib/lead-engine/email.ts:306-357` uses `brand_color` / `accent_color` with the current hexes as the fallback.
 - **Test:** `email.test.ts` renders with metadata; unknown token → blank; brand colour appears in the header band.
+- **BUILT + MERGED + PUSHED 2026-09-21**, commit `c433ca5b`, merged at `bd661516`. No migration. New file: `lib/lead-engine/merge-fields.ts` — pure, because the step editor is a client component and `email.ts` builds a `Resend` client at module scope.
+  - **`{{sport}}` AND `{{goals}}` ARE NOT SHIPPED — neither has anywhere to come from.** `sport` IS collected (`app/api/inquiry/route.ts` reads it off the application form) but that route passes `metadata: { service }` and nothing else, so it never reaches `enrolment_metadata`; wiring it means adding a key to `ENROLMENT_METADATA_KEYS`, which ALSO widens `branchConditionSchema` and the editor's branch dropdown — a deliberate decision with its own test surface, not a side effect of a rendering change. `goals` is free prose, and `enrolment-metadata.ts` says in as many words that its 120-character cap exists so "nothing resembling prose (or a pasted note) can land in a column a branch compares with `=`". Both render BLANK rather than shipping braces, which is what matters most. **Open, if the owner wants them: one key + one route line for `sport`; `goals` needs a different home entirely.**
+  - What DID ship: `{{first_name}}` (derived — a split, not a parse) plus all seven `ENROLMENT_METADATA_KEYS`, taken FROM that array rather than a second copy of it.
+  - **The SMS renderer shares the list too, and that was a review finding with teeth.** `sms.ts` carried its own `substituteName`, duplicated because email.ts's was not exported, so it understood `{{name}}` and nothing else — while the new editor warning sits under the TEXT box as well, listing every usable token. A coach typing `{{first_name}}` into a text saw no warning and the handset got literal braces: the exact failure this row exists to prevent, reintroduced by two renderers disagreeing about one list.
+  - **`{{unsubscribe_url}}` IS NOT A KNOWN TOKEN, and migration `00271`'s comment is wrong to say it is.** Line 92 claims "the substitutions the renderer knows are {{name}}, {{unsubscribe_url}} and {{sms_consent_url}}" — only two of those are true; nothing in the repo has ever substituted it. The editor now warns about it. The unsubscribe link is rendered unconditionally in the FOOTER either way.
+  - `{{ sms_consent_url }}` with spaces is now matched by the same tolerant rule the editor uses — an exact `includes` missed it, skipping both the guard AND the substitution on the one step whose entire purpose is that link.
+  - **Colours are derived by `resolvePalette`, not by arithmetic invented in email.ts.** It already owns the contrast-correct INK for a background (measured, never thresholded) and the accent to derive when a coach picks a brand and leaves the accent NULL. Without the first a pale brand made the business name invisible in every sequence email; without the second a coach got their band above the incumbent tenant's gold strip. The hex shape is narrowed to `#rrggbb` — the EXACT shape `paletteSchema`, `POST /api/admin/businesses/brand` and migration `00260`'s CHECK constraints all already enforce.
+  - The editor warning is **advisory, not a save gate**: a blank is already the safe outcome, so refusing the save would block a coach whose sequence is otherwise finished.
+  - tsc 238/54 per-file identical; build exit 0; **2 mutants, 2 killed**. Whole suite at the 7-test baseline — see the flake note under "The pre-existing RED baseline" below.
 
-### G17 · Seven sequences have no text step · **S code, owner copy**
+### G17 · Seven sequences have no text step · **S code, owner copy** · CODE DONE (six of seven) — COPY STILL THE OWNER'S
 - `quiz_*` ×4, `service_application_received`, `camp_clinic_deadline`, `sms_repermission`. Once the owner supplies wording, add via the step editor (no deploy). Texts send only to contacts with an SMS consent row — 0 today — so also ship G18 and the email-consent wording decision below.
+- **BUILT BY A PEER SESSION + MERGED + PUSHED 2026-09-20**, commit `c3b507f5`, migration `00272_sequence_text_steps.sql` applied to production. **SIX of the seven**, each behind a wait.
+  - **Measured on production 2026-09-21, not read off the commit subject:** eleven of the twelve sequences now hold exactly one `sms` step. The one that does not is **`sms_repermission`** — which is correct rather than an omission, since that sequence's whole job is to ask by EMAIL for permission to text, so a text step in it would be the thing it exists to avoid. The row's "seven" counted it; six is the right number.
+  - **STILL THE OWNER'S TO REVIEW.** The copy was drafted, not authored — it is editable at `/admin/sequences/<key>` with no deploy, and the drafting session made judgement calls on the owner's behalf (notably moving the camp text, because the email before it says it will stop).
+  - **Texts still reach nobody.** Re-measured 2026-09-21: `contact_consents` is **EMPTY — zero rows of any channel**, not merely zero `sms` ones. G18's consent half now collects them from the chat capture card, but nothing has been captured yet, so every text step in the product remains unsendable in practice. (Email is unaffected: only SMS is consent-gated.) **The first real test of this row is the first chat lead who ticks the box.**
 
-### G18 · Chat collects email consent, not texting consent; no sequence follows a chat lead · **S**
+### G18 · Chat collects email consent, not texting consent; no sequence follows a chat lead · **S** · CONSENT HALF DONE — the `ai_chat` SEQUENCE IS THE LAST PHASE 2 ROW OPEN, and needs the owner's copy
 - **Shipped when:** the capture card (`components/public/AskCards.tsx:272-296`) shows the SMS consent tick with `renderSmsConsentWording(display_name)` whenever a phone is entered; `app/api/ask/capture/route.ts:388-401` writes `channel:"sms"` as well; a sequence listens to `ai_chat` — either a seeded `chat_lead_follow_up` or `new_lead_nurture` widened to accept a second trigger (decision: seed a separate sequence, so its copy can differ).
 - **Test:** `ask-capture.test.ts` — both consent rows written with the exact wording; enrol fires.
 - **CONSENT HALF BUILT + MERGED + PUSHED 2026-09-20**, same commit as G12 (`672e5583` / `80c9ecbd`). No migration.
@@ -201,14 +232,23 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 - **What this row actually turned up, and it is not a wording problem** — see the new row below. The chat offers Calendly from ENVIRONMENT VARIABLES while an active per-tenant connection already exists.
 - Re-measured on production 2026-09-20: **still 0 Calendly bookings ever**; all 5 bookings are `ghl`, the most recent 2026-07-21. One `coach_calendar_connections` row, `status: connected`, `webhook_state: active`, `scheduling_url` and `event_type_uri` both set, connected 2026-09-04.
 
-### G19b · The chat offers Calendly from env vars, not from the coach's connection · **S** · found 2026-09-20
+### G19b · The chat offers Calendly from env vars, not from the coach's connection · **S** · DONE (merged + pushed 2026-09-21)
 - **Today:** `createToolExecutor` (`lib/lead-engine/chat/tools.ts:421-422`) calls `readCalendlyConfig()` / `readCalendlySchedulingUrl()`, which read `CALENDLY_API_TOKEN`, `CALENDLY_EVENT_TYPE_URI` and `CALENDLY_SCHEDULING_URL` from `process.env` (`lib/calendly/env.ts:36-52`). The executor HAS `ctx.businessId` and already tenant-scopes its other lookup with it (`list_camps_and_clinics`, `:533`), but the booking offer never consults it.
 - **Why it matters, and it is not tidiness.** The INBOUND half is already per-tenant: `resolveCalendlyTenant` (`lib/bookings/calendly-tenant.ts`) matches a delivery's event type against `coach_calendar_connections` and only falls back to `CALENDLY_EVENT_TYPE_URI` through an explicitly temporary "deploy ramp" that warns on every use. The OUTBOUND half has no equivalent and no ramp. So the moment a SECOND coach connects their own Calendly, their site's chat keeps offering the PLATFORM's calendar: a visitor on coach B's page is shown coach A's free times and books into coach A's diary. Silent, and indistinguishable from working.
 - CLAUDE.md names this exact shape: "Prefer per-tenant rows over environment variables for anything a coach owns. An env var is a single-tenant assumption wearing a config file's clothes — that is precisely what `coach_calendar_connections` replaced for Calendly." The replacement was done on one side only.
 - **Not a live defect today** — one tenant, one connection, and the env values point at the same account. It is a fuse: it lights the day a second coach connects, which is the whole point of the Calendly-per-coach plan this decision just confirmed.
 - **Shipped when:** the chat resolves `{apiToken, eventTypeUri, schedulingUrl}` from the requesting tenant's `coach_calendar_connections` row, falling back to the env values only for the platform tenant and only with the same loud warning `resolveCalendlyTenant` already uses; a second connected business offers its OWN times; and a business with no connection offers the plain consult path rather than somebody else's calendar.
 - **Test:** executor test with two businesses, each with a connection → each gets its own `schedulingUrl` and `eventTypeUri`; a business with no connection and no env → `CONSULT_PATH`, never another tenant's link. Mutate the tenant predicate and watch it fail.
-- **Decision for the owner:** do this now as a standalone S, or fold it into the Calendly-per-coach project's OAuth phase (which has to touch the same resolution anyway). Doing it now is cheap and removes a cross-tenant fuse; folding it in avoids writing the resolver twice.
+- **Decision for the owner:** do this now as a standalone S, or fold it into the Calendly-per-coach project's OAuth phase (which has to touch the same resolution anyway). Doing it now is cheap and removes a cross-tenant fuse; folding it in avoids writing the resolver twice. **DECIDED: done now, standalone.**
+- **BUILT + MERGED + PUSHED 2026-09-21**, commit `32b28416`, merged at `8fa6f322`. No migration.
+  - **The resolver already existed and had been INERT for weeks.** `lib/calendly/config-for-business.ts` was written at `551855c4` with a header saying outright that nothing called it yet and that a later phase would "change one resolver instead of discovering availability was hard-wired to four environment variables". That paid off exactly as advertised — but it had shipped with the leak still in it: its fallback handed `readCalendlyConfig()` to ANY business with no connection, not just the platform's. **The fallback is now gated on the business BEING the platform**, warned on every use like the inbound ramp; any other business with no connection gets nothing and its visitors are offered `/contact`.
+  - `createToolExecutor` resolves from `ctx.businessId`, which the route already threads from `conversation.business_id`.
+  - **Resolution is LAZY and memoised once per turn, and that is correctness, not micro-optimisation.** Resolving eagerly would put two reads and a possible OAuth refresh in front of every chat turn including "what do you charge?" — and `accessTokenForConnection` THROWS on a dead grant, so one coach's lapsed Calendly would 500 their whole assistant rather than degrading the one tool that needs it.
+  - **The identity reads still throw; the TOKEN read does not.** By the time it runs the owner of the calendar is established, so its failure cannot be mistaken for anybody else's diary — it degrades to that coach's own booking page with no times, rather than taking a working public page down over a lapsed grant. A failed IDENTITY read becomes `/contact`, never the environment.
+  - `ToolOutcome.consultHref` became `ToolExecutor.consultHref()`, awaited only when a way-forward card is genuinely about to be added — BOTH of `withWayForward`'s no-op conditions are checked first.
+  - **`book_consult` can now transitively reach a WRITE** (`accessTokenForConnection` may refresh that coach's token or record `last_error`). Named in the tools.ts header AND in the source-grep suite's own preamble: those greps check what tools.ts names DIRECTLY, and what they protect is that no tool the model can call writes a contact, consent row, lead or payment.
+  - Re-measured before planning: one business, one `booking_hosts` row, one connected `coach_calendar_connections` row — so the fuse was real and **unlit**. This is prevention, not an incident.
+  - Whole suite green at the 7-test baseline; tsc 238/54 per-file identical; build exit 0; **8 mutants, 8 killed**.
 
 ---
 
@@ -322,12 +362,21 @@ behind every row); CLAUDE.md; the top five JOURNAL.md entries. Then RE-MEASURE p
 the read-only supabase-prod MCP before planning (sequence statuses, run counts, contacts.user_id
 count, checkout_abandoned timeline rows) and say what moved.
 
-Scope: Phase 0 first (G01, G02 script only), then Phase 1 (G04–G08), then Phase 2 in row order,
-skipping any row whose owner decision (ledger §Decisions) is not yet answered — list those at the
-end instead of guessing. Each gap on its own branch off main via EnterWorktree; TDD; the ledger
+Scope: PHASES 0, 1 AND 2 ARE DONE AND LIVE (except G18's ai_chat half, which needs the owner's
+copy). Start at PHASE 3 in row order — G20 first, then G22-G27 — skipping any row whose owner
+decision (ledger §Decisions) is not yet answered, and list those at the end instead of guessing. Each gap on its own branch off main via EnterWorktree; TDD; the ledger
 names the test that must fail on main first; mutate the guard you add and show the test failing;
 tsc must hold the 238/54 baseline with an identical per-file error set; npm run build exit 0;
-whole-branch review before you call it done. Targeted suites only, never the full run.
+whole-branch review before you call it done. Targeted suites while you work — but run the WHOLE
+suite before calling a row done: a suite selection has hidden a red test three times in this
+ledger's history, once while also making a live network call from a unit test.
+
+RE-MEASURE THE SCHEMA A ROW ASSERTS, NOT JUST THE COUNTS. Three of the four rows built on
+2026-09-21 named a column, a join or a source that does not exist or is already counted. Before
+building a row: information_schema.columns for the column list, pg_constraint for the FKs
+(information_schema hides them), and grep for the WRITER of any column the row wants to read.
+When the row is wrong, build what the data supports, say so in the code AND in the commit, and
+name what the rest would take.
 
 Do NOT push, merge to main, apply a migration to production, flip a system_settings flag, send
 an email or text, or run any script against .env.prod. Get each branch green and reviewed, then
@@ -342,9 +391,10 @@ nothing — read production back; every new column needs a named reader.
 
 ---
 
-## Phase 1 status — COMPLETE, nothing merged
+## Status — PHASES 1 AND 2 COMPLETE AND LIVE
 
-**PHASE 1 COMPLETE AND LIVE; PHASE 2 STARTED (G09 merged).** Worktrees and branches swept.
+**PHASE 1 COMPLETE AND LIVE. PHASE 2 COMPLETE AND LIVE except G18's `ai_chat` half, which needs
+the owner's copy.** Worktrees and branches swept after every merge.
 
 | Row | Commit | State |
 |---|---|---|
@@ -354,26 +404,54 @@ nothing — read production back; every new column needs a named reader.
 | G07+G08 | `46c8b236` | merged |
 | **G09** | `816892cf` | merged + pushed — **inert until the three operator steps in the runbook** |
 
-`main` is at **`80c9ecbd`**, pushed to `origin/main` on 2026-09-20. **G01-G12, G14 and G18's consent
-half are merged and deployed**; G03 and G19 are closed with no code.
+| **G17** | `c3b507f5` | peer session; merged + pushed; migration `00272` live — six of seven sequences |
+| **G19b** | `32b28416` | merged at `8fa6f322` + pushed |
+| **G13** | `1f8f16a6` | merged at `c93447e7` + pushed |
+| **G15** | `e2bbd302` | merged at `4009fce6` + pushed |
+| **G16** | `c433ca5b` | merged at `bd661516` + pushed |
 
-**ALL MIGRATIONS ARE APPLIED TO PRODUCTION.** `00266`-`00271` went in automatically via
+`main` is at **`01ee31ce`**, pushed to `origin/main` on 2026-09-21 (Vercel deployment
+`5EnWSzgL53SF3bzdEpuSSwerG83e`, distinct from the previous commit's, verified green rather than
+read off a status word). **G01-G19b are merged and deployed except G18's `ai_chat` half**; G03 and
+G19 are closed with no code.
+
+**THREE OF THE FOUR ROWS BUILT ON 2026-09-21 SHIPPED A CORRECTION TO THEIR OWN "SHIPPED WHEN".**
+G13 asked for a join on a column `funnel_submissions` does not have; G15 asked for a source that is
+already counted (double-counting every camp ticket); G16 named two merge fields with no producer.
+Each is written up in its own row above. **Re-measure the SCHEMA a row asserts, not just the counts
+— this ledger's own rules say to re-measure counts and say nothing about shape, which is the part
+that rots silently.** `information_schema.columns` for the column list, `pg_constraint` for the FKs
+(`information_schema` hides them), and grep for the WRITER of any column a row wants to read.
+
+**ALL MIGRATIONS ARE APPLIED TO PRODUCTION.** `00266`-`00272` went in automatically via
 `apply-migrations.yml` on push, and each result was read back rather than assumed: both
 `sequence_runs` columns present, the widened wait CHECK live, `camp_clinic_deadline` counting down
 14/7/3, and `service_application_received` reshaped to wait/alert/email/wait/email/stop with zero
 runs disturbed.
 
-Verified on the MERGED result, not just per branch: whole suite **1054 files / 11140 tests** with
-the 7-failure baseline below; tsc **238 errors / 54 files** with a per-file set identical to
-`.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0.
+Verified on the MERGED result, not just per branch (2026-09-21, after all four gaps): whole suite
+**1074 files / 11439 tests** with the 7-failure baseline below; tsc **238 errors / 54 files** with a
+per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
+`rm -rf .next/dev`.
 
-**Scoreboard, measured rather than remembered (2026-09-20): 36 rows · 15 done · 21 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G14 G18 G19.
-Open: G13 G15 G16 G17 G19b G20 G21 G22 G23 G24 G25 G26 G27 G28 G29 G30 G31 G32 G33 G34 G35.
+**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 20 done · 16 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b.
+Open: G20 G21 G22 G23 G24 G25 G26 G27 G28 G29 G30 G31 G32 G33 G34 G35.
 
-**G18 is counted done for its CONSENT half only** — the `ai_chat` follow-up sequence it also names
-is not built and needs the owner's copy. **G17 is now unblocked but still needs the owner's SMS
-wording**; it is data entry in the step editor, not code.
+**Everything still waiting on the owner, in one place:**
+- **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
+  the owner's copy. The consent half is live. This is the only Phase 2 row still open.
+- **G17's text copy** — six sequences have a text step, drafted not authored, editable at
+  `/admin/sequences/<key>` with no deploy. And `contact_consents` is EMPTY, so no text can send yet.
+- **G12's alert wording** — shipped as a question ("{{name}} applied two days ago — have you
+  replied?") because nothing in the system can know whether the coach replied. Reword in the editor.
+- **G16's `{{sport}}`** — one `ENROLMENT_METADATA_KEYS` entry plus one line in
+  `app/api/inquiry/route.ts` would make it work, but it also widens what a coach can branch on.
+  `{{goals}}` needs a different home entirely. Both render blank today.
+- **The decisions in §Decisions** that Phase 3 rows still name (G21, G28, G34).
+
+**Next unblocked, needing nothing from the owner: G20** (questionnaire is not connected), then
+G22-G27. G20/G23/G24/G25/G27 are all **S**.
 
 **A trap the merge itself surfaced:** the first build of merged `main` FAILED with
 `Cannot find module '../../../app/api/ghl/contact/route.js'` from `.next/dev/types/validator.ts` —
@@ -381,10 +459,12 @@ a STALE generated artifact left by an earlier dev-server run, still listing a ro
 deleted. No source was wrong. `rm -rf .next/dev` and rebuild fixes it. It is local-only (Vercel
 builds from a clean checkout), but it will bite anyone who had the dev server running.
 
-**The pre-existing RED baseline, re-measured 2026-09-20** (all control-run against `main`; do not blame a branch for these):
+**The pre-existing RED baseline, re-measured 2026-09-21 on merged `main`** (all control-run; do not blame a branch for these):
 - `__tests__/migrations/00062.test.ts` — 3 tests, needs a live database.
 - `__tests__/lib/coach-reachability.test.ts` — 1 test. **New to this list.**
 - `__tests__/components/admin/funnel-builder-initial-prompt.test.tsx` — 3 tests. **New to this list.**
 - `__tests__/api/spine/purchase-spine.test.ts` — **no longer red**, fixed by G04.
 
-**A trap this session paid for twice:** a suite SELECTION can hide a red test. `__tests__/lib/tenancy` was outside two broad runs, and both times something real was hiding there. Run the whole suite before calling a row done.
+**A trap this session paid for twice:** a suite SELECTION can hide a red test. `__tests__/lib/tenancy` was outside two broad runs, and both times something real was hiding there. Run the whole suite before calling a row done. **It happened a third time on 2026-09-21**: G13's verification used `__tests__/lib/db` + `lib/lead-engine` + `components/admin`, which excludes `__tests__/app` — where `contacts-page-tenancy.test.tsx` was red AND making a live network call, because it mocks three sibling reads and not the new one.
+
+**`__tests__/db/social-post-media.test.ts` WAS intermittently red and is now fixed — do not re-add it to the list above.** It failed on two of four full runs (`post_type` 'carousel' → 'text') while passing 10/10 in isolation, which looks exactly like a flake and is not one. `backfill_social_post_media()` (migration `00093`) sets `post_type = 'text'` for every post with no media at position 0, no `media_url` and no `source_video_id` — and it is **not a trigger, it runs when MIGRATIONS ARE APPLIED**. These tests hit the shared dev clone, so any session applying a migration mid-run executes it over everyone's in-flight fixtures, and between `newPost("carousel")` and the first `attachMedia` the fixture is exactly the post that function exists to correct. Fixed at `01ee31ce` by re-stating `post_type` AFTER the media exists, which removes the window rather than narrowing it. **Proved on the dev clone by running the backfill's own `WHERE` clause — never its `UPDATE`, so the probe could not disturb another session: `true` before the first `attachMedia`, `false` after.** When a live-DB test fails only under load, grep the migrations for the column being asserted before calling it flaky.
