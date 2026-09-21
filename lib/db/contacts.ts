@@ -38,6 +38,14 @@ export type ContactEventSource =
   // `text NOT NULL` with no CHECK constraint (00214_lead_engine_timeline.sql),
   // so this union is the only place the set is enforced.
   | "quiz"
+  /**
+   * G29. A card a coach made by hand -- a phone call, a DM, somebody met at a
+   * camp. This is history being FILED, not a lead ARRIVING, which is why the
+   * two callers use `upsertContactIdentity` / `recordEventForExistingContact`
+   * and never `recordContactEvent`: enrolment lives inside the latter, and a
+   * hand-made card must never send anybody an email.
+   */
+  | "manual_card"
 
 /**
  * Which members of ContactEventSource mean "this person paid" — see
@@ -83,6 +91,9 @@ const IS_PURCHASE_SOURCE: Record<ContactEventSource, boolean> = {
   purchase: true,
   checkout_abandoned: false,
   quiz: false,
+  // G29. A coach filing history by hand did not buy anything -- there is no
+  // Stripe event behind this at all.
+  manual_card: false,
 }
 
 /**

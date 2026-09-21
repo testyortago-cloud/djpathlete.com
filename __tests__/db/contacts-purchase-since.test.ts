@@ -206,4 +206,17 @@ describe("hasPurchaseSince", () => {
     expect(inCalls[0][1]).toEqual(expect.arrayContaining(["purchase", "funnel_checkout", "shop"]))
     expect(inCalls[0][1]).not.toEqual(expect.arrayContaining(["checkout_abandoned"]))
   })
+
+  // G29 (Task 6 mutation testing, fix round 1). `IS_PURCHASE_SOURCE.manual_card`
+  // is not exported, so `PURCHASE_SOURCES` — its derived membership list — is
+  // the only thing a test can pin directly. Without this, flipping that one
+  // map entry to `true` survived every test in this repo: a coach filing a
+  // hand-made card would silently count as "this person paid", which
+  // `hasPurchaseSince` feeds straight into the Stripe webhook's
+  // `checkout.session.expired` guard (app/api/stripe/webhook/route.ts) —
+  // suppressing the abandoned-checkout sequence for someone who never paid
+  // anything, because a coach happened to file them on a board the same day.
+  it("manual_card is NOT a purchase source — filing a card by hand is not a payment", () => {
+    expect(PURCHASE_SOURCES).not.toContain("manual_card")
+  })
 })

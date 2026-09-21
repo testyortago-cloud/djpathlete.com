@@ -181,6 +181,10 @@ const SOURCE_LABELS: Record<string, string> = {
   ai_chat: "Talked to the assistant on the website",
   booking: "Booked a session",
   ghl_import: "Imported from the old system",
+  // G29. Written by `createOpportunityManually` (lib/db/pipeline.ts) via
+  // `recordEventForExistingContact` -- a coach filing someone onto a board by
+  // hand, not a form this person filled in themselves.
+  manual_card: "Added to a board by a coach",
 }
 
 function asString(value: unknown): string | null {

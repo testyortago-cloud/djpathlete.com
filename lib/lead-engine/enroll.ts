@@ -133,6 +133,14 @@ export const IS_SUPERSEDING_SOURCE: Record<ContactEventSource, boolean> = {
   step_up: false,
   ai_chat: false,
   purchase: false,
+  // G29. UNREACHABLE TODAY, same as `booking` above but for the opposite
+  // reason: a hand-made card never calls `enrollIfTriggered` at all (see
+  // `ContactEventSource`'s own doc comment on `manual_card`), so this source
+  // can never reach this map's caller in the first place. `false` regardless
+  // -- it must never exit somebody's active sequence run. A coach filing a
+  // phone call is not a "just did something more relevant" moment for
+  // whatever follow-up that person is already mid-way through.
+  manual_card: false,
 }
 
 /** The same decision as a set, for the places that only need membership. */

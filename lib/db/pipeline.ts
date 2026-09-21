@@ -59,6 +59,10 @@ import {
   type StageProblem,
   type SavedStage,
 } from "@/lib/lead-engine/stage-list"
+// G29 (Task 6). The two NON-ENROLLING identity paths `createOpportunityManually`
+// (below) is built on. NEVER `recordContactEvent` — see that function's own
+// doc comment for why.
+import { upsertContactIdentity, recordEventForExistingContact } from "@/lib/db/contacts"
 
 // Re-exported, not redefined: lib/lead-engine/pipeline-move.ts is now the one
 // place this string lives (see that file's comment on DEFAULT_PIPELINE_KEY).
@@ -2386,4 +2390,219 @@ export async function savePipelineStages(input: {
   if (error) throw new Error(`save_pipeline_stages failed: ${error.message}`)
 
   return { ok: true }
+}
+
+/**
+ * Builds the readable "already on this board" refusal, re-reading fresh
+ * rather than trusting anything the caller already had in hand — the ONLY
+ * caller that needs this is the 23505 race (below), where the row that won
+ * the race is not the one this request read a moment ago. The pre-check call
+ * site reuses it too, rather than keeping a second, slightly different
+ * message in sync with this one.
+ *
+ * Never throws a raw PostgREST object, same discipline as every other reader
+ * in this file — each lookup here is best-effort English for an Error that
+ * is ABOUT to be thrown regardless of whether these three reads fully land.
+ */
+async function throwOpenCardExistsError(args: {
+  supabase: ReturnType<typeof createServiceRoleClient>
+  businessId: string
+  contactId: string
+  pipelineId: string
+  boardName: string
+}): Promise<never> {
+  const { supabase, businessId, contactId, pipelineId, boardName } = args
+
+  const [{ data: contactRow }, { data: openRow }] = await Promise.all([
+    supabase.from("contacts").select("name").eq("business_id", businessId).eq("id", contactId).maybeSingle(),
+    supabase
+      .from("opportunities")
+      .select("stage_id")
+      .eq("business_id", businessId)
+      .eq("pipeline_id", pipelineId)
+      .eq("contact_id", contactId)
+      .is("outcome", null)
+      .maybeSingle(),
+  ])
+
+  const contactName = (contactRow as { name: string | null } | null)?.name ?? "This contact"
+  let stageName = "another stage"
+  const stageId = (openRow as { stage_id: string } | null)?.stage_id
+  if (stageId) {
+    const { data: stageRow } = await supabase
+      .from("pipeline_stages")
+      .select("name")
+      .eq("business_id", businessId)
+      .eq("id", stageId)
+      .maybeSingle()
+    stageName = (stageRow as { name: string } | null)?.name ?? stageName
+  }
+
+  throw new Error(`${contactName} is already on ${boardName}, in ${stageName}.`)
+}
+
+/**
+ * G29. Puts a person on a board by hand.
+ *
+ * NEVER CALLS `recordContactEvent`. Enrolment lives inside it
+ * (lib/db/contacts.ts, `enrollIfTriggered`), and a hand-made card must not send
+ * anybody an email: you already spoke to this person, which is why you are
+ * filing them. The same non-enrolling shape `importGhlContact` uses, for the
+ * same reason -- history arriving today is not a lead arriving today.
+ *
+ * A flag like `enrol: false` was considered and rejected: a flag can be passed
+ * wrong and the next caller inherits a default. Not calling the enrolling
+ * function cannot be passed wrong.
+ *
+ * CONTACT RESOLUTION, exactly two shapes, both non-enrolling:
+ *   - `contactId` — an existing contact, scoped to `businessId` before use
+ *     (the standing rule: every new reader gets a tenant predicate). Not
+ *     found for THIS business is a 400, not a leak of what exists elsewhere.
+ *   - `person` — `upsertContactIdentity` (lib/db/contacts.ts) resolves/merges
+ *     identity exactly as a live submission would, then
+ *     `recordEventForExistingContact` appends one `manual_card` timeline row.
+ *     `upsertContactIdentity` itself refuses a person with neither email nor
+ *     phone; this function refuses the SAME thing earlier, before paying for
+ *     the round trip, so the message names the actual problem rather than a
+ *     generic "identifier needed".
+ *
+ * THE CARD lands on the board's POSITION-1 stage — whatever that stage's
+ * `kind` happens to be; this function does not assume it is `open` (a
+ * freshly-created board, `createPipelineBoard` above, seeds Won at position 1
+ * until a coach adds an intake stage). `outcome`/`closed_at`/`closed_trigger`
+ * are left null regardless — a hand-filed card starts open, full stop; a
+ * coach who wants it filed as already-won or already-lost moves it there
+ * afterward through the ordinary move flow, which is the one place that
+ * decision is meant to be made. `source_event_id` stays null: there is no
+ * upstream event behind this card, unlike every other create path in this
+ * file.
+ *
+ * THE DUPLICATE CASE — `opportunities_one_open_per_contact_pipeline` (00219)
+ * is `UNIQUE (contact_id, pipeline_id) WHERE outcome IS NULL`, one open card
+ * per person per board. A pre-check SELECT catches the ordinary case
+ * readably; the unique index is the real guard for the concurrent one (two
+ * coaches filing the same person at once), caught here as a 23505 rather than
+ * reached for with `ON CONFLICT`/`.upsert()` — Postgres cannot infer a
+ * PARTIAL index, and this repo has already been bitten by exactly that
+ * (`lib/db/pipeline.ts`'s own note on `savePipelineStages`'s sibling call
+ * sites, and see `docs/superpowers/plans/2026-09-21-g29-pipeline-editor` for
+ * the fuller history). Both paths produce the identical readable message,
+ * built by `throwOpenCardExistsError` above so the two can never drift apart.
+ */
+export async function createOpportunityManually(input: {
+  businessId: string
+  pipelineId: string
+  contactId?: string
+  person?: { name: string; email?: string; phone?: string }
+  valueCents?: number
+  actorUserId: string
+}): Promise<{ opportunityId: string; contactId: string }> {
+  const businessId = input.businessId
+  const supabase = getClient()
+
+  const board = await readBoardRow(input.pipelineId, businessId)
+  if (!board) throw new PipelineBoardNotFoundError(input.pipelineId)
+
+  let contactId: string
+  if (input.contactId) {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("id")
+      .eq("business_id", businessId)
+      .eq("id", input.contactId)
+      .maybeSingle()
+    if (error) throw new Error(`contacts read failed: ${error.message}`)
+    if (!data) throw new Error(`Contact ${input.contactId} was not found for this business.`)
+    contactId = (data as { id: string }).id
+  } else if (input.person) {
+    // Refused HERE, before the round trip `upsertContactIdentity` would make
+    // anyway — its own internal throw for the identical condition exists to
+    // protect every OTHER caller too, not to be this function's only line of
+    // defence.
+    if (!input.person.email && !input.person.phone) {
+      throw new Error("Add an email or phone number for this person before filing them.")
+    }
+    const identity = await upsertContactIdentity({
+      email: input.person.email ?? null,
+      phone: input.person.phone ?? null,
+      name: input.person.name ?? null,
+      businessId,
+    })
+    contactId = identity.contactId
+    // History being FILED, not a lead ARRIVING — see this function's own doc
+    // comment. `recordEventForExistingContact` appends the timeline row and
+    // NEVER calls `enrollIfTriggered`.
+    await recordEventForExistingContact({ contactId, businessId, source: "manual_card" })
+  } else {
+    throw new Error("Provide either an existing contact or a new person's details.")
+  }
+
+  const { data: stageRow, error: stageErr } = await supabase
+    .from("pipeline_stages")
+    .select("id, key, name")
+    .eq("business_id", businessId)
+    .eq("pipeline_id", input.pipelineId)
+    .eq("position", 1)
+    .maybeSingle()
+  if (stageErr) throw new Error(`pipeline_stages read failed: ${stageErr.message}`)
+  if (!stageRow) throw new Error(`Board "${board.name}" has no stage at position 1.`)
+  const firstStage = stageRow as { id: string; key: string; name: string }
+
+  // Pre-check: racy (read-then-write), but it is what makes the ordinary,
+  // non-concurrent case answer with English instead of a 23505. The unique
+  // index below is the guard that actually holds under concurrency.
+  const { data: existingData, error: existingErr } = await supabase
+    .from("opportunities")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("pipeline_id", input.pipelineId)
+    .eq("contact_id", contactId)
+    .is("outcome", null)
+    .maybeSingle()
+  if (existingErr) throw new Error(`opportunities read failed: ${existingErr.message}`)
+  if (existingData) {
+    await throwOpenCardExistsError({ supabase, businessId, contactId, pipelineId: input.pipelineId, boardName: board.name })
+  }
+
+  const { data: insertData, error: insertErr } = await supabase
+    .from("opportunities")
+    .insert({
+      business_id: businessId,
+      pipeline_id: input.pipelineId,
+      contact_id: contactId,
+      stage_id: firstStage.id,
+      entered_stage_at: new Date().toISOString(),
+      value_cents: input.valueCents ?? null,
+      // No upstream event behind a hand-made card, unlike every other create
+      // branch in this file.
+      source_event_id: null,
+      outcome: null,
+      closed_at: null,
+      closed_trigger: null,
+    })
+    .select("id")
+    .single()
+
+  if (insertErr) {
+    // The concurrent twin of the pre-check above: `opportunities_one_open_per_contact_pipeline`
+    // refused the insert because another request won the race between the
+    // read above and this write. Same message either way.
+    if (isPgUniqueViolation(insertErr)) {
+      await throwOpenCardExistsError({ supabase, businessId, contactId, pipelineId: input.pipelineId, boardName: board.name })
+    }
+    throw new Error(`createOpportunityManually failed: ${insertErr.message}`)
+  }
+
+  const opportunityId = (insertData as { id: string }).id
+
+  await insertStageEvent(supabase, {
+    businessId,
+    opportunityId,
+    fromStageId: null,
+    toStageId: firstStage.id,
+    trigger: "manual",
+    actorUserId: input.actorUserId,
+  })
+
+  return { opportunityId, contactId }
 }
