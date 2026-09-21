@@ -17,7 +17,7 @@
 - **Migration number:** `00276` is free as of 2026-09-21 18:00 UTC. **Four peer Claude sessions are running against this repo.** Re-check with `git ls-tree --name-only main supabase/migrations/ | tail -1` immediately before committing Task 2, and check every worktree under `.claude/worktrees/`.
 - **Apply migrations to the DEV clone automatically** (standing instruction), never production. `.env.local` points at the dev clone.
 - **tsc baseline:** exactly **238 errors across 54 files**, per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`. A falling count hides new errors too — compare the set, not just the number.
-- **Pre-existing RED suites** — do not blame these on your work: `__tests__/migrations/00062.test.ts` (3, needs a live DB), `__tests__/lib/coach-reachability.test.ts` (1), `__tests__/components/admin/funnel-builder-initial-prompt.test.tsx` (3).
+- **Pre-existing RED suites** — do not blame these on your work. Corrected 2026-09-22 (R8): main is **13 failures across 4 files**, not 7 across 3. `__tests__/migrations/00062.test.ts` (3, needs a live DB), `__tests__/lib/coach-reachability.test.ts` (1), `__tests__/components/admin/funnel-builder-initial-prompt.test.tsx` (3), and `__tests__/lib/ai/tool-loop.test.ts` (6, broken by the OpenRouter migration — fixture model id "m" has no slug). NOT G29 work.
 - **Run the WHOLE suite before calling a task done.** A suite selection has hidden a red test three times in this ledger's history.
 - **Stage `position` starts at 1**, not 0, on all three seeded boards.
 - **Tables use `components/ui/data-table.tsx`.** Never hand-roll a `<table>`.
