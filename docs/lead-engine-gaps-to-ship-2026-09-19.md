@@ -592,9 +592,9 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 |---|---|---|
 | 1 | Approve the copy of the eight unreviewed sequences | G03 (live now), G11, G12, G17 |
 | 2 | One-sequence-at-a-time: option A, B or C | G14 |
-| 3 | Gate manual texts on consent, with an audited override? | G28 |
+| 3 | ~~Gate manual texts on consent, with an audited override?~~ **RULED 2026-09-21: YES — gate it, with the audited "Send anyway" override.** See below. | G28 |
 | 4 | Hard bounce suppresses the address? | G09 |
-| 5 | Assessment submitters become contacts? (reverses the 8 Sept ruling) | G21 |
+| 5 | ~~Assessment submitters become contacts?~~ **RULED 2026-09-21: YES — mint the contact, matching the questionnaire.** See below. | G21 |
 | 6 | Chat booking: accept hand-over wording, or schedule native booking | G19 |
 | 7 | Email-consent wording on the funnel, quiz and inquiry forms (0 consent rows today) | G17 in practice |
 | 8 | The 73 stranded re-permission runs: re-date and send, leave, or re-ask | — |
@@ -602,14 +602,57 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 | 10 | `sms_help_text` and the Twilio HELP auto-reply wording | — |
 | 11 | Tenant coaches editing their own settings | G34 |
 
+### Rulings recorded 2026-09-21
+
+**Decision 5 / G21 — assessment submitters DO become contacts.** Reverses the 8 Sept attach-only ruling.
+The 8 Sept ruling argued from "`contacts.user_id` has no originating writer anywhere in this repo … 0 of
+170 production contacts have a user_id". **G04 gave it a writer and backfilled: production is 43 of 170,
+re-verified 2026-09-21.** The premise is gone. The owner also resolved the inconsistency it created:
+`app/api/questionnaire/route.ts` (G20, shipped) is equally session-gated and already MINTS a contact, and
+the two routes disagreeing on purpose was written into the route, `lib/tenancy/platform.ts` and this ledger.
+They now agree. **Note the conclusion of the stale comment was still correct for a different reason** — the
+lookup must keep matching on email, because only 43 of 170 are linked and a `userId`-only lookup would miss
+127. Correct the argument, keep the behaviour.
+
+**Decision 3 / G28 — manual texts ARE consent-gated, with an audited override.** Measured: `contact_consents`
+has **0 rows** in production, so the gate blocks every manual text from day one. The owner accepted that
+knowingly: the coach can tick **Send anyway**, which records `consent_override:true` on the `sms.sent_manual`
+audit metadata. Nothing is silently blocked, and nothing sends without a deliberate act. Implementation is
+`sendManualSms` (`lib/lead-engine/sms.ts`) + composer + route.
+
+**RLS grouping (S01) — all thirteen in ONE migration, no policies.** The owner chose the single-migration
+option over a staged rollout, on the measured basis that no policies are required at all. See §Security.
+
+**The RPC exposure (S02) — folded into the same branch as a second migration.** Not deferred to its own task.
+
 ---
 
 ## Housekeeping (fold into whichever phase touches them)
 
 - `lib/db/funnels.ts:572` names `SINGLETON_BUSINESS_ID` in prose, so `CLAUDE.md`'s count command returns 6. Reword the comment (retire it in G31) or change the documented count.
 - Add a "superseded 2026-09-19" banner to `docs/full-engine-scope-vs-built.md` and `docs/lead-engine-audit-2026-09-13.md`.
-- **RLS is disabled on 13 tables — re-verified against `pg_class.relrowsecurity` on 2026-09-21, and the list is worth reading rather than counting:** `agent_tool_baselines, assessment_questions, assessment_results, chief_strategist_memos, coach_ai_policy, event_signups, events, exercise_blocks, generated_exercise_usage, membership_plans, program_week_access, program_week_pricing, repo_migrations`. Two of those hold personal data about minors — `assessment_results` (athlete performance and health answers) and `event_signups` (parent name, email, phone, athlete name and age). Enabling RLS without policies blocks all access, so policies come first. Filed here as housekeeping; **it reads more like a security task than a tidy-up, and the next session should say so to the owner rather than inheriting the label.** Not a lead-engine gap either way.
+- ~~RLS is disabled on 13 tables~~ — **MOVED OUT OF HOUSEKEEPING. It was a security task, not a tidy-up. See §Security below. Closed 2026-09-21 by migrations `00274` and `00275`.**
 - `lead_magnets` has 0 rows; the lead-magnet entry point has nothing to serve until the owner creates one.
+
+---
+
+## Security (NOT lead-engine gaps — filed here because this ledger is where the work was tracked)
+
+### S01 · Thirteen public tables had no RLS, and `anon` held full DML · **BUILT 2026-09-21**
+- Migration `00274_enable_rls_on_open_tables.sql`, branch `worktree-rls-and-rpc-lockdown`. Rehearsed on the dev clone; **awaiting the owner's word before the push that reaches production.**
+- **Measured on production 2026-09-21.** Thirteen tables with `pg_class.relrowsecurity = false` and zero policies: `agent_tool_baselines, assessment_questions, assessment_results, chief_strategist_memos, coach_ai_policy, event_signups, events, exercise_blocks, generated_exercise_usage, membership_plans, program_week_access, program_week_pricing, repo_migrations`. Supabase's own linter flags all thirteen `rls_disabled_in_public` at **ERROR / EXTERNAL**.
+- **The grant was `anon=arwdDxtm`, not SELECT.** INSERT, SELECT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN. The read was proven end-to-end with the publishable key and `Prefer: count=exact` + `limit=0` (`program_week_access` → HTTP 206 `*/500`; `contacts` as an RLS-on **control** → `*/0`). The write was confirmed at the grant level and deliberately **not** probed against production.
+- **Two corrections to what the owner had been told.** (1) `assessment_results` and `event_signups` are **empty, 0 rows** — a fuse that lights on the first assessment submission or camp signup, not a live leak. (2) It was never read-only.
+- **No policies, deliberately.** Every reader of all thirteen goes through `createServiceRoleClient()`; `createBrowserSupabaseClient` and `createServerSupabaseClient` have **zero callers repo-wide**; `service_role` has `rolbypassrls = true`. Twenty-eight tables here already run RLS-on-with-zero-policies (`audit_logs`, `funnels`, `cron_runs`), which is the empirical proof it works. **The earlier Housekeeping line said "enabling RLS without policies blocks all access, so policies come first" — that is wrong for this codebase and this migration disproves it.** A `select using (true)` policy on the reference tables was considered and rejected: it would preserve the exposure and buy nothing.
+- **RLS does not cover TRUNCATE, REFERENCES, TRIGGER or MAINTAIN** — `ENABLE ROW LEVEL SECURITY` leaves `relacl` untouched. Those four are revoked outright in the same migration, or `anon` would keep TRUNCATE on all thirteen. Post-change `relacl` reads `anon=arwd`, and RLS denies all four of those.
+
+### S02 · Five SECURITY DEFINER functions were callable by `anon` over `/rest/v1/rpc/` · **BUILT 2026-09-21**
+- Migration `00275_revoke_anon_security_definer_rpcs.sql`, same branch. **Found by the Supabase linter during S01 — it was in no audit and no ledger row.**
+- `create_message` inserts a message with a **caller-supplied sender id and sender role** and never checks the caller is that user or a participant; `confirm_event_signup` / `cancel_event_signup` flip a signup's state and move `events.signup_count`; `create_form_review_message_with_attachment` is the same shape; `is_messaging_admin` leaks an authorization answer. None has any caller check — verified by reading `pg_get_functiondef`, not inferred from the names.
+- **Honest severity:** each needs a UUID the caller has no legitimate way to obtain, so in practice they are gated by UUID entropy. That is obscurity, not authorization — a real finding, but a *smaller* live risk than S01, which needs no identifier at all.
+- **Three of the five were granted to `PUBLIC`** (`=X/postgres` in `proacl`). A revoke naming only `anon` and `authenticated` would have left all three callable — a migration that reads like a fix and changes nothing. The revoke names PUBLIC first.
+- **`is_messaging_admin` keeps `authenticated`, and that is load-bearing.** It is called inside **six** RLS policy expressions, all `TO authenticated` — four in `public` and two on `realtime.messages`. Postgres checks EXECUTE on a policy-invoked function as the querying role, so revoking it there makes those policies *raise* rather than filter. `service_role` keeps EXECUTE on all five; that is how the app calls them.
+- **Not fixed here:** the missing authorization checks *inside* those functions. This migration stops the internet reaching them; it does not make them safe to expose. Worth its own row.
 
 ---
 
