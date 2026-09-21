@@ -250,6 +250,16 @@ export async function readCampaignRevenue(input: {
   // ── The three sources ──────────────────────────────────────────────────
 
   // WON: closed in the window. The only one keyed on `closed_at`.
+  //
+  // G23 NEEDS NOTHING HERE, and that is the point rather than an omission.
+  // When a payment wins a card, this contact's enquiry cards on other boards
+  // are closed `lost` with reason `paid_elsewhere` (see
+  // `closeOpenCardsOnOtherBoards`), so the `outcome = 'won'` filter below
+  // already excludes them and one sale stays one won deal. Closing them as WON
+  // at zero value — which the gap row proposed — would have kept the MONEY
+  // right while still adding 1 to `wonCount` per board, inflating the
+  // conversion rate this page exists to report, and would have needed a filter
+  // here to undo it.
   const wonOpportunities = await readAllPages((from, to) =>
     supabase
       .from("opportunities")

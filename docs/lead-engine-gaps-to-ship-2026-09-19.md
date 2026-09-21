@@ -324,6 +324,42 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 
 ### G23 · A payment does not close the enquiry card on another board · **S**
 - After the Won card is created on the routed board, close any open card for the same contact on other boards as `won` with `value_cents 0` and `outcome_reason paid_elsewhere` (no double-counting). Test in `pipeline-hooks.test.ts`.
+- **BUILT 2026-09-21.** No migration. **Shipped as `lost`, NOT `won` — the row's wording would have
+  lost a real sale**, and that was proved by driving a second payment through the real state machine
+  rather than by reading it:
+  - **`decideMove`'s payment arm returns `{kind:"noop", reason:"already_won"}` for any already-won
+    card.** So sweeping the camp card to Won and then selling that person an actual camp place
+    records the sale NOWHERE: the board keeps a card at `value_cents: 0` and the money is absent
+    from both the board and campaign revenue. Before the sweep existed, that card was simply still
+    open and the payment closed it Won at full value. A `lost` card has no such trap — the same arm
+    re-closes it as won at full value, reusing the row, so the history reads
+    opened → lost (paid elsewhere) → won. The trap is specifically "checkout with no fresh enquiry
+    in between", which is the common path.
+  - **`lost` is also truer and cheaper.** From THAT board's point of view the enquiry did not become
+    a sale; the conversion is recorded as Won exactly once, where the money landed. And because
+    `campaign-revenue.ts` reads `outcome = 'won'`, a lost card is already outside its Won query —
+    **no downstream filter is needed at all.** Closing as Won at 0 would have kept the MONEY right
+    while still adding 1 to `wonCount` per board, inflating the conversion rate that page exists to
+    report. (Swept cards share the contact's `first_touch_session_id`, so they land in the same
+    campaign bucket as the sale — the double count was real, not theoretical.)
+  - `closed_trigger` is `payment`, never `manual`: `decideMove` treats a manual close as
+    `humanClosed` and refuses to move the card again, so a sweep stamping `manual` would permanently
+    freeze a board the coach never touched.
+  - Each card moves to **its own board's** lost stage, found by `kind` (00219's schema comment: the
+    state machine keys on `kind` so a business can rename a stage). A board with no lost stage is
+    skipped rather than parked on another board's stage id.
+  - **Errors are isolated PER CARD.** The first cut let one board's transient failure unwind past
+    every remaining card and leave them open behind a single log line — the exact stale-card state
+    this gap removes, reintroduced by its own error handling.
+  - **Two test fakes were hardened, and both had hidden a real bug.** `__tests__/db/pipeline.test.ts`
+    had no `.is()` at all, so the sweep's "still open" predicate threw a TypeError that its own
+    catch swallowed into a silent no-op; and the campaign-revenue fake was projection-BLIND, so
+    dropping a column from a `select()` left the suite green. That one now PROJECTS, like it already
+    enforces PostgREST's row and `.in()` caps.
+  - Whole suite green at the 7-test baseline (1075 files / 11507 tests); tsc 238/54 per-file
+    identical; build exit 0; **15 mutants, 14 killed and one declared EQUIVALENT** (excluding the
+    just-won card is masked by the open-only predicate, since both call sites sweep after their own
+    write).
 
 ### G24 · Camp and clinic enquiries route to Coaching · **S**
 - `lib/lead-engine/pipeline-route.ts:196-208`: `inquiry` with `serviceType ∈ {camp, clinic}` → `camps_clinics`. Update `pipeline-route.test.ts:70`.
@@ -563,9 +599,9 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 23 done · 13 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 G24 G25.
-Open: G21 G22 G23 G26 G27 G28 G29 G30 G31 G32 G33 G34 G35.
+**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 24 done · 12 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 G23 G24 G25.
+Open: G21 G22 G26 G27 G28 G29 G30 G31 G32 G33 G34 G35.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs

@@ -562,6 +562,190 @@ async function insertStageEvent(
 const SYSTEM_ACTOR = { id: null, email: null, role: "system" as const }
 
 /**
+ * G23. The reason an enquiry card on another board is closed when this person
+ * buys something else. Not a CHECK-constrained value — `opportunities` has no
+ * constraint on `outcome_reason` (verified against `pg_constraint`, which is
+ * where foreign keys and checks actually live; `information_schema` reports
+ * neither) — so this is a convention shared with `payment_received`,
+ * `booking_cancelled`, `refunded` and `merged_into_survivor`.
+ */
+export const PAID_ELSEWHERE_REASON = "paid_elsewhere"
+
+/**
+ * G23. When a payment wins a card, close the enquiry cards this contact has
+ * left OPEN on every OTHER board.
+ *
+ * A person can legitimately be on more than one board at once — an assessment
+ * enquiry and a camp enquiry — and until now only the board they actually
+ * bought on learned about the sale. The others kept an open card that had
+ * become a lie: the coach chases someone who has already paid, and G27's
+ * "gone quiet" colouring actively pushes that stale card UP the list for it.
+ *
+ * LOST, NOT WON — and the gap row said won. Three reasons, the first of which
+ * is decisive and was found by driving a second sale through the real state
+ * machine rather than by reading it:
+ *
+ *   1. **A WON card makes that board DEAF to a real later sale.**
+ *      `decideMove`'s payment arm returns `{kind:"noop", reason:"already_won"}`
+ *      for any already-won `current`. So sweeping the camp card to Won and
+ *      then selling that person an actual $450 camp place records the sale
+ *      NOWHERE: the board keeps one card at `value_cents: 0`, and the money is
+ *      absent from the board and from campaign revenue. Before this sweep
+ *      existed the card was still open and that payment closed it Won at full
+ *      value. A "fix" that loses a real sale is worse than the stale card it
+ *      tidied. `lost` has no such trap — the same arm closes a lost card as
+ *      won at full value, reusing the row, so the history reads
+ *      opened → lost (paid elsewhere) → won, which is what actually happened.
+ *   2. It is true from THIS board's point of view. The camp enquiry did not
+ *      become a camp sale. The conversion is recorded as Won exactly once, on
+ *      the board where the money landed; recording it as Won again here is the
+ *      double count, not a fairer accounting of it.
+ *   3. It needs no downstream filter. `campaign-revenue.ts` reads
+ *      `outcome = 'won'`, so a lost card is already outside its Won query, and
+ *      `wonCount` cannot inflate. Closing as Won at 0 would have kept the
+ *      MONEY right while still turning one sale into two or three won deals —
+ *      the number that page exists to report.
+ *
+ * `value_cents: 0` rather than null: "this deal is worth nothing HERE" is a
+ * different claim from "nobody recorded a value", and the registrations count
+ * (which reads opportunities of ANY outcome) still sees the enquiry, correctly.
+ *
+ * Scoped to (business, contact, other boards, still open):
+ *   - the board just won is excluded by id, so the real sale keeps its value;
+ *   - already-closed cards are untouched, so a camp enquiry lost in March is
+ *     not rewritten as won because coaching was bought in September;
+ *   - each card moves to ITS OWN board's lost stage, found by `kind` and never
+ *     by the key "lost" (00219's schema comment: the state machine keys on
+ *     `kind` so a business can rename a stage). A board with no lost stage is
+ *     skipped rather than parked on another board's stage id, which would be
+ *     a foreign-key-valid lie.
+ *
+ * `closed_trigger` is `payment`, NOT `manual` — and that is load-bearing
+ * rather than cosmetic. `decideMove` treats `closed_trigger === "manual"` as
+ * `humanClosed` and refuses to move the card ever again ("human_close_is_final").
+ * A sweep that stamped `manual` would permanently freeze a board the coach
+ * never touched.
+ *
+ * Never throws, at two levels. Per CARD, so one board's transient failure
+ * cannot strand the boards after it in the loop — the original version let a
+ * single `throw` unwind past the remaining cards and leave them open behind
+ * one log line. And per SWEEP, because this runs AFTER the sale itself is
+ * safely written and the sale is the part that must not be lost: failing here
+ * would hand the caller an exception for work that already succeeded.
+ */
+async function closeOpenCardsOnOtherBoards(args: {
+  supabase: ReturnType<typeof createServiceRoleClient>
+  businessId: string
+  contactId: string
+  wonOpportunityId: string
+  now: Date
+  source: "hook" | "reconciler"
+  /**
+   * What the stage-event rows say caused the move. Passed in rather than
+   * hard-coded so a reconciler catch-up pass stamps `reconciler` here exactly
+   * as it does on every other stage event in this file — otherwise the sale
+   * would read `reconciler` and its own sweep would read `payment`.
+   */
+  stageEventTrigger: string
+}): Promise<void> {
+  const { supabase, businessId, contactId, wonOpportunityId, now, source, stageEventTrigger } = args
+  try {
+    const { data, error } = await supabase
+      .from("opportunities")
+      .select("id, pipeline_id, stage_id")
+      .eq("business_id", businessId)
+      .eq("contact_id", contactId)
+      .is("outcome", null)
+    if (error) throw error
+
+    // Excluding the card just won is REDUNDANT TODAY and kept deliberately.
+    // Both call sites run this after their own write, so that card already has
+    // an outcome and the `.is("outcome", null)` predicate above has excluded
+    // it — a mutation removing this line survives the suite, and it is listed
+    // as an equivalent mutant rather than dressed up with a fixture that
+    // pretends otherwise. It stays because the two are guarding different
+    // things: the predicate says "still open", this says "not the sale we are
+    // reacting to", and moving the sweep above the write would make the second
+    // claim the only one left.
+    const stale = ((data ?? []) as Row[]).filter((row) => row.id !== wonOpportunityId)
+    if (stale.length === 0) return
+
+    for (const card of stale) {
+      // Per-card, so a transient failure on the first board cannot strand the
+      // boards after it. Without this the loop's throws unwound to the outer
+      // catch and every remaining card stayed open behind a single log line.
+      try {
+        const { data: stageData, error: stageErr } = await supabase
+          .from("pipeline_stages")
+          .select("id, key, name, position, kind, amber_after_days, red_after_days")
+          .eq("business_id", businessId)
+          .eq("pipeline_id", card.pipeline_id)
+        if (stageErr) throw stageErr
+        const lostStage = ((stageData ?? []) as StageRow[]).find((s) => s.kind === "lost")
+        if (!lostStage) {
+          console.warn(
+            `[pipeline] board ${card.pipeline_id} has no lost stage — leaving opportunity ${card.id} open rather than parking it on another board's stage`,
+          )
+          continue
+        }
+
+        const { error: updateErr } = await supabase
+          .from("opportunities")
+          .update({
+            outcome: "lost",
+            outcome_reason: PAID_ELSEWHERE_REASON,
+            // Zero, not null: "this deal is worth nothing HERE" is a different
+            // claim from "nobody recorded a value".
+            value_cents: 0,
+            // All three of outcome/closed_at/closed_trigger together —
+            // `opportunities_closed_fields_agree` (00219) rejects any patch
+            // that sets one without the others.
+            closed_at: now.toISOString(),
+            closed_trigger: "payment",
+            stage_id: lostStage.id,
+            updated_at: now.toISOString(),
+          })
+          .eq("id", card.id)
+        if (updateErr) throw updateErr
+
+        await insertStageEvent(supabase, {
+          businessId,
+          opportunityId: card.id as string,
+          fromStageId: (card.stage_id as string | null) ?? null,
+          toStageId: lostStage.id,
+          trigger: stageEventTrigger,
+          metadata: { closed_reason: PAID_ELSEWHERE_REASON, won_opportunity_id: wonOpportunityId },
+        })
+
+        await recordAudit({
+          action: "pipeline.opportunity_lost",
+          category: "commerce",
+          actor: SYSTEM_ACTOR,
+          target: { type: "opportunity", id: card.id as string },
+          metadata: {
+            contact_id: contactId,
+            reason: PAID_ELSEWHERE_REASON,
+            won_opportunity_id: wonOpportunityId,
+            trigger: "payment",
+            source,
+          },
+        })
+      } catch (err) {
+        console.error(
+          `[pipeline] could not close opportunity ${card.id} after a sale on another board; the other boards are still being swept`,
+          (err as Error).message,
+        )
+      }
+    }
+  } catch (err) {
+    console.error(
+      `[pipeline] could not close this contact's open cards on other boards after a sale (contact ${contactId}); the sale itself is recorded`,
+      (err as Error).message,
+    )
+  }
+}
+
+/**
  * Which board holds `contactId`'s most recent WON opportunity, searched
  * across EVERY pipeline this business has — not the one board a caller
  * happens to be routing through.
@@ -1024,6 +1208,21 @@ export async function applyPipelineEvent(input: {
         },
       })
 
+      // G23. A card created ALREADY WON is a sale (a checkout that completed
+      // before any enquiry card existed on the routed board), so the same
+      // sweep applies as on the close branch below.
+      if (decision.outcome === "won") {
+        await closeOpenCardsOnOtherBoards({
+          supabase,
+          businessId,
+          contactId: input.contactId,
+          wonOpportunityId: opportunityId,
+          now,
+          source,
+          stageEventTrigger: writtenTrigger(decision.trigger),
+        })
+      }
+
       return { decision, opportunityId }
     }
 
@@ -1096,6 +1295,21 @@ export async function applyPipelineEvent(input: {
           source,
         },
       })
+
+      // G23. Only a WIN sweeps. A card closed LOST leaves the other boards
+      // exactly as they were — the person has not bought anything, so their
+      // other enquiries are still live.
+      if (decision.outcome === "won") {
+        await closeOpenCardsOnOtherBoards({
+          supabase,
+          businessId,
+          contactId: input.contactId,
+          wonOpportunityId: current.id,
+          now,
+          source,
+          stageEventTrigger: writtenTrigger(decision.trigger),
+        })
+      }
 
       return { decision, opportunityId: current.id }
     }
