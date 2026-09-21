@@ -2187,6 +2187,24 @@ async function readBoardRow(
 }
 
 /**
+ * Thrown by `updatePipelineBoard` when `pipelineId` does not resolve to a
+ * board the caller's business can see — either the id does not exist at
+ * all, or it belongs to a DIFFERENT tenant. Deliberately ONE error type and
+ * ONE message for both cases (fix round 1, Finding 1 / controller ruling
+ * R10): a route that told those two apart — 404 for "no such id", 403 for
+ * "not yours" — would let a caller learn which board ids exist on OTHER
+ * tenants by comparing status codes, which is exactly the kind of leak
+ * `readBoardRow`'s own doc comment above already refuses for the archive
+ * check. The route maps this to a flat 404.
+ */
+export class PipelineBoardNotFoundError extends Error {
+  constructor(pipelineId: string) {
+    super(`Board ${pipelineId} was not found for this business.`)
+    this.name = "PipelineBoardNotFoundError"
+  }
+}
+
+/**
  * INVARIANT 6 (controller ruling R7 cross-references this from migration
  * 00276's own header). `routeToPipeline` returns KEYS, and a routed event
  * naming an archived board has nowhere to land on the write path: the read
@@ -2200,6 +2218,18 @@ async function readBoardRow(
  * every other reader in this file — a lookup by id alone would leak whether
  * a board belonging to a DIFFERENT tenant happens to be that tenant's
  * default, through this function's own thrown message.
+ *
+ * Fix round 1, Finding 1 (controller ruling R10): a PLAIN RENAME (no
+ * `status`, or `status: "active"`) used to skip this existence check
+ * entirely and go straight to the `UPDATE` below — PostgREST returns no
+ * error when an `.update().eq(...)` matches zero rows, so
+ * `updatePipelineBoard({pipelineId: "does-not-exist", name: "X"})` silently
+ * no-op'd and resolved as if it had succeeded. The caller (the PATCH route)
+ * then answered 200 and recorded a `pipeline.board_updated` audit row
+ * claiming a rename that never happened — a false success is worse than an
+ * error, because the audit trail is what a human later trusts. Closed below
+ * by asserting the `UPDATE` actually touched a row, not by duplicating an
+ * existence check into the route — the rule belongs in one place.
  */
 export async function updatePipelineBoard(input: {
   pipelineId: string
@@ -2211,7 +2241,7 @@ export async function updatePipelineBoard(input: {
 
   if (input.status === "archived") {
     const board = await readBoardRow(input.pipelineId, input.businessId)
-    if (!board) throw new Error(`Board ${input.pipelineId} was not found for this business.`)
+    if (!board) throw new PipelineBoardNotFoundError(input.pipelineId)
     if (board.key === DEFAULT_PIPELINE_KEY) {
       throw new Error(
         `"${board.name}" is the board every unrouted event falls back to, so it cannot be archived. Point the default at another board first.`,
@@ -2223,12 +2253,22 @@ export async function updatePipelineBoard(input: {
   if (input.name !== undefined) patch.name = input.name
   if (input.status !== undefined) patch.status = input.status
 
-  const { error } = await supabase
+  // `.select("id")` + `.maybeSingle()`, not a bare `.update()`: PostgREST
+  // reports no error on an UPDATE that matches zero rows, so without this
+  // the only way to notice a nonexistent-or-foreign-tenant `pipelineId` was
+  // the `status: "archived"` pre-check above — which a plain rename never
+  // runs. `data` coming back null (with no `error`) is exactly that
+  // zero-rows case; `.maybeSingle()` itself throws if more than one row
+  // ever matched, which `id` being the primary key makes impossible.
+  const { data, error } = await supabase
     .from("pipelines")
     .update(patch)
     .eq("id", input.pipelineId)
     .eq("business_id", input.businessId)
+    .select("id")
+    .maybeSingle()
   if (error) throw new Error(`updatePipelineBoard failed: ${error.message}`)
+  if (!data) throw new PipelineBoardNotFoundError(input.pipelineId)
 }
 
 /**

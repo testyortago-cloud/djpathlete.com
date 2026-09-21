@@ -18,8 +18,15 @@ import { withAudit } from "@/lib/audit/with-audit"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import { createPipelineBoard } from "@/lib/db/pipeline"
+// Type-only, so the closed audit taxonomy is checked at compile time — a
+// slug that is not a row in `AUDIT_ACTIONS` stops the build instead of
+// writing a row the log viewer cannot name. Same convention as
+// app/api/ask/route.ts and lib/lead-engine/chat/escalate.ts.
+import type { AuditAction } from "@/lib/audit/actions"
 
 const MAX_NAME_LENGTH = 200
+
+const BOARD_CREATED_AUDIT_ACTION: AuditAction = "pipeline.board_created"
 
 const CreateBoardSchema = z.object({
   name: z
@@ -31,7 +38,7 @@ const CreateBoardSchema = z.object({
 
 export const POST = withAudit(
   {
-    action: "pipeline.board_created",
+    action: BOARD_CREATED_AUDIT_ACTION,
     category: "admin_write",
     // Reads the ORIGINAL (still-unconsumed) request — the handler below
     // parses a CLONE of it, so this is the first real read regardless of

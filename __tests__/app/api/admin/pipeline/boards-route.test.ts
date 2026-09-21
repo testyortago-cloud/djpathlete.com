@@ -37,14 +37,27 @@ vi.mock("@/lib/tenancy/resolve", () => {
   }
 })
 
-vi.mock("@/lib/db/pipeline", () => ({
-  createPipelineBoard: (...a: unknown[]) => createPipelineBoardMock(...a),
-  updatePipelineBoard: (...a: unknown[]) => updatePipelineBoardMock(...a),
-}))
+// `PipelineBoardNotFoundError` declared INSIDE the factory, same reason as
+// `NoAccessibleBusinessError` above — and imported back below so tests
+// construct the SAME class the route's `instanceof` check compares against.
+vi.mock("@/lib/db/pipeline", () => {
+  class PipelineBoardNotFoundError extends Error {
+    constructor(pipelineId: string) {
+      super(`Board ${pipelineId} was not found for this business.`)
+      this.name = "PipelineBoardNotFoundError"
+    }
+  }
+  return {
+    createPipelineBoard: (...a: unknown[]) => createPipelineBoardMock(...a),
+    updatePipelineBoard: (...a: unknown[]) => updatePipelineBoardMock(...a),
+    PipelineBoardNotFoundError,
+  }
+})
 
 import { POST } from "@/app/api/admin/pipeline/boards/route"
 import { PATCH } from "@/app/api/admin/pipeline/boards/[id]/route"
 import { NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
+import { PipelineBoardNotFoundError } from "@/lib/db/pipeline"
 
 const STAFF_SESSION = { user: { id: "staff-1", role: "staff", permissions: {} } }
 const COACH_SESSION = { user: { id: "coach-1", role: "staff", permissions: { contacts: true } } }
@@ -186,7 +199,7 @@ describe("PATCH /api/admin/pipeline/boards/[id]", () => {
     expect(body.error).toContain("every unrouted event falls back to")
   })
 
-  it("200s a rename", async () => {
+  it("200s a rename — the presence control for the two 404 tests below", async () => {
     const res = await PATCH(patchReq({ name: "Renamed board" }) as never, boardParams)
     expect(res.status).toBe(200)
     expect(updatePipelineBoardMock).toHaveBeenCalledWith({
@@ -194,6 +207,50 @@ describe("PATCH /api/admin/pipeline/boards/[id]", () => {
       businessId: BUSINESS_ID,
       name: "Renamed board",
       status: undefined,
+    })
+    // Without this, a route that 404'd EVERY rename would pass both tests
+    // below just as well as a correct one.
+    const call = recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.board_updated")
+    expect(call?.[0].outcome).toBe("success")
+  })
+
+  // Fix round 1, Finding 1 (controller ruling R10). `updatePipelineBoard`
+  // now throws `PipelineBoardNotFoundError` — same class, same message
+  // template — whether `pipelineId` does not exist at all or belongs to a
+  // DIFFERENT tenant (the DAL's own tests in __tests__/db/pipeline-boards.test.ts
+  // pin that equivalence for real; here we pin what the ROUTE does with it).
+  describe("a board id that does not resolve for this tenant", () => {
+    it("404s a board id that does not exist, and records no successful audit row", async () => {
+      updatePipelineBoardMock.mockRejectedValue(new PipelineBoardNotFoundError(BOARD_ID))
+
+      const res = await PATCH(patchReq({ name: "Renamed board" }) as never, boardParams)
+
+      expect(res.status).toBe(404)
+      const body = await res.json()
+      expect(body.error).toBe(`Board ${BOARD_ID} was not found for this business.`)
+
+      const call = recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.board_updated")
+      expect(call?.[0].outcome).not.toBe("success")
+    })
+
+    it("404s a board id belonging to a different tenant, with the SAME status and message as the nonexistent case", async () => {
+      // The route cannot see WHY updatePipelineBoard rejected — a
+      // nonexistent id and a foreign tenant's id both surface as the exact
+      // same PipelineBoardNotFoundError, so the route's response for each
+      // is identical BY CONSTRUCTION. Asserting both, not just one, means a
+      // future change that special-cases either side (e.g. answering 403
+      // for "foreign tenant") breaks this test rather than shipping a leak.
+      updatePipelineBoardMock.mockRejectedValueOnce(new PipelineBoardNotFoundError(BOARD_ID))
+      const nonexistentRes = await PATCH(patchReq({ name: "Renamed board" }) as never, boardParams)
+      const nonexistentBody = await nonexistentRes.json()
+
+      updatePipelineBoardMock.mockRejectedValueOnce(new PipelineBoardNotFoundError(BOARD_ID))
+      const foreignTenantRes = await PATCH(patchReq({ name: "Renamed board" }) as never, boardParams)
+      const foreignTenantBody = await foreignTenantRes.json()
+
+      expect(foreignTenantRes.status).toBe(404)
+      expect(foreignTenantRes.status).toBe(nonexistentRes.status)
+      expect(foreignTenantBody.error).toBe(nonexistentBody.error)
     })
   })
 

@@ -7,6 +7,13 @@
 // updatePipelineBoard (lib/db/pipeline.ts, Task 3) refuses to archive the
 // board every unrouted event falls back to (DEFAULT_PIPELINE_KEY) — that
 // refusal is a readable Error, surfaced here as a 400, not a 500.
+//
+// Fix round 1, Finding 1 (controller ruling R10): a `pipelineId` that does
+// not resolve for this business — wrong id, or another tenant's board —
+// throws `PipelineBoardNotFoundError` from the DAL and is surfaced as 404,
+// NOT 400. Both causes get the exact same status and message; telling them
+// apart here (404 vs 403) would let a caller learn which board ids exist on
+// OTHER tenants by comparing responses.
 
 import { NextResponse } from "next/server"
 import { z } from "zod"
@@ -14,9 +21,16 @@ import { auth } from "@/lib/auth"
 import { withAudit } from "@/lib/audit/with-audit"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
-import { updatePipelineBoard } from "@/lib/db/pipeline"
+import { PipelineBoardNotFoundError, updatePipelineBoard } from "@/lib/db/pipeline"
+// Type-only, so the closed audit taxonomy is checked at compile time — a
+// slug that is not a row in `AUDIT_ACTIONS` stops the build instead of
+// writing a row the log viewer cannot name. Same convention as
+// app/api/ask/route.ts and lib/lead-engine/chat/escalate.ts.
+import type { AuditAction } from "@/lib/audit/actions"
 
 const MAX_NAME_LENGTH = 200
+
+const BOARD_UPDATED_AUDIT_ACTION: AuditAction = "pipeline.board_updated"
 
 const UpdateBoardSchema = z
   .object({
@@ -34,7 +48,7 @@ const UpdateBoardSchema = z
 
 export const PATCH = withAudit(
   {
-    action: "pipeline.board_updated",
+    action: BOARD_UPDATED_AUDIT_ACTION,
     category: "admin_write",
     // The board's id comes from the URL (ctx.params), not the body, so —
     // unlike boards/route.ts's POST — this target never needs to read the
@@ -98,8 +112,14 @@ export const PATCH = withAudit(
         status: parsed.data.status,
       })
     } catch (err) {
-      // Readable DAL refusal ("every unrouted event falls back to…", board
-      // not found for this business) — surfaced, not swallowed into a 500.
+      // `PipelineBoardNotFoundError` covers BOTH a nonexistent id and a
+      // foreign tenant's board — same status, same message, on purpose (see
+      // the header comment). Every other DAL refusal ("every unrouted event
+      // falls back to…", a duplicate constraint) is a readable Error and
+      // surfaces as 400, not 500.
+      if (err instanceof PipelineBoardNotFoundError) {
+        return NextResponse.json({ error: err.message }, { status: 404 })
+      }
       const message = err instanceof Error ? err.message : "Failed to update board"
       return NextResponse.json({ error: message }, { status: 400 })
     }

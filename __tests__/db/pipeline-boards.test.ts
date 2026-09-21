@@ -243,6 +243,7 @@ import {
   readStagesForEdit,
   savePipelineStages,
   DEFAULT_PIPELINE_KEY,
+  PipelineBoardNotFoundError,
 } from "@/lib/db/pipeline"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
@@ -444,12 +445,19 @@ describe("updatePipelineBoard", () => {
     expect(store.pipelines.find((p) => p.id === id)!.status).toBe("archived")
   })
 
-  it("scopes the update by business_id", async () => {
+  it("scopes the update by business_id — a foreign tenant's write throws, not a silent no-op", async () => {
     const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
 
     // Wrong tenant, no archive flag — so this exercises the plain UPDATE's
     // own scope, not the read-before-archive guard.
-    await updatePipelineBoard({ pipelineId: id, businessId: OTHER_BUSINESS_ID, name: "Hijacked" })
+    //
+    // Fix round 1, Finding 1 (controller ruling R10): this used to resolve
+    // silently — PostgREST reports no error on an UPDATE that matches zero
+    // rows — so a foreign-tenant rename looked identical to a successful
+    // one to the caller. It must now throw.
+    await expect(
+      updatePipelineBoard({ pipelineId: id, businessId: OTHER_BUSINESS_ID, name: "Hijacked" }),
+    ).rejects.toThrow(PipelineBoardNotFoundError)
 
     expect(store.pipelines.find((p) => p.id === id)!.name).toBe("Camps & Clinics")
 
@@ -468,6 +476,46 @@ describe("updatePipelineBoard", () => {
 
     const readFilters = filtersFor("pipelines", "select")
     expect(readFilters).toContainEqual(["business_id", SINGLETON_BUSINESS_ID])
+  })
+
+  it("renames a board that exists and belongs to this tenant — the presence control for the two tests below", async () => {
+    const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
+
+    await updatePipelineBoard({ pipelineId: id, businessId: SINGLETON_BUSINESS_ID, name: "Renamed" })
+
+    expect(store.pipelines.find((p) => p.id === id)!.name).toBe("Renamed")
+  })
+
+  it("throws PipelineBoardNotFoundError for a plain rename of an id that does not exist at all", async () => {
+    // No `status`, so this never reaches the archive pre-check — it is the
+    // bare UPDATE path Finding 1 found unguarded.
+    await expect(
+      updatePipelineBoard({ pipelineId: "does-not-exist", businessId: SINGLETON_BUSINESS_ID, name: "X" }),
+    ).rejects.toThrow(PipelineBoardNotFoundError)
+  })
+
+  it("answers a nonexistent id and a foreign tenant's id with the exact same error class and message template", async () => {
+    // The whole point of R10: a caller must not be able to tell "no such
+    // board" apart from "not your board" by inspecting what was thrown —
+    // that distinction is exactly what would let an attacker enumerate
+    // other tenants' board ids. Both paths funnel through the SAME
+    // `if (!data) throw new PipelineBoardNotFoundError(...)`, so this pins
+    // both the class and the message template, not just "it threw".
+    const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
+
+    await expect(
+      updatePipelineBoard({ pipelineId: "does-not-exist", businessId: SINGLETON_BUSINESS_ID, name: "X" }),
+    ).rejects.toMatchObject({
+      name: "PipelineBoardNotFoundError",
+      message: "Board does-not-exist was not found for this business.",
+    })
+
+    await expect(
+      updatePipelineBoard({ pipelineId: id, businessId: OTHER_BUSINESS_ID, name: "X" }),
+    ).rejects.toMatchObject({
+      name: "PipelineBoardNotFoundError",
+      message: `Board ${id} was not found for this business.`,
+    })
   })
 })
 
