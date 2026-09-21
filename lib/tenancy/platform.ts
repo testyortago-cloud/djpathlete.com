@@ -83,6 +83,19 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     was itself filed under this same seam already (a first-time payer's
  *     Stripe checkout capture, above), so this agrees with how that row was
  *     filed rather than guessing a second tenant for it.
+ *   - the questionnaire submission's lead capture
+ *     (app/api/questionnaire/route.ts, gap G20). The SAME situation as the
+ *     assessment route directly above, for the same reason: it 401s without a
+ *     session, the session carries a userId only, `users` has no
+ *     `business_id`, and there is no per-coach relationship to resolve a
+ *     client's own tenant from today.
+ *
+ *     It differs from that route in ONE way, which is a product decision and
+ *     not a tenancy one: this route MINTS a contact when none matches
+ *     (`captureLead`), where the assessment route attaches only to one that
+ *     already exists. G20 asks for the mint; G21 is the open decision on
+ *     whether the assessment route should match it. Either way the tenant
+ *     question is identical, and both file here.
  *
  * CORRECT BY CONSTRUCTION -- the caller could be asked to resolve a tenant
  * and the answer would still be the platform's own. Not a placeholder

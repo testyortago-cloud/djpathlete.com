@@ -45,6 +45,16 @@ export type MatchCandidate = {
    * rescue the LOSER's zone before the row is destroyed.
    */
   timezone: string | null
+  /**
+   * Same contract again, for the contact's display name (G20), and carried for
+   * a narrower reason than the three above: `name` is written on EVERY branch
+   * unconditionally (`name: input.name ?? undefined`), so it is the one
+   * identity column here that is not fill-only by default. Only a caller
+   * passing `nameFillOnly` reads this, and only to leave an existing name
+   * alone. Like `timezone`, `merge_contacts` does not move this column, so the
+   * survivor's value is its own.
+   */
+  name: string | null
 }
 
 export type MergeDecision =

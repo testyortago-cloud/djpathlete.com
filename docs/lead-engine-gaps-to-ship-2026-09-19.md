@@ -270,6 +270,49 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 
 ### G20 · Questionnaire is not connected · **S**
 - `app/api/questionnaire/route.ts` writes `client_profiles` + GHL only. Ship `captureLead({source:"questionnaire"})` with the session user's email, name fill-only, timeline row. Test: route writes the spine.
+- **BUILT 2026-09-21.** No migration. Re-measured first: the route really did make zero
+  `captureLead`/`recordContactEvent` calls, and `questionnaire` was already a `ContactEventSource`
+  member, so no union widening was needed.
+  - **"name fill-only" did not exist and had to be built.** The row assumed `contacts.name` behaved
+    like the three identity columns beside it. It does not: `user_id`, `first_touch_session_id` and
+    `timezone` are all fill-only, and `name` was written unconditionally on every branch
+    (`name: input.name ?? undefined`), so any supplied name won outright. That is almost certainly
+    why the row assumed it. Shipped as `namePatch` + an **opt-in** `nameFillOnly` flag threaded
+    `captureLead → recordContactEvent → upsertContactIdentity`, defaulting to false.
+  - **The default is opt-in deliberately, not timidly.** Every pre-existing caller (contact form,
+    inquiry, newsletter, shop, both event routes, the Stripe webhook) receives a name the person
+    typed on THAT form moments earlier — the freshest evidence there is. The questionnaire is the
+    first caller for which that is false: it is session-gated, so its only name is the ACCOUNT's.
+    Making fill-only global would have quietly frozen the first name six entry points ever recorded.
+  - **`findMatchCandidates` had to start selecting `name`**, in BOTH the email and phone queries.
+    Without it `existing.name` reads `undefined`, which the guard cannot tell from "no name yet", and
+    fill-only silently degrades to the overwrite it exists to prevent. The test harness is
+    projection-BLIND, so a behaviour test alone cannot catch this — pinned by a projection test, the
+    same way `user_id` and `first_touch_session_id` already are.
+  - **A blank name counts as no name in BOTH directions**, found by the code review rather than by
+    me. The first cut applied the blank rule only to the EXISTING value, so fill-only could write the
+    very whitespace it defines as "no name" — reachable, not theoretical: `registerSchema` is
+    `z.string().min(1)` with no `.trim()` and `lib/auth.ts` composes the session name from those
+    fields, and the written `"   "` would blank the `?? fallback` labels on the contacts table, the
+    contact detail page and the SMS thread. Both blank rules live inside the `fillOnly` branch so the
+    default path stays byte-for-byte what the six other callers already did.
+  - **It MINTS a contact where the assessment route does not, and that divergence is deliberate and
+    unresolved.** `app/api/assessment/submit/route.ts` is equally session-gated and attaches only to
+    an existing contact, under the 8 Sept ruling. G20 asks for the mint; **G21 is the open decision
+    on whether the assessment route should match.** Said outright in the route, in `platform.ts` and
+    here, so nobody "simplifies" one into the other without deciding.
+  - **Tenant: `platformBusinessId()`**, the same seam and the same reason as the assessment route —
+    session carries a userId only, `users` has no `business_id`, no per-coach relationship exists to
+    resolve a client's tenant from. Added to the inventory in `lib/tenancy/platform.ts`, which
+    `platform-inventory.test.ts` enforces in both directions.
+  - **Known divergence worth a line in the G21 decision:** the spine matches by EMAIL, while the
+    assessment route looks up by `userId`. A client whose contact row carries a different address (a
+    Stripe receipt email, say) gets a second contact row rather than a match. Consistent with every
+    other `captureLead` caller and no constraint breaks, so it is a design divergence, not a bug.
+  - Whole suite green at the 7-test baseline (1075 files / 11457 tests); tsc 238/54 per-file
+    identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; build exit 0; **17 mutants, 17
+    killed** — including one genuine survivor found on the first sweep (the MERGE branch's fill-only
+    had no test, exactly as that branch's `timezonePatch` line once had none).
 
 ### G21 · Assessment only annotates an existing contact · **S, decision**
 - The 8 Sept ruling chose attach-only. The quotation counts assessment as an entry point and, with G04, every submitter is a linked client anyway. **Recommend reversing the ruling:** create when missing. Owner confirms; then `app/api/assessment/submit/route.ts:76-82` calls `recordContactEvent`.
