@@ -23,6 +23,25 @@ import OpenAI from "openai"
  * cannot import from `lib/`. Change one, change both.
  */
 
+/**
+ * MEASURED 2026-09-21 against a live key, not assumed:
+ *
+ *   sonnet-4.6  forced tool_choice   PASS  3.8s
+ *   haiku-4.5   forced tool_choice   PASS  2.9s
+ *   opus-4.6    forced tool_choice   PASS  3.9s
+ *   fable-5.1   response_format      PASS  5.9s
+ *   fable-5.1   forced tool_choice   FAIL  400 "Provider returned error"
+ *
+ * Fable STILL refuses forced tool choice through OpenRouter — the normalization
+ * does not paper over it, it just relays the provider's 400. So the per-model
+ * split in `modelRejectsForcedToolChoice` remains load-bearing here, and is not
+ * an Anthropic-only quirk to be tidied away: delete it and every architect and
+ * selector call 400s, because both of those run on Fable.
+ *
+ * That 400 deliberately does NOT trigger the Anthropic fallback (see
+ * shouldFallBackToAnthropic) — it is a malformed request on our side, and it is
+ * unreachable in practice precisely because the split routes Fable correctly.
+ */
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 /**

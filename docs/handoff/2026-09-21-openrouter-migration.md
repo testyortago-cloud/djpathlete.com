@@ -3,42 +3,64 @@
 OpenRouter is now the primary provider for every call that goes through the
 shared `callAgent`. Direct Anthropic remains as an automatic fallback.
 
-## Live results, 2026-09-21
+## Live results, 2026-09-21 — VERIFIED END TO END
 
-Run against a real key. **The account is unfunded** ($0 purchased), so the two
-passes below ran on a residual free allowance of roughly 800 tokens and anything
-larger 402s.
+Run against a funded key. A full week generation completed on OpenRouter with no
+fallback, and the travel-equipment feature was intact: 23 slots, **zero**
+requiring equipment. Cost $1.29 for the generation.
 
-VERIFIED:
+| Check | Result |
+|---|---|
+| Key + slug mapping | PASS |
+| Forced `tool_choice` — sonnet-4.6 / haiku-4.5 / opus-4.6 | PASS, ~3-4s each |
+| Fable 5.1 via `response_format` | PASS, 5.9s |
+| Fable 5.1 via forced `tool_choice` | **400** — see below |
+| Prompt caching passes through | **PASS** |
+| Fallback classification | PASS |
+| Full week generation | PASS — 23 exercises, 0 warnings, no fallback |
+| Equipment constraint honoured | PASS — 0 of 23 slots need equipment |
 
-- The key authenticates and the slug mapping is right — `anthropic/claude-sonnet-4.6`
-  and `anthropic/claude-haiku-4.5` both answered.
-- **Forced `tool_choice` works on OpenRouter.** This was the biggest unknown: the
-  failure mode is silent (the model answers prose instead of calling the tool)
-  and it would have surfaced as a confusing Zod error. It works. ~3.2s for a
-  trivial call.
-- Structured output parses and passes Zod.
-- Usage accounting parses (`tokens=803`).
-- **The fallback fires and classifies correctly.** A Fable call 402'd at
-  OpenRouter, was recognised as a provider fault, fell back to direct Anthropic
-  inside the same call, and Anthropic's own credit 400 was then correctly NOT
-  retried. The final error is Anthropic-shaped, which is the proof the fallback
-  ran rather than the OpenRouter error being rethrown.
+### Fable still refuses forced tool choice
 
-STILL UNVERIFIED — all blocked on the balance, not on the code:
+OpenRouter does NOT normalize this away — it relays the provider's 400
+("Provider returned error"). The per-model split in `modelRejectsForcedToolChoice`
+is therefore load-bearing on this path too, not an Anthropic-only quirk to tidy
+away: delete it and every architect AND selector call 400s, because both run on
+Fable. That 400 correctly does not trigger the Anthropic fallback (it is a
+malformed request, not an outage) and is unreachable in practice because the
+split routes Fable to `response_format`.
 
-- **Fable 5.1**, which is both the architect and the exercise selector. At
-  $10/$50 per MTok it 402s immediately on this balance, so the model that does
-  the actual program generation has never run through OpenRouter.
-- **Prompt caching / hit rate.** Anthropic only caches prompts above ~1024
-  tokens, so it cannot be exercised on a free allowance at all. This is the
-  expensive unknown: a 0% hit rate multiplies the cost of every generation.
-- A full week generation, and latency against the 450s / 1500s budgets.
+### Caching works — measured, not assumed
 
-**BOTH PROVIDERS ARE CURRENTLY UNFUNDED.** OpenRouter is at $0 and Anthropic
-reports "credit balance is too low", so generation fails on both paths right now.
-Topping up OpenRouter alone is enough to restore service — the fallback is for
-outages, not for funding.
+Two identical calls with a ~35k-token cached prefix, seconds apart:
+
+    call 1:  cacheWRITE=35763  cacheREAD=0
+    call 2:  cacheWRITE=0      cacheREAD=35763
+
+`cache_control` reaches Anthropic through OpenRouter and `normalizeUsage` reads
+the counters correctly.
+
+**The week run reported a 0.0% hit rate, and that is NOT a caching failure.**
+The comparable direct-Anthropic run reported 0.0% too (37,206 writes / 0 reads);
+only the multi-pass run reached 34.9%. Within a single selector pass there is
+nothing to re-read. Do not "fix" a 0% on a single-pass run.
+
+### Latency — the one number that got worse
+
+Same request, same prior-week history, same target week:
+
+    direct Anthropic   239.2s
+    via OpenRouter     288.7s     (+49.5s, ~21%)
+
+Still inside the 450s Eventarc budget, but the margin narrowed. This matters for
+the unresolved week-4 failure at exactly 450.0s: OpenRouter's extra hop makes a
+deep week MORE likely to exceed it, which is an independent argument for the
+Cloud Tasks migration (1800s ceiling, 1500s budget) in
+`docs/handoff/2026-09-21-cloud-tasks-generation.md`.
+
+Token usage was also higher on this run — architect 18,915 / selector 44,576,
+against 13,356 / 14,306 on the direct run. One run each, different jitter seeds,
+so treat it as an observation to watch rather than a measured regression.
 
 ## The switch
 
