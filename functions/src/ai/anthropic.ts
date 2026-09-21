@@ -53,8 +53,25 @@ export const MODEL_FABLE = "claude-fable-5-1"
  *    see modelRejectsForcedToolChoice above.
  * 3. Thinking is always on for this family, so these calls are slower per
  *    attempt than Sonnet was. The Selector runs inside a retry loop against a
- *    450s budget; if generations start timing out, this pair is the first
- *    thing to move back, not the retry count.
+ *    450s budget (WEEK_GENERATION_BUDGET_MS); if generations start timing out,
+ *    this pair is the first thing to move back, not the retry count, and not
+ *    the budget — its ~90s gap under the 540s Eventarc ceiling is what lets a
+ *    blown run report "failed" instead of wedging in "processing".
+ *
+ * MEASURED 2026-09-21, week generation against the dev clone, both agents on
+ * Fable at effort "medium":
+ *
+ *     week 3 (2 weeks of history)   155.6s / 195.6s / 213.6s / 239.2s   all OK
+ *     week 4 (3 weeks of history)   FAILED at exactly 450.0s
+ *
+ * The week-4 failure is UNRESOLVED, not diagnosed. The control run that would
+ * have isolated it — the same request on Opus/Sonnet — died on "credit balance
+ * is too low", so there is no baseline to compare against and no basis for
+ * saying Fable caused it rather than the larger prior-week context. 450.0s is
+ * exactly the deadline and a credit 400 fails in seconds (BadRequestError is
+ * explicitly not retried), so a genuine timeout is the likelier reading — but
+ * it is a reading, not a measurement. Re-run the control before concluding:
+ *   npx tsx scripts/probe-week-generation.ts label --week 4 --override NONE
  */
 export const MODEL_PROGRAM_ARCHITECT = MODEL_FABLE
 export const MODEL_EXERCISE_SELECTOR = MODEL_FABLE
