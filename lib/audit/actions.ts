@@ -210,6 +210,18 @@ export const AUDIT_ACTIONS = [
   { slug: "pipeline.opportunity_moved", category: "admin_write", description: "Pipeline card moved by an admin" },
   { slug: "pipeline.opportunity_won", category: "commerce", description: "Pipeline card closed won" },
   { slug: "pipeline.opportunity_lost", category: "commerce", description: "Pipeline card closed lost" },
+  // G29 Task 4. All four registered together even though board_created/
+  // board_updated are the only ones a route uses yet (Tasks 5/6 write
+  // stages_saved and opportunity_created_manually) — one taxonomy edit
+  // rather than three commits touching the same hunk.
+  { slug: "pipeline.board_created", category: "admin_write", description: "Pipeline board created" },
+  { slug: "pipeline.board_updated", category: "admin_write", description: "Pipeline board renamed or archived" },
+  { slug: "pipeline.stages_saved", category: "admin_write", description: "Pipeline board's stage list replaced" },
+  {
+    slug: "pipeline.opportunity_created_manually",
+    category: "admin_write",
+    description: "Pipeline card created by hand",
+  },
   {
     // automation, NOT admin_write. `contact.tag_added` and
     // `pipeline.opportunity_moved` both mean a person clicked something, and
