@@ -60,6 +60,8 @@ const COACH_SESSION = { user: { id: "coach-1", role: "staff", permissions: { con
 const SINGLETON = "00000000-0000-0000-0000-000000000001"
 /** The coach's own tenant — deliberately NOT the singleton. */
 const BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
+/** A DIFFERENT tenant — used to model "this board belongs to someone else". */
+const OTHER_BUSINESS_ID = "33333333-3333-3333-3333-333333333333"
 const BOARD_ID = "board-1"
 
 type StageDraft = {
@@ -119,6 +121,20 @@ function putReq(body: unknown) {
 
 const boardParams = { params: Promise.resolve({ id: BOARD_ID }) }
 
+/**
+ * Which (id, businessId) pair `readStagesForEditMock` treats as "this board
+ * exists and has stages" — everything else comes back empty. Reviewer
+ * finding (Task 5, fix round 1): a mock that returns the SAME thing
+ * regardless of arguments cannot tell the route's pre-check apart from a
+ * stale or hardcoded id/businessId — it would pass every test here even if
+ * the route stopped forwarding the real values. Modelling "what the
+ * database currently contains" and checking the mock's ACTUAL call
+ * arguments against it (rather than a per-test `mockResolvedValueOnce`
+ * override) is what makes the pre-check's arguments load-bearing for these
+ * tests, not decorative.
+ */
+let knownBoard: { id: string; businessId: string } | null
+
 beforeEach(() => {
   // resetAllMocks, not clearAllMocks: a queued `*Once` implementation left
   // over from a previous test leaks across the boundary and misattributes
@@ -127,7 +143,13 @@ beforeEach(() => {
   authMock.mockResolvedValue(COACH_SESSION)
   canAccessMock.mockResolvedValue(true)
   resolveTenantMock.mockResolvedValue({ businessId: BUSINESS_ID, choices: [], isOperator: false })
-  readStagesForEditMock.mockResolvedValue(EXISTING_BOARD_STAGES)
+  knownBoard = { id: BOARD_ID, businessId: BUSINESS_ID }
+  readStagesForEditMock.mockImplementation((id: string, businessId: string) => {
+    if (knownBoard && id === knownBoard.id && businessId === knownBoard.businessId) {
+      return Promise.resolve(EXISTING_BOARD_STAGES)
+    }
+    return Promise.resolve({ stages: [], cardCountByStageId: new Map<string, number>() })
+  })
   savePipelineStagesMock.mockResolvedValue({ ok: true })
   recordAuditMock.mockResolvedValue(undefined)
 })
@@ -186,33 +208,43 @@ describe("PUT /api/admin/pipeline/boards/[id]/stages", () => {
 
   describe("a board id that does not resolve for this tenant", () => {
     it("404s a board id that does not exist, and never reaches savePipelineStages", async () => {
-      readStagesForEditMock.mockResolvedValue({ stages: [], cardCountByStageId: new Map() })
+      // Argument-aware, not a canned override: nothing matches `knownBoard`,
+      // so the mock's OWN comparison of (id, businessId) against "what
+      // exists" is what produces the empty read — the SAME logic every
+      // other test's happy path relies on to return stages at all.
+      knownBoard = null
       const res = await PUT(putReq({ stages: VALID_STAGES }) as never, boardParams)
       expect(res.status).toBe(404)
       const body = await res.json()
       expect(body.error).toBe(`Board ${BOARD_ID} was not found for this business.`)
+      expect(readStagesForEditMock).toHaveBeenCalledWith(BOARD_ID, BUSINESS_ID)
       expect(savePipelineStagesMock).not.toHaveBeenCalled()
     })
 
-    it("404s a board id belonging to a different tenant, with the SAME status and message as the nonexistent case", async () => {
-      // From this route's point of view a foreign tenant's board and a
-      // nonexistent one are indistinguishable — both come back as an empty
-      // stage list scoped to (id, businessId) — so the response for each is
-      // identical BY CONSTRUCTION. Asserting both, not just one, means a
-      // future change that special-cases either side breaks this test
-      // rather than shipping a leak (Task 4 established this equivalence;
-      // this pins that it did not diverge here).
-      readStagesForEditMock.mockResolvedValueOnce({ stages: [], cardCountByStageId: new Map() })
-      const nonexistentRes = await PUT(putReq({ stages: VALID_STAGES }) as never, boardParams)
-      const nonexistentBody = await nonexistentRes.json()
-
-      readStagesForEditMock.mockResolvedValueOnce({ stages: [], cardCountByStageId: new Map() })
+    it("404s a board id belonging to a different tenant, with the SAME status and message as the nonexistent case, driven by the mock's argument-awareness", async () => {
+      // `knownBoard` is left at its default (BOARD_ID belongs to
+      // BUSINESS_ID) — the board genuinely exists. What changes is the
+      // CALLER's resolved tenant, to a different, equally real business.
+      // `readStagesForEditMock` still runs its own (id, businessId)
+      // comparison — this is not a `mockResolvedValueOnce` standing in for
+      // "the answer is empty this time"; the mock does not know in advance
+      // that this call should miss, it just compares the ACTUAL arguments
+      // the route passed it against what actually exists, same as every
+      // other test.
+      resolveTenantMock.mockResolvedValueOnce({ businessId: OTHER_BUSINESS_ID, choices: [], isOperator: false })
       const foreignTenantRes = await PUT(putReq({ stages: VALID_STAGES }) as never, boardParams)
       const foreignTenantBody = await foreignTenantRes.json()
 
       expect(foreignTenantRes.status).toBe(404)
-      expect(foreignTenantRes.status).toBe(nonexistentRes.status)
-      expect(foreignTenantBody.error).toBe(nonexistentBody.error)
+      expect(foreignTenantBody.error).toBe(`Board ${BOARD_ID} was not found for this business.`)
+      // Same id in the URL both times (BOARD_ID) is what makes this message
+      // comparable to the "does not exist at all" test above — the message
+      // is templated only on the id, so an identical id produces an
+      // identical message regardless of WHY the lookup missed. Pinned
+      // explicitly rather than re-deriving it from a second call, so this
+      // test's failure points at the real cause instead of a second PUT.
+      expect(readStagesForEditMock).toHaveBeenCalledWith(BOARD_ID, OTHER_BUSINESS_ID)
+      expect(savePipelineStagesMock).not.toHaveBeenCalled()
     })
   })
 
@@ -261,6 +293,25 @@ describe("PUT /api/admin/pipeline/boards/[id]/stages", () => {
     // Order, not just membership — a mutant that reversed or sorted the
     // array would still call with "the same stages" by set-equality.
     expect(stages.map((s: StageDraft) => s.key)).toEqual(["lost", "open", "won"])
+  })
+
+  // Reviewer finding (Task 5, fix round 1): the 404 pre-check's own
+  // arguments had zero direct regression protection — `readStagesForEditMock`
+  // used to return the same thing no matter what it was called with, so a
+  // future refactor that changed `readStagesForEdit(id, businessId)` to a
+  // stale or hardcoded pair would have passed every test in this file
+  // silently. Asserted on `mock.calls[0]` specifically (not just
+  // `toHaveBeenCalledWith`, which is satisfied by ANY matching call) because
+  // this is the ONE call this route makes to `readStagesForEdit` — the
+  // pre-check — and nothing else in this test file's mocking exercises the
+  // (unrelated, separately-mocked) call `savePipelineStages` makes
+  // internally in production.
+  it("the pre-check calls readStagesForEdit with the board id from the URL and the RESOLVED businessId, not a body-supplied or hardcoded one", async () => {
+    await PUT(
+      putReq({ stages: VALID_STAGES, destinations: { "some-stage-id": SINGLETON } }) as never,
+      boardParams,
+    )
+    expect(readStagesForEditMock.mock.calls[0]).toEqual([BOARD_ID, BUSINESS_ID])
   })
 
   it("defaults `destinations` to {} when the caller omits it", async () => {
