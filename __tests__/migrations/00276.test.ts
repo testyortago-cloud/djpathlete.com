@@ -195,4 +195,112 @@ describeIf("save_pipeline_stages (00276)", () => {
       .from("pipeline_stages").select("id, position, name").eq("pipeline_id", pipelineId).order("position")
     expect(after!.map((s) => s.name)).toEqual(stages!.map((s) => s.name))
   })
+
+  // Review Finding 1 (round 1): step 1's card-move UPDATE trusted
+  // p_move_cards completely, with no check that from_stage_id was actually
+  // one of the stages being deleted. A move-card entry naming a SURVIVING
+  // stage would silently relocate that stage's real cards, with no error at
+  // all -- every other input here is defended, and this was the one place
+  // the function trusted its own caller. Uses `coaching`'s consult_booked
+  // stage (7 real opportunities on the dev clone, confirmed by a direct
+  // count before writing this test) so the assertion proves something: a
+  // stage with zero cards would pass this test whether or not the fix
+  // exists.
+  it("does not relocate cards off a stage that survives the save, even when told to", async () => {
+    const { data: stages } = await db
+      .from("pipeline_stages")
+      .select("id, key, name, kind, amber_after_days, red_after_days, position")
+      .eq("pipeline_id", pipelineId)
+      .order("position")
+    const survivor = stages!.find((s) => s.key === "consult_booked")!
+    const destination = stages!.find((s) => s.key === "consulted")!
+
+    const { count: before } = await db
+      .from("opportunities")
+      .select("id", { count: "exact", head: true })
+      .eq("stage_id", survivor.id)
+    expect(before).toBeGreaterThan(0)
+
+    const unchanged = stages!.map((s) => ({
+      id: s.id, key: s.key, name: s.name, kind: s.kind,
+      amber_after_days: s.amber_after_days, red_after_days: s.red_after_days, position: s.position,
+    }))
+    const { error } = await db.rpc("save_pipeline_stages", {
+      p_business_id: businessId,
+      p_pipeline_id: pipelineId,
+      p_stages: unchanged,
+      p_move_cards: [{ from_stage_id: survivor.id, to_stage_id: destination.id }],
+    })
+    expect(error).toBeNull()
+
+    const { count: after } = await db
+      .from("opportunities")
+      .select("id", { count: "exact", head: true })
+      .eq("stage_id", survivor.id)
+    expect(after).toBe(before)
+  })
+
+  // Review Finding 2 (round 1): nothing at the DB level stopped a save that
+  // removes the only won or lost stage -- the same threat model the
+  // empty-list guard exists for, one stage short of empty. Uses `assessment`
+  // (0 opportunities on the dev clone, per R6) so the FK cannot be the
+  // reason this raises. Changes an EXISTING stage's `kind` rather than
+  // deleting it, so every submitted id stays a survivor -- the survivor
+  // check can't be what raises here either; only the new terminal
+  // won/lost assertion can.
+  it("RAISEs when the save would leave the board without a won stage, and leaves it intact", async () => {
+    const { data: board } = await db
+      .from("pipelines")
+      .select("id")
+      .eq("key", "assessment")
+      .eq("business_id", "00000000-0000-0000-0000-000000000001")
+      .single()
+    const assessmentId = board!.id
+
+    const { data: stages } = await db
+      .from("pipeline_stages")
+      .select("id, key, name, kind, amber_after_days, red_after_days, position")
+      .eq("pipeline_id", assessmentId)
+      .order("position")
+    const wonStage = stages!.find((s) => s.kind === "won")!
+
+    const broken = stages!.map((s) => ({
+      id: s.id,
+      key: s.key,
+      name: s.name,
+      kind: s.id === wonStage.id ? "open" : s.kind,
+      amber_after_days: s.amber_after_days,
+      red_after_days: s.red_after_days,
+      position: s.position,
+    }))
+    const { error } = await db.rpc("save_pipeline_stages", {
+      p_business_id: "00000000-0000-0000-0000-000000000001",
+      p_pipeline_id: assessmentId,
+      p_stages: broken,
+      p_move_cards: [],
+    })
+    expect(error).not.toBeNull()
+    expect(error!.message).toMatch(/exactly one won and one lost/i)
+
+    const { data: after } = await db
+      .from("pipeline_stages").select("id, kind").eq("pipeline_id", assessmentId).order("position")
+    expect(after!.map((s) => s.kind)).toEqual(stages!.map((s) => s.kind))
+  })
+
+  // Bundled minor (round 1): the ownership check now runs BEFORE the
+  // empty-list guard, so an empty array against a board owned by a
+  // DIFFERENT tenant must answer with the tenant error, not "needs at
+  // least one stage" -- the latter would leak that validation ran before
+  // authorization did.
+  it("reports the tenant error, not the empty-list error, for an empty array against another tenant's board", async () => {
+    const { error } = await db.rpc("save_pipeline_stages", {
+      p_business_id: "00000000-0000-0000-0000-000000000099",
+      p_pipeline_id: pipelineId,
+      p_stages: [],
+      p_move_cards: [],
+    })
+    expect(error).not.toBeNull()
+    expect(error!.message).toMatch(/does not belong to business/i)
+    expect(error!.message).not.toMatch(/needs at least one stage/i)
+  })
 })

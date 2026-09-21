@@ -29,29 +29,35 @@ DECLARE
   v_submitted_ids uuid[];
   v_survivors     integer;
   v_expected      integer;
+  v_won_count     integer;
+  v_lost_count    integer;
 BEGIN
-  -- EMPTY-LIST GUARD, first, before anything else runs. With an empty
-  -- p_stages, array_agg() below returns NULL, so v_submitted_ids IS NULL is
-  -- true -- and the DELETE in step 2 matches every row on
-  -- "v_submitted_ids IS NULL OR NOT (id = ANY(...))", wiping the board's
-  -- entire stage list. On a board with cards the FK on
+  -- The board must belong to the tenant. Checked FIRST, before the
+  -- empty-list guard below: authorization before validation is the
+  -- conventional order, and it means an empty-array call against another
+  -- tenant's board answers with a tenant error, not "needs at least one
+  -- stage" -- the latter would leak that validation ran before ownership
+  -- was confirmed. Every other statement here is scoped by p_pipeline_id,
+  -- so this is the one line standing between a caller with the wrong
+  -- business_id and another tenant's board.
+  PERFORM 1 FROM public.pipelines
+   WHERE id = p_pipeline_id AND business_id = p_business_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Board % does not belong to business %', p_pipeline_id, p_business_id;
+  END IF;
+
+  -- EMPTY-LIST GUARD. With an empty p_stages, array_agg() below returns
+  -- NULL, so v_submitted_ids IS NULL is true -- and the DELETE in step 2
+  -- matches every row on "v_submitted_ids IS NULL OR NOT (id = ANY(...))",
+  -- wiping the board's entire stage list. On a board with cards the FK on
   -- opportunities.stage_id stops that DELETE; on an EMPTY board (dev has
-  -- two: camps_clinics, assessment) nothing stops it, and the call succeeds
-  -- leaving zero stages, which decideMove can never close a card on again.
+  -- one: assessment) nothing stops it, and the call succeeds leaving zero
+  -- stages, which decideMove can never close a card on again.
   -- lib/lead-engine/stage-list.ts's validateStageList already refuses an
   -- empty list at the route, so this only fires when something bypassed
   -- that -- which is exactly the case a last line of defence exists for.
   IF p_stages IS NULL OR jsonb_array_length(p_stages) = 0 THEN
     RAISE EXCEPTION 'A board needs at least one stage; refusing to empty board %', p_pipeline_id;
-  END IF;
-
-  -- The board must belong to the tenant. Every other statement here is
-  -- scoped by p_pipeline_id, so this is the one line standing between a
-  -- caller with the wrong business_id and another tenant's board.
-  PERFORM 1 FROM public.pipelines
-   WHERE id = p_pipeline_id AND business_id = p_business_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Board % does not belong to business %', p_pipeline_id, p_business_id;
   END IF;
 
   SELECT array_agg((s->>'id')::uuid)
@@ -78,13 +84,26 @@ BEGIN
 
   -- 1. Move the cards off any stage that is about to disappear. BEFORE the
   --    delete, or the FK on opportunities.stage_id refuses it.
+  --
+  --    CROSS-CHECKED against the deletion set: from_stage_id must NOT be a
+  --    survivor (i.e. it must be one of the stages step 2 is about to
+  --    delete). Without this, a p_move_cards entry naming a SURVIVING stage
+  --    would silently relocate that stage's cards with no error -- every
+  --    other input here is defended (the empty guard, the survivor check,
+  --    the ownership check), and this function's contract is that it
+  --    defends against its own caller, not just against a malformed one.
+  --    Unreachable through planStageSave today (it only populates
+  --    moveCards for removedStageIds), but that is TypeScript's promise,
+  --    not this function's -- the same reasoning as the survivor check two
+  --    statements up.
   UPDATE public.opportunities o
      SET stage_id         = (m->>'to_stage_id')::uuid,
          entered_stage_at = now(),
          updated_at       = now()
     FROM jsonb_array_elements(p_move_cards) m
    WHERE o.stage_id = (m->>'from_stage_id')::uuid
-     AND o.business_id = p_business_id;
+     AND o.business_id = p_business_id
+     AND (v_submitted_ids IS NULL OR NOT ((m->>'from_stage_id')::uuid = ANY(v_submitted_ids)));
 
   -- 2. Remove the stages that are gone. A stage still holding a card fails
   --    here on the FK, which is the correct last line: the route refuses it
@@ -137,6 +156,35 @@ BEGIN
          (e.value->>'red_after_days')::int
     FROM jsonb_array_elements(p_stages) WITH ORDINALITY e
    WHERE e.value->>'id' IS NULL;
+
+  -- 6. FINAL-STATE INVARIANT CHECK. Spec §3 (docs/superpowers/specs/
+  --    2026-09-21-g29-pipeline-editor-design.md), invariant 1, names this
+  --    function explicitly as a second enforcement point alongside
+  --    validateStageList -- so unlike the rest of this file's header
+  --    ("business rules do not get a second home here"), this one rule IS
+  --    meant to be checked twice, on the binding authority of the spec.
+  --    What must not happen is the RULE getting a second home: this is a
+  --    terminal ASSERTION over the row set this function itself just
+  --    wrote -- a plain count() FILTER over pipeline_stages for this board,
+  --    AFTER every DELETE/UPDATE/INSERT above -- not a re-parse of
+  --    p_stages against a re-implementation of "exactly one won, exactly
+  --    one lost". An assertion about the result cannot drift from the
+  --    rule the way a second copy of the rule could. validateStageList
+  --    (lib/lead-engine/stage-list.ts) is the layer that produces this as
+  --    readable English BEFORE the write, for the ordinary path where
+  --    nothing bypassed it; this RAISE is what happens when something did
+  --    -- the same threat model the empty-list guard above exists for, one
+  --    stage short of empty.
+  SELECT count(*) FILTER (WHERE kind = 'won'),
+         count(*) FILTER (WHERE kind = 'lost')
+    INTO v_won_count, v_lost_count
+    FROM public.pipeline_stages
+   WHERE pipeline_id = p_pipeline_id;
+
+  IF v_won_count <> 1 OR v_lost_count <> 1 THEN
+    RAISE EXCEPTION 'Board % must end with exactly one won and one lost stage (has % won, % lost)',
+      p_pipeline_id, v_won_count, v_lost_count;
+  END IF;
 END;
 $function$;
 
