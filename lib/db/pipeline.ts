@@ -2100,17 +2100,35 @@ function slugifyBoardKey(name: string): string {
  *
  * NOT atomic with the stages insert: migration 00276 has no board-creation
  * RPC, only a stage-LIST-save one, and this is a two-row write (`pipelines`,
- * then `pipeline_stages`) that RPC was never asked to cover. If the second
- * insert fails, the first is left behind as a pipeline with zero stages —
- * exactly the state `PipelineNotConfiguredError` already exists to name;
- * every reader of this board already treats "no stages" as "not configured",
- * never as "empty and fine".
+ * then `pipeline_stages`) that RPC was never asked to cover. Controller
+ * ruling R9 (fix round 1): rather than a second migration duplicating this
+ * logic into SQL — disproportionate to a two-row insert, and exactly the
+ * kind of second home 00276's own header argues against — a stage-insert
+ * failure is handled with a COMPENSATING DELETE of the just-created
+ * `pipelines` row, scoped by id AND business_id. Be honest about what that
+ * buys: it shrinks the window from "board permanently broken" (visible in
+ * the list, un-editable, `validateStageList` refusing every save with no
+ * clue why) to "board broken only if the cleanup ALSO fails" — NOT the same
+ * guarantee an atomic create would give. If the cleanup itself fails, the
+ * thrown error names the orphaned board id so a human can find and remove
+ * it by hand. If orphaned boards ever show up in practice, that is the
+ * signal to build the RPC instead.
  */
 export async function createPipelineBoard(input: {
   name: string
   businessId: string
 }): Promise<{ id: string; key: string }> {
   const key = slugifyBoardKey(input.name)
+  // Finding 2 (fix round 1): a name of only symbols/whitespace ("!!!",
+  // "---") slugifies to "". That would insert fine and produce a board with
+  // a blank key, and the NEXT such name would hit the unique-violation path
+  // with the unreadable "A board with the key "" already exists". Refused
+  // here even though a route-level validator could also catch it — a guard
+  // on the caller's side is not a guard, and this DAL defends itself
+  // everywhere else.
+  if (key.length === 0) {
+    throw new Error("A board name needs at least one letter or number.")
+  }
   const supabase = getClient()
 
   const { data: pipelineRow, error: insertErr } = await supabase
@@ -2132,7 +2150,23 @@ export async function createPipelineBoard(input: {
     { business_id: input.businessId, pipeline_id: created.id, key: "won", name: "Won", kind: "won", position: 1 },
     { business_id: input.businessId, pipeline_id: created.id, key: "lost", name: "Lost", kind: "lost", position: 2 },
   ])
-  if (stagesErr) throw new Error(`createPipelineBoard failed to seed stages: ${stagesErr.message}`)
+  if (stagesErr) {
+    // R9's compensating delete — see the doc comment above for exactly what
+    // this does and does not guarantee.
+    const { error: cleanupErr } = await supabase
+      .from("pipelines")
+      .delete()
+      .eq("id", created.id)
+      .eq("business_id", input.businessId)
+    if (cleanupErr) {
+      throw new Error(
+        `createPipelineBoard failed to seed stages (${stagesErr.message}), and the compensating cleanup ` +
+          `also failed (${cleanupErr.message}). Board ${created.id} was left behind with zero stages — ` +
+          `find and delete it by hand.`,
+      )
+    }
+    throw new Error(`createPipelineBoard failed to seed stages: ${stagesErr.message}`)
+  }
 
   return { id: created.id, key: created.key }
 }

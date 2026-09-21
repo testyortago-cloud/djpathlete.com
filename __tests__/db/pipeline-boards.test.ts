@@ -42,7 +42,7 @@ function uniqueViolation(constraint: string): PgError {
 const rpcCalls: Array<{ fn: string; args: Row }> = []
 
 /**
- * Every query (select / insert / update) the mocked client actually
+ * Every query (select / insert / update / delete) the mocked client actually
  * executed: table, mode, the `.select()` projection if one was asked for,
  * and the `.eq()` filters applied.
  *
@@ -54,13 +54,33 @@ const rpcCalls: Array<{ fn: string; args: Row }> = []
  */
 const queryLog: Array<{
   table: string
-  mode: "select" | "insert" | "update"
+  mode: "select" | "insert" | "update" | "delete"
   projection: string[] | "*"
   filters: Array<[string, any]>
 }> = []
 
-function filtersFor(table: string, mode: "select" | "insert" | "update") {
+function filtersFor(table: string, mode: "select" | "insert" | "update" | "delete") {
   return queryLog.filter((q) => q.table === table && q.mode === mode).flatMap((q) => q.filters)
+}
+
+/**
+ * Every row actually inserted, in order — so a test can recover the id the
+ * fake assigned (`nextId`) without hard-coding its counter scheme.
+ */
+const insertedRowsLog: Array<{ table: string; row: Row }> = []
+
+/**
+ * One-shot errors a test can queue up for a specific (table, mode) pair,
+ * consumed FIFO on the first matching query. Used to simulate the
+ * stage-insert failure and the compensating-delete failure fix round 1's
+ * tests need — this fake has no real Postgres underneath it to fail on its
+ * own.
+ */
+const injectedErrors: Array<{ table: string; mode: string; error: PgError }> = []
+function takeInjectedError(table: string, mode: string): PgError | null {
+  const idx = injectedErrors.findIndex((e) => e.table === table && e.mode === mode)
+  if (idx === -1) return null
+  return injectedErrors.splice(idx, 1)[0].error
 }
 
 vi.mock("@/lib/supabase", () => ({
@@ -70,7 +90,7 @@ vi.mock("@/lib/supabase", () => ({
       const filters: Array<[string, any]> = []
       let projection: string[] | null = null
       const orderBys: Array<[string, boolean]> = []
-      let mode: "select" | "insert" | "update" = "select"
+      let mode: "select" | "insert" | "update" | "delete" = "select"
       let payload: Row | Row[] | null = null
 
       const passesFilters = (row: Row) => filters.every(([col, val]) => row[col] === val)
@@ -127,6 +147,7 @@ vi.mock("@/lib/supabase", () => ({
             _seq: rows.length,
           }
           rows.push(row)
+          insertedRowsLog.push({ table: String(table), row })
           return row
         })
         log()
@@ -140,9 +161,21 @@ vi.mock("@/lib/supabase", () => ({
         return { data: targets.map(project), error: null }
       }
 
+      const doDelete = (): { data: any; error: any } => {
+        const targets = rows.filter(passesFilters)
+        const survivors = rows.filter((r) => !passesFilters(r))
+        rows.length = 0
+        rows.push(...survivors)
+        log()
+        return { data: targets.map(project), error: null }
+      }
+
       const execute = (): { data: any; error: any } => {
+        const injected = takeInjectedError(String(table), mode)
+        if (injected) return { data: null, error: injected }
         if (mode === "insert") return doInsert()
         if (mode === "update") return doUpdate()
+        if (mode === "delete") return doDelete()
         return { data: matched(), error: null }
       }
 
@@ -159,6 +192,10 @@ vi.mock("@/lib/supabase", () => ({
         update: (p: Row) => {
           mode = "update"
           payload = p
+          return api
+        },
+        delete: () => {
+          mode = "delete"
           return api
         },
         eq: (col: string, val: any) => {
@@ -220,6 +257,8 @@ beforeEach(() => {
   seqCounter = 0
   rpcCalls.length = 0
   queryLog.length = 0
+  insertedRowsLog.length = 0
+  injectedErrors.length = 0
 })
 
 function seedDefaultBoard(businessId: string = SINGLETON_BUSINESS_ID) {
@@ -320,6 +359,69 @@ describe("createPipelineBoard", () => {
     expect(lost!.position).toBe(2)
     expect(won!.business_id).toBe(SINGLETON_BUSINESS_ID)
     expect(lost!.business_id).toBe(SINGLETON_BUSINESS_ID)
+  })
+
+  // Fix round 1, Finding 1 / controller ruling R9.
+  it("compensates with a delete when the stage insert fails, and throws a readable error", async () => {
+    injectedErrors.push({
+      table: "pipeline_stages",
+      mode: "insert",
+      error: { code: "55000", message: "simulated network timeout", details: null, hint: null },
+    })
+
+    await expect(
+      createPipelineBoard({ name: "Referrals", businessId: SINGLETON_BUSINESS_ID }),
+    ).rejects.toThrow(/simulated network timeout/)
+
+    // The orphaned board was cleaned up, not left behind.
+    expect(store.pipelines).toHaveLength(0)
+    expect(store.pipeline_stages).toHaveLength(0)
+
+    const createdId = insertedRowsLog.find((r) => r.table === "pipelines")!.row.id
+    const deleteFilters = filtersFor("pipelines", "delete")
+    expect(deleteFilters).toContainEqual(["id", createdId])
+    expect(deleteFilters).toContainEqual(["business_id", SINGLETON_BUSINESS_ID])
+  })
+
+  it("names the orphaned board id when the compensating delete also fails", async () => {
+    injectedErrors.push(
+      {
+        table: "pipeline_stages",
+        mode: "insert",
+        error: { code: "55000", message: "simulated network timeout", details: null, hint: null },
+      },
+      {
+        table: "pipelines",
+        mode: "delete",
+        error: { code: "55000", message: "simulated delete failure", details: null, hint: null },
+      },
+    )
+
+    let caught: Error | null = null
+    try {
+      await createPipelineBoard({ name: "Referrals", businessId: SINGLETON_BUSINESS_ID })
+    } catch (e) {
+      caught = e as Error
+    }
+    expect(caught).toBeInstanceOf(Error)
+
+    const createdId = insertedRowsLog.find((r) => r.table === "pipelines")!.row.id
+    expect(caught!.message).toContain(createdId)
+    expect(caught!.message).toContain("simulated network timeout")
+    expect(caught!.message).toContain("simulated delete failure")
+
+    // Genuinely orphaned this time: the cleanup itself failed, so the row
+    // (with zero stages) is still sitting in the store.
+    expect(store.pipelines).toHaveLength(1)
+    expect(store.pipeline_stages).toHaveLength(0)
+  })
+
+  // Fix round 1, Finding 2.
+  it("refuses a name that slugifies to an empty key", async () => {
+    await expect(createPipelineBoard({ name: "!!!", businessId: SINGLETON_BUSINESS_ID })).rejects.toThrow(
+      /at least one letter or number/,
+    )
+    expect(store.pipelines).toHaveLength(0)
   })
 })
 
