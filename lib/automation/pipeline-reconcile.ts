@@ -272,8 +272,14 @@ export async function runPipelineReconcile(): Promise<PipelineReconcileSummary> 
  *    every single pass. Boards are now resolved lazily and cached per pass, so
  *    that guard is gone and there is nothing left to skip.
  *
- * `cron_pipeline_reconcile_enabled` REMAINS OFF until the owner turns it on.
- * That is an outward action and theirs to take.
+ * `cron_pipeline_reconcile_enabled` WAS TURNED ON by owner ruling 2026-09-21,
+ * after the residual check below was re-run against production and measured
+ * ZERO. Before that it was off by ABSENCE — there was no row at all, and the
+ * code's `defaultEnabled: false` was the only thing holding it.
+ *
+ * If this is ever turned back off, re-run that residual check before turning
+ * it on again rather than trusting this paragraph: the count is a fact about
+ * one moment, and the window it measures moves.
  *
  * ONE RESIDUAL, AND IT IS BOUNDED. `booking.service_type ?? null` cannot tell
  * "never stamped" from "coaching", and migration 00273 shipped with no
