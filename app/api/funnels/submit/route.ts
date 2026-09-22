@@ -250,6 +250,7 @@ export async function POST(request: Request) {
   // than the lead it is about.
   // ---------------------------------------------------------------------------
   void notifyCoachOfLead({
+    businessId,
     funnelId: parsedBody.funnelId,
     funnel,
     step,
@@ -426,6 +427,12 @@ async function recordFunnelSmsConsent(input: {
  * email.
  */
 async function notifyCoachOfLead(input: {
+  /**
+   * WHOSE funnel this is -- the tenant the request's Host already resolved.
+   * The mailer reads this business's own sender identity and `reply_to` from
+   * it, so the alert arrives as that coach rather than as this platform.
+   */
+  businessId: string
   funnelId: string
   funnel: Awaited<ReturnType<typeof getFunnelById>>
   step: Awaited<ReturnType<typeof getStep>>
@@ -440,6 +447,7 @@ async function notifyCoachOfLead(input: {
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.darrenjpaul.com"
 
   await sendNewFunnelLeadEmail({
+    businessId: input.businessId,
     name: input.name,
     email: input.email,
     phone: input.phone,
@@ -450,7 +458,8 @@ async function notifyCoachOfLead(input: {
     leadsUrl: `${base}/admin/funnels/leads?funnelId=${encodeURIComponent(input.funnelId)}`,
     // Set at creation by templates that capture leads. Read here rather than
     // stored on the step, because the owner thinks of it as "who hears about
-    // THIS campaign", not about one page of it.
+    // THIS campaign", not about one page of it. Still ADDITIVE since G30: the
+    // coach's own `reply_to` goes first and these are added to it.
     extraRecipients: funnel?.notify_emails ?? null,
   })
 }

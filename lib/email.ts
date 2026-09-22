@@ -25,8 +25,10 @@ export {
   sendChatEscalationEmail,
   sendInquiryAutoReply,
   sendInquiryEmail,
+  sendNewFunnelLeadEmail,
   sendQuizAlertEmail,
 } from "@/lib/email/lead-alerts"
+export type { NewFunnelLeadEmailInput } from "@/lib/email/lead-alerts"
 
 // Resend verifies `send.darrenjpaul.com` only — the apex `darrenjpaul.com` has
 // never been added to the account, and sending from it returns "domain is not
@@ -2158,110 +2160,6 @@ export async function sendPackAutoRenewWarningEmail(opts: {
 // ---------------------------------------------------------------------------
 // Funnel leads
 // ---------------------------------------------------------------------------
-
-export interface NewFunnelLeadEmailInput {
-  name: string | null
-  email: string | null
-  phone: string | null
-  pageName: string
-  /** Everything the visitor typed, keyed by field name. */
-  answers: Record<string, unknown>
-  /** Absolute link into the leads inbox. */
-  leadsUrl: string
-  /**
-   * Extra recipients set on the funnel itself, ADDED TO `ADMIN_CC` rather than
-   * replacing it. A per-funnel list is "also tell these people", never "instead
-   * of the coach" — a camp handed to an assistant must not stop reaching the
-   * person who owns the inbox.
-   */
-  extraRecipients?: string[] | null
-}
-
-/**
- * Tells the coach a lead just came in.
- *
- * WHY IT EXISTS. Funnel submissions were captured to `funnel_submissions` and
- * nothing anywhere was told. The lead sat in a table nothing read until someone
- * happened to open a page that did not exist yet — which, for a campaign page
- * driving paid traffic, is how a lead becomes a lost lead.
- *
- * EVERY VISITOR-SUPPLIED VALUE IS ESCAPED. The answers come from a public form
- * on a public page, so they are attacker-controlled by definition; the fields
- * are interpolated into HTML and this email is opened by the operator. That is
- * a deliberate departure from the neighbouring `sendContactFormEmail`, which
- * interpolates its message raw.
- *
- * `replyTo` is the LEAD, so replying in the mail client answers the person
- * rather than the robot.
- */
-export async function sendNewFunnelLeadEmail(input: NewFunnelLeadEmailInput) {
-  const displayName = input.name?.trim() || input.email?.trim() || "Someone"
-
-  const answerRows = Object.entries(input.answers)
-    .filter(([, value]) => String(value ?? "").trim().length > 0)
-    .map(([key, value]) => ({
-      label: key.replace(/[_-]+/g, " ").replace(/([a-z0-9])([A-Z])/g, "$1 $2"),
-      value: String(value),
-    }))
-
-  const html = emailLayout(`
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="padding:48px 48px 52px;">
-
-          ${sectionLabel("New Lead")}
-
-          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
-            ${escapeHtml(displayName)}
-          </p>
-
-          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
-            Signed up through <strong>${escapeHtml(input.pageName)}</strong>.
-          </p>
-
-          ${infoCard(
-            [
-              { label: "Name", value: escapeHtml(input.name ?? "—") },
-              { label: "Email", value: escapeHtml(input.email ?? "—") },
-              { label: "Phone", value: escapeHtml(input.phone ?? "—") },
-            ].concat(answerRows.map((row) => ({ label: escapeHtml(row.label), value: escapeHtml(row.value) }))),
-          )}
-
-          <p style="margin:32px 0 0;">
-            <a href="${escapeHtml(input.leadsUrl)}" style="display:inline-block; padding:14px 28px; background-color:#0E3F50; color:#ffffff; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:14px; font-weight:600; text-decoration:none; border-radius:2px;">
-              Open the leads inbox
-            </a>
-          </p>
-
-        </td>
-      </tr>
-    </table>
-  `)
-
-  // De-duplicated case-insensitively: a funnel whose recipient list already
-  // names the admin address — in any casing — must not send the same lead
-  // twice. `ADMIN_CC` is always first, so it is the spelling that survives.
-  const seen = new Set<string>()
-  const recipients = [ADMIN_CC, ...(input.extraRecipients ?? [])].filter((address) => {
-    const key = address.trim().toLowerCase()
-    if (key === "" || seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-
-  const { error } = await resend.emails.send({
-    from: FROM_EMAIL,
-    to: recipients,
-    ...(input.email ? { replyTo: input.email } : {}),
-    subject: `[Lead] ${displayName} — ${input.pageName}`,
-    html,
-  })
-
-  if (error) {
-    console.error("Failed to send new funnel lead email:", error)
-    throw new Error("Failed to send new funnel lead email")
-  }
-}
 
 /**
  * PAID BUT NOT DELIVERED. The one outcome an anonymous funnel purchase can

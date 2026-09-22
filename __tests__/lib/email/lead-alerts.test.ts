@@ -32,6 +32,7 @@ import {
   sendChatEscalationEmail,
   sendInquiryAutoReply,
   sendInquiryEmail,
+  sendNewFunnelLeadEmail,
   sendQuizAlertEmail,
 } from "@/lib/email/lead-alerts"
 import { BusinessNotConfiguredError } from "@/lib/email/business-identity"
@@ -403,6 +404,83 @@ describe("sendInquiryAutoReply", () => {
     getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, postal_address: "" })
 
     await expect(sendInquiryAutoReply(autoReplyArgs)).rejects.toThrow(/postal_address/)
+    expect(sendMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("sendNewFunnelLeadEmail", () => {
+  const funnelArgs = {
+    businessId: BUSINESS_ID,
+    name: "Sam Okafor",
+    email: "sam@example.test",
+    phone: "+447700900123",
+    pageName: "Winter Camp · Sign up",
+    answers: { goal: "Get faster", age_group: "U16" },
+    leadsUrl: "https://app.test/admin/funnels/leads?funnelId=f1",
+    extraRecipients: null,
+  }
+
+  it("goes to the tenant's own reply_to, from the tenant", async () => {
+    await sendNewFunnelLeadEmail(funnelArgs)
+
+    const arg = sendMock.mock.calls[0][0]
+    expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
+    expect(arg.from).toBe("Coach Priya <hello@northfieldstrength.test>")
+    // It used to be addressed to a hardcoded personal mailbox, always first in
+    // the list, for every funnel on every tenant.
+    expect(arg.to).toEqual(["priya@northfieldstrength.test"])
+  })
+
+  it("still replies to the LEAD, so replying answers the person", async () => {
+    await sendNewFunnelLeadEmail(funnelArgs)
+
+    expect(sendMock.mock.calls[0][0].replyTo).toBe("sam@example.test")
+  })
+
+  it("keeps a funnel's own extra recipients, added to the coach and not replacing them", async () => {
+    // Decision 9 made `reply_to` the destination. It did NOT take away
+    // `notify_emails`: a camp handed to an assistant must not stop reaching
+    // the coach who owns the inbox, which is the same rule as before with a
+    // different address at the front.
+    await sendNewFunnelLeadEmail({ ...funnelArgs, extraRecipients: ["assistant@northfieldstrength.test"] })
+
+    expect(sendMock.mock.calls[0][0].to).toEqual(["priya@northfieldstrength.test", "assistant@northfieldstrength.test"])
+  })
+
+  it("de-duplicates a funnel that already names the coach, in any casing", async () => {
+    await sendNewFunnelLeadEmail({ ...funnelArgs, extraRecipients: ["PRIYA@NorthfieldStrength.test", "  "] })
+
+    expect(sendMock.mock.calls[0][0].to).toEqual(["priya@northfieldstrength.test"])
+  })
+
+  it("renders the tenant's wordmark and postal address, and none of the platform's", async () => {
+    await sendNewFunnelLeadEmail(funnelArgs)
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(html).toContain("Northfield Strength")
+    expect(html).toContain("4 Mill Lane, Northfield, NF1 2AB")
+    expectNoPlatformLiterals(html)
+  })
+
+  it("still carries the lead and what they typed", async () => {
+    await sendNewFunnelLeadEmail(funnelArgs)
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(html).toContain("Sam Okafor")
+    expect(html).toContain("Get faster")
+    expect(html).toContain("Winter Camp · Sign up")
+  })
+
+  it("throws when the tenant has no reply_to, rather than sending only to the extras", async () => {
+    // THE CASE THAT WOULD OTHERWISE LOOK FINE. With a funnel that sets
+    // `notify_emails`, dropping a blank coach address still leaves a
+    // non-empty recipient list -- so the send would succeed and the coach
+    // would simply never hear about their own lead.
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, reply_to: "" })
+
+    await expect(
+      sendNewFunnelLeadEmail({ ...funnelArgs, extraRecipients: ["assistant@northfieldstrength.test"] }),
+    ).rejects.toThrow(/reply_to/)
     expect(sendMock).not.toHaveBeenCalled()
   })
 })

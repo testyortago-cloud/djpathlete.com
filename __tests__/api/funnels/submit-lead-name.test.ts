@@ -160,6 +160,11 @@ describe("POST /api/funnels/submit — lead name capture", () => {
     expect(res.status).toBe(200)
     expect(createSubmission).toHaveBeenCalledWith(expect.objectContaining({ name: "Aean Audit" }))
     expect(sendNewFunnelLeadEmail).toHaveBeenCalledWith(expect.objectContaining({ name: "Aean Audit" }))
+    // And WHOSE lead it is. Since G30 the mailer reads the sender identity and
+    // the coach's mailbox from this id, so a route that stopped passing it
+    // would send a well-formed alert from the wrong business while every
+    // assertion above still held.
+    expect(sendNewFunnelLeadEmail).toHaveBeenCalledWith(expect.objectContaining({ businessId: "host-biz" }))
   })
 
   it("falls back to the athlete's name when only the athlete field is filled", async () => {
