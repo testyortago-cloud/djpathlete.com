@@ -588,10 +588,27 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 
 ## Phase 4 — White-label: the third promise, made true at the edges
 
-### G30 · Transactional lead mail is hard-wired to DJP Athlete · **M**
-- Inquiry alert (`to: sales@`, `cc: darren@`), inquiry auto-reply ("Coach Darren / DJP Athlete", GHL booking link), funnel lead alert (`darren@` always first), chat handover, quiz alert — all `from: RESEND_FROM_EMAIL` in the DJP-wordmarked `emailLayout` (`lib/email.ts:82-85, 102-221, 1582, 2089-2091, 2175-2187, 3019-3027`).
+### G30 · Transactional lead mail is hard-wired to DJP Athlete · **M** · **BUILT 2026-09-23**
+- Was: inquiry alert (`to: sales@`, `cc: darren@`), inquiry auto-reply ("Coach Darren / DJP Athlete", GHL booking link), funnel lead alert (`darren@` always first), chat handover, quiz alert — all `from: RESEND_FROM_EMAIL` in the DJP-wordmarked `emailLayout`.
 - **Shipped when:** each takes `businessId`, sends from `sender_name <sender_email>`, replies to `reply_to`, addresses the coach at `reply_to` (plus the funnel's own `notify_emails`), renders `display_name` / `logo_url` / `postal_address` in the layout, and links the booking page from the tenant's connection rather than the GHL widget. The no-brand-literals test's ROOTS grow to cover these senders.
-- **Test:** each sender test asserts from/to/wordmark come from settings; `no-brand-literals.test.ts` sweeps the new roots and stays green.
+- **Built on branch `worktree-g30-tenant-lead-mail` off `main@1056a5c6`, merged `d3e282e6`.** No migration: every column was already on `business_settings` and already read by `getBusinessSettings()`. Decision 9 held — alerts go to the tenant's own `reply_to`, and `notify_emails` stayed additive rather than becoming the destination.
+- **THIS ROW SHIPPED ONE CLAUSE OF ITS OWN "SHIPPED WHEN" SHORT, on purpose.** The auto-reply's booking button is still this platform's GoHighLevel widget, offered to every applicant whoever they applied to. Swapping it for the tenant's own connection is a different subsystem (`coach_calendar_connections.scheduling_url`, already read by `lib/calendly/config-for-business.ts`, which correctly gives a business with no connection NOTHING rather than this platform's calendar) and it changes where real DJP traffic books. Carried as an open item under §Everything still waiting on the owner. **Everything else in the clause list is done.**
+- **The five moved to `lib/email/lead-alerts.ts`, and that was forced by the test, not by taste.** The shipping condition was that `no-brand-literals.test.ts` covers them, and that sweep scans FILES — `lib/email.ts` is ~2,700 lines of this platform's own athlete-facing mail (password resets, verification, newsletter) and can never be pointed at. So the senders had to leave, which forced the layout helpers out first into `lib/email/layout.ts` as a pure move, committed and verified `tsc`-identical before anything else was touched. `lib/email.ts` re-exports all five, so no caller changed its import.
+- **`assertSendable` and `BusinessNotConfiguredError` moved to `lib/email/business-identity.ts`** and are re-exported from `lib/lead-engine/email.ts` unchanged. They had to leave that file because it builds its Resend client at module scope — importing it from a route would turn a missing API key into an import-time crash. Copying the rule would have left two sendability gates free to drift.
+- **`to` is a parameter only where the recipient is NOT the coach.** The inquiry auto-reply keeps it (the destination is the applicant). The other four read `reply_to` themselves, so exactly one place decides which column addresses a coach — `runEscalation` and the quiz route both stopped reading settings and now hand over a `businessId` alone.
+- **Two failure modes kept distinct, because their fixes differ:** a tenant missing `postal_address` may not lawfully send at all; a tenant with no `reply_to` may send but has nobody to be told. The two flag-returning senders report both as `{ delivered: false }` with separate log lines naming the field; the three throwing senders throw. A settings read that FAILS throws in every case — a database outage must not be filed as `not_configured`.
+- **The permissive case is built and tested:** a blank `reply_to` does NOT stop the auto-reply, because there the destination is the applicant's own address and refusing would leave a person who just applied with silence.
+- **Test:** `__tests__/lib/email/lead-alerts.test.ts`, 36 cases, every one asserting a value came from settings with the old constant absent and every absence assertion paired with a presence control. **34 planted mutants, all killed** — constant `from`, hardcoded `to`, restored CC, swapped `replyTo`, platform layout in place of the tenant one, both refusal gates removed, case-sensitive de-duplication, and each route quietly dropping the tenant id. Two were deliberately permissive mutants (the auto-reply wrongly refusing a blank `reply_to`); both were caught.
+- **ROOTS grew by three** — `lib/email/lead-alerts.ts`, `lib/email/business-identity.ts`, `lib/quizzes/alert.ts` — and the sweep was checked for vacuity by planting this platform's name in each in turn and confirming it fails.
+- **WHAT THE SWEEP CANNOT SEE, written into the test beside the new roots** so a green run is not over-read: it matches NAMES, so a platform-owned URL passes untouched. That is exactly why the booking widget above is spelled out in the swept file as `PLATFORM_BOOKING_LINK` rather than imported from somewhere the sweep cannot reach. `lib/email/layout.ts` is deliberately unswept — it holds the platform's chrome for the ~35 app emails that still want it, and what keeps the alerts off that fallback is a type (`tenantEmailLayout` cannot be called without a settings row), not a regex.
+- **Production impact, measured before merging rather than assumed.** One tenant, every settings field filled, `reply_to` = `darren@darrenjpaul.com` — which IS the old `ADMIN_CC`. So the chat handover, quiz alert and funnel lead alert keep their existing destination. The inquiry alert does not: it was `to: sales@` + `cc: darren@` and is now `darren@` alone, so **`sales@darrenjpaul.com` stops receiving new-inquiry alerts.** That is decision 9 working as specified, but it is a mailbox going quiet.
+
+### G30b · Every sender fallback named a Resend domain that is gone · **S** · **BUILT 2026-09-23**
+- Found while checking G30 was safe to deploy. `GET https://api.resend.com/domains` returns exactly ONE row: `mail.darrenjpaul.com`, verified, us-east-1, created 2026-09-20. **`send.darrenjpaul.com` is not in the account at all**, and the apex never was.
+- Five `RESEND_FROM_EMAIL ?? ...` fallbacks still named the old subdomain — `lib/resend.ts`, `lib/email.ts`, `lib/messaging/email-new-message.ts`, `functions/src/newsletter-send.ts`, `functions/src/lib/notify-job-done.ts`. An unset variable would have sent from a domain the account does not have: "domain is not verified", messages dropped — the 2026-08-31 fault with the subdomains swapped.
+- **Nothing was broken today, which is what made it easy to miss.** `GET /emails` shows the last 100 production sends are all `Darren J. Paul <noreply@mail.darrenjpaul.com>`, app mail included. The Firebase runtime binds `RESEND_FROM_EMAIL` as a secret, so its two copies are backstops too. A fallback only runs when something else has already failed — precisely when it must work.
+- **THE LESSON, and this comment had been wrong twice by the time it was fixed:** it first claimed Resend verifies `send.` ONLY, then was "corrected" to say `mail.` was verified *too*. Both were inferences from a DELIVERY LOG — what `business_settings.sender_email` happened to name, what had delivered recently. **A delivery log tells you what someone CHOSE; only `GET /domains` tells you what is ALLOWED.** The note now in `lib/email.ts` records that so the next reader queries the list.
+- `lib/email/sender-domains.ts` is deliberately untouched: it reads the live list at runtime so its behaviour cannot go stale, and its mentions of the old subdomain are the 08-31 incident narrative plus one illustrative example that doubles as a test fixture.
 
 ### G31 · The funnel subsystem has no `business_id` · **L**
 - `funnels`, `funnel_steps`, `funnel_step_versions`, `funnel_submissions`, `funnel_step_turns`, `funnel_checkout_grants`, `lead_magnets`: add `business_id NOT NULL DEFAULT` platform (tolerate the old schema for one deploy), tenant predicates on every `lib/db/funnels.ts` and `lib/db/funnel-leads.ts` reader, `/go/<slug>` resolved by Host then slug (slugs unique per business), `loadCatalogues()` unfrozen, `platform.ts` inventory updated and the `SINGLETON` comment in `lib/db/funnels.ts:572` retired. Tests per reader (mutate the predicate VALUE, not the arity).
@@ -691,7 +708,7 @@ option over a staged rollout, on the measured basis that no policies are require
 | 1 — truthful data | G04, G05, G06, G07, G08 | M + 4 S ≈ 3 days |
 | 2 — quoted behaviours | G09, G10, G11, G12, G13, G14, G15, G16, G17, G18 | 5 M + 5 S ≈ 2 weeks |
 | 3 — entry points + pipeline | G20–G29 | 2 M + 7 S + 1 L ≈ 1 week |
-| 4 — white-label edges | G30, G31, G32, G33, G35 | L + 2 M + 2 S ≈ 2 weeks |
+| 4 — white-label edges | ~~G30~~, G31, G32, G33, G35 | L + M + 2 S ≈ 2 weeks (G30 built 2026-09-23) |
 
 Phase 0 today. Phases 1 and 2 are what make the quotation's sentences true. Phases 3 and 4 are what make "GoHighLevel replacement" and "white-label ready" true.
 
@@ -753,11 +770,10 @@ either Phase 4 white-label or wording only the owner can write.
 | 3 — entry points + pipeline | G20 G21 G22 G23 G24 G25 G26 G27 G28 G29 | whole phase complete |
 | Security (not a gap) | S01 S02 | migrations `00274`/`00275` live; 0 tables with RLS off |
 
-**NOT FINISHED — 6 rows, none of them started:**
+**NOT FINISHED — 5 rows, none of them started:**
 
 | Row | What | Size | Why it is open |
 |---|---|---|---|
-| G30 | Transactional lead mail hard-wired to DJP Athlete | **M** | Unblocked — decision 9 ruled: the tenant's own `reply_to` |
 | G31 | The funnel subsystem has no `business_id` | **L** | The biggest white-label row in the ledger |
 | G32 | A new tenant gets no sequences | **M** | Needs G31's shape first |
 | G33 | `sms_sender_phone` is saved un-normalised | **S** | Smallest open row in the document |
@@ -836,9 +852,35 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, re-measured against `main` 2026-09-23: 36 rows · 30 done · 6 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29**.
-Open: G30 G31 G32 G33 G34 G35.
+**Scoreboard, re-measured against `main` 2026-09-23: 37 rows · 32 done · 5 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29** **G30** **G30b**.
+Open: G31 G32 G33 G34 G35.
+
+**The row count went 36 to 37** because G30b is a new lettered sub-row, the same shape as G19b:
+a defect found while shipping its parent, fixed in the same branch, and given its own row so it is
+greppable rather than buried in a bullet.
+
+**G30 is counted done with ONE clause of its own "shipped when" carried forward** — the auto-reply
+still links this platform's booking widget rather than the tenant's connection. It is listed under
+§Everything still waiting on the owner rather than left implicit in a green row, because a row
+marked BUILT whose clause list is not fully met is exactly how this ledger has misled before.
+
+**Verified on the MERGED result for G30 (2026-09-23, `d3e282e6`):** the merge is a `--no-ff` of a
+branch that was 0 behind `main`, so the merged tree hash is byte-identical to the branch tree that
+was gated (`f6ea7fe8`). Whole suite **1091 files / 11992 tests**, 13 failures across 4 files —
+`__tests__/migrations/00062.test.ts` (3, needs a live DB), `coach-reachability` (1),
+`funnel-builder-initial-prompt` (3), `lib/ai/tool-loop` (6, an unrelated OpenRouter migration).
+That is 6 more than the 7-failure baseline recorded above on 2026-09-21, all 6 in `tool-loop`, and
+none of them this work. `functions/` separately: **97 files / 810 tests** green with its own `tsc`
+silent. App `tsc --noEmit` **238 errors / 54 files**, per-file set identical to
+`.claude/baselines/tsc-ce6f2aba-perfile.txt`. `npm run build` exit 0.
+**`npm run lint` was not run: it is broken repo-wide** (`package.json` runs `next lint`, removed in
+Next 16, and there is no eslint config).
+
+**One flake seen, recorded so it is not mis-attributed:**
+`__tests__/app/funnel-draft-preview-page.test.tsx` failed in 1 of 3 full runs and passes in
+isolation; runs 1 and 3 reproduced the baseline exactly. It is not on this work's path and it is
+not in the documented baseline either — a second flaky suite to know about.
 
 **G21 and G28 were listed as open in the same commits that merged them** (`e36377f7`, `58db9ffe`) —
 their own rows above said BUILT while this line still said open. A row's status lives in two places
@@ -847,7 +889,7 @@ in this document, and only one of them got updated. When closing a row, edit bot
 **Phases 0, 1, 2 and 3 are COMPLETE** — every row in them is built, reviewed, merged and pushed,
 and every migration through `00275` is applied to production. G21 and G28, the two rows that were
 blocked on an owner decision, were ruled on and built the same day. G29, the last Phase 3 row and the one deliberately deferred until Phases 0-2 were done, was
-built, merged and smoke-tested on production on 2026-09-23. What remains is **Phase 4 (G30-G35)**.
+built, merged and smoke-tested on production on 2026-09-23. G30, the first Phase 4 row, was built, merged and pushed on 2026-09-23. What remains is **Phase 4 (G31-G35)**.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
@@ -859,6 +901,14 @@ built, merged and smoke-tested on production on 2026-09-23. What remains is **Ph
 - **G16's `{{sport}}`** — one `ENROLMENT_METADATA_KEYS` entry plus one line in
   `app/api/inquiry/route.ts` would make it work, but it also widens what a coach can branch on.
   `{{goals}}` needs a different home entirely. Both render blank today.
+- **G30's booking button** — the inquiry auto-reply still sends every applicant to this platform's
+  own GoHighLevel widget, whoever they applied to. The tenant-aware version reads
+  `coach_calendar_connections.scheduling_url` via `lib/calendly/config-for-business.ts` (a business
+  with no connection gets NO button rather than this platform's calendar). It was left out of G30
+  because it changes where real DJP traffic books, which is the owner's call, not a refactor.
+- **G30 made `sales@darrenjpaul.com` go quiet** — new-inquiry alerts now go to
+  `business_settings.reply_to` (`darren@`) alone, per decision 9. If `sales@` should still receive
+  them, the fix is a recipient list, not a revert.
 - **The decisions in §Decisions** that Phase 3 rows still name (G21, G28, G34).
 
 **Next unblocked, needing nothing from the owner: G20** (questionnaire is not connected), then
