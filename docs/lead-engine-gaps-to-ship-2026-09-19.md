@@ -793,11 +793,21 @@ either Phase 4 white-label or wording only the owner can write.
 
 **FINISHED BUT NOT SWITCHED ON:**
 - **`cron_pipeline_reconcile_enabled` does not exist as a row in `system_settings`** — re-measured
-  2026-09-21 18:00 UTC. G26 removed the hazard that kept it off and the owner ruled to enable it,
-  but the switch has never been thrown. It belongs in `/admin/automation`, which records `updated_by`.
-- **`worktree-reconcile-cron-description` is unmerged** (1 commit, 2 files: `lib/cron-catalog.ts`,
-  `lib/automation/pipeline-reconcile.ts`). Merge it BEFORE flipping the flag, or the screen the owner
-  goes to still argues against the switch they are about to throw.
+  against production **2026-09-23**, still no row, so the job is off by ABSENCE and
+  `defaultEnabled: false` is the only thing holding it. G26 removed the hazard that kept it off and
+  the owner ruled to enable it, but the switch has never been thrown. It belongs in
+  `/admin/automation`, which records `updated_by` — which is why it is the owner's click and not a
+  script's.
+- ~~**`worktree-reconcile-cron-description` is unmerged**~~ — **MERGED 2026-09-23** (`16106686`).
+  The blocker it describes is gone: `/admin/automation` no longer tells the owner this job "should
+  stay off for now", because G26 fixed the second-card hazard that sentence was about. Nothing now
+  stands between the ruling and the switch.
+- **A ruling is not a row, and that branch asserted otherwise.** Its comment in
+  `lib/automation/pipeline-reconcile.ts` said the flag "WAS TURNED ON by owner ruling 2026-09-21".
+  It was not — the ruling happened, the switch did not, and the two were fused into one sentence.
+  Corrected on merge (`185c6ae1`) after measuring production rather than reading the comment. This
+  is the same failure as the G21/G28 note above, in a code comment instead of a scoreboard: a reader
+  who believed it would debug an unrepaired board by reading a file that has never run.
 
 
 **PHASE 1 COMPLETE AND LIVE. PHASE 2 COMPLETE AND LIVE except G18's `ai_chat` half, which needs
