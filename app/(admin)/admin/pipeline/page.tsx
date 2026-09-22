@@ -24,6 +24,7 @@ import Link from "next/link"
 import { Settings } from "lucide-react"
 import { PipelineBoard } from "@/components/admin/pipeline-board"
 import { BoardSwitcher } from "@/components/admin/pipeline/BoardSwitcher"
+import { NewCardDialog } from "@/components/admin/new-card-dialog"
 
 export const metadata = { title: "Pipeline" }
 export const dynamic = "force-dynamic"
@@ -85,6 +86,13 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   ])
   const name = possessiveName(business.display_name)
 
+  // G29 Task 8. The stage a hand-made card actually lands on:
+  // `createOpportunityManually` files onto the stage at POSITION 1, so the
+  // dialog can name it rather than saying "the first step" and hoping. Sorted
+  // rather than trusting `readBoard`'s order, exactly as PipelineBoard does
+  // below — a board with no stages has nothing to name and passes null.
+  const firstStageName = [...columns].sort((a, b) => a.stage.position - b.stage.position)[0]?.stage.name ?? null
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -97,15 +105,23 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
             Lost closes the deal; dropping a closed card back on an open stage reopens it.
           </p>
         </div>
-        {/* G29 Task 7. Carries the board being looked at, so the editor opens
-            on the same one rather than on whichever the fallback picks. */}
-        <Link
-          href={`/admin/pipeline/settings?board=${encodeURIComponent(activeKey)}`}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface/50 hover:text-foreground"
-        >
-          <Settings className="size-4" />
-          Edit stages
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* G29 Task 8. Only when there IS a board — `activeBoard` is
+              undefined for a tenant with none, and a dialog with no
+              `pipelineId` to post could only ever 404. */}
+          {activeBoard && (
+            <NewCardDialog pipelineId={activeBoard.id} boardName={activeBoardName} firstStageName={firstStageName} />
+          )}
+          {/* G29 Task 7. Carries the board being looked at, so the editor opens
+              on the same one rather than on whichever the fallback picks. */}
+          <Link
+            href={`/admin/pipeline/settings?board=${encodeURIComponent(activeKey)}`}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface/50 hover:text-foreground"
+          >
+            <Settings className="size-4" />
+            Edit stages
+          </Link>
+        </div>
       </div>
       {/* One board is not a choice. Every tenant create_business() has made has
           exactly one, and a lone pill would be chrome that does nothing. */}
