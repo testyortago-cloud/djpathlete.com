@@ -28,7 +28,7 @@ vi.mock("@/lib/db/businesses", () => ({
   BusinessSettingsMissingError: class extends Error {},
 }))
 
-import { sendQuizAlertEmail } from "@/lib/email/lead-alerts"
+import { sendChatEscalationEmail, sendQuizAlertEmail } from "@/lib/email/lead-alerts"
 import { BusinessNotConfiguredError } from "@/lib/email/business-identity"
 
 const BUSINESS_ID = "b0000000-0000-0000-0000-00000000000a"
@@ -185,6 +185,79 @@ describe("sendQuizAlertEmail", () => {
     const out = await sendQuizAlertEmail(quizArgs)
 
     expect(out).toEqual({ delivered: false })
+  })
+})
+
+const escalationArgs = {
+  businessId: BUSINESS_ID,
+  conversationId: "11111111-1111-1111-1111-111111111111",
+  summary: "Wants to know if there is a goalkeeper track",
+  landingPath: "/programs",
+  transcript: [
+    { role: "user" as const, content: "Do you coach goalkeepers?", created_at: "2026-08-23T10:00:00.000Z" },
+    { role: "assistant" as const, content: "Let me put you to a person.", created_at: "2026-08-23T10:00:04.000Z" },
+  ],
+}
+
+describe("sendChatEscalationEmail", () => {
+  it("sends FROM the tenant, TO the tenant's own reply_to, and nowhere else", async () => {
+    const out = await sendChatEscalationEmail(escalationArgs)
+
+    expect(out).toEqual({ delivered: true })
+    const arg = sendMock.mock.calls[0][0]
+    expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
+    expect(arg.from).toBe("Coach Priya <hello@northfieldstrength.test>")
+    expect(arg.to).toBe("priya@northfieldstrength.test")
+    // Still no CC. The transcript can contain a stranger's phone number typed
+    // into a public box, and a second recipient nobody on this tenant
+    // configured has no claim on it.
+    expect(arg.cc).toBeUndefined()
+  })
+
+  it("does NOT reply to the tenant's own address -- the visitor is anonymous", async () => {
+    // The one alert of the five that sets no replyTo, and it is not an
+    // oversight: there may be no address to reply to at all, and the default
+    // mail-client reply must not put the coach's answer in front of whoever
+    // `reply_to` happens to be rather than the visitor.
+    await sendChatEscalationEmail(escalationArgs)
+
+    expect(sendMock.mock.calls[0][0].replyTo).toBeUndefined()
+  })
+
+  it("renders the tenant's wordmark and postal address, and none of the platform's", async () => {
+    await sendChatEscalationEmail(escalationArgs)
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(html).toContain("Northfield Strength")
+    expect(html).toContain("4 Mill Lane, Northfield, NF1 2AB")
+    expectNoPlatformLiterals(html)
+  })
+
+  it("still carries both sides of the transcript", async () => {
+    await sendChatEscalationEmail(escalationArgs)
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(html).toContain("Do you coach goalkeepers?")
+    expect(html).toContain("Let me put you to a person.")
+    expect(html).toContain("Wants to know if there is a goalkeeper track")
+  })
+
+  it("reports NOT delivered, and sends nothing, when the tenant has no reply_to", async () => {
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, reply_to: "" })
+
+    const out = await sendChatEscalationEmail(escalationArgs)
+
+    expect(out).toEqual({ delivered: false })
+    expect(sendMock).not.toHaveBeenCalled()
+  })
+
+  it("lets a settings read failure THROW, because that is not 'nobody to tell'", async () => {
+    // The caller records `failed` for this and `not_configured` for the case
+    // above. Collapsing a database outage into "this tenant has nobody to
+    // email" would hide an outage behind a configuration message.
+    getBusinessSettings.mockRejectedValue(new Error("supabase down"))
+
+    await expect(sendChatEscalationEmail(escalationArgs)).rejects.toThrow(/supabase down/)
   })
 })
 
