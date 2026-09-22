@@ -47,6 +47,11 @@
 // guessed at when `contact.user_id` is null just below.
 
 import { ENROLMENT_SKIPPED_TIMELINE_KIND, ENROLMENT_SKIP_REASONS } from "@/lib/lead-engine/enroll"
+// G29. The kind a hand-filed pipeline card writes. Imported rather than
+// re-typed as a literal: it lives beside `CONTACT_ACTIVITY_KINDS`, the list
+// it is deliberately absent from, and a second copy of the string here could
+// drift from the one being written.
+import { CARD_FILED_TIMELINE_KIND } from "@/lib/lead-engine/pipeline-move"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { maskEmail, maskPhone } from "@/lib/lead-engine/mask"
 import { isMissingTagsTable } from "@/lib/db/contact-tags"
@@ -181,9 +186,13 @@ const SOURCE_LABELS: Record<string, string> = {
   ai_chat: "Talked to the assistant on the website",
   booking: "Booked a session",
   ghl_import: "Imported from the old system",
-  // G29. Written by `createOpportunityManually` (lib/db/pipeline.ts) via
-  // `recordEventForExistingContact` -- a coach filing someone onto a board by
-  // hand, not a form this person filled in themselves.
+  // G29. The `source` on the rows `createOpportunityManually`
+  // (lib/db/pipeline.ts) writes. Those rows carry kind
+  // `CARD_FILED_TIMELINE_KIND`, which has its own arm below and never reaches
+  // this map -- so this entry is the answer to "what would this source say if
+  // some later caller wrote it as an entry_point", and it is here because
+  // every declared source owes a coach a sentence (the completeness test in
+  // __tests__/lib/db/contact-detail.test.ts walks the whole union).
   manual_card: "Added to a board by a coach",
 }
 
@@ -260,6 +269,27 @@ export function describeTimelineEvent(row: TimelineEventRow): {
 
     case "ghl_import":
       return { title: "Imported from the old system", detail: null, tone: "neutral" }
+
+    // G29. A coach put this person on a pipeline board by hand -- a phone
+    // call, a DM, somebody met at a camp. Written by
+    // `createOpportunityManually` (lib/db/pipeline.ts) on BOTH of its contact
+    // branches, so an existing contact and a newly typed one leave the same
+    // trace here.
+    //
+    // The board and the stage come off the row rather than being asserted:
+    // this screen has no idea which board the coach chose, and "Added to a
+    // board" with no board named is the shrug this arm exists to avoid. Both
+    // are optional in the wording because `metadata` is plain jsonb -- a row
+    // written before those keys existed must still read as a sentence.
+    case CARD_FILED_TIMELINE_KIND: {
+      const boardName = asString(meta.board_name)
+      const stageName = asString(meta.stage_name)
+      return {
+        title: boardName ? `Added to the ${boardName} board by a coach` : "Added to a board by a coach",
+        detail: stageName ? `Their card starts in ${stageName}.` : null,
+        tone: "neutral",
+      }
+    }
 
     case "sms_repermission_candidate":
       return {

@@ -412,6 +412,30 @@ export const CONTACT_ACTIVITY_KINDS: readonly string[] = [
 ]
 
 /**
+ * G29. The timeline `kind` a HAND-FILED CARD writes
+ * (`createOpportunityManually`, lib/db/pipeline.ts).
+ *
+ * IT IS DELIBERATELY NOT A MEMBER OF `CONTACT_ACTIVITY_KINDS` ABOVE, and it
+ * lives here, next to that list, so the absence is visible rather than
+ * implied by a string written somewhere else.
+ *
+ * Filing a card is the COACH doing something, not the person. The list above
+ * already refuses to let a coach DRAGGING a card freshen the dot, for exactly
+ * this reason; filing one is the same act one step earlier. And the anchor is
+ * keyed by CONTACT, not by card — so a `card_filed` row that counted would
+ * turn somebody's red dot green on a board they have been silent on for six
+ * weeks, because a coach put them on a DIFFERENT board today.
+ *
+ * It still needs to be a row, and a row with a name of its own: the contact's
+ * record (lib/db/contact-detail.ts) is the one screen a coach looks at, and a
+ * person appearing on a board with nothing on their history saying how they
+ * got there is the kind of gap somebody later reads as a bug. `kind` is plain
+ * `text` with no CHECK constraint (00214), so this needs no migration — but it
+ * DOES need its arm in `describeTimelineEvent`, which it has.
+ */
+export const CARD_FILED_TIMELINE_KIND = "card_filed"
+
+/**
  * Staleness is computed at read time and NEVER stored (spec §8) — a stored flag
  * is wrong the moment the clock moves and needs a job to keep true.
  *

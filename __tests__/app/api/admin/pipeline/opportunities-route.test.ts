@@ -87,6 +87,19 @@ let idCounter: number
  * Postgres would after losing the race.
  */
 let forcedOpportunityConflict: { stageId: string } | null
+/**
+ * Every INSERT this request ATTEMPTED, by table — not every insert that
+ * landed.
+ *
+ * The pre-check and the unique index produce the identical message, so the
+ * store alone cannot tell which of the two refused a duplicate: drop the
+ * pre-check's own `throw` and the insert simply falls through to the index,
+ * which answers the same sentence. The one observable difference is whether
+ * an insert was attempted at all — and "the ordinary, non-concurrent case
+ * answers in English instead of reaching a 23505" is exactly what the
+ * pre-check is for.
+ */
+let insertAttempts: Record<string, number>
 
 function resetState() {
   state = {
@@ -100,6 +113,7 @@ function resetState() {
   }
   idCounter = 0
   forcedOpportunityConflict = null
+  insertAttempts = {}
 }
 
 function nextId(table: string): string {
@@ -148,6 +162,7 @@ function makeTable(table: string) {
       return resolve({ data: filterRows(), error: null })
     },
     insert(payload: any) {
+      insertAttempts[table] = (insertAttempts[table] ?? 0) + 1
       let row: Row | null = null
       let error: { code: string; message: string } | null = null
 
@@ -216,6 +231,7 @@ vi.mock("@/lib/supabase", () => ({
 }))
 
 import { POST } from "@/app/api/admin/pipeline/opportunities/route"
+import { CARD_FILED_TIMELINE_KIND, CONTACT_ACTIVITY_KINDS } from "@/lib/lead-engine/pipeline-move"
 
 const STAFF_SESSION = { user: { id: "staff-1", role: "staff", permissions: {} } }
 const COACH_SESSION = { user: { id: "coach-1", role: "staff", permissions: { contacts: true } } }
@@ -234,20 +250,37 @@ const STAGE_WON = { id: "stage-won", key: "won", name: "Won", position: 3, kind:
 const STAGE_LOST = { id: "stage-lost", key: "lost", name: "Lost", position: 4, kind: "lost" }
 
 const DANA_ID = "contact-dana"
+const DANA_EMAIL = "dana@example.com"
 
 function seedBoard() {
-  state.pipelines.push({ id: BOARD_ID, business_id: BUSINESS_ID, key: "coaching", name: BOARD_NAME })
+  // `status` is seeded because `readBoardRow` now READS it: `pipelines.status`
+  // is `'active' | 'archived'` NOT NULL DEFAULT 'active' (00219), so a fixture
+  // that omitted it would leave every board `undefined` here and the archive
+  // guard unfalsifiable. The archive test below flips this one column on the
+  // seeded row rather than re-seeding: `seedBoard` pushes the four stages too,
+  // and calling it twice would leave two rows at position 1, which
+  // `.maybeSingle()` refuses.
+  state.pipelines.push({ id: BOARD_ID, business_id: BUSINESS_ID, key: "coaching", name: BOARD_NAME, status: "active" })
   for (const stage of [STAGE_ENQUIRED, STAGE_CONSULTED, STAGE_WON, STAGE_LOST]) {
     state.pipeline_stages.push({ ...stage, business_id: BUSINESS_ID, pipeline_id: BOARD_ID })
   }
 }
 
+/**
+ * Dana, already on file, at THE SAME ADDRESS the `person` tests below post.
+ *
+ * It used to be `dana-existing@example.com` while every `person` POST said
+ * `dana@example.com`, so `upsertContactIdentity`'s MATCH branch never ran in
+ * this file and search-or-create — the spec's own words, "a typo'd repeat
+ * resolves to the existing contact instead of quietly becoming a second Dana
+ * Reyes" — was never exercised at all.
+ */
 function seedDana() {
   state.contacts.push({
     id: DANA_ID,
     business_id: BUSINESS_ID,
     name: "Dana Reyes",
-    email: "dana-existing@example.com",
+    email: DANA_EMAIL,
     phone_e164: null,
     created_at: "2020-01-01T00:00:00Z",
   })
@@ -367,6 +400,11 @@ describe("POST /api/admin/pipeline/opportunities", () => {
     expect(body.error).toBe("Dana Reyes is already on Coaching, in Consulted.")
     // No second row.
     expect(state.opportunities).toHaveLength(1)
+    // And it never got as far as trying. The pre-check is what makes the
+    // ordinary case answer in English; without its own `throw` the insert
+    // falls through to the unique index, which says the same sentence — so
+    // this is the only assertion that can tell the two apart.
+    expect(insertAttempts.opportunities ?? 0).toBe(0)
   })
 
   it("400s with the SAME message when the duplicate is caught as a 23505 race instead of the pre-check", async () => {
@@ -406,6 +444,142 @@ describe("POST /api/admin/pipeline/opportunities", () => {
   })
 
   // -------------------------------------------------------------------------
+  // THE ARCHIVE GATE (fix round 1, Important 3).
+  // -------------------------------------------------------------------------
+
+  it("400s an ARCHIVED board rather than filing a card nobody will ever see", async () => {
+    state.pipelines[0].status = "archived"
+    seedDana()
+
+    const res = await POST(requestFor({ pipelineId: BOARD_ID, contactId: DANA_ID }) as never, NO_PARAMS)
+
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toBe(
+      '"Coaching" has been archived, so a card filed onto it would not show up anywhere. ' +
+        "Put that board back in use first, or pick a different one.",
+    )
+    expect(state.opportunities).toHaveLength(0)
+    // Nothing on her history either — the refusal happens before any write.
+    expect(state.contact_timeline_events).toHaveLength(0)
+  })
+
+  // THE PRESENCE CONTROL for the refusal above. Identical request, identical
+  // fixture, one column different — without it, the 400 could be coming from
+  // anywhere (a missing stage, a bad id) and the archive gate could be doing
+  // nothing at all.
+  it("control: the SAME request against the same board, active, is accepted", async () => {
+    expect(state.pipelines[0].status).toBe("active")
+    seedDana()
+
+    const res = await POST(requestFor({ pipelineId: BOARD_ID, contactId: DANA_ID }) as never, NO_PARAMS)
+
+    expect(res.status).toBe(200)
+    expect(state.opportunities).toHaveLength(1)
+  })
+
+  // -------------------------------------------------------------------------
+  // THE HISTORY ROW (fix round 1, Important 1 and Important 2).
+  // -------------------------------------------------------------------------
+
+  it("leaves a card_filed row on an EXISTING contact's record too, not only on a newly typed one", async () => {
+    seedDana()
+
+    const res = await POST(requestFor({ pipelineId: BOARD_ID, contactId: DANA_ID }) as never, NO_PARAMS)
+    expect(res.status).toBe(200)
+
+    // The `contactId` branch used to write NO timeline row at all, so filing
+    // somebody already on file left zero trace on the contact's record —
+    // `lib/db/contact-detail.ts` reads neither `opportunities` nor
+    // `opportunity_stage_events`, so there was nowhere else for it to show up.
+    expect(state.contact_timeline_events).toHaveLength(1)
+    const row = state.contact_timeline_events[0]
+    expect(row.contact_id).toBe(DANA_ID)
+    expect(row.business_id).toBe(BUSINESS_ID)
+    expect(row.kind).toBe(CARD_FILED_TIMELINE_KIND)
+    expect(row.source).toBe("manual_card")
+    // The two keys `describeTimelineEvent`'s `card_filed` arm actually reads.
+    expect(row.metadata.board_name).toBe(BOARD_NAME)
+    expect(row.metadata.stage_name).toBe(STAGE_ENQUIRED.name)
+  })
+
+  // The consequence, not the string: `readLastContactActivity`
+  // (lib/db/pipeline.ts) filters on this list to compute the staleness dot, so
+  // a kind ON it makes a coach's own filing look like the PERSON getting in
+  // touch — on every board they are on, because the anchor is keyed by
+  // contact. The end-to-end proof that the dot does not move is in
+  // __tests__/db/pipeline.test.ts; this is the membership pin that says why.
+  it("writes a kind the staleness dot does NOT count as the person being in touch", async () => {
+    seedDana()
+    await POST(requestFor({ pipelineId: BOARD_ID, contactId: DANA_ID }) as never, NO_PARAMS)
+
+    expect(CONTACT_ACTIVITY_KINDS).not.toContain(CARD_FILED_TIMELINE_KIND)
+    for (const row of state.contact_timeline_events) {
+      expect(CONTACT_ACTIVITY_KINDS).not.toContain(row.kind)
+    }
+  })
+
+  it("leaves NOTHING on the person's history when the card is refused as a duplicate", async () => {
+    seedDana()
+    state.opportunities.push({
+      id: "opp-existing",
+      business_id: BUSINESS_ID,
+      pipeline_id: BOARD_ID,
+      contact_id: DANA_ID,
+      stage_id: STAGE_CONSULTED.id,
+      outcome: null,
+      value_cents: null,
+    })
+
+    // THE `person` BRANCH, on purpose — the two duplicate tests above both go
+    // through `contactId`, which never wrote a timeline row in the first
+    // place. This is the path where a refusal used to append "added to a
+    // board" to a person who had NOT been added to a board, once per retry.
+    const res = await POST(
+      requestFor({ pipelineId: BOARD_ID, person: { name: "Dana Reyes", email: DANA_EMAIL } }) as never,
+      NO_PARAMS,
+    )
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe("Dana Reyes is already on Coaching, in Consulted.")
+
+    expect(state.contact_timeline_events).toHaveLength(0)
+    expect(state.opportunities).toHaveLength(1)
+
+    // And it is still nothing after the coach tries again, which is what a
+    // coach actually does when told "already on this board".
+    await POST(
+      requestFor({ pipelineId: BOARD_ID, person: { name: "Dana Reyes", email: DANA_EMAIL } }) as never,
+      NO_PARAMS,
+    )
+    expect(state.contact_timeline_events).toHaveLength(0)
+  })
+
+  // -------------------------------------------------------------------------
+  // SEARCH-OR-CREATE (fix round 1, Minor 7) — the spec's own words: "a typo'd
+  // repeat resolves to the existing contact instead of quietly becoming a
+  // second Dana Reyes".
+  // -------------------------------------------------------------------------
+
+  it("resolves a typed person to the contact already on file instead of creating a second one", async () => {
+    seedDana()
+
+    const res = await POST(
+      // Same address, a different spelling of the name — a second coach typing
+      // her in from a phone call.
+      requestFor({ pipelineId: BOARD_ID, person: { name: "dana reyes", email: DANA_EMAIL } }) as never,
+      NO_PARAMS,
+    )
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    // THE id, not "an id": a fresh contact would also come back with a
+    // truthy one, and this assertion is the whole point of the test.
+    expect(body.contactId).toBe(DANA_ID)
+    expect(state.contacts).toHaveLength(1)
+    expect(state.opportunities[0].contact_id).toBe(DANA_ID)
+  })
+
+  // -------------------------------------------------------------------------
   // THE ENROLMENT TEST, AND ITS PRESENCE CONTROL — the heart of this task.
   // -------------------------------------------------------------------------
 
@@ -423,6 +597,7 @@ describe("POST /api/admin/pipeline/opportunities", () => {
     expect(state.contacts[0].email).toBe("dana@example.com")
     const manualCardEvents = state.contact_timeline_events.filter((e) => e.source === "manual_card")
     expect(manualCardEvents).toHaveLength(1)
+    expect(manualCardEvents[0].kind).toBe(CARD_FILED_TIMELINE_KIND)
   })
 
   // THE PRESENCE CONTROL. Without this, the assertion above passes just as

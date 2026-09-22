@@ -33,6 +33,10 @@ import {
   type MoveDecision,
   type MoveTrigger,
   type Staleness,
+  // G29 (fix round 1). The timeline `kind` a hand-filed card writes. It lives
+  // beside `CONTACT_ACTIVITY_KINDS` above precisely because it is NOT one of
+  // them: see its own doc comment, and `createOpportunityManually` below.
+  CARD_FILED_TIMELINE_KIND,
 } from "@/lib/lead-engine/pipeline-move"
 // Pure routing table (Task 3, spec §3). `routeToPipeline` is consulted here
 // for exactly one case: `event: "refund"`, where it refuses on purpose (see
@@ -2175,19 +2179,42 @@ export async function createPipelineBoard(input: {
   return { id: created.id, key: created.key }
 }
 
+/**
+ * One board, by id, scoped to the tenant that asked. Returns null when the id
+ * does not exist OR belongs to somebody else — deliberately the same answer
+ * for both, so a caller cannot tell them apart (see
+ * `PipelineBoardNotFoundError` below).
+ *
+ * DOES NOT FILTER ON `status`, AND MUST NOT START (fix round 1, Important 3 /
+ * controller ruling). `pipelines.status` is `'active' | 'archived'` (00219),
+ * and this reader is how `updatePipelineBoard` — the one function that CHANGES
+ * that column — looks a board up. A reader that could not see an archived row
+ * is a reader an archived board cannot be managed through, which is a worse
+ * bug than the one the filter would close. Concretely today:
+ * `updatePipelineBoard`'s archive branch reads through here to run the
+ * default-board guard, and it can legitimately be handed a board that is
+ * already archived; an active-only read would answer that with a spurious
+ * "not found".
+ *
+ * So `status` is RETURNED instead, and each CALLER decides. Today exactly one
+ * does — `createOpportunityManually`, which refuses an archived board, because
+ * a card filed onto one is not lost, it is invisible, which is worse than lost
+ * because nobody goes looking (see `listPipelines`' own note on why the board
+ * switcher is active-only).
+ */
 async function readBoardRow(
   pipelineId: string,
   businessId: string,
-): Promise<{ id: string; key: string; name: string } | null> {
+): Promise<{ id: string; key: string; name: string; status: string } | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("pipelines")
-    .select("id, key, name")
+    .select("id, key, name, status")
     .eq("id", pipelineId)
     .eq("business_id", businessId)
     .maybeSingle()
   if (error) throw new Error(`pipelines read failed: ${error.message}`)
-  return data as { id: string; key: string; name: string } | null
+  return data as { id: string; key: string; name: string; status: string } | null
 }
 
 /**
@@ -2403,14 +2430,24 @@ export async function savePipelineStages(input: {
  * Never throws a raw PostgREST object, same discipline as every other reader
  * in this file — each lookup here is best-effort English for an Error that
  * is ABOUT to be thrown regardless of whether these three reads fully land.
+ *
+ * BUILDS the Error; it does NOT throw it (fix round 1, Minor 3). It used to
+ * be `throwOpenCardExistsError(): Promise<never>`, awaited inside an `if`
+ * with no `return`/`throw` of its own at either call site. `Promise<never>`
+ * does not make tsc treat the following lines as unreachable — only a literal
+ * `throw`/`return` at the call site does — so the day this function stopped
+ * throwing (an early return added to one of its lookups, say) control would
+ * have fallen straight through to the INSERT the refusal exists to prevent,
+ * with nothing red anywhere. Returning the Error moves the `throw` to the
+ * call site, where the compiler can see it.
  */
-async function throwOpenCardExistsError(args: {
+async function openCardExistsError(args: {
   supabase: ReturnType<typeof createServiceRoleClient>
   businessId: string
   contactId: string
   pipelineId: string
   boardName: string
-}): Promise<never> {
+}): Promise<Error> {
   const { supabase, businessId, contactId, pipelineId, boardName } = args
 
   const [{ data: contactRow }, { data: openRow }] = await Promise.all([
@@ -2438,7 +2475,7 @@ async function throwOpenCardExistsError(args: {
     stageName = (stageRow as { name: string } | null)?.name ?? stageName
   }
 
-  throw new Error(`${contactName} is already on ${boardName}, in ${stageName}.`)
+  return new Error(`${contactName} is already on ${boardName}, in ${stageName}.`)
 }
 
 /**
@@ -2459,12 +2496,22 @@ async function throwOpenCardExistsError(args: {
  *     (the standing rule: every new reader gets a tenant predicate). Not
  *     found for THIS business is a 400, not a leak of what exists elsewhere.
  *   - `person` — `upsertContactIdentity` (lib/db/contacts.ts) resolves/merges
- *     identity exactly as a live submission would, then
- *     `recordEventForExistingContact` appends one `manual_card` timeline row.
- *     `upsertContactIdentity` itself refuses a person with neither email nor
- *     phone; this function refuses the SAME thing earlier, before paying for
- *     the round trip, so the message names the actual problem rather than a
+ *     identity exactly as a live submission would, so a typo'd repeat of
+ *     somebody already on file lands on THAT contact rather than becoming a
+ *     second copy of them. It refuses a person with neither email nor phone;
+ *     this function refuses the SAME thing earlier, before paying for the
+ *     round trip, so the message names the actual problem rather than a
  *     generic "identifier needed".
+ *
+ * THE HISTORY ROW IS WRITTEN ONCE, ON BOTH BRANCHES, AFTER THE CARD EXISTS.
+ * Fix round 1 changed this twice over: it used to be written only on the
+ * `person` branch (so filing somebody already on file left zero trace on the
+ * contact's record — the one screen a coach looks at), and it used to be
+ * written BEFORE the duplicate check (so every refused attempt left a
+ * permanent line claiming something that did not happen). Its `kind` is
+ * `CARD_FILED_TIMELINE_KIND`, not the `entry_point` default — see the call
+ * itself, and that constant's own comment, for why a coach's own action must
+ * not freshen the staleness dot.
  *
  * THE CARD lands on the board's POSITION-1 stage — whatever that stage's
  * `kind` happens to be; this function does not assume it is `open` (a
@@ -2479,8 +2526,9 @@ async function throwOpenCardExistsError(args: {
  *
  * THE DUPLICATE CASE — `opportunities_one_open_per_contact_pipeline` (00219)
  * is `UNIQUE (contact_id, pipeline_id) WHERE outcome IS NULL`, one open card
- * per person per board. A pre-check SELECT catches the ordinary case
- * readably; the unique index is the real guard for the concurrent one (two
+ * per person per board. A pre-check SELECT, run as soon as the contact id is
+ * known and before any write, catches the ordinary case readably; the unique
+ * index is the real guard for the concurrent one (two
  * coaches filing the same person at once), caught here as a 23505 rather than
  * reached for with `ON CONFLICT`/`.upsert()` — Postgres cannot infer a
  * PARTIAL index, and this repo has already been bitten by exactly that
@@ -2503,6 +2551,23 @@ export async function createOpportunityManually(input: {
   const board = await readBoardRow(input.pipelineId, businessId)
   if (!board) throw new PipelineBoardNotFoundError(input.pipelineId)
 
+  // THE ARCHIVE GATE (fix round 1, Important 3). `readBoardRow` is scoped by
+  // tenant but deliberately does NOT filter `status` — `updatePipelineBoard`
+  // needs to read an archived board in order to un-archive it — so the refusal
+  // belongs here, at the call site, not in the reader.
+  //
+  // The board picker is documented active-only (`listPipelines`), but a guard
+  // on the client path is not a guard: `pipelineId` arrives in the request
+  // body, and a board's id is known to any tab that was open when the coach
+  // archived it. A card filed onto an archived board is not lost — it is
+  // INVISIBLE, which is worse than lost, because nobody goes looking.
+  if (board.status === "archived") {
+    throw new Error(
+      `"${board.name}" has been archived, so a card filed onto it would not show up anywhere. ` +
+        `Put that board back in use first, or pick a different one.`,
+    )
+  }
+
   let contactId: string
   if (input.contactId) {
     const { data, error } = await supabase
@@ -2522,6 +2587,13 @@ export async function createOpportunityManually(input: {
     if (!input.person.email && !input.person.phone) {
       throw new Error("Add an email or phone number for this person before filing them.")
     }
+    // SEARCH-OR-CREATE, not create. `upsertContactIdentity` runs the same
+    // matching and merge rules a live form submission would, so filing
+    // "dana@example.com" a second time — under a different spelling of her
+    // name, from a different coach — lands on the contact that already exists
+    // instead of quietly becoming a second Dana Reyes. It writes NO timeline
+    // row of its own and never calls `enrollIfTriggered`; both of those are
+    // this function's to decide, below.
     const identity = await upsertContactIdentity({
       email: input.person.email ?? null,
       phone: input.person.phone ?? null,
@@ -2529,12 +2601,46 @@ export async function createOpportunityManually(input: {
       businessId,
     })
     contactId = identity.contactId
-    // History being FILED, not a lead ARRIVING — see this function's own doc
-    // comment. `recordEventForExistingContact` appends the timeline row and
-    // NEVER calls `enrollIfTriggered`.
-    await recordEventForExistingContact({ contactId, businessId, source: "manual_card" })
   } else {
     throw new Error("Provide either an existing contact or a new person's details.")
+  }
+
+  // THE DUPLICATE PRE-CHECK RUNS HERE, immediately after the contact is
+  // resolved and BEFORE anything is written to that contact's history (fix
+  // round 1, Important 2). It used to run three steps later, after the
+  // timeline row had already been appended — so every refused attempt left a
+  // permanent "added to a board" line on a person who had NOT been added to a
+  // board, and a coach retrying three times left three of them.
+  //
+  // The contact upsert above is unavoidably before this check (there is no id
+  // to check without it) and can still create a contact that ends up with no
+  // card. A contact with no card is an ordinary state — that is every lead
+  // who has not been filed yet — whereas a history row asserting something
+  // that did not happen is not.
+  //
+  // Racy by construction (read-then-write), and that is fine: it is what makes
+  // the ordinary, non-concurrent case answer in English instead of a 23505.
+  // The unique index below is the guard that actually holds under concurrency.
+  const { data: existingData, error: existingErr } = await supabase
+    .from("opportunities")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("pipeline_id", input.pipelineId)
+    .eq("contact_id", contactId)
+    .is("outcome", null)
+    .maybeSingle()
+  if (existingErr) throw new Error(`opportunities read failed: ${existingErr.message}`)
+  if (existingData) {
+    // `throw await`, not a bare `await` inside the `if` — see
+    // `openCardExistsError`'s own comment for why the refusal is BUILT there
+    // and thrown here.
+    throw await openCardExistsError({
+      supabase,
+      businessId,
+      contactId,
+      pipelineId: input.pipelineId,
+      boardName: board.name,
+    })
   }
 
   const { data: stageRow, error: stageErr } = await supabase
@@ -2547,22 +2653,6 @@ export async function createOpportunityManually(input: {
   if (stageErr) throw new Error(`pipeline_stages read failed: ${stageErr.message}`)
   if (!stageRow) throw new Error(`Board "${board.name}" has no stage at position 1.`)
   const firstStage = stageRow as { id: string; key: string; name: string }
-
-  // Pre-check: racy (read-then-write), but it is what makes the ordinary,
-  // non-concurrent case answer with English instead of a 23505. The unique
-  // index below is the guard that actually holds under concurrency.
-  const { data: existingData, error: existingErr } = await supabase
-    .from("opportunities")
-    .select("id")
-    .eq("business_id", businessId)
-    .eq("pipeline_id", input.pipelineId)
-    .eq("contact_id", contactId)
-    .is("outcome", null)
-    .maybeSingle()
-  if (existingErr) throw new Error(`opportunities read failed: ${existingErr.message}`)
-  if (existingData) {
-    await throwOpenCardExistsError({ supabase, businessId, contactId, pipelineId: input.pipelineId, boardName: board.name })
-  }
 
   const { data: insertData, error: insertErr } = await supabase
     .from("opportunities")
@@ -2586,23 +2676,83 @@ export async function createOpportunityManually(input: {
   if (insertErr) {
     // The concurrent twin of the pre-check above: `opportunities_one_open_per_contact_pipeline`
     // refused the insert because another request won the race between the
-    // read above and this write. Same message either way.
+    // read above and this write. Same message either way, and — like the
+    // pre-check — it happens before any history is written.
     if (isPgUniqueViolation(insertErr)) {
-      await throwOpenCardExistsError({ supabase, businessId, contactId, pipelineId: input.pipelineId, boardName: board.name })
+      throw await openCardExistsError({
+        supabase,
+        businessId,
+        contactId,
+        pipelineId: input.pipelineId,
+        boardName: board.name,
+      })
     }
     throw new Error(`createOpportunityManually failed: ${insertErr.message}`)
   }
 
   const opportunityId = (insertData as { id: string }).id
 
-  await insertStageEvent(supabase, {
+  // THE HISTORY ROW, WRITTEN ON BOTH CONTACT BRANCHES AND ONLY ONCE THE CARD
+  // EXISTS (fix round 1, Important 1).
+  //
+  // `kind: CARD_FILED_TIMELINE_KIND` is the whole point, and it is NOT the
+  // default. `recordEventForExistingContact` defaults to `entry_point`, which
+  // is the FIRST member of `CONTACT_ACTIVITY_KINDS` — the list
+  // `readLastContactActivity` filters on to answer "have we heard from this
+  // person?" for the staleness dot. Filing a card is the COACH doing
+  // something, not the person, and the anchor is keyed by CONTACT rather than
+  // by card: an `entry_point` row here turns somebody's red dot green on a
+  // board they have been silent on for six weeks, because a coach put them on
+  // a DIFFERENT board today. `card_filed` is deliberately absent from that
+  // list, so this row is history a coach can read and nothing else.
+  //
+  // The board and stage names go in `metadata` because the contact's record
+  // (lib/db/contact-detail.ts) has no other way to know which board this was;
+  // `describeTimelineEvent`'s `card_filed` arm reads exactly these two keys.
+  //
+  // Non-fatal by construction: `recordEventForExistingContact` logs a failed
+  // insert and returns rather than throwing, which is the behaviour this call
+  // site wants — the card is already committed, and failing the request over
+  // a history row would tell the coach it did not work while it did.
+  await recordEventForExistingContact({
+    contactId,
     businessId,
-    opportunityId,
-    fromStageId: null,
-    toStageId: firstStage.id,
-    trigger: "manual",
-    actorUserId: input.actorUserId,
+    source: "manual_card",
+    kind: CARD_FILED_TIMELINE_KIND,
+    metadata: {
+      pipeline_id: input.pipelineId,
+      opportunity_id: opportunityId,
+      board_name: board.name,
+      stage_name: firstStage.name,
+    },
   })
+
+  // SAME REASON, SPELLED OUT because `insertStageEvent` does not degrade on
+  // its own (fix round 1, Minor 2). It rethrows the raw PostgREST object, and
+  // the route's `err instanceof Error ? err.message : "Failed to create
+  // opportunity"` would then answer the coach "Failed to create opportunity"
+  // for a card that EXISTS — whose retry answers "already on this board". A
+  // stage-event row is a history row, exactly like the timeline row above;
+  // the card, which is the thing the coach asked for, is already committed.
+  // Logged with its own fields rather than rethrown, because a raw PostgREST
+  // object logs as `[object Object]` and the reason is gone by the time
+  // anybody reads it.
+  try {
+    await insertStageEvent(supabase, {
+      businessId,
+      opportunityId,
+      fromStageId: null,
+      toStageId: firstStage.id,
+      trigger: "manual",
+      actorUserId: input.actorUserId,
+    })
+  } catch (err) {
+    const pgErr = err as { code?: unknown; message?: unknown } | null | undefined
+    console.error(`createOpportunityManually: card ${opportunityId} was created, but its stage-event row was not`, {
+      code: typeof pgErr?.code === "string" ? pgErr.code : undefined,
+      message: typeof pgErr?.message === "string" ? pgErr.message : undefined,
+    })
+  }
 
   return { opportunityId, contactId }
 }

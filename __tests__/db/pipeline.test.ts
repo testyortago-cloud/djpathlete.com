@@ -156,6 +156,21 @@ let selectErrorByTable: Partial<Record<keyof Store, PgError>> = {}
  */
 let updateErrorByRowId: { id: string; error: PgError } | null = null
 
+/**
+ * G29 fix round 1 (Minor 2). An INSERT fault the mock can be told to answer
+ * one table with.
+ *
+ * `selectErrorByTable` above cannot express this, and `constraintViolation`
+ * only models the two real unique indexes — so until now every insert this
+ * harness saw succeeded, and "what happens when the history row fails but the
+ * card is already committed" was untestable. That is exactly the case that
+ * told a coach "Failed to create opportunity" for a card that EXISTS, whose
+ * retry then answered "already on this board".
+ *
+ * Cleared in `beforeEach`, so it cannot leak into another case.
+ */
+let insertErrorByTable: Partial<Record<keyof Store, PgError>> = {}
+
 // NOTE ON THE MOCK: copied (structure verbatim) from __tests__/db/sequences.ts's
 // harness. The trap this project has hit twice is a `.eq()` that returns the
 // query object without recording the filter, so every query resolves to
@@ -241,6 +256,8 @@ vi.mock("@/lib/supabase", () => ({
 
       const doInsert = (): { data: any; error: any } => {
         const p = payload as Row
+        const injectedInsert = insertErrorByTable[table]
+        if (injectedInsert) return { data: null, error: injectedInsert }
         const violation = constraintViolation(String(table), p, rows)
         if (violation) return { data: null, error: violation }
         const row: Row = {
@@ -248,6 +265,17 @@ vi.mock("@/lib/supabase", () => ({
           id: p.id ?? nextId(String(table)),
           created_at: p.created_at ?? new Date().toISOString(),
           updated_at: p.updated_at ?? new Date().toISOString(),
+          // `contact_timeline_events.occurred_at` is `timestamptz NOT NULL
+          // DEFAULT now()` (00214) and NO writer in the repo supplies it, so a
+          // row inserted through this harness must come back carrying one. It
+          // is not decoration: `readLastContactActivity` selects exactly this
+          // column, and a fake that left it undefined would report "no
+          // activity" for a row it had just accepted — which makes the test
+          // below green whichever `kind` the writer chose, the one thing it
+          // exists to tell apart.
+          ...(table === "contact_timeline_events" && p.occurred_at == null
+            ? { occurred_at: new Date().toISOString() }
+            : {}),
           _seq: rows.length,
         }
         rows.push(row)
@@ -406,11 +434,13 @@ import {
   readMostRecentWonOpportunity,
   resolveWonPipelineKey,
   PipelineNotConfiguredError,
+  createOpportunityManually,
+  updatePipelineBoard,
   DEFAULT_PIPELINE_KEY,
 } from "@/lib/db/pipeline"
 import type { SequenceMoveResult } from "@/lib/db/pipeline"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
-import { REBOOKING_SUPPRESSION_DAYS } from "@/lib/lead-engine/pipeline-move"
+import { REBOOKING_SUPPRESSION_DAYS, CARD_FILED_TIMELINE_KIND } from "@/lib/lead-engine/pipeline-move"
 import { CAMPS_CLINICS_KEY, ASSESSMENT_KEY } from "@/lib/lead-engine/pipeline-route"
 
 const DAY_MS = 86_400_000
@@ -449,6 +479,7 @@ beforeEach(() => {
   opportunitiesHasSourceEventId = true
   updateCalls.length = 0
   selectErrorByTable = {}
+  insertErrorByTable = {}
   updateErrorByRowId = null
 })
 
@@ -651,6 +682,36 @@ function seedOpportunity(id: string, contactId: string, overrides: Row = {}): Ro
   }
   store.opportunities.push(opp)
   return opp
+}
+
+/**
+ * G27. One timeline row for a contact.
+ *
+ * `occurred_at` and `created_at` are seeded to DIFFERENT moments on purpose.
+ * The table carries both — `occurred_at` is when the thing happened,
+ * `created_at` is when the row was written — and they differ on only 2 of
+ * production's 271 rows, which is exactly what makes reading the wrong one
+ * easy to ship and impossible to notice. Here `created_at` is always "now", so
+ * a reader keying on it reports every contact as active today and every
+ * staleness test fails.
+ */
+function seedTimelineEvent(contactId: string, kind: string, daysAgo: number, overrides: Row = {}) {
+  store.contact_timeline_events.push({
+    id: `evt-${store.contact_timeline_events.length + 1}`,
+    business_id: SINGLETON_BUSINESS_ID,
+    contact_id: contactId,
+    kind,
+    source: "test",
+    metadata: {},
+    occurred_at: new Date(Date.now() - daysAgo * DAY_MS).toISOString(),
+    created_at: new Date().toISOString(),
+    _seq: store.contact_timeline_events.length,
+    ...overrides,
+  })
+}
+
+function cardFor(board: Awaited<ReturnType<typeof readBoard>>, contactId: string) {
+  return board.flatMap((c) => c.cards).find((card) => card.contactId === contactId)
 }
 
 function stageEventsFor(opportunityId: string): Row[] {
@@ -3043,31 +3104,10 @@ describe("readBoard", () => {
   // the wiring — that `readBoard` reads the timeline at all, filters it to
   // real activity, and hands the right contact's moment to the right card.
   describe("red measures silence, not stage age (G27)", () => {
-    // `occurred_at` and `created_at` are seeded to DIFFERENT moments on
-    // purpose. The table carries both — `occurred_at` is when the thing
-    // happened, `created_at` is when the row was written — and they differ on
-    // only 2 of production's 271 rows, which is exactly what makes reading the
-    // wrong one easy to ship and impossible to notice. Here `created_at` is
-    // always "now", so a reader keying on it reports every contact as active
-    // today and every test in this block fails.
-    function seedTimelineEvent(contactId: string, kind: string, daysAgo: number, overrides: Row = {}) {
-      store.contact_timeline_events.push({
-        id: `evt-${store.contact_timeline_events.length + 1}`,
-        business_id: SINGLETON_BUSINESS_ID,
-        contact_id: contactId,
-        kind,
-        source: "test",
-        metadata: {},
-        occurred_at: new Date(Date.now() - daysAgo * DAY_MS).toISOString(),
-        created_at: new Date().toISOString(),
-        _seq: store.contact_timeline_events.length,
-        ...overrides,
-      })
-    }
-
-    function cardFor(board: Awaited<ReturnType<typeof readBoard>>, contactId: string) {
-      return board.flatMap((c) => c.cards).find((card) => card.contactId === contactId)
-    }
+    // `seedTimelineEvent` and `cardFor` are module-level (see above, with the
+    // note on why `occurred_at` and `created_at` are seeded apart), so
+    // `createOpportunityManually`'s own staleness test uses the same two
+    // helpers rather than keeping a second, slightly different copy.
 
     it("keeps a long-sitting card out of red when the person replied recently", async () => {
       seedBoard()
@@ -3350,6 +3390,181 @@ function seedPipelineRow(
     created_at: opts.createdAt ?? "2026-01-01T00:00:00.000Z",
   })
 }
+
+// ---------------------------------------------------------------------------
+// G29 fix round 1, Important 1. The route-level behaviour of
+// `createOpportunityManually` lives in
+// __tests__/app/api/admin/pipeline/opportunities-route.test.ts. What can only
+// be proved HERE is the CONSEQUENCE of the timeline row it writes, because
+// this is the file with a `readBoard` harness: filing a card must not move the
+// staleness dot.
+// ---------------------------------------------------------------------------
+
+describe("createOpportunityManually and the staleness dot", () => {
+  /**
+   * Somebody on the Coaching board who has said nothing for 30 days. Red is
+   * silence (G27), so that is what the board shows before anybody touches
+   * anything.
+   */
+  function seedSilentPersonOnCoaching() {
+    seedBoard()
+    seedCampsBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", {
+      stage_id: "stage-consult-booked",
+      entered_stage_at: new Date(Date.now() - 40 * DAY_MS).toISOString(),
+    })
+    seedTimelineEvent("c-1", "entry_point", 30)
+  }
+
+  async function stalenessOnCoaching() {
+    return cardFor(await readBoard(undefined, SINGLETON_BUSINESS_ID), "c-1")?.staleness
+  }
+
+  it("filing a card on ANOTHER board leaves their dot on this one exactly where it was", async () => {
+    seedSilentPersonOnCoaching()
+    expect(await stalenessOnCoaching()).toBe("red")
+
+    await createOpportunityManually({
+      businessId: SINGLETON_BUSINESS_ID,
+      pipelineId: "pipe-camps",
+      contactId: "c-1",
+      actorUserId: "coach-1",
+    })
+
+    // The row WAS written. Without this the assertion below is green for the
+    // wrong reason — a function that wrote no history at all would pass it
+    // just as well, and that is the OTHER half of what fix round 1 changed.
+    const filed = store.contact_timeline_events.filter((e) => e.kind === CARD_FILED_TIMELINE_KIND)
+    expect(filed).toHaveLength(1)
+    expect(filed[0].contact_id).toBe("c-1")
+
+    // `lastActivityAt` is keyed by CONTACT, not by card. A kind the dot counts
+    // would turn this person green on Coaching — where they have been silent
+    // for six weeks — because a coach put them on Camps & Clinics today.
+    expect(await stalenessOnCoaching()).toBe("red")
+  })
+
+  // THE PRESENCE CONTROL. "Still red" is exactly what a broken harness says
+  // too — a dot that can never move is not evidence of anything. This is the
+  // same fixture with one row dated today under the DEFAULT kind
+  // `recordEventForExistingContact` would have used, which is precisely the
+  // mutation this file exists to catch.
+  it("control: the same moment written as an entry_point DOES move that dot", async () => {
+    seedSilentPersonOnCoaching()
+    expect(await stalenessOnCoaching()).toBe("red")
+
+    seedTimelineEvent("c-1", "entry_point", 0)
+
+    expect(await stalenessOnCoaching()).toBe("amber")
+  })
+
+  it("refuses an archived board instead of filing a card onto it", async () => {
+    seedBoard()
+    seedCampsBoard()
+    seedContact("c-1")
+    const camps = store.pipelines.find((row) => row.id === "pipe-camps")!
+    camps.status = "archived"
+
+    await expect(
+      createOpportunityManually({
+        businessId: SINGLETON_BUSINESS_ID,
+        pipelineId: "pipe-camps",
+        contactId: "c-1",
+        actorUserId: "coach-1",
+      }),
+    ).rejects.toThrow(/has been archived/)
+
+    expect(store.opportunities).toHaveLength(0)
+    expect(store.contact_timeline_events).toHaveLength(0)
+  })
+
+  // G29 fix round 1, Minor 2. `insertStageEvent` rethrows the RAW PostgREST
+  // object, and the route's `err instanceof Error ? err.message : "Failed to
+  // create opportunity"` turns that into a flat "Failed to create
+  // opportunity" — for a card that already exists. The coach retries, and the
+  // retry answers "already on this board". A history row must not be able to
+  // fail the thing it is a history OF.
+  it("keeps the card when its stage-event row cannot be written, instead of reporting a failure", async () => {
+    seedBoard()
+    seedContact("c-1")
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    insertErrorByTable.opportunity_stage_events = {
+      code: "PGRST204",
+      message: "Could not find the 'trigger' column of 'opportunity_stage_events' in the schema cache",
+      details: null,
+      hint: null,
+    }
+
+    const { opportunityId } = await createOpportunityManually({
+      businessId: SINGLETON_BUSINESS_ID,
+      pipelineId: "pipe-1",
+      contactId: "c-1",
+      actorUserId: "coach-1",
+    })
+
+    expect(store.opportunities).toHaveLength(1)
+    expect(store.opportunities[0].id).toBe(opportunityId)
+    expect(stageEventsFor(opportunityId)).toHaveLength(0)
+    // Logged, with the reason still readable — a raw PostgREST object logs as
+    // `[object Object]` and the reason is gone by the time anybody reads it.
+    expect(errorSpy).toHaveBeenCalled()
+    const logged = errorSpy.mock.calls.map((call) => JSON.stringify(call)).join(" ")
+    expect(logged).toContain("PGRST204")
+    expect(logged).toContain(opportunityId)
+  })
+
+  // CONTROL for the test above: with no injected fault the same call DOES
+  // write a stage-event row, so "zero rows" up there is the injection working
+  // and not this path never writing one.
+  it("control: with no fault injected the same call writes its stage-event row", async () => {
+    seedBoard()
+    seedContact("c-1")
+
+    const { opportunityId } = await createOpportunityManually({
+      businessId: SINGLETON_BUSINESS_ID,
+      pipelineId: "pipe-1",
+      contactId: "c-1",
+      actorUserId: "coach-1",
+    })
+
+    const events = stageEventsFor(opportunityId)
+    expect(events).toHaveLength(1)
+    expect(events[0].to_stage_id).toBe("stage-consult-booked")
+    expect(events[0].trigger).toBe("manual")
+    expect(events[0].actor_user_id).toBe("coach-1")
+  })
+
+  // THE RECOVERY PATH, end to end: archiving is not a one-way door, so the
+  // refusal above must be something a coach can act on rather than a dead end.
+  // This is a presence control — it says the harness CAN reach a successful
+  // file on this board — not a second way of catching the guard going missing;
+  // the message assertions above do that.
+  //
+  // It is also why the guard is at this call site and not inside
+  // `readBoardRow`: that reader's other caller is `updatePipelineBoard`, which
+  // reads a board it is about to change the status of.
+  it("control: un-archiving that same board still works, and a card then files fine", async () => {
+    seedBoard()
+    seedCampsBoard()
+    seedContact("c-1")
+    const camps = store.pipelines.find((row) => row.id === "pipe-camps")!
+    camps.status = "archived"
+
+    await updatePipelineBoard({ pipelineId: "pipe-camps", businessId: SINGLETON_BUSINESS_ID, status: "active" })
+    expect(camps.status).toBe("active")
+
+    const { opportunityId } = await createOpportunityManually({
+      businessId: SINGLETON_BUSINESS_ID,
+      pipelineId: "pipe-camps",
+      contactId: "c-1",
+      actorUserId: "coach-1",
+    })
+    expect(store.opportunities).toHaveLength(1)
+    expect(store.opportunities[0].stage_id).toBe("camps-stage-interested")
+    expect(stageEventsFor(opportunityId)).toHaveLength(1)
+  })
+})
 
 describe("listPipelines", () => {
   it("returns only the asked-for tenant's boards", async () => {

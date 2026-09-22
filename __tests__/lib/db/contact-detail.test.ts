@@ -63,6 +63,7 @@ import {
   type TimelineEventRow,
 } from "@/lib/db/contact-detail"
 import { ALL_CONTACT_EVENT_SOURCES } from "@/lib/db/contacts"
+import { CARD_FILED_TIMELINE_KIND } from "@/lib/lead-engine/pipeline-move"
 
 function event(over: Partial<TimelineEventRow> & { id: string }): TimelineEventRow {
   return {
@@ -427,6 +428,46 @@ describe("describeTimelineEvent", () => {
     const described = describeTimelineEvent(event({ id: "e", kind: "sms_stop_received" }))
     expect(described.title).toBe("Texted STOP")
     expect(described.tone).toBe("danger")
+  })
+
+  // G29 fix round 1. `createOpportunityManually` (lib/db/pipeline.ts) writes
+  // this kind when a coach files somebody onto a board by hand. Without its
+  // own arm it falls through the humanising default as "Card filed" — a shrug,
+  // on the one screen a coach looks at when answering "how did this person
+  // get here?".
+  describe("a card filed by hand (card_filed)", () => {
+    it("names the board and the stage the card starts in", () => {
+      const described = describeTimelineEvent(
+        event({
+          id: "e",
+          kind: CARD_FILED_TIMELINE_KIND,
+          source: "manual_card",
+          metadata: { board_name: "Coaching", stage_name: "Enquired" },
+        }),
+      )
+      expect(described.title).toBe("Added to the Coaching board by a coach")
+      expect(described.detail).toBe("Their card starts in Enquired.")
+      expect(described.tone).toBe("neutral")
+    })
+
+    // `metadata` is plain jsonb with no shape enforced, so a row written
+    // before those keys existed must still read as a sentence rather than
+    // "Added to the undefined board".
+    it("still reads as a sentence when the metadata carries no names", () => {
+      const described = describeTimelineEvent(
+        event({ id: "e", kind: CARD_FILED_TIMELINE_KIND, source: "manual_card", metadata: {} }),
+      )
+      expect(described.title).toBe("Added to a board by a coach")
+      expect(described.detail).toBeNull()
+    })
+
+    // The control for both of the above: without the arm this is what the
+    // default would have produced, and asserting the title merely "is not
+    // empty" would be green for it.
+    it("does not fall through to the humanising default", () => {
+      const described = describeTimelineEvent(event({ id: "e", kind: CARD_FILED_TIMELINE_KIND }))
+      expect(described.title).not.toBe("Card filed")
+    })
   })
 })
 
