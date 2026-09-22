@@ -30,20 +30,20 @@ export {
 } from "@/lib/email/lead-alerts"
 export type { NewFunnelLeadEmailInput } from "@/lib/email/lead-alerts"
 
-// The apex `darrenjpaul.com` has never been added to the Resend account, and
-// sending from it returns "domain is not verified" and drops the message. The
-// fallback therefore has to name a verified subdomain: an unset
-// RESEND_FROM_EMAIL must not be able to reintroduce the 2026-08-31 fault that
-// killed 73 sequence runs.
+// `mail.darrenjpaul.com` is the ONLY domain in the Resend account -- verified,
+// us-east-1, added 2026-09-20. Sending from anything else returns "domain is
+// not verified" and drops the message, so the fallback has to name it: an
+// unset RESEND_FROM_EMAIL must not be able to reintroduce the 2026-08-31 fault
+// that killed 73 sequence runs.
 //
-// CORRECTED 2026-09-23: this used to say Resend verifies `send.` ONLY, and
-// that is not true. `mail.darrenjpaul.com` is verified too and is what
-// production actually sends the tenant-branded mail from --
-// `business_settings.sender_email` names it, and the sequence engine has 69
-// delivered messages against it, the most recent the day before this was
-// written. Which subdomain a given path uses is therefore a choice, not a
-// constraint; only the apex is ruled out.
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@send.darrenjpaul.com>"
+// THE HISTORY MATTERS, because this comment has been wrong twice. It first
+// said Resend verifies `send.darrenjpaul.com` ONLY, and that the apex was the
+// single unverified spelling. Then it said `mail.` was verified "too". Both
+// were guesses from indirect evidence -- what a settings row happened to name,
+// what had delivered recently. Asked directly, Resend returns ONE row, and
+// `send.darrenjpaul.com` is not in the account any more. Read the domain list;
+// a delivery log only ever tells you what someone chose, never what is allowed.
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@mail.darrenjpaul.com>"
 
 /** CC all admin/business emails to Darren's main account */
 const ADMIN_CC = "darren@darrenjpaul.com"

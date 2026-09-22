@@ -54,19 +54,30 @@ function getBaseUrl(): string {
 }
 
 function getFromEmail(): string {
-  // Default sender uses the verified send.darrenjpaul.com subdomain on Resend.
-  // The apex darrenjpaul.com is NOT verified for sending — using it triggers
-  // "domain is not verified" 403s from the Resend API.
-  return process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@send.darrenjpaul.com>"
+  // Default sender uses mail.darrenjpaul.com, the ONE domain verified on the
+  // Resend account since 2026-09-20. Neither the apex darrenjpaul.com nor the
+  // previous send.darrenjpaul.com is in that account any more — sending from
+  // either triggers "domain is not verified" from the Resend API.
+  //
+  // This runtime BINDS RESEND_FROM_EMAIL as a secret (functions/src/index.ts),
+  // so this line is a backstop rather than the live path. It still matters: a
+  // secret that fails to bind would otherwise send every notice from a domain
+  // the account does not have, and they would all be dropped silently.
+  return process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@mail.darrenjpaul.com>"
 }
 
 /**
  * Reply-to for both notification emails.
  *
- * These reach CLIENTS, and the From address sits on send.darrenjpaul.com, which
- * Resend has configured for sending only — `receiving` is disabled. So a client
- * who hits Reply on "your program is ready" gets a bounce unless we point the
- * reply somewhere that accepts mail. COACH_EMAIL is the apex, which does.
+ * These reach CLIENTS, and the From address sits on the Resend sending
+ * subdomain (mail.darrenjpaul.com since 2026-09-20, send.darrenjpaul.com
+ * before it). A sending subdomain is not a mailbox: a client who hits Reply on
+ * "your program is ready" gets a bounce unless we point the reply somewhere
+ * that accepts mail. COACH_EMAIL is the apex, which does.
+ *
+ * Deliberately not naming which subdomain the rule depends on, because it does
+ * not: the reason to redirect the reply is that the From domain is for sending,
+ * whichever one it currently is.
  *
  * Returns undefined rather than a guessed address when COACH_EMAIL is unset:
  * no Reply-To at all is honest, while a wrong one silently swallows replies.

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import {
-  getBusiness, updateBusiness, getBusinessSettings, updateBusinessSettings, BusinessSettingsMissingError,
+  getBusiness,
+  updateBusiness,
+  getBusinessSettings,
+  updateBusinessSettings,
+  BusinessSettingsMissingError,
 } from "@/lib/db/businesses"
 import { businessPatchSchema, businessSettingsPatchSchema } from "@/lib/validators/business"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
@@ -48,7 +52,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<Record<stri
   // businessSettingsPatchSchema's sender_email rule checks FORMAT only ("is
   // this an email address"), not who Resend has verified -- so without this,
   // the 2026-08-31 fault (sender_email on the unverified apex darrenjpaul.com
-  // instead of the verified send.darrenjpaul.com, 73 sequence sends dropped)
+  // instead of the verified subdomain, 73 sequence sends dropped)
   // can be typed straight back in through this route. Checked before any
   // write (business or settings) so a rejected sender email leaves the whole
   // patch un-applied rather than partially saved. "" (clearing the field) is

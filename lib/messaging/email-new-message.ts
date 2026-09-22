@@ -2,18 +2,16 @@ import { Resend } from "resend"
 import type { NotifyGroup } from "./notify-select"
 
 const _resend = new Resend(process.env.RESEND_API_KEY)
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@send.darrenjpaul.com>"
+// The account's one verified domain -- see the note on FROM_EMAIL in
+// lib/resend.ts. `send.darrenjpaul.com` is no longer in the Resend account.
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@mail.darrenjpaul.com>"
 
 function baseUrl() {
   return process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
 }
 
 function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 }
 
 export function newMessageSubject(group: NotifyGroup, senderName: string): string {
