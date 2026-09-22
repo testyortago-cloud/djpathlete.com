@@ -155,6 +155,25 @@
         </figcaption>
       </figure>
 
+      <h2>04c — Where a finished deal is allowed to go</h2>
+      <figure>
+        <img
+          src="04c-finished-deals-can-only-go-so-far.png"
+          alt="The destination picker for a removed Won stage, offering only Lost, with a sentence above it saying why"
+        />
+        <figcaption>
+          Added by the re-review. 04b closed the door where a stage's <em>kind</em> changes under its cards; this is
+          the same damage through the removal <em>destination</em> — send a removed Won stage's settled deals to a
+          stage that is still open and they are gone from every screen, exactly as before. Neither existing check
+          could see it: <code>invalidDestinationProblems</code> asks only whether the destination survives, and
+          <code>kindChangeVisibilityProblems</code> only ever looks at surviving stages' kinds. The picker now offers
+          only stages that keep the cards visible, and says so before the list is opened — but
+          <code>movedClosedCardProblems</code> refuses it at the DAL regardless, because a filtered dropdown is a
+          convenience and not a guard. The script reads the offered options off the screen and fails if any still-open
+          stage is among them.
+        </figcaption>
+      </figure>
+
       <h2>05 — The one board that will not let itself be put away</h2>
       <figure>
         <img src="05-cannot-archive-the-default-board.png" alt="The default board's archive refusal, printed in red under the archive button" />
@@ -243,6 +262,7 @@
         <tr><td>04</td><td>Removing a stage with cards demands a destination first</td><td class="ok">shown</td></tr>
         <tr><td>04a</td><td>A destination that is itself being removed is refused before Save</td><td class="ok">shown</td></tr>
         <tr><td>04b</td><td>A won/lost stage holding closed cards cannot be turned open</td><td class="ok">shown, on two real closed cards</td></tr>
+        <tr><td>04c</td><td>Closed cards cannot be moved onto a stage that stays open either</td><td class="ok">shown; offered options read off the screen</td></tr>
         <tr><td>05</td><td>The default board cannot be archived, and says so verbatim</td><td class="ok">shown</td></tr>
         <tr><td>05</td><td>The board is still active afterwards</td><td class="ok">re-read from the board switcher</td></tr>
         <tr><td>06</td><td>The dialog is reachable from the board, for the board being looked at</td><td class="ok">shown</td></tr>

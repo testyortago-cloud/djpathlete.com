@@ -9,7 +9,7 @@
 // the working reference, scripts/capture-sequence-management-screenshots.mjs —
 // see that file's header for why each helper exists.
 //
-// IT WRITES THE SHOTS NUMBERED 00-05 (including 04a and 04b) of
+// IT WRITES THE SHOTS NUMBERED 00-05 (including 04a, 04b and 04c) of
 // screenshots/g29-pipeline-editor, which
 // is the ONE home for this feature's deliverables. 06-10 come from
 // scripts/capture-new-card-dialog-screenshots.mjs and 11 from
@@ -25,8 +25,8 @@
 // real cards on it.
 //
 // NO BOARD AND NO STAGE IS CHANGED. "Save stages" (PUT), "Save board name"
-// (PATCH) and "Create board" (POST) are never clicked. Shots 02, 03, 04, 04a
-// and 04b are deliberately UNSAVED local React state on the real page — a page reload
+// (PATCH) and "Create board" (POST) are never clicked. Shots 02, 03, 04, 04a,
+// 04b and 04c are deliberately UNSAVED local React state on the real page — a page reload
 // discards them for free, and the dev clone is shared with peer sessions.
 //
 // SHOT 05 IS THE ONE EXCEPTION, and it is safe by construction: it archives
@@ -584,6 +584,58 @@ try {
     ],
   )
 
+  // -------------- 04c where finished deals are allowed to go, and nowhere else
+  // RE-REVIEW, IMPORTANT RESIDUAL. Important 2 closed the kind-change door;
+  // this is the same damage through the removal DESTINATION — send a removed
+  // Won stage's settled deals to a stage that is still open and they are gone
+  // from every screen. The picker now refuses to OFFER an open stage in that
+  // case, and says why before the list is opened. The save refuses it anyway;
+  // a filtered dropdown is a convenience, not a guard.
+  await page.reload({ waitUntil: "networkidle" })
+  await page.waitForTimeout(900)
+
+  await page.getByRole("button", { name: "Remove stage 3" }).click() // Won, holds closed cards
+  await page.waitForTimeout(400)
+
+  const closedPicker = page.getByLabel(/^Where should the (1 card|\d+ cards) on "Won" go\?$/)
+  must((await closedPicker.count()) === 1, "the destination picker did not appear for the Won stage")
+
+  // Read the offered options off the SCREEN rather than asserting a list this
+  // script would have to keep in step with the clone. What matters is the
+  // rule: nothing still open is on it.
+  const offered = await closedPicker.locator("option").allInnerTexts()
+  console.log(`  offered destinations: ${offered.map((o) => o.trim()).join(" | ")}`)
+  must(
+    !offered.some((o) => o.trim() === "Consult Booked" || o.trim() === "Consulted"),
+    `an open stage is still being offered as a home for finished deals: ${offered.join(", ")}`,
+  )
+  must(offered.some((o) => o.trim() === "Lost"), "the Lost stage should still be offered — it keeps the cards visible")
+
+  const closedNote = page.getByText(/already won or lost, so they can only move to a Won or Lost stage/)
+  await closedNote.waitFor({ state: "visible", timeout: 5000 })
+
+  await resetScroll(page)
+  await shoot(
+    page,
+    "04c-finished-deals-can-only-go-so-far",
+    "Where a finished deal is allowed to go",
+    "Cards you have already won or lost only show on Won and Lost columns — so those are the only places they can move to",
+    [
+      await markerOn(
+        page,
+        closedNote,
+        "Said before you open the list, so a short list of choices reads as a rule rather than as something broken.",
+        { place: "left" },
+      ),
+      await markerOn(
+        page,
+        closedPicker,
+        "Only stages that would keep these cards on the board are offered. Picking a still-open one is refused by the server too, not just hidden here.",
+        { place: "after", dx: 10 },
+      ),
+    ],
+  )
+
   // ------------------------------- 05 the board that will not let itself go
   // THE ONE CLICK IN THIS FILE THAT REALLY SENDS SOMETHING. It is safe because
   // of WHICH board it is aimed at, and nothing else — so which board it is
@@ -661,7 +713,7 @@ try {
   console.log("  verified after the fact: the Coaching board is still active")
 
   console.log(
-    "\n  done — no board and no stage was changed. Shots 01-04b are unsaved local state on the real page;" +
+    "\n  done — no board and no stage was changed. Shots 01-04c are unsaved local state on the real page;" +
       " shot 05's PATCH was refused by the server before it wrote anything.",
   )
 } finally {
