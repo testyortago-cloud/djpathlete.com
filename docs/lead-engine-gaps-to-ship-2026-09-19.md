@@ -1,6 +1,6 @@
 # Lead Engine — gaps to ship
 
-**Date:** 2026-09-19 · **Source of every gap:** `docs/lead-engine-verification-2026-09-19.md` (measured on production and on `main` @ `10fef0f0`) · **Quotation:** Full Engine, white-label ready.
+**Date:** 2026-09-19 · **Last re-measured against `main` + production:** 2026-09-21 18:00 UTC (`main` @ `7727bc70`) — see [Finished vs not](#finished-vs-not--the-one-screen-answer) · **Source of every gap:** `docs/lead-engine-verification-2026-09-19.md` (measured on production and on `main` @ `10fef0f0`) · **Quotation:** Full Engine, white-label ready.
 
 This is the build ledger. One row per gap, in the order to build. Each row says what the quotation promised, what exists today, what "shipped" means, where the code lives, the test that proves it, a size, and any decision only the owner can make. Sizes: **S** under half a day · **M** one to two days · **L** three to five days · **XL** a week or more.
 
@@ -8,7 +8,7 @@ This is the build ledger. One row per gap, in the order to build. Each row says 
 - One branch per gap (or per phase for the S items). Done means: acceptance met, the named test fails on `main` and passes on the branch, `tsc` at the 238/54 baseline with an identical per-file set, `npm run build` exit 0, a whole-branch review, committed. **Nothing is pushed, merged to `main`, or run against production without the owner's word.**
 - Read `CLAUDE.md` (white-label rules, tables, sequence management) and the top five `JOURNAL.md` entries first. Re-measure production before trusting any count here — it moves.
 - Every new column named below has its reader named next to it. Do not add one without.
-- Migrations: **`00272_sequence_text_steps.sql` is the highest on `main` (merged + applied to production) as of 2026-09-21. The next free number is `00273`, and it must be re-checked immediately before merging** — a number is only visibly taken if you look in every worktree, and git merges two colliding numbers perfectly cleanly. Three worktrees still hold unmerged commits (`content-scheduling`, `funnel-step-roles`, `native-booking-research`); check them. Tolerate the old schema for one deploy. Apply to the dev clone.
+- Migrations: **`00275_revoke_anon_security_definer_rpcs.sql` is the highest on `main` (merged + applied to production) as of 2026-09-21. The next free number is `00276`, and it must be re-checked immediately before merging** — a number is only visibly taken if you look in every worktree, and git merges two colliding numbers perfectly cleanly. **This line said `00273` until 2026-09-21 18:00, by which point 00273, 00274 and 00275 were all merged — it was instructing the next builder into exactly the collision the sentence warns about. Re-measure it (`git ls-tree --name-only main supabase/migrations/ | tail -1`), never read it off this paragraph.** Four worktrees still hold unmerged commits (`content-scheduling`, `funnel-step-roles`, `native-booking-research`, `reconcile-cron-description`); check them. Tolerate the old schema for one deploy. Apply to the dev clone.
   - **`apply-migrations.yml` is PATH-FILTERED, which is why a code-only push is safe.** The 2026-09-21 push of four gaps carried no migration file, and that workflow's last run is still on `74ea3f43`. Before any push to `main`, count them: `git diff --name-only origin/main..HEAD | grep -c supabase/migrations/`. It is the difference between a code deploy and a schema change.
 
 ---
@@ -99,6 +99,7 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
     - Proven end to end against production: a forged signature → **403**, a delivery signed with the real secret → **200** with `unknown_message` (and no write, because the probe used an id no row carries). That pair is the proof — a 403 alone only shows *a* secret is set, not the right one.
     - **www, NOT the apex.** `darrenjpaul.com/api/webhooks/resend` answers **307** to `www`; only the `www` host serves the route. A webhook must never be pointed at a redirect.
     - Historical sends do NOT backfill — webhooks only fire for events after registration, so the four pre-existing `sent` rows stay null forever. First real data arrives with the next sequence email.
+    - **That data arrived 2026-09-21 12:00 UTC and the whole path is confirmed live**: of the 73-email re-permission batch, 67 wrote `delivered_at`, 23 wrote `opened_at`, 2 wrote `clicked_at`, and the bounce arm wrote 2 `contact_suppressions` rows. The row is no longer inferred from a signed probe — it is measured on real traffic.
   - **TWO predicates ship, not one.** `clicked_last_email` as well as the quoted `opened_last_email`, because an open is a tracking pixel that Apple Mail Privacy Protection pre-fetches whether or not a human looks. `opened_last_email` over-counts permanently, on the largest slice of a consumer list. The editor lists `clicked` first and prints the caveat under `opened`.
   - **The decision this row asked for:** a hard bounce DOES suppress — but only `Permanent`. Review caught that the first cut suppressed every bounce including `Transient`: a full mailbox or an autoresponder would have permanently ejected a live lead, with no admin screen to undo it. `Undetermined` does not suppress either.
   - **`email.complained` does NOT suppress**, deliberately, and it reads oddly next to a bounce that does — a complaint is a stronger stop signal. It wants its own row: probably revoke consent and exit runs.
@@ -212,7 +213,7 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 - **BUILT BY A PEER SESSION + MERGED + PUSHED 2026-09-20**, commit `c3b507f5`, migration `00272_sequence_text_steps.sql` applied to production. **SIX of the seven**, each behind a wait.
   - **Measured on production 2026-09-21, not read off the commit subject:** eleven of the twelve sequences now hold exactly one `sms` step. The one that does not is **`sms_repermission`** — which is correct rather than an omission, since that sequence's whole job is to ask by EMAIL for permission to text, so a text step in it would be the thing it exists to avoid. The row's "seven" counted it; six is the right number.
   - **STILL THE OWNER'S TO REVIEW.** The copy was drafted, not authored — it is editable at `/admin/sequences/<key>` with no deploy, and the drafting session made judgement calls on the owner's behalf (notably moving the camp text, because the email before it says it will stop).
-  - **Texts still reach nobody.** Re-measured 2026-09-21: `contact_consents` is **EMPTY — zero rows of any channel**, not merely zero `sms` ones. G18's consent half now collects them from the chat capture card, but nothing has been captured yet, so every text step in the product remains unsendable in practice. (Email is unaffected: only SMS is consent-gated.) **The first real test of this row is the first chat lead who ticks the box.**
+  - ~~**Texts still reach nobody.**~~ **SUPERSEDED 2026-09-21 12:40 UTC.** `contact_consents` held zero rows of any channel for the whole life of this ledger; the decision-8 re-permission send created the **first 2 `sms / granted` rows**. Texts are sendable to those two people today. The row above predicted the first consent would come from a chat lead ticking a box — it came from the stranded batch instead. G18's consent half now collects them from the chat capture card, but nothing has been captured yet, so every text step in the product remains unsendable in practice. (Email is unaffected: only SMS is consent-gated.) **The first real test of this row is the first chat lead who ticks the box.**
 
 ### G18 · Chat collects email consent, not texting consent; no sequence follows a chat lead · **S** · CONSENT HALF DONE — the `ai_chat` SEQUENCE IS THE LAST PHASE 2 ROW OPEN, and needs the owner's copy
 - **Shipped when:** the capture card (`components/public/AskCards.tsx:272-296`) shows the SMS consent tick with `renderSmsConsentWording(display_name)` whenever a phone is entered; `app/api/ask/capture/route.ts:388-401` writes `channel:"sms"` as well; a sequence listens to `ai_chat` — either a seeded `chat_lead_follow_up` or `new_lead_nurture` widened to accept a second trigger (decision: seed a separate sequence, so its copy can differ).
@@ -575,8 +576,13 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 - **One real bug caught while building:** `onClick={handleSend}` would have passed React's MouseEvent as the new first parameter `consentOverride` — truthy — turning *every* ordinary send into a silent override. It is `onClick={() => handleSend()}`, with a mutant pinning it.
 - **Tests:** 29 in `send-manual-sms.test.ts`, 34 in `sms-send-route.test.ts`, 33 in `sms-composer.test.tsx`. **22/22 mutants killed** across all three layers. One known *equivalent* mutant is documented in the route suite rather than reported as a survivor.
 
-### G29 · No board or stage editor, no hand-made card · **L, later**
-- Not strictly promised (boards were "confirmed with you before they're built"), but every reshaping today is a migration. Read-only design in `docs/superpowers/specs/2026-09-01-full-engine-phase4-pipeline-boards-design.md` §4. Schedule after Phases 0–2.
+### G29 · No board or stage editor, no hand-made card · **L** · **BUILT 2026-09-23**
+- **`/admin/pipeline/settings`** — a coach reshapes a board's stages (reorder, rename, retime, add, remove with a destination for the cards that are on it), creates and archives boards, and files a person onto a board by hand from the board itself. Every reshaping used to be a migration.
+- **The hand-made card enrols nobody, and that is structural, not a flag.** It never calls `recordContactEvent`, the only caller of `enrollIfTriggered`, and `__tests__/lib/lead-engine/enroll-call-site-inventory.test.ts` pins that call site at exactly one so the next author cannot quietly add a second. Filing ten old leads on a Sunday sends zero emails.
+- **Migrations `00276`** (one atomic whole-list stage save, mirroring `save_sequence_steps`) **and `00277`** (the move destination must be a stage of THIS board that is staying — without it a crafted request relocated cards onto another board, where they rendered on neither).
+- **Two invisibility doors closed, both found by the whole-branch review, not by the nine task reviews:** flipping a stage's kind from `won` to `open` hid every closed card on it, and so did sending a closed stage's cards to an open destination. `readBoard` filters open columns on `outcome IS NULL`, so either one put finished deals on no screen while they still counted in revenue.
+- **Verified on production 2026-09-23**, not only in tests: a reorder saved through the real UI, round-tripped to the database, and was restored. Four cards filed through the real dialog on the dev clone produced 0 `sequence_runs`.
+- **Deliberately not built:** a board can be archived but not un-archived from any screen (`listPipelines` is active-only). The UI says so before the click, the confirm is two-step, and no cards are deleted. Restore is `listAllPipelines` + a button whenever the owner wants it.
 
 ---
 
@@ -609,13 +615,13 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 | # | Decision | Blocks |
 |---|---|---|
 | 1 | Approve the copy of the eight unreviewed sequences | G03 (live now), G11, G12, G17 |
-| 2 | One-sequence-at-a-time: option A, B or C | G14 |
+| 2 | ~~One-sequence-at-a-time: option A, B or C~~ **RULED 2026-09-20: option B**, built and merged the same day at `fe5d51ad`; the superseding set became FOUR sources on the owner's call. | ~~G14~~ closed |
 | 3 | ~~Gate manual texts on consent, with an audited override?~~ **RULED 2026-09-21: YES — gate it, with the audited "Send anyway" override.** See below. | G28 |
 | 4 | ~~Hard bounce suppresses the address?~~ **RULED 2026-09-21: YES — HARD bounces only. Soft bounces are ignored entirely.** See §Rulings. | G09 |
 | 5 | ~~Assessment submitters become contacts?~~ **RULED 2026-09-21: YES — mint the contact, matching the questionnaire.** See below. | G21 |
 | 6 | Chat booking: accept hand-over wording, or schedule native booking | G19 |
 | 7 | Email-consent wording on the funnel, quiz and inquiry forms (0 consent rows today) | G17 in practice |
-| 8 | ~~The 73 stranded re-permission runs~~ **RULED 2026-09-21: RE-DATE AND SEND.** This is what creates the SMS consent rows G28 now requires. | G28 in practice |
+| 8 | ~~The 73 stranded re-permission runs~~ **RULED AND DONE 2026-09-21: re-dated and sent at 12:00 UTC.** 73 sent, 67 delivered, 23 opened, **2 SMS consents created**. See §Rulings. | ~~G28 in practice~~ unblocked |
 | 9 | ~~Notifications: who receives alerts per tenant~~ **RULED 2026-09-21: the tenant's own `reply_to`.** | G30 |
 | 10 | ~~`sms_help_text` and the Twilio HELP auto-reply wording~~ **RULED 2026-09-21: drafted to carrier convention, owner approves the words before it is configured.** | — |
 | 11 | ~~Tenant coaches editing their own settings~~ **RULED 2026-09-21: record the decision, write NO code — it belongs in the SaaS direction spec.** | G34 (stays open, deliberately) |
@@ -632,8 +638,11 @@ They now agree. **Note the conclusion of the stale comment was still correct for
 lookup must keep matching on email, because only 43 of 170 are linked and a `userId`-only lookup would miss
 127. Correct the argument, keep the behaviour.
 
-**Decision 3 / G28 — manual texts ARE consent-gated, with an audited override.** Measured: `contact_consents`
-has **0 rows** in production, so the gate blocks every manual text from day one. The owner accepted that
+**Decision 3 / G28 — manual texts ARE consent-gated, with an audited override.** Measured when ruled:
+`contact_consents` had **0 rows** in production, so the gate blocked every manual text from day one.
+**That premise expired the same day: the decision-8 send created the first 2 consent rows at 12:40 and
+14:09 UTC.** The gate now has something to let through, and the override is the exception it was meant
+to be rather than the only way to send. The owner accepted that
 knowingly: the coach can tick **Send anyway**, which records `consent_override:true` on the `sms.sent_manual`
 audit metadata. Nothing is silently blocked, and nothing sends without a deliberate act. Implementation is
 `sendManualSms` (`lib/lead-engine/sms.ts`) + composer + route.
@@ -657,7 +666,7 @@ option over a staged rollout, on the measured basis that no policies are require
 ## Security (NOT lead-engine gaps — filed here because this ledger is where the work was tracked)
 
 ### S01 · Thirteen public tables had no RLS, and `anon` held full DML · **BUILT 2026-09-21**
-- Migration `00274_enable_rls_on_open_tables.sql`, branch `worktree-rls-and-rpc-lockdown`. Rehearsed on the dev clone; **awaiting the owner's word before the push that reaches production.**
+- Migration `00274_enable_rls_on_open_tables.sql`, branch `worktree-rls-and-rpc-lockdown`, merged at `4030e6f9`. **LIVE ON PRODUCTION since 2026-09-21 06:11 UTC** — re-measured 18:00 UTC: `pg_class.relrowsecurity = false` on **0** public tables, down from 13. (This line read "awaiting the owner's word before the push" for the twelve hours after it had already shipped.)
 - **Measured on production 2026-09-21.** Thirteen tables with `pg_class.relrowsecurity = false` and zero policies: `agent_tool_baselines, assessment_questions, assessment_results, chief_strategist_memos, coach_ai_policy, event_signups, events, exercise_blocks, generated_exercise_usage, membership_plans, program_week_access, program_week_pricing, repo_migrations`. Supabase's own linter flags all thirteen `rls_disabled_in_public` at **ERROR / EXTERNAL**.
 - **The grant was `anon=arwdDxtm`, not SELECT.** INSERT, SELECT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN. The read was proven end-to-end with the publishable key and `Prefer: count=exact` + `limit=0` (`program_week_access` → HTTP 206 `*/500`; `contacts` as an RLS-on **control** → `*/0`). The write was confirmed at the grant level and deliberately **not** probed against production.
 - **Two corrections to what the owner had been told.** (1) `assessment_results` and `event_signups` are **empty, 0 rows** — a fuse that lights on the first assessment submission or camp signup, not a live leak. (2) It was never read-only.
@@ -665,7 +674,7 @@ option over a staged rollout, on the measured basis that no policies are require
 - **RLS does not cover TRUNCATE, REFERENCES, TRIGGER or MAINTAIN** — `ENABLE ROW LEVEL SECURITY` leaves `relacl` untouched. Those four are revoked outright in the same migration, or `anon` would keep TRUNCATE on all thirteen. Post-change `relacl` reads `anon=arwd`, and RLS denies all four of those.
 
 ### S02 · Five SECURITY DEFINER functions were callable by `anon` over `/rest/v1/rpc/` · **BUILT 2026-09-21**
-- Migration `00275_revoke_anon_security_definer_rpcs.sql`, same branch. **Found by the Supabase linter during S01 — it was in no audit and no ledger row.**
+- Migration `00275_revoke_anon_security_definer_rpcs.sql`, same branch, **live on production 2026-09-21 06:11 UTC**. **Found by the Supabase linter during S01 — it was in no audit and no ledger row.**
 - `create_message` inserts a message with a **caller-supplied sender id and sender role** and never checks the caller is that user or a participant; `confirm_event_signup` / `cancel_event_signup` flip a signup's state and move `events.signup_count`; `create_form_review_message_with_attachment` is the same shape; `is_messaging_admin` leaks an authorization answer. None has any caller check — verified by reading `pg_get_functiondef`, not inferred from the names.
 - **Honest severity:** each needs a UUID the caller has no legitimate way to obtain, so in practice they are gated by UUID entropy. That is obscurity, not authorization — a real finding, but a *smaller* live risk than S01, which needs no identifier at all.
 - **Three of the five were granted to `PUBLIC`** (`=X/postgres` in `proacl`). A revoke naming only `anon` and `authenticated` would have left all three callable — a migration that reads like a fix and changes nothing. The revoke names PUBLIC first.
@@ -681,7 +690,7 @@ option over a staged rollout, on the measured basis that no policies are require
 | 0 — stop the bleeding | G01, G02, G03 | S + owner |
 | 1 — truthful data | G04, G05, G06, G07, G08 | M + 4 S ≈ 3 days |
 | 2 — quoted behaviours | G09, G10, G11, G12, G13, G14, G15, G16, G17, G18 | 5 M + 5 S ≈ 2 weeks |
-| 3 — entry points + pipeline | G20–G28 | 2 M + 7 S ≈ 1 week; G29 later |
+| 3 — entry points + pipeline | G20–G29 | 2 M + 7 S + 1 L ≈ 1 week |
 | 4 — white-label edges | G30, G31, G32, G33, G35 | L + 2 M + 2 S ≈ 2 weeks |
 
 Phase 0 today. Phases 1 and 2 are what make the quotation's sentences true. Phases 3 and 4 are what make "GoHighLevel replacement" and "white-label ready" true.
@@ -727,7 +736,53 @@ nothing — read production back; every new column needs a named reader.
 
 ---
 
-## Status — PHASES 1 AND 2 COMPLETE AND LIVE
+## Status — PHASES 0-3 COMPLETE AND LIVE (last re-measured 2026-09-23)
+
+### Finished vs not — the one-screen answer
+
+**30 of 36 rows are finished, merged, pushed and deployed. 6 are not.** Everything not finished is
+either Phase 4 white-label or wording only the owner can write.
+
+**FINISHED — built, reviewed, merged, pushed, live on production:**
+
+| Phase | Rows | Note |
+|---|---|---|
+| 0 — stop the bleeding | G01 G02 G03 | G03 closed with no code |
+| 1 — truthful data | G04 G05 G06 G07 G08 | `contacts.user_id` now 43 of 170 linked |
+| 2 — quoted behaviours | G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b | two partial, see below |
+| 3 — entry points + pipeline | G20 G21 G22 G23 G24 G25 G26 G27 G28 G29 | whole phase complete |
+| Security (not a gap) | S01 S02 | migrations `00274`/`00275` live; 0 tables with RLS off |
+
+**NOT FINISHED — 6 rows, none of them started:**
+
+| Row | What | Size | Why it is open |
+|---|---|---|---|
+| G30 | Transactional lead mail hard-wired to DJP Athlete | **M** | Unblocked — decision 9 ruled: the tenant's own `reply_to` |
+| G31 | The funnel subsystem has no `business_id` | **L** | The biggest white-label row in the ledger |
+| G32 | A new tenant gets no sequences | **M** | Needs G31's shape first |
+| G33 | `sms_sender_phone` is saved un-normalised | **S** | Smallest open row in the document |
+| G34 | Settings are owner-only | — | **Deliberately parked.** Decision 11 ruled: record it, write NO code — it belongs in the SaaS direction spec |
+| G35 | Readers with no tenant predicate | **S** | Ordinary cleanup |
+
+**FINISHED IN CODE, NOT FINISHED IN WORDS — these need the owner, not a developer:**
+- **G18's `ai_chat` sequence** — the consent half is live; the follow-up sequence a chat lead enters
+  is not built and needs the owner's copy. **The last Phase 2 row still open.**
+- **G17's six text steps** — drafted, not authored. Editable at `/admin/sequences/<key>`, no deploy.
+  As of 2026-09-21 they can finally reach somebody: 2 SMS consents exist.
+- **G12's alert wording** — shipped as a question, because nothing in the system can know whether
+  the coach replied. Reword in the editor.
+- **G16's `{{sport}}`** — renders blank today; one `ENROLMENT_METADATA_KEYS` entry plus one line in
+  `app/api/inquiry/route.ts`. `{{goals}}` needs a different home entirely.
+- **Decisions 1, 6 and 7** in §Decisions are still untouched.
+
+**FINISHED BUT NOT SWITCHED ON:**
+- **`cron_pipeline_reconcile_enabled` does not exist as a row in `system_settings`** — re-measured
+  2026-09-21 18:00 UTC. G26 removed the hazard that kept it off and the owner ruled to enable it,
+  but the switch has never been thrown. It belongs in `/admin/automation`, which records `updated_by`.
+- **`worktree-reconcile-cron-description` is unmerged** (1 commit, 2 files: `lib/cron-catalog.ts`,
+  `lib/automation/pipeline-reconcile.ts`). Merge it BEFORE flipping the flag, or the screen the owner
+  goes to still argues against the switch they are about to throw.
+
 
 **PHASE 1 COMPLETE AND LIVE. PHASE 2 COMPLETE AND LIVE except G18's `ai_chat` half, which needs
 the owner's copy.** Worktrees and branches swept after every merge.
@@ -745,11 +800,22 @@ the owner's copy.** Worktrees and branches swept after every merge.
 | **G13** | `1f8f16a6` | merged at `c93447e7` + pushed |
 | **G15** | `e2bbd302` | merged at `4009fce6` + pushed |
 | **G16** | `c433ca5b` | merged at `bd661516` + pushed |
+| **G20** | `a71938f9` | merged at `cca12349` + pushed |
+| **G21** | `490957e4` | merged at `e36377f7` + pushed — ruling reversed the same day |
+| **G22** | `8858d558` | merged at `8e5d4ed2` + pushed; migration `00273` live |
+| **G23** | `667ad846` | merged at `b4a5a1ee` + pushed |
+| **G24** | `e345fdee` | merged at `df56d26c` + pushed |
+| **G25** | `1e53a50c` | merged at `66a32aa0` + pushed |
+| **G26** | `8399d87c` | merged at `cf76b633` + pushed — **the cron it unblocks is still OFF** |
+| **G27** | `50cce63c` | merged at `7e80a55c` + pushed |
+| **G28** | `ea9e3d59` | merged at `58db9ffe` + pushed — **no longer blocks everything: 2 consents exist** |
+| **S01+S02** | `767d5559` | merged at `4030e6f9` + pushed; migrations `00274`/`00275` live |
 
-`main` is at **`01ee31ce`**, pushed to `origin/main` on 2026-09-21 (Vercel deployment
-`5EnWSzgL53SF3bzdEpuSSwerG83e`, distinct from the previous commit's, verified green rather than
-read off a status word). **G01-G19b are merged and deployed except G18's `ai_chat` half**; G03 and
-G19 are closed with no code.
+`main` is at **`7727bc70`**, level with `origin/main` (re-measured 2026-09-21 18:00 UTC; this
+paragraph said `01ee31ce` until then, 36 commits behind). **G01-G28 are merged and deployed except
+G18's `ai_chat` half**; G03 and G19 are closed with no code. The 36 commits between `01ee31ce` and
+`7727bc70` are AI/generation work — **no lead-engine code has changed since this ledger was last
+edited**, so every row below still describes the code that is running.
 
 **THREE OF THE FOUR ROWS BUILT ON 2026-09-21 SHIPPED A CORRECTION TO THEIR OWN "SHIPPED WHEN".**
 G13 asked for a join on a column `funnel_submissions` does not have; G15 asked for a source that is
@@ -770,13 +836,18 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, measured rather than remembered (2026-09-21): 36 rows · 27 done · 9 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 G22 G23 G24 G25 G26 G27.
-Open: G21 G28 G29 G30 G31 G32 G33 G34 G35.
+**Scoreboard, re-measured against `main` 2026-09-23: 36 rows · 30 done · 6 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29**.
+Open: G30 G31 G32 G33 G34 G35.
 
-**Phase 3 is COMPLETE** — every row in it (G20, G22, G23, G24, G25, G26, G27) is built, reviewed,
-merged and pushed. What remains open is Phase 4 (G30–G35), the two rows blocked on an owner decision
-(G21, G28) and G29, which was scheduled for after Phases 0–2 and is an L.
+**G21 and G28 were listed as open in the same commits that merged them** (`e36377f7`, `58db9ffe`) —
+their own rows above said BUILT while this line still said open. A row's status lives in two places
+in this document, and only one of them got updated. When closing a row, edit both.
+
+**Phases 0, 1, 2 and 3 are COMPLETE** — every row in them is built, reviewed, merged and pushed,
+and every migration through `00275` is applied to production. G21 and G28, the two rows that were
+blocked on an owner decision, were ruled on and built the same day. G29, the last Phase 3 row and the one deliberately deferred until Phases 0-2 were done, was
+built, merged and smoke-tested on production on 2026-09-23. What remains is **Phase 4 (G30-G35)**.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
@@ -833,10 +904,32 @@ The sequence is **one email**, subject *"Can we text you?"*, followed by a `stop
 **This decision and G28 are the same decision.** G28 now refuses every manual text because
 `contact_consents` has zero rows; `sms_repermission` is the mechanism that puts rows in
 that table. Leaving the 73 stranded means the G28 override is needed forever.
-Not yet built. It is a data change against production, so it gets a script, a dev-clone
-rehearsal and a read-back before it runs — the same shape as `scripts/exit-sequence-run.mjs`
-in G02. **Diagnose the attempt-1 failure cause first**: re-dating a run that will fail the
-same way again just re-strands it.
+**DONE — it ran on production 2026-09-21 at 12:00 UTC**, via
+`scripts/repair-failed-sequence-runs.mjs` (tracked on `main` since 2026-09-01; a second script
+for the same incident was written and thrown away — grep `scripts/` before building a repair).
+Read back from production at 18:00 UTC:
+
+| | |
+|---|---|
+| Emails sent | **73** |
+| Delivered | 67 |
+| Opened | 23 |
+| Clicked | 2 |
+| Bounced (2 suppressed) | 3 |
+| Still `sent`, no delivery event | 3 |
+| Runs now `completed` | 72 of 73 |
+| **`contact_consents` rows created** | **2**, both `sms / granted / sms_consent_link` |
+
+**This is the first time the Lead Engine has reached real leads at scale.** Everything before it
+was a test address or a Stripe purchase. The `attempts = 1` failure cause was diagnosed first, as
+this paragraph demanded: `business_settings.sender_email` named an unverified domain, corrected to
+`noreply@mail.darrenjpaul.com` on 2026-09-20, and the domain reads `verified` from the Resend API.
+
+**One bounce did not suppress, and that is the guard working.** `kaciawager@gmail.con` is `failed`
+with no `contact_suppressions` row, while the other two bounces have one. Only a `Permanent` bounce
+suppresses ([app/api/webhooks/resend/route.ts:95](../app/api/webhooks/resend/route.ts#L95)) —
+deliberately, so a full mailbox never permanently ejects a live lead. A `.con` domain arguably
+should have come back Permanent; worth one check against the Resend API if that address matters.
 
 **Decision 12 (new) — `cron_pipeline_reconcile_enabled`: TURN IT ON.**
 Verified: there is **no row** in `system_settings`; it is off by absence and the code
