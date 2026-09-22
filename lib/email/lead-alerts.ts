@@ -30,11 +30,35 @@ import {
   ctaButton,
   escapeHtml,
   getBaseUrl,
+  heroBanner,
   infoCard,
   resend,
   sectionLabel,
   tenantEmailLayout,
 } from "@/lib/email/layout"
+import type { LeadAnalysisResult } from "@/lib/ai/lead-analysis"
+import { buildLeadMailtoLink, buildTelLink } from "@/lib/leads/build-mailto-link"
+
+/**
+ * THE ONE SINGLE-TENANT ASSUMPTION LEFT IN THIS FILE, named out loud rather
+ * than hidden behind an import, because the brand sweep over this file cannot
+ * see it: it is a URL, not a word, and no regex for an operator name will ever
+ * catch it.
+ *
+ * It is the booking widget belonging to the business that owns this
+ * deployment, offered in the auto-reply below to every applicant regardless of
+ * whose coaching they applied for. G30 was scoped to the sender identity and
+ * the layout, so it is unchanged here -- but it IS a live gap: another coach's
+ * applicant is currently invited into this platform's own diary.
+ *
+ * What closing it needs is a per-tenant scheduling URL, and there is already a
+ * column for one -- `coach_calendar_connections.scheduling_url`, read today by
+ * lib/calendly/config-for-business.ts, which resolves a business's own
+ * connection and deliberately gives a business without one NOTHING rather than
+ * this platform's calendar. That is the shape this CTA wants: the tenant's own
+ * link, or no button at all.
+ */
+const PLATFORM_BOOKING_LINK = "https://api.leadconnectorhq.com/widget/booking/p9XdK6uz9EC3JKUhpzdA"
 
 /**
  * Resolves the tenant and refuses early if they cannot lawfully send.
@@ -71,6 +95,33 @@ async function resolveSender(
   }
 
   return { settings, to }
+}
+
+/**
+ * Reads the tenant and refuses, by THROWING, if they cannot lawfully send.
+ *
+ * The twin of `resolveSender` above, for the senders whose contract is an
+ * exception rather than a flag. Same gate, opposite report: their callers
+ * already catch, and a caller that catches learns more from the field name in
+ * the message than from a boolean.
+ */
+async function loadSendableSettings(businessId: string): Promise<BusinessSettings> {
+  const settings = await getBusinessSettings(businessId)
+  assertSendable(settings)
+  return settings
+}
+
+/**
+ * The coach's own mailbox, or a refusal naming the field that is empty.
+ *
+ * Separate from `assertSendable` because it answers a different question --
+ * "where does this alert GO" rather than "may this tenant send at all" -- and
+ * because the auto-reply below needs the first without the second.
+ */
+function requireAlertRecipient(settings: BusinessSettings): string {
+  const to = alertRecipient(settings)
+  if (!to) throw new BusinessNotConfiguredError(["reply_to"])
+  return to
 }
 
 /**
@@ -315,4 +366,262 @@ export async function sendChatEscalationEmail({
   }
 
   return { delivered: true }
+}
+
+const PRIORITY_STYLES: Record<LeadAnalysisResult["priority"], { bg: string; color: string; label: string }> = {
+  high: { bg: "#dcfce7", color: "#166534", label: "High Priority" },
+  medium: { bg: "#fef3c7", color: "#92400e", label: "Medium Priority" },
+  low: { bg: "#ede9e3", color: "#78736c", label: "Low Priority" },
+}
+
+/**
+ * Tells the coach somebody applied.
+ *
+ * IT THROWS ON A PROVIDER ERROR, and on a tenant that cannot lawfully send.
+ * Its caller catches and logs, which is the right shape for a message the lead
+ * capture has already survived without -- but a silent fall-through to a send
+ * with an empty From would be marked `failed` at the provider forever with no
+ * re-activation path, so the refusal happens here.
+ *
+ * `replyTo` IS THE APPLICANT, not the tenant's own address. Hitting reply on
+ * this alert answers the person who applied; pointed at the coach's own inbox
+ * it would mail them their own alert back.
+ */
+export async function sendInquiryEmail({
+  businessId,
+  name,
+  email,
+  phone,
+  serviceLabel,
+  sport,
+  experience,
+  goals,
+  injuries,
+  how_heard,
+  aiAnalysis,
+}: {
+  businessId: string
+  name: string
+  email: string
+  phone?: string | null
+  serviceLabel: string
+  sport?: string | null
+  experience?: string | null
+  goals: string
+  injuries?: string | null
+  how_heard?: string | null
+  aiAnalysis?: LeadAnalysisResult | null
+}) {
+  const settings = await loadSendableSettings(businessId)
+  const to = requireAlertRecipient(settings)
+
+  const infoRows: { label: string; value: string }[] = [
+    { label: "Name", value: escapeHtml(name) },
+    { label: "Email", value: escapeHtml(email) },
+    { label: "Service", value: escapeHtml(serviceLabel) },
+  ]
+  if (phone) infoRows.push({ label: "Phone", value: escapeHtml(phone) })
+  if (sport) infoRows.push({ label: "Sport", value: escapeHtml(sport) })
+  if (experience) infoRows.push({ label: "Experience", value: escapeHtml(experience) })
+  if (how_heard) infoRows.push({ label: "How They Heard About Us", value: escapeHtml(how_heard) })
+
+  const firstName = name.split(" ")[0]
+  const priorityStyle = aiAnalysis ? PRIORITY_STYLES[aiAnalysis.priority] : null
+
+  const aiSectionHtml = aiAnalysis
+    ? `
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;">
+            <tr>
+              <td>
+                <span style="display:inline-block; background-color:${priorityStyle!.bg}; color:${priorityStyle!.color}; font-size:11px; font-weight:600; padding:4px 14px; border-radius:2px; letter-spacing:0.5px;">
+                  ${priorityStyle!.label}
+                </span>
+                <p style="margin:8px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:14px; color:#5c5750; line-height:1.7;">
+                  ${escapeHtml(aiAnalysis.priority_reason)}
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:20px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #0E3F50;">
+            <tr>
+              <td style="padding:24px 28px;">
+                <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
+                  Suggested Reply
+                </p>
+                <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
+                  ${escapeHtml(aiAnalysis.draft_reply)}
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
+            <tr>
+              <td style="padding-right:12px;">
+                ${ctaButton(
+                  escapeHtml(
+                    buildLeadMailtoLink({
+                      email,
+                      subject: `Re: Your ${serviceLabel} Application`,
+                      body: aiAnalysis.draft_reply,
+                    }),
+                  ),
+                  `Email ${firstName}`,
+                )}
+              </td>
+              ${phone ? `<td>${ctaButton(buildTelLink(phone), `Call ${firstName}`, "secondary")}</td>` : ""}
+            </tr>
+          </table>
+    `
+    : `
+          <p style="margin:32px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:13px; color:#a09b94;">
+            Reply directly to <a href="mailto:${email}" style="color:#0E3F50; text-decoration:underline;">${email}</a>
+          </p>
+    `
+
+  const html = tenantEmailLayout(
+    `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          ${sectionLabel(`New ${serviceLabel} Application`)}
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            New Inquiry
+          </p>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            A potential client has submitted an application for <strong style="color:#0E3F50;">${serviceLabel}</strong>.
+          </p>
+
+          ${infoCard(infoRows)}
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #C49B7A;">
+            <tr>
+              <td style="padding:24px 28px;">
+                <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
+                  Goals
+                </p>
+                <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
+                  ${escapeHtml(goals)}
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          ${
+            injuries
+              ? `
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #C49B7A;">
+            <tr>
+              <td style="padding:24px 28px;">
+                <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
+                  Injuries / Limitations
+                </p>
+                <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
+                  ${escapeHtml(injuries)}
+                </p>
+              </td>
+            </tr>
+          </table>
+          `
+              : ""
+          }
+
+          ${aiSectionHtml}
+
+        </td>
+      </tr>
+    </table>
+  `,
+    settings,
+  )
+
+  const { error } = await resend.emails.send({
+    from: businessFrom(settings),
+    to,
+    replyTo: email,
+    subject: `[Inquiry] New ${serviceLabel} Application — ${name}`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send inquiry email:", error)
+    throw new Error("Failed to send inquiry email")
+  }
+}
+
+/**
+ * Tells the applicant their application arrived.
+ *
+ * THE ONE OF THE FIVE WHOSE RECIPIENT IS NOT THE COACH, which is why `to` is
+ * still a parameter here and is read from settings everywhere else: the
+ * destination is the person who just typed their address into a form.
+ *
+ * That is also why a blank `reply_to` does NOT stop it. For the four coach
+ * alerts `reply_to` IS the destination, so a blank one means nobody to tell.
+ * Here it is a courtesy header, and refusing to send would leave a person who
+ * just applied with silence in order to fix a field that is not in the way.
+ * `assertSendable` still applies: this is a commercial message to a member of
+ * the public and it needs a postal address on it.
+ */
+export async function sendInquiryAutoReply({
+  businessId,
+  to,
+  firstName,
+  serviceLabel,
+}: {
+  businessId: string
+  to: string
+  firstName: string
+  serviceLabel: string
+}) {
+  const settings = await loadSendableSettings(businessId)
+  const replyTo = alertRecipient(settings)
+
+  const html = tenantEmailLayout(
+    `
+    ${heroBanner("Application Received", `We&rsquo;re excited to hear from you, ${firstName}.`)}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          <p style="margin:0 0 24px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:16px; color:#5c5750; line-height:1.8;">
+            Thanks for applying for <strong style="color:#0E3F50;">${serviceLabel}</strong>. We&rsquo;ve received your application and our team will review it shortly.
+          </p>
+
+          <p style="margin:0 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:16px; color:#5c5750; line-height:1.8;">
+            The next step is to schedule a consultation call so we can learn more about your goals and create a plan tailored to you.
+          </p>
+
+          ${ctaButton(PLATFORM_BOOKING_LINK, "Schedule Your Consultation")}
+
+          <p style="margin:36px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:14px; color:#a09b94; line-height:1.7;">
+            Looking forward to working with you,<br />
+            <strong style="color:#0E3F50;">${escapeHtml(settings.sender_name)}</strong><br />
+            ${escapeHtml(settings.display_name)}
+          </p>
+
+        </td>
+      </tr>
+    </table>
+  `,
+    settings,
+  )
+
+  const { error } = await resend.emails.send({
+    from: businessFrom(settings),
+    to,
+    ...(replyTo ? { replyTo } : {}),
+    subject: `Your ${serviceLabel} application — ${settings.display_name}`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send inquiry auto-reply:", error)
+    throw new Error("Failed to send inquiry auto-reply")
+  }
 }

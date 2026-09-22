@@ -2,8 +2,6 @@ import { getPreferences } from "@/lib/db/notification-preferences"
 import { getActiveSubscribers } from "@/lib/db/newsletter"
 import { formatEventWhen } from "@/lib/events/format"
 import type { Event, EventSignup } from "@/types/database"
-import type { LeadAnalysisResult } from "@/lib/ai/lead-analysis"
-import { buildLeadMailtoLink, buildTelLink } from "@/lib/leads/build-mailto-link"
 
 // The chrome every sender below renders into. MOVED, not rewritten -- see the
 // header of lib/email/layout.ts for why it had to leave this file.
@@ -23,7 +21,12 @@ import {
 // THE TENANT-AWARE LEAD MAIL, re-exported so every existing importer of
 // `@/lib/email` keeps working. It lives in its own file because that file is
 // swept for brand literals and this one cannot be: see lib/email/lead-alerts.ts.
-export { sendChatEscalationEmail, sendQuizAlertEmail } from "@/lib/email/lead-alerts"
+export {
+  sendChatEscalationEmail,
+  sendInquiryAutoReply,
+  sendInquiryEmail,
+  sendQuizAlertEmail,
+} from "@/lib/email/lead-alerts"
 
 // Resend verifies `send.darrenjpaul.com` only — the apex `darrenjpaul.com` has
 // never been added to the account, and sending from it returns "domain is not
@@ -1243,7 +1246,6 @@ export async function sendStandaloneNewsletter(data: StandaloneNewsletterData) {
 // ─── Admin notification emails ───
 
 const INFO_EMAIL = "info@darrenjpaul.com"
-const SALES_EMAIL = "sales@darrenjpaul.com"
 
 export async function sendNewRegistrationEmail({
   firstName,
@@ -1374,171 +1376,6 @@ export async function sendContactFormEmail({
   }
 }
 
-const PRIORITY_STYLES: Record<LeadAnalysisResult["priority"], { bg: string; color: string; label: string }> = {
-  high: { bg: "#dcfce7", color: "#166534", label: "High Priority" },
-  medium: { bg: "#fef3c7", color: "#92400e", label: "Medium Priority" },
-  low: { bg: "#ede9e3", color: "#78736c", label: "Low Priority" },
-}
-
-export async function sendInquiryEmail({
-  name,
-  email,
-  phone,
-  serviceLabel,
-  sport,
-  experience,
-  goals,
-  injuries,
-  how_heard,
-  aiAnalysis,
-}: {
-  name: string
-  email: string
-  phone?: string | null
-  serviceLabel: string
-  sport?: string | null
-  experience?: string | null
-  goals: string
-  injuries?: string | null
-  how_heard?: string | null
-  aiAnalysis?: LeadAnalysisResult | null
-}) {
-  const infoRows: { label: string; value: string }[] = [
-    { label: "Name", value: escapeHtml(name) },
-    { label: "Email", value: escapeHtml(email) },
-    { label: "Service", value: escapeHtml(serviceLabel) },
-  ]
-  if (phone) infoRows.push({ label: "Phone", value: escapeHtml(phone) })
-  if (sport) infoRows.push({ label: "Sport", value: escapeHtml(sport) })
-  if (experience) infoRows.push({ label: "Experience", value: escapeHtml(experience) })
-  if (how_heard) infoRows.push({ label: "How They Heard About Us", value: escapeHtml(how_heard) })
-
-  const firstName = name.split(" ")[0]
-  const priorityStyle = aiAnalysis ? PRIORITY_STYLES[aiAnalysis.priority] : null
-
-  const aiSectionHtml = aiAnalysis
-    ? `
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;">
-            <tr>
-              <td>
-                <span style="display:inline-block; background-color:${priorityStyle!.bg}; color:${priorityStyle!.color}; font-size:11px; font-weight:600; padding:4px 14px; border-radius:2px; letter-spacing:0.5px;">
-                  ${priorityStyle!.label}
-                </span>
-                <p style="margin:8px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:14px; color:#5c5750; line-height:1.7;">
-                  ${escapeHtml(aiAnalysis.priority_reason)}
-                </p>
-              </td>
-            </tr>
-          </table>
-
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:20px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #0E3F50;">
-            <tr>
-              <td style="padding:24px 28px;">
-                <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
-                  Suggested Reply
-                </p>
-                <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
-                  ${escapeHtml(aiAnalysis.draft_reply)}
-                </p>
-              </td>
-            </tr>
-          </table>
-
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
-            <tr>
-              <td style="padding-right:12px;">
-                ${ctaButton(
-                  escapeHtml(
-                    buildLeadMailtoLink({
-                      email,
-                      subject: `Re: Your ${serviceLabel} Application`,
-                      body: aiAnalysis.draft_reply,
-                    }),
-                  ),
-                  `Email ${firstName}`,
-                )}
-              </td>
-              ${phone ? `<td>${ctaButton(buildTelLink(phone), `Call ${firstName}`, "secondary")}</td>` : ""}
-            </tr>
-          </table>
-    `
-    : `
-          <p style="margin:32px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:13px; color:#a09b94;">
-            Reply directly to <a href="mailto:${email}" style="color:#0E3F50; text-decoration:underline;">${email}</a>
-          </p>
-    `
-
-  const html = emailLayout(`
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="padding:48px 48px 52px;">
-
-          ${sectionLabel(`New ${serviceLabel} Application`)}
-
-          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
-            New Inquiry
-          </p>
-
-          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
-            A potential client has submitted an application for <strong style="color:#0E3F50;">${serviceLabel}</strong>.
-          </p>
-
-          ${infoCard(infoRows)}
-
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #C49B7A;">
-            <tr>
-              <td style="padding:24px 28px;">
-                <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
-                  Goals
-                </p>
-                <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
-                  ${escapeHtml(goals)}
-                </p>
-              </td>
-            </tr>
-          </table>
-
-          ${
-            injuries
-              ? `
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #C49B7A;">
-            <tr>
-              <td style="padding:24px 28px;">
-                <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
-                  Injuries / Limitations
-                </p>
-                <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
-                  ${escapeHtml(injuries)}
-                </p>
-              </td>
-            </tr>
-          </table>
-          `
-              : ""
-          }
-
-          ${aiSectionHtml}
-
-        </td>
-      </tr>
-    </table>
-  `)
-
-  const { error } = await resend.emails.send({
-    from: FROM_EMAIL,
-    to: SALES_EMAIL,
-    cc: ADMIN_CC,
-    replyTo: email,
-    subject: `[Inquiry] New ${serviceLabel} Application — ${name}`,
-    html,
-  })
-
-  if (error) {
-    console.error("Failed to send inquiry email:", error)
-    throw new Error("Failed to send inquiry email")
-  }
-}
-
 const BOOKING_LINK = "https://api.leadconnectorhq.com/widget/booking/p9XdK6uz9EC3JKUhpzdA"
 
 export async function sendContactAutoReply({ to, firstName }: { to: string; firstName: string }) {
@@ -1580,56 +1417,6 @@ export async function sendContactAutoReply({ to, firstName }: { to: string; firs
   if (error) {
     console.error("Failed to send contact auto-reply:", error)
     throw new Error("Failed to send contact auto-reply")
-  }
-}
-
-export async function sendInquiryAutoReply({
-  to,
-  firstName,
-  serviceLabel,
-}: {
-  to: string
-  firstName: string
-  serviceLabel: string
-}) {
-  const html = emailLayout(`
-    ${heroBanner("Application Received", `We&rsquo;re excited to hear from you, ${firstName}.`)}
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="padding:48px 48px 52px;">
-
-          <p style="margin:0 0 24px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:16px; color:#5c5750; line-height:1.8;">
-            Thanks for applying for <strong style="color:#0E3F50;">${serviceLabel}</strong>. We&rsquo;ve received your application and our team will review it shortly.
-          </p>
-
-          <p style="margin:0 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:16px; color:#5c5750; line-height:1.8;">
-            The next step is to schedule a consultation call so we can learn more about your goals and create a plan tailored to you.
-          </p>
-
-          ${ctaButton(BOOKING_LINK, "Schedule Your Consultation")}
-
-          <p style="margin:36px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:14px; color:#a09b94; line-height:1.7;">
-            Looking forward to working with you,<br />
-            <strong style="color:#0E3F50;">Coach Darren</strong><br />
-            DJP Athlete
-          </p>
-
-        </td>
-      </tr>
-    </table>
-  `)
-
-  const { error } = await resend.emails.send({
-    from: FROM_EMAIL,
-    to,
-    subject: `Your ${serviceLabel} application — DJP Athlete`,
-    html,
-  })
-
-  if (error) {
-    console.error("Failed to send inquiry auto-reply:", error)
-    throw new Error("Failed to send inquiry auto-reply")
   }
 }
 

@@ -28,7 +28,12 @@ vi.mock("@/lib/db/businesses", () => ({
   BusinessSettingsMissingError: class extends Error {},
 }))
 
-import { sendChatEscalationEmail, sendQuizAlertEmail } from "@/lib/email/lead-alerts"
+import {
+  sendChatEscalationEmail,
+  sendInquiryAutoReply,
+  sendInquiryEmail,
+  sendQuizAlertEmail,
+} from "@/lib/email/lead-alerts"
 import { BusinessNotConfiguredError } from "@/lib/email/business-identity"
 
 const BUSINESS_ID = "b0000000-0000-0000-0000-00000000000a"
@@ -258,6 +263,147 @@ describe("sendChatEscalationEmail", () => {
     getBusinessSettings.mockRejectedValue(new Error("supabase down"))
 
     await expect(sendChatEscalationEmail(escalationArgs)).rejects.toThrow(/supabase down/)
+  })
+})
+
+const inquiryArgs = {
+  businessId: BUSINESS_ID,
+  name: "Sam Okafor",
+  email: "sam@example.test",
+  phone: "+447700900123",
+  serviceLabel: "1-to-1 Coaching",
+  sport: "Football",
+  experience: "3 years",
+  goals: "Add 10kg to my squat before pre-season",
+  injuries: null,
+  how_heard: "A teammate",
+  aiAnalysis: null,
+}
+
+describe("sendInquiryEmail", () => {
+  it("goes to the tenant's own reply_to, from the tenant, with no CC to anyone else", async () => {
+    await sendInquiryEmail(inquiryArgs)
+
+    const arg = sendMock.mock.calls[0][0]
+    expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
+    expect(arg.from).toBe("Coach Priya <hello@northfieldstrength.test>")
+    expect(arg.to).toBe("priya@northfieldstrength.test")
+    // It used to go to a hardcoded sales mailbox and CC a hardcoded personal
+    // one. Both belonged to one tenant; neither had any claim on another
+    // coach's applicant.
+    expect(arg.cc).toBeUndefined()
+  })
+
+  it("still replies to the APPLICANT, not to the coach's own inbox", async () => {
+    // Deliberately NOT the tenant's reply_to. Hitting reply on a new-inquiry
+    // alert answers the person who applied; pointed at the coach's own
+    // address it would mail them their own alert back.
+    await sendInquiryEmail(inquiryArgs)
+
+    expect(sendMock.mock.calls[0][0].replyTo).toBe("sam@example.test")
+  })
+
+  it("renders the tenant's wordmark and postal address, and none of the platform's", async () => {
+    await sendInquiryEmail(inquiryArgs)
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(html).toContain("Northfield Strength")
+    expect(html).toContain("4 Mill Lane, Northfield, NF1 2AB")
+    expectNoPlatformLiterals(html)
+  })
+
+  it("still carries what the applicant wrote", async () => {
+    await sendInquiryEmail(inquiryArgs)
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(html).toContain("Add 10kg to my squat before pre-season")
+    expect(html).toContain("Sam Okafor")
+    expect(String(sendMock.mock.calls[0][0].subject)).toContain("1-to-1 Coaching")
+  })
+
+  it("throws when the tenant cannot lawfully send, rather than sending anyway", async () => {
+    // This sender's contract is an exception, not a flag -- its caller catches
+    // and logs. So an unconfigured tenant must NOT fall through to a send with
+    // an empty From.
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, sender_email: "" })
+
+    await expect(sendInquiryEmail(inquiryArgs)).rejects.toThrow(/sender_email/)
+    expect(sendMock).not.toHaveBeenCalled()
+  })
+
+  it("throws when the tenant has no reply_to, rather than sending to an empty address", async () => {
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, reply_to: "" })
+
+    await expect(sendInquiryEmail(inquiryArgs)).rejects.toThrow(/reply_to/)
+    expect(sendMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("sendInquiryAutoReply", () => {
+  const autoReplyArgs = {
+    businessId: BUSINESS_ID,
+    to: "sam@example.test",
+    firstName: "Sam",
+    serviceLabel: "1-to-1 Coaching",
+  }
+
+  it("goes to the APPLICANT -- the one alert of the five whose recipient is not the coach", async () => {
+    await sendInquiryAutoReply(autoReplyArgs)
+
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.to).toBe("sam@example.test")
+    expect(arg.from).toBe("Coach Priya <hello@northfieldstrength.test>")
+    // And replying reaches the coach, because this one IS from the coach.
+    expect(arg.replyTo).toBe("priya@northfieldstrength.test")
+  })
+
+  it("signs off as the tenant's own coach and business, not the platform's", async () => {
+    await sendInquiryAutoReply(autoReplyArgs)
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(html).toContain("Coach Priya")
+    expect(html).toContain("Northfield Strength")
+    expectNoPlatformLiterals(html)
+  })
+
+  it("names the tenant, not the platform, in the subject the applicant sees", async () => {
+    await sendInquiryAutoReply(autoReplyArgs)
+
+    const subject = String(sendMock.mock.calls[0][0].subject)
+    expect(subject).toContain("Northfield Strength")
+    expectNoPlatformLiterals(subject)
+  })
+
+  it("still tells the applicant what they applied for", async () => {
+    await sendInquiryAutoReply(autoReplyArgs)
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(html).toContain("1-to-1 Coaching")
+    expect(html).toContain("Sam")
+  })
+
+  it("sends to the applicant even when the tenant has no reply_to", async () => {
+    // THE PERMISSIVE CASE. `reply_to` is the DESTINATION for the four coach
+    // alerts, so a blank one stops them. Here the destination is the
+    // applicant's own address, which is present -- refusing this send would
+    // leave a person who just applied with silence, to fix a field that is not
+    // in the way.
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, reply_to: "" })
+
+    await sendInquiryAutoReply(autoReplyArgs)
+
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    expect(sendMock.mock.calls[0][0].to).toBe("sam@example.test")
+    expect(sendMock.mock.calls[0][0].replyTo).toBeUndefined()
+  })
+
+  it("refuses when the tenant cannot lawfully send at all", async () => {
+    // But a missing postal address IS in the way: this is a commercial message
+    // to a member of the public, and CAN-SPAM wants an address on it.
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, postal_address: "" })
+
+    await expect(sendInquiryAutoReply(autoReplyArgs)).rejects.toThrow(/postal_address/)
+    expect(sendMock).not.toHaveBeenCalled()
   })
 })
 

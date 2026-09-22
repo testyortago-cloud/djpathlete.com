@@ -247,6 +247,13 @@ describe("POST /api/inquiry — joins the contact spine", () => {
     expect(mocks.sendInquiryEmail).toHaveBeenCalledTimes(1)
     expect(mocks.sendInquiryAutoReply).toHaveBeenCalledTimes(1)
     expect(mocks.ghlCreateContact).toHaveBeenCalledTimes(1)
+
+    // "It was called" is not "it was called about the right tenant". Both
+    // mailers resolve the sender identity and the coach's mailbox from this
+    // id, so a route that dropped it would send a perfectly well-formed email
+    // from the wrong business, and every count above would still be 1.
+    expect(mocks.sendInquiryEmail.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
+    expect(mocks.sendInquiryAutoReply.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
   })
 })
 

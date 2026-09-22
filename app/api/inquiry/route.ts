@@ -388,9 +388,12 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       }
     }
 
-    // Send email notification to sales (non-blocking)
+    // Tell the coach whose lead this is (non-blocking). Since G30 the alert
+    // goes to THAT business's own `reply_to` and carries their identity, so
+    // there is no hardcoded sales mailbox left on this path.
     try {
       await sendInquiryEmail({
+        businessId,
         name,
         email,
         phone,
@@ -408,7 +411,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
 
     // Auto-reply to the person with booking link (non-blocking)
     try {
-      await sendInquiryAutoReply({ to: email, firstName: name.split(" ")[0], serviceLabel })
+      await sendInquiryAutoReply({ businessId, to: email, firstName: name.split(" ")[0], serviceLabel })
     } catch {
       console.error("Failed to send inquiry auto-reply — continuing")
     }
