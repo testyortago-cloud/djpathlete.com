@@ -121,6 +121,40 @@
         </figcaption>
       </figure>
 
+      <h2>04a — When the stage you sent the cards to is being removed as well</h2>
+      <figure>
+        <img
+          src="04a-the-destination-is-going-too.png"
+          alt="The board-level problem strip naming both the stage whose cards were moved and the destination that is also being removed"
+        />
+        <figcaption>
+          Added by the whole-branch review (Important 1). Three clicks used to reach a save the screen let you press:
+          remove a stage holding cards, send them to another stage, then remove that stage too. Nothing refused it —
+          the database moved the cards onto a stage it was about to delete, and the save came back as a raw
+          <code>opportunities_stage_id_fkey</code> violation on the coach's screen. Now
+          <code>invalidDestinationProblems</code> names both stages and Save goes off, and the route and
+          <code>save_pipeline_stages</code> itself (migration <code>00277</code>) refuse it independently. Captured on
+          the Assessment board because it is the only one whose second removable stage holds no cards of its own — on
+          Coaching the shot would show two different complaints at once.
+        </figcaption>
+      </figure>
+
+      <h2>04b — Changing what a stage means, under cards that are already finished</h2>
+      <figure>
+        <img
+          src="04b-that-change-would-hide-finished-deals.png"
+          alt="A per-row refusal against the Won stage's kind dropdown, naming the two closed cards it holds"
+        />
+        <figcaption>
+          Added by the whole-branch review (Important 2, controller ruling R19). <code>readBoard</code> shows a
+          still-open column only the cards whose <code>outcome</code> is null, so turning Won into a still-open stage
+          took every settled deal on it off the board — still in the database, still counted in revenue, on no screen
+          anywhere. Refused now, not warned: the message names the stage and the count, and sits on the row whose
+          dropdown caused it. The board's real Won stage holds two genuinely closed cards, so the refusal here is
+          produced by real data rather than by a fixture.
+        </figcaption>
+      </figure>
+
       <h2>05 — The one board that will not let itself be put away</h2>
       <figure>
         <img src="05-cannot-archive-the-default-board.png" alt="The default board's archive refusal, printed in red under the archive button" />
@@ -207,6 +241,8 @@
         <tr><td>03</td><td>Board-level and stage-level problems land in different places</td><td class="ok">shown</td></tr>
         <tr><td>03</td><td>Save is disabled while anything is wrong</td><td class="ok">shown</td></tr>
         <tr><td>04</td><td>Removing a stage with cards demands a destination first</td><td class="ok">shown</td></tr>
+        <tr><td>04a</td><td>A destination that is itself being removed is refused before Save</td><td class="ok">shown</td></tr>
+        <tr><td>04b</td><td>A won/lost stage holding closed cards cannot be turned open</td><td class="ok">shown, on two real closed cards</td></tr>
         <tr><td>05</td><td>The default board cannot be archived, and says so verbatim</td><td class="ok">shown</td></tr>
         <tr><td>05</td><td>The board is still active afterwards</td><td class="ok">re-read from the board switcher</td></tr>
         <tr><td>06</td><td>The dialog is reachable from the board, for the board being looked at</td><td class="ok">shown</td></tr>

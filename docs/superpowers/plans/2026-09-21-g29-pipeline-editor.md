@@ -1011,3 +1011,27 @@ Move G29 to done in `docs/lead-engine-gaps-to-ship-2026-09-19.md` — **edit BOT
 **Placeholders:** Task 3 Step 1 and Task 7/8's tests give case lists rather than full bodies; each is marked as a map with an explicit instruction to write real assertions, and the surrounding conventions are named. Tasks 1, 2 and 6 carry complete code for the parts with real logic.
 
 **Type consistency:** `StageDraft` / `SavedStage` / `StageProblem` / `StageSavePlan` are defined in Task 1 and used unchanged in Tasks 2, 3, 5, 7. `save_pipeline_stages(p_business_id, p_pipeline_id, p_stages, p_move_cards)` matches between Task 2's SQL and Task 3's caller. `createOpportunityManually`'s signature in Task 6 matches its route.
+
+---
+
+## Reconciliation — what the whole-branch review changed after this plan was written
+
+Step 4 ("Whole-branch review") found five Important defects **in the seams between tasks**: each task
+was right on its own and the assembly was wrong. Fixed in one wave; the plan text above is left as
+written, so read this section where the two disagree.
+
+| # | What was wrong | What changed |
+|---|---|---|
+| 1 | A move destination that the same save was ALSO removing passed every layer. The SQL moved the cards onto a stage it then deleted (`opportunities_stage_id_fkey`), and a crafted `to_stage_id` naming **another board's** stage relocated real cards there with no error at all. | New pure `invalidDestinationProblems` (`lib/lead-engine/stage-list.ts`), run by `savePipelineStages` and the editor; new migration **`00277`** adds the symmetric `to_stage_id = ANY(v_submitted_ids)` cross-check to `save_pipeline_stages`. |
+| 2 | The editor's free `kind` dropdown made `readBoard`'s doc comment false: `won → open` on a stage holding closed cards took every settled deal off the board. | New pure `kindChangeVisibilityProblems`; `readStagesForEdit` now returns a **closed**-card count per stage; refused at the route and the DAL (controller ruling R19), surfaced inline in the editor. `readBoard`'s comment now says why the premise is true. |
+| 3 | `createPipelineBoard` seeded Won at position 1 while `createOpportunityManually` files onto position 1 — so the first hand-made card on a new board landed in "Won". | The seed is now THREE stages: `new` / "New enquiry" (open) at 1, `won` at 2, `lost` at 3. **The line at Task 3 and the test name at line 681 of this plan are therefore out of date.** Spec §4.3 fixes the FILING rule at position 1, not the seed. |
+| 4 | A mistyped email (`dana@gmail`) with no phone reached `upsertContactIdentity`'s internal throw, and the dialog printed *"upsertContactIdentity needs at least one usable identifier"* on screen. | `createOpportunityManually` normalises BEFORE its pre-check and refuses in English, quoting what was typed. The dialog's now-false comment about `.email()` is corrected. |
+| 5 | None of the four routes supplied a `metadata:` callback, though spec §2.3 collapsed five stage slugs into one **on the promise that "the metadata carries the before/after stage list"**. | `metadata:` added to all four: before/after/removed/added stage keys plus the card moves on the stages PUT; `status` + previous name on the board PATCH; the created board's key on the POST; `contact_id`/`opportunity_id` on the opportunities POST. `"3 stage(s) submitted"` is now `"3 stages submitted"` (R16). |
+
+Also folded in: a repo-wide inventory test that `enrollIfTriggered` has exactly one call site (R20); route-side
+board-name cap tests; the third divergent "add an email or phone" sentence brought into the family; a `.max()`
+on `valueCents`; the board-create refusal test corrected to the shape the route really returns; and
+`validateStageList`'s key dedupe made consistent with its emptiness check.
+
+**Step 5 is deliberately NOT done** for `docs/lead-engine-gaps-to-ship-2026-09-19.md` — controller ruling R21.
+That file has uncommitted modifications in the main checkout from another session.

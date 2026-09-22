@@ -9,7 +9,8 @@
 // the working reference, scripts/capture-sequence-management-screenshots.mjs —
 // see that file's header for why each helper exists.
 //
-// IT WRITES THE SHOTS NUMBERED 00-05 of screenshots/g29-pipeline-editor, which
+// IT WRITES THE SHOTS NUMBERED 00-05 (including 04a and 04b) of
+// screenshots/g29-pipeline-editor, which
 // is the ONE home for this feature's deliverables. 06-10 come from
 // scripts/capture-new-card-dialog-screenshots.mjs and 11 from
 // scripts/capture-g29-hand-made-cards.mjs; all three share this port.
@@ -24,8 +25,8 @@
 // real cards on it.
 //
 // NO BOARD AND NO STAGE IS CHANGED. "Save stages" (PUT), "Save board name"
-// (PATCH) and "Create board" (POST) are never clicked. Shots 02, 03 and 04 are
-// deliberately UNSAVED local React state on the real page — a page reload
+// (PATCH) and "Create board" (POST) are never clicked. Shots 02, 03, 04, 04a
+// and 04b are deliberately UNSAVED local React state on the real page — a page reload
 // discards them for free, and the dev clone is shared with peer sessions.
 //
 // SHOT 05 IS THE ONE EXCEPTION, and it is safe by construction: it archives
@@ -467,6 +468,122 @@ try {
     ],
   )
 
+  // ---------------------- 04a a destination that is being removed as well
+  // WHOLE-BRANCH REVIEW, IMPORTANT 1. Three clicks used to reach a save the
+  // screen let you press and the database then refused with a raw Postgres
+  // string: remove a stage that holds cards, send them to another stage, then
+  // remove that stage too.
+  //
+  // CAPTURED ON THE ASSESSMENT BOARD, not Coaching, and that is not
+  // arbitrary. The sequence needs a second removable stage that holds NO
+  // cards of its own — on Coaching every stage has cards, so removing the
+  // destination raises a SECOND, different complaint about ITS cards and the
+  // shot stops being about one thing. Assessment's "Assessment Completed" is
+  // empty, so the only problem on screen is the one this shot is for.
+  await page.goto(`${APP}/admin/pipeline/settings?board=assessment`, { waitUntil: "networkidle" })
+  await page.waitForTimeout(900)
+
+  const assessmentCounts = await readCardCounts(page)
+  console.log(`  assessment: cards per stage=${assessmentCounts.join("/")}`)
+  must(assessmentCounts[0] > 0, "Assessment Booked has no cards — this shot needs a stage whose cards must go somewhere")
+  must(assessmentCounts[1] === 0, "Assessment Completed has cards — pick another empty stage or this shot shows two problems")
+
+  await page.getByRole("button", { name: "Remove stage 1" }).click() // Assessment Booked, holds cards
+  await page.waitForTimeout(300)
+  const doomedPicker = page.getByLabel(/^Where should the (1 card|\d+ cards) on "Assessment Booked" go\?$/)
+  must((await doomedPicker.count()) === 1, "the destination picker did not appear for Assessment Booked")
+  // Chosen by its visible option text, not by a stage id this script would
+  // have to hard-code and keep in step with the clone.
+  await doomedPicker.selectOption({ label: "Assessment Completed" })
+  await page.waitForTimeout(300)
+  must(await saveStages(page).isEnabled(), "Save should be available once a destination is chosen — the control for the click below")
+
+  // Now take the destination away too. Rows have renumbered: what was stage 2
+  // is stage 1 now.
+  await page.getByRole("button", { name: "Remove stage 1" }).click()
+  await page.waitForTimeout(400)
+
+  const doomedText = ((await problemStrip(page).textContent()) ?? "").replace(/\s+/g, " ")
+  console.log(`  problem strip: ${doomedText.slice(0, 160)}`)
+  must(doomedText.includes("is being removed too"), `expected the doomed-destination refusal, got: ${doomedText.slice(0, 200)}`)
+  must(!(await saveStages(page).isEnabled()), "Save should be off while the chosen destination is itself being removed")
+
+  await resetScroll(page)
+  await shoot(
+    page,
+    "04a-the-destination-is-going-too",
+    "When the stage you sent the cards to is being removed as well",
+    "The screen catches it before you press Save — the cards stay exactly where they are",
+    [
+      await markerOn(
+        page,
+        problemStrip(page),
+        "It names the stage whose cards you moved, and the stage you moved them to, and asks you to pick one that is staying.",
+        { place: "left" },
+      ),
+      await markerOn(
+        page,
+        saveStages(page),
+        "Save is off. Before this, the save went through to the database and came back as an error nobody could read.",
+        { place: "after", dx: 10 },
+      ),
+    ],
+  )
+
+  // ---------------- 04b a kind change that would take finished deals away
+  // WHOLE-BRANCH REVIEW, IMPORTANT 2 (controller ruling R19). The board shows
+  // a "still open" column only the cards nobody has finished with, so turning
+  // Won into a still-open stage takes every settled deal on it off the board
+  // — still in the database, still counted in the money, on no screen.
+  //
+  // REAL CLOSED CARDS, read off the screen first. A Won stage holding nothing
+  // would produce this shot with no refusal at all.
+  await page.goto(`${APP}/admin/pipeline/settings?board=coaching`, { waitUntil: "networkidle" })
+  await page.waitForTimeout(900)
+
+  const wonRowCards = ((await cardsCell(page, 2).first().textContent()) ?? "").trim()
+  console.log(`  coaching Won stage: ${wonRowCards}`)
+  must(wonRowCards !== "No cards", "the Won stage holds nothing — this shot needs finished deals on it")
+
+  await kindBox(page, 3).selectOption("open")
+  await page.waitForTimeout(400)
+
+  const hidden = row(page, 2).getByText(/already won or lost/)
+  await hidden.waitFor({ state: "visible", timeout: 5000 })
+  console.log(`  row said: ${((await hidden.innerText()) ?? "").replace(/\s+/g, " ").slice(0, 160)}`)
+  must(!(await saveStages(page).isEnabled()), "Save should be off while a kind change would hide cards")
+
+  await resetScroll(page)
+  await shoot(
+    page,
+    "04b-that-change-would-hide-finished-deals",
+    "Changing what a stage means, under cards that are already finished",
+    "Won and Lost columns show every card on them. A still-open column shows only the ones nobody has finished with",
+    [
+      await markerOn(
+        page,
+        hidden,
+        "It says how many finished deals are on that stage and what would happen to them — they would be on no screen at all.",
+        { place: "after", dx: 10 },
+      ),
+      // AFTER, not left. `place: "left"` put the disc on the grey short-name
+      // box two columns over, so the caption "this is the box that caused it"
+      // pointed at a box that cannot even be typed in.
+      await markerOn(
+        page,
+        kindBox(page, 3),
+        "This is the box that caused it, so the sentence sits on the same line.",
+        { place: "after", dx: 8 },
+      ),
+      await markerOn(
+        page,
+        saveStages(page),
+        "Refused here AND on the server. The screen saying so is a courtesy; the server is the thing that stops it.",
+        { place: "after", dx: 10 },
+      ),
+    ],
+  )
+
   // ------------------------------- 05 the board that will not let itself go
   // THE ONE CLICK IN THIS FILE THAT REALLY SENDS SOMETHING. It is safe because
   // of WHICH board it is aimed at, and nothing else — so which board it is
@@ -544,7 +661,7 @@ try {
   console.log("  verified after the fact: the Coaching board is still active")
 
   console.log(
-    "\n  done — no board and no stage was changed. Shots 01-04 are unsaved local state on the real page;" +
+    "\n  done — no board and no stage was changed. Shots 01-04b are unsaved local state on the real page;" +
       " shot 05's PATCH was refused by the server before it wrote anything.",
   )
 } finally {
