@@ -886,8 +886,11 @@ not in the documented baseline either — a second flaky suite to know about.
 their own rows above said BUILT while this line still said open. A row's status lives in two places
 in this document, and only one of them got updated. When closing a row, edit both.
 
-**Phases 0, 1, 2 and 3 are COMPLETE** — every row in them is built, reviewed, merged and pushed,
-and every migration through `00275` is applied to production. G21 and G28, the two rows that were
+**Phases 0, 1 and 3 are COMPLETE. Phase 2 is complete except one half of G18** — every other row
+in them is built, reviewed, merged and pushed, and every migration through `00275` is applied to
+production. G18's `ai_chat` follow-up sequence is NOT built and is blocked on the owner's copy, so
+"every row is built" was an overclaim; it is counted under Done in the scoreboard because that list
+means FINISHED IN CODE, and G18's outstanding half is in the owner section below. G21 and G28, the two rows that were
 blocked on an owner decision, were ruled on and built the same day. G29, the last Phase 3 row and the one deliberately deferred until Phases 0-2 were done, was
 built, merged and smoke-tested on production on 2026-09-23. G30, the first Phase 4 row, was built, merged and pushed on 2026-09-23. What remains is **Phase 4 (G31-G35)**.
 
@@ -895,7 +898,10 @@ built, merged and smoke-tested on production on 2026-09-23. G30, the first Phase
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
   the owner's copy. The consent half is live. This is the only Phase 2 row still open.
 - **G17's text copy** — six sequences have a text step, drafted not authored, editable at
-  `/admin/sequences/<key>` with no deploy. And `contact_consents` is EMPTY, so no text can send yet.
+  `/admin/sequences/<key>` with no deploy. This line said `contact_consents` is EMPTY; **measured
+  against production 2026-09-23 it holds 2 granted `sms` rows** (latest 2026-09-21) plus one
+  `granted:false` email row, which is what the FINISHED-IN-CODE section above already said. So the
+  text steps CAN reach somebody — two people — and the blocker is the copy alone.
 - **G12's alert wording** — shipped as a question ("{{name}} applied two days ago — have you
   replied?") because nothing in the system can know whether the coach replied. Reword in the editor.
 - **G16's `{{sport}}`** — one `ENROLMENT_METADATA_KEYS` entry plus one line in
@@ -911,8 +917,15 @@ built, merged and smoke-tested on production on 2026-09-23. G30, the first Phase
   them, the fix is a recipient list, not a revert.
 - **The decisions in §Decisions** that Phase 3 rows still name (G21, G28, G34).
 
-**Next unblocked, needing nothing from the owner: G20** (questionnaire is not connected), then
-G22-G27. G20/G23/G24/G25/G27 are all **S**.
+**Next unblocked, needing nothing from the owner: G35** (name each untenanted reader's seam
+honestly in `platform.ts`, or add the predicate where a column exists) or **G33** (normalise
+`sms_sender_phone` to E.164) — both **S**, neither depends on the other. Then **G31**, the **L**
+that has to land before **G32** has a shape to copy. **G34 is not work**: decision 11 ruled record
+it, write no code.
+
+*(Corrected 2026-09-23. This line used to read "G20, then G22-G27" — every row it named is in the
+Done list above. It was written when those were the next rows and never moved again, which is the
+same two-places-stale failure this document warns about two paragraphs up.)*
 
 **A trap the merge itself surfaced:** the first build of merged `main` FAILED with
 `Cannot find module '../../../app/api/ghl/contact/route.js'` from `.next/dev/types/validator.ts` —
