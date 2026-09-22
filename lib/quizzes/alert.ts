@@ -26,7 +26,12 @@ export function shouldAlert(tierKey: string | null): boolean {
 }
 
 export interface QuizAlertInput {
-  to: string
+  /**
+   * WHOSE lead this is. The alert goes to this business's own `reply_to` and
+   * carries their identity -- resolved inside `sendQuizAlertEmail`, not here,
+   * so there is one place that decides which column addresses the coach.
+   */
+  businessId: string
   definition: QuizDefinition
   attemptId: string
   name: string
@@ -40,15 +45,13 @@ export interface QuizAlertInput {
 
 export async function sendQuizAlert(input: QuizAlertInput): Promise<{ delivered: boolean }> {
   if (!shouldAlert(input.tierKey)) return { delivered: false }
-  // No recipient configured is not a delivery. Same honesty rule as above.
-  if (!input.to) return { delivered: false }
 
   const tier = input.definition.tiers.find((candidate) => candidate.key === input.tierKey)
   const branch = input.definition.branches.find((candidate) => candidate.key === input.branchKey)
   const profile = input.definition.profiles.find((candidate) => candidate.key === input.profileKey)
 
   return sendQuizAlertEmail({
-    to: input.to,
+    businessId: input.businessId,
     name: input.name,
     email: input.email,
     phone: input.phone ?? null,

@@ -16,20 +16,49 @@ vi.mock("@/lib/email", () => ({ sendQuizAlertEmail: (...a: unknown[]) => sendQui
 import { sendQuizAlert, shouldAlert } from "@/lib/quizzes/alert"
 
 const DEF: QuizDefinition = {
-  id: "q", key: "rpi", name: "RPI", status: "active",
-  introHeadline: "", introBody: "", gateHeadline: "", gateBody: "", resultHeadline: "",
+  id: "q",
+  key: "rpi",
+  name: "RPI",
+  status: "active",
+  introHeadline: "",
+  introBody: "",
+  gateHeadline: "",
+  gateBody: "",
+  resultHeadline: "",
   seedMarker: null,
   branches: [{ id: "b1", quizId: "q", key: "rebuilder", name: "Rebuilder", description: null, position: 1 }],
   profiles: [{ id: "p1", quizId: "q", key: "tight", name: "Explosive but tight", description: "d", position: 1 }],
   tiers: [
-    { id: "t1", quizId: "q", key: "red", position: 1, minScore: 0, maxScore: 39, headline: "Large gaps", body: "b", ctaLabel: null, ctaHref: null },
-    { id: "t4", quizId: "q", key: "green", position: 4, minScore: 80, maxScore: 100, headline: "Well prepared", body: "b", ctaLabel: null, ctaHref: null },
+    {
+      id: "t1",
+      quizId: "q",
+      key: "red",
+      position: 1,
+      minScore: 0,
+      maxScore: 39,
+      headline: "Large gaps",
+      body: "b",
+      ctaLabel: null,
+      ctaHref: null,
+    },
+    {
+      id: "t4",
+      quizId: "q",
+      key: "green",
+      position: 4,
+      minScore: 80,
+      maxScore: 100,
+      headline: "Well prepared",
+      body: "b",
+      ctaLabel: null,
+      ctaHref: null,
+    },
   ],
   questions: [],
 }
 
 const base = {
-  to: "darren@example.com",
+  businessId: "b0000000-0000-0000-0000-00000000000a",
   definition: DEF,
   attemptId: "att-1",
   name: "Sam Athlete",
@@ -91,10 +120,20 @@ describe("sendQuizAlert", () => {
     )
   })
 
-  it("does not treat a missing recipient as a delivery", async () => {
-    // No reply_to configured is exactly the case that would otherwise be
-    // recorded as `sent` while nobody was told.
-    expect(await sendQuizAlert({ ...base, to: "" })).toEqual({ delivered: false })
-    expect(sendQuizAlertEmail).not.toHaveBeenCalled()
+  it("names the business and invents no recipient of its own", async () => {
+    // RETARGETED, not deleted. This used to pass `to: ""` and assert that a
+    // missing recipient was never recorded as a delivery. Since G30 this
+    // function does not choose a recipient at all -- `sendQuizAlertEmail`
+    // reads the tenant's own `reply_to` -- so the invariant moved with it, to
+    // "reports NOT delivered, and sends nothing, when the tenant has no
+    // reply_to" in __tests__/lib/email/lead-alerts.test.ts.
+    //
+    // What is left to pin here is the half that stayed: this function hands
+    // over WHOSE lead it is, and does not smuggle an address alongside it.
+    await sendQuizAlert(base)
+
+    const arg = sendQuizAlertEmail.mock.calls[0][0]
+    expect(arg.businessId).toBe("b0000000-0000-0000-0000-00000000000a")
+    expect(arg).not.toHaveProperty("to")
   })
 })

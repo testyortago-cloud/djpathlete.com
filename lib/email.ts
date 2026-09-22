@@ -20,6 +20,11 @@ import {
   sectionLabel,
 } from "@/lib/email/layout"
 
+// THE TENANT-AWARE LEAD MAIL, re-exported so every existing importer of
+// `@/lib/email` keeps working. It lives in its own file because that file is
+// swept for brand literals and this one cannot be: see lib/email/lead-alerts.ts.
+export { sendQuizAlertEmail } from "@/lib/email/lead-alerts"
+
 // Resend verifies `send.darrenjpaul.com` only — the apex `darrenjpaul.com` has
 // never been added to the account, and sending from it returns "domain is not
 // verified" and drops the message. The fallback therefore has to name the
@@ -1502,93 +1507,6 @@ export async function sendChatEscalationEmail({
   if (error) {
     console.error("Failed to send chat escalation email:", error)
     throw new Error(`Failed to send chat escalation email: ${error.message}`)
-  }
-
-  return { delivered: true }
-}
-
-/**
- * Tells the operator a Red or Orange quiz result just came in.
- *
- * IT REPORTS WHETHER IT DELIVERED, for the same reason
- * `sendChatEscalationEmail` above does: the caller writes that flag onto the
- * attempt, and the admin surface shows the honest state — an attempt marked
- * `sent` when nothing left the building is worse than one marked `failed`,
- * because nobody goes looking for it. The early key check below is kept for
- * the warning it names the attempt in; the wrapper at the top of this file
- * would otherwise report the missing key as an `error`, which this function
- * already turns into `{ delivered: false }` anyway.
- *
- * Every visitor-typed string goes through `escapeHtml`.
- */
-export async function sendQuizAlertEmail({
-  to,
-  name,
-  email,
-  phone,
-  score,
-  tierKey,
-  tierHeadline,
-  branchName,
-  profileName,
-  attemptId,
-}: {
-  to: string
-  name: string
-  email: string
-  phone?: string | null
-  score: number
-  tierKey: string
-  tierHeadline: string
-  branchName: string | null
-  profileName: string | null
-  attemptId: string
-}): Promise<{ delivered: boolean }> {
-  if (!process.env.RESEND_API_KEY) {
-    console.warn(`[email] RESEND_API_KEY not set — skipping quiz alert for attempt ${attemptId}`)
-    return { delivered: false }
-  }
-
-  const html = emailLayout(`
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="padding:48px 48px 52px;">
-
-          ${sectionLabel("Athlete Quiz")}
-
-          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
-            ${escapeHtml(name)} scored ${score} out of 100
-          </p>
-
-          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
-            ${escapeHtml(tierHeadline)}. Lower scores mean larger gaps, so this one is worth a conversation soon.
-          </p>
-
-          ${infoCard([
-            { label: "Name", value: escapeHtml(name) },
-            { label: "Email", value: escapeHtml(email) },
-            { label: "Mobile", value: phone ? escapeHtml(phone) : "not given" },
-            { label: "Result", value: `${escapeHtml(tierKey)} — ${score}/100` },
-            { label: "Archetype", value: branchName ? escapeHtml(branchName) : "not sorted" },
-            { label: "Profile", value: profileName ? escapeHtml(profileName) : "none" },
-            { label: "Attempt", value: escapeHtml(attemptId) },
-          ])}
-
-        </td>
-      </tr>
-    </table>
-  `)
-
-  const { error } = await resend.emails.send({
-    from: FROM_EMAIL,
-    to,
-    subject: `[Quiz] ${name} scored ${score}/100 — ${tierKey}`,
-    html,
-  })
-
-  if (error) {
-    console.error("Failed to send quiz alert email:", { message: error.message })
-    return { delivered: false }
   }
 
   return { delivered: true }
