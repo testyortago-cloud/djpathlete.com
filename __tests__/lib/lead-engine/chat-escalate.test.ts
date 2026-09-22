@@ -24,7 +24,6 @@ const h = vi.hoisted(() => ({
   getConversation: vi.fn(),
   listMessages: vi.fn(),
   markEscalated: vi.fn(),
-  getBusinessSettings: vi.fn(),
   sendChatEscalationEmail: vi.fn(),
   recordAudit: vi.fn(),
   inserts: [] as { table: string; row: Record<string, unknown> }[],
@@ -37,7 +36,8 @@ vi.mock("@/lib/db/chat", () => ({
   markEscalated: h.markEscalated,
 }))
 
-vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: h.getBusinessSettings }))
+// No `@/lib/db/businesses` mock any more: since G30 this module does not read
+// settings at all. The mailer does, and it is mocked wholesale below.
 vi.mock("@/lib/email", () => ({ sendChatEscalationEmail: h.sendChatEscalationEmail }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: h.recordAudit }))
 
@@ -127,7 +127,6 @@ beforeEach(() => {
   h.getConversation.mockResolvedValue(conversation())
   h.listMessages.mockResolvedValue(TRANSCRIPT)
   h.markEscalated.mockResolvedValue(undefined)
-  h.getBusinessSettings.mockResolvedValue(SETTINGS)
   h.sendChatEscalationEmail.mockResolvedValue({ delivered: true })
   h.recordAudit.mockResolvedValue(undefined)
   vi.spyOn(console, "error").mockImplementation(() => {})
@@ -140,7 +139,11 @@ describe("runEscalation", () => {
 
     expect(h.sendChatEscalationEmail).toHaveBeenCalledTimes(1)
     const arg = h.sendChatEscalationEmail.mock.calls[0][0]
-    expect(arg.to).toBe("coach@example.com")
+    // The TENANT is handed over, not an address. Which mailbox that resolves
+    // to is the mailer's question, pinned in
+    // __tests__/lib/email/lead-alerts.test.ts.
+    expect(arg.businessId).toBe("00000000-0000-0000-0000-000000000001")
+    expect(arg).not.toHaveProperty("to")
     expect(arg.conversationId).toBe("c1")
     expect(arg.summary).toBe("Asked about goalkeeper coaching")
     expect(arg.transcript.map((m: ChatMessage) => m.content)).toEqual([
@@ -205,21 +208,26 @@ describe("runEscalation", () => {
     expect(out).toMatchObject({ ok: true, notice: "failed" })
   })
 
-  it("still marks the conversation escalated when reply_to is blank, and sends nothing", async () => {
-    // The measured state of the dev clone. An empty string is a valid `to` as
-    // far as TypeScript is concerned and a hard provider error at send time,
-    // so it is caught here rather than thrown at Resend.
-    h.getBusinessSettings.mockResolvedValue({ ...SETTINGS, reply_to: "" })
+  it("still marks the conversation escalated when there is nobody to email", async () => {
+    // RETARGETED, not weakened. This used to blank `reply_to` on the settings
+    // row THIS FILE read; since G30 the mailer reads it, so the case arrives
+    // here as the mailer's own answer. The invariant is unchanged and is the
+    // reason the mailer returns a flag at all: an escalation with nobody to
+    // tell is still a recorded escalation, and it is NOT reported as sent.
+    h.sendChatEscalationEmail.mockResolvedValue({ delivered: false })
 
     const out = await runEscalation({ conversationId: "c1", summary: "s" })
 
     expect(h.markEscalated).toHaveBeenCalledWith("c1")
-    expect(h.sendChatEscalationEmail).not.toHaveBeenCalled()
     expect(out).toMatchObject({ ok: true, notice: "not_configured" })
   })
 
   it("still marks the conversation escalated when business_settings cannot be read", async () => {
-    h.getBusinessSettings.mockRejectedValue(new Error("supabase down"))
+    // The OTHER half of the same retarget, and the reason the two answers had
+    // to stay distinguishable through the move: a read that failed is an
+    // outage, not a tenant with no address, and it must not be filed as
+    // `not_configured` where nobody would look for it.
+    h.sendChatEscalationEmail.mockRejectedValue(new Error("supabase down"))
 
     const out = await runEscalation({ conversationId: "c1", summary: "s" })
 

@@ -250,9 +250,11 @@ export async function POST(request: Request) {
   }
 
   // 3-5. EVERYTHING BELOW IS NON-FATAL.
-  await handoff({ body, definition, result, answers, ip, request, businessId, funnelLinkProblem }).catch((error: unknown) => {
-    logFailure("handoff", error, { attemptId: body.attemptId, quizId: body.quizId })
-  })
+  await handoff({ body, definition, result, answers, ip, request, businessId, funnelLinkProblem }).catch(
+    (error: unknown) => {
+      logFailure("handoff", error, { attemptId: body.attemptId, quizId: body.quizId })
+    },
+  )
 
   return NextResponse.json(presentResult(definition, result))
 }
@@ -443,9 +445,13 @@ async function handoff(input: {
   // 5b. THE OPERATOR ALERT, and the honest record of whether it went.
   if (shouldAlert(result.tierKey)) {
     try {
-      const settings = await getBusinessSettings(businessId)
       const { delivered } = await sendQuizAlert({
-        to: settings.reply_to ?? "",
+        // The tenant, not an address. Since G30 the mailer reads this
+        // business's own `reply_to`, sender identity and wordmark for itself,
+        // so a settings read here would only be a second lookup of the same
+        // row -- and a second place that could disagree about which column
+        // addresses the coach.
+        businessId,
         definition,
         attemptId: body.attemptId,
         name: body.name,

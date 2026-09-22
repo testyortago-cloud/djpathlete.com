@@ -55,6 +55,35 @@ const ROOTS = [
   "components/public/AskPanel.tsx",
   "components/public/AskCards.tsx",
   "supabase/migrations/00227_lead_engine_chat.sql",
+  // G30 -- the five transactional lead emails, which until 2026-09-23 sent
+  // from this platform's own address in this platform's wordmark no matter
+  // whose lead they were about. They are swept for the same reason the
+  // sequence engine is, and they had to MOVE OUT of lib/email.ts to be
+  // sweepable at all: that file is ~2,700 lines of this platform's own
+  // athlete-facing mail (password resets, verification, the newsletter),
+  // which is correctly branded and can never be pointed at from here.
+  //
+  // `business-identity.ts` is listed with them because it holds the rule
+  // deciding whether a tenant may send and which column addresses their
+  // coach. A brand word reaching THAT file would be a default applied to
+  // every tenant at once.
+  //
+  // WHAT THIS SWEEP STILL CANNOT SEE, so that nobody reads a green run as
+  // more than it is: it matches operator NAMES, so a platform-owned URL
+  // passes it untouched. There is one left, named in lead-alerts.ts --
+  // `PLATFORM_BOOKING_LINK`, the booking widget the inquiry auto-reply
+  // offers every applicant. It is spelled out in the swept file, rather
+  // than imported from outside it, precisely so a reader meets it.
+  //
+  // lib/email/layout.ts is deliberately NOT swept: it holds the platform's
+  // own chrome as the fallback for the ~35 app emails that still want it.
+  // What keeps the alerts off that fallback is a type, not a regex --
+  // `tenantEmailLayout` cannot be called without a settings row.
+  "lib/email/lead-alerts.ts",
+  "lib/email/business-identity.ts",
+  // The quiz alert's caller. In the sweep because it decides what the
+  // operator is told and used to choose the recipient itself.
+  "lib/quizzes/alert.ts",
 ]
 
 function filesUnder(p: string): string[] {

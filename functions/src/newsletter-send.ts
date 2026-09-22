@@ -62,7 +62,9 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
       return
     }
 
-    const fromEmail = process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@send.darrenjpaul.com>"
+    // mail.darrenjpaul.com is the account's one verified domain since
+    // 2026-09-20 -- see getFromEmail() in ./lib/notify-job-done.
+    const fromEmail = process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@mail.darrenjpaul.com>"
     let sent = 0
     let failed = 0
 

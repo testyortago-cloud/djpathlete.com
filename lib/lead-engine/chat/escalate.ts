@@ -2,7 +2,8 @@
 // tools, and the only one that reaches outside the chat tables.
 //
 // NO BRAND NAMES ANYWHERE IN THIS DIRECTORY, comments included. Business
-// identity is read from `getBusinessSettings()` and passed as a parameter.
+// identity is resolved from the tenant's own `business_settings` row, by the
+// mailer this file hands a `businessId` to.
 // `__tests__/lib/lead-engine/no-brand-literals.test.ts` enforces it.
 //
 // WHY THE ORDER IS THE DESIGN
@@ -51,9 +52,12 @@
 // "we emailed a person" and "there was nobody to email" is exactly the
 // difference between keeping that promise and making it up.
 //
+// Since G30 that check lives in the mailer rather than here, because the
+// mailer is what reads the row. It still reaches this file as its own answer:
+// `delivered: false` for nobody to tell, a THROW for a read that failed.
+//
 // Spec: docs/superpowers/specs/2026-08-23-lead-engine-stage3-chat-design.md §5.3
 
-import { getBusinessSettings } from "@/lib/db/businesses"
 import { getConversation, listMessages, markEscalated } from "@/lib/db/chat"
 import { sendChatEscalationEmail } from "@/lib/email"
 import { recordAudit } from "@/lib/audit/record"
@@ -183,29 +187,27 @@ export async function runEscalation(input: RunEscalationInput): Promise<Escalati
 
   let notice: EscalationNotice = "failed"
   try {
-    const settings = await getBusinessSettings(businessId)
-    const replyTo = (settings.reply_to ?? "").trim()
-
-    if (replyTo.length === 0) {
-      // An empty string satisfies `to: string` and is a hard provider error at
-      // send time. Naming it here keeps the reason in the outcome instead of
-      // in a stack trace.
-      console.warn(
-        `[chat-escalate] conversation ${conversationId} escalated with no reply_to configured — nobody was emailed`,
-      )
-      notice = "not_configured"
-    } else {
-      const transcript = await listMessages(conversationId)
-      const { delivered } = await sendChatEscalationEmail({
-        to: replyTo,
-        conversationId,
-        summary,
-        transcript,
-        landingPath: conversation.landing_path,
-        contactId,
-      })
-      notice = delivered ? "sent" : "not_configured"
-    }
+    const transcript = await listMessages(conversationId)
+    // THE TENANT, NOT AN ADDRESS. Until G30 this function read
+    // `business_settings` itself, checked `reply_to` and handed the result in
+    // as `to`. The mailer now does all three, so there is ONE place that
+    // decides which column addresses the operator — this function asking the
+    // same question a second time is exactly how the two would come to
+    // disagree.
+    //
+    // The two answers it can give still arrive here distinct, which is what
+    // this block cares about: a tenant with no `reply_to` comes back
+    // `delivered: false` (nobody to tell — `not_configured`), while a settings
+    // read that fails THROWS into the catch below (`failed`).
+    const { delivered } = await sendChatEscalationEmail({
+      businessId,
+      conversationId,
+      summary,
+      transcript,
+      landingPath: conversation.landing_path,
+      contactId,
+    })
+    notice = delivered ? "sent" : "not_configured"
   } catch (err) {
     // Never log the raw thrown value: a provider error can echo the recipient
     // address back, and a transcript read failure can carry visitor text.

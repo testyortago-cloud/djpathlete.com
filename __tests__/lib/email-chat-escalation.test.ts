@@ -8,9 +8,12 @@
 //     inbox, so it is escaped. Nothing else in this flow escapes it.
 //  2. The function reports whether it actually delivered, and the caller uses
 //     that flag to decide what the visitor is promised. Its own RESEND_API_KEY
-//     check is what produces `{ delivered: false }`: the wrapper in
-//     lib/email.ts reports a missing key as an `error`, which this sender's
-//     `if (error)` arm would turn into a THROW, not into the flag.
+//     check is what produces `{ delivered: false }`: the shared wrapper
+//     reports a missing key as an `error`, which this sender's `if (error)`
+//     arm would turn into a THROW, not into the flag.
+//
+// WHOSE identity it sends under is pinned next door, in
+// __tests__/lib/email/lead-alerts.test.ts. This file is about the body.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const sendMock = vi.fn()
@@ -21,10 +24,35 @@ vi.mock("resend", () => ({
   },
 }))
 
+const getBusinessSettings = vi.fn()
+vi.mock("@/lib/db/businesses", () => ({
+  getBusinessSettings: (...a: unknown[]) => getBusinessSettings(...a),
+}))
+
 import { sendChatEscalationEmail } from "@/lib/email"
 
+/** A tenant whose `reply_to` is the mailbox this alert must reach. */
+const SETTINGS = {
+  business_id: "b0000000-0000-0000-0000-00000000000a",
+  display_name: "Northfield Strength",
+  sender_name: "Coach Priya",
+  sender_email: "hello@northfieldstrength.test",
+  reply_to: "coach@example.com",
+  logo_url: null,
+  timezone: "Europe/London",
+  quiet_hours_start: 21,
+  quiet_hours_end: 8,
+  daily_message_cap: 50,
+  postal_address: "4 Mill Lane, Northfield, NF1 2AB",
+  sms_help_text: "",
+  sms_messaging_service_sid: "",
+  sms_sender_phone: "",
+  brand_color: null,
+  accent_color: null,
+}
+
 const base = {
-  to: "coach@example.com",
+  businessId: "b0000000-0000-0000-0000-00000000000a",
   conversationId: "11111111-1111-1111-1111-111111111111",
   summary: "Wants to know if there is a goalkeeper track",
   landingPath: "/programs",
@@ -38,12 +66,13 @@ beforeEach(() => {
   vi.resetAllMocks()
   process.env.RESEND_API_KEY = "re_test"
   sendMock.mockResolvedValue({ data: { id: "e_1" }, error: null })
+  getBusinessSettings.mockResolvedValue(SETTINGS)
   vi.spyOn(console, "error").mockImplementation(() => {})
   vi.spyOn(console, "warn").mockImplementation(() => {})
 })
 
 describe("sendChatEscalationEmail", () => {
-  it("sends to the address it was handed and nowhere else", async () => {
+  it("sends to the tenant's own reply_to and nowhere else", async () => {
     const out = await sendChatEscalationEmail(base)
 
     expect(out).toEqual({ delivered: true })

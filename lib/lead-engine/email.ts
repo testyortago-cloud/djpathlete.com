@@ -18,6 +18,7 @@ import type { EnrolmentMetadata } from "@/lib/lead-engine/enrolment-metadata"
 import { substituteMergeFields } from "@/lib/lead-engine/merge-fields"
 import { resolvePalette } from "@/lib/funnels/sections/palettes"
 import type { BusinessSettings } from "@/lib/db/businesses"
+import { businessFrom } from "@/lib/email/business-identity"
 
 const _resendClient = new Resend(process.env.RESEND_API_KEY)
 
@@ -116,46 +117,21 @@ const SMS_CONSENT_TOKEN = /\{\{\s*sms_consent_url\s*\}\}/gi
 const SMS_CONSENT_LINK_LABEL = "Yes, you can text me"
 
 /**
- * Thrown by `assertSendable` when `business_settings` has not been filled in.
+ * BOTH MOVED to lib/email/business-identity.ts and re-exported here.
  *
- * Carries `missing` so a caller can name the fields rather than restate the
- * message. The sequence tick's route handler catches this specifically and
- * answers 200, not 500: the caller is a scheduler, and a 500 only buys an
- * infinite retry of a misconfiguration no retry can fix.
+ * They left because a SECOND mail path now needs them: the transactional lead
+ * alerts in lib/email/lead-alerts.ts send from the same tenant identity, and
+ * they cannot import this file -- it builds its Resend client at module scope,
+ * so importing it from a route would turn a missing API key into an
+ * import-time crash. Copying the rule into that file instead would have given
+ * this codebase two sendability gates free to drift apart, which is the one
+ * outcome worth avoiding here.
+ *
+ * Re-exported rather than relocated at every call site so that every existing
+ * importer -- the sequence-tick route, the tick runner and their suites -- is
+ * untouched by the move.
  */
-export class BusinessNotConfiguredError extends Error {
-  readonly missing: string[]
-
-  constructor(missing: string[]) {
-    super(`business_settings not configured: ${missing.join(", ")}`)
-    this.name = "BusinessNotConfiguredError"
-    this.missing = missing
-  }
-}
-
-/**
- * Preflight for the whole send path. Migration 00212 seeds every identity
- * column as `NOT NULL DEFAULT ''` and nothing in this codebase calls
- * `updateBusinessSettings`, so an untouched install would send
- * `from: " <>"` with an empty postal address — Resend rejects it, and every
- * run that reached the provider would be marked permanently `failed` with no
- * re-activation path.
- *
- * Called BEFORE any run is claimed (see `runSequenceTick`) precisely so that
- * an unconfigured business claims nothing and fails nothing.
- *
- * The three fields checked here are the ones whose emptiness is fatal or
- * unlawful: `sender_email` (Resend rejects an empty From address),
- * `display_name` (the email would identify nobody) and `postal_address`
- * (CAN-SPAM requires a physical address in every commercial message).
- */
-export function assertSendable(settings: BusinessSettings): void {
-  const missing: string[] = []
-  if (!settings.sender_email?.trim()) missing.push("sender_email")
-  if (!settings.display_name?.trim()) missing.push("display_name")
-  if (!settings.postal_address?.trim()) missing.push("postal_address")
-  if (missing.length > 0) throw new BusinessNotConfiguredError(missing)
-}
+export { assertSendable, BusinessNotConfiguredError } from "@/lib/email/business-identity"
 
 /**
  * A provider rejection that KEEPS ITS SHAPE.
@@ -506,7 +482,7 @@ export async function sendRenderedSequenceEmail(args: {
   const includeUnsubscribeFooter = args.includeUnsubscribeFooter !== false
 
   const { data, error } = await resend.emails.send({
-    from: `${settings.sender_name} <${settings.sender_email}>`,
+    from: businessFrom(settings),
     to: args.to,
     replyTo: settings.reply_to,
     subject: rendered.subject,
