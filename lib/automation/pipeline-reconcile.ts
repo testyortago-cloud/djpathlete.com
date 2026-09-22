@@ -272,14 +272,20 @@ export async function runPipelineReconcile(): Promise<PipelineReconcileSummary> 
  *    every single pass. Boards are now resolved lazily and cached per pass, so
  *    that guard is gone and there is nothing left to skip.
  *
- * `cron_pipeline_reconcile_enabled` WAS TURNED ON by owner ruling 2026-09-21,
- * after the residual check below was re-run against production and measured
- * ZERO. Before that it was off by ABSENCE — there was no row at all, and the
- * code's `defaultEnabled: false` was the only thing holding it.
+ * `cron_pipeline_reconcile_enabled` WAS RULED ON by the owner 2026-09-21, after
+ * the residual check below was re-run against production and measured ZERO.
+ * THE SWITCH HAS NOT BEEN THROWN. Measured again 2026-09-23: `system_settings`
+ * still has no row for this key at all, so the cron is off by ABSENCE and the
+ * code's `defaultEnabled: false` is the only thing holding it.
  *
- * If this is ever turned back off, re-run that residual check before turning
- * it on again rather than trusting this paragraph: the count is a fact about
- * one moment, and the window it measures moves.
+ * A RULING IS NOT A ROW, and this paragraph said it was. The distinction is the
+ * whole reason this comment exists: a reader who believes the cron is running
+ * will debug a board that is not being repaired by looking at this file, when
+ * the answer is that nothing has ever called it.
+ *
+ * When it IS turned on, re-run the residual check first rather than trusting
+ * this paragraph: the count is a fact about one moment, and the window it
+ * measures moves.
  *
  * ONE RESIDUAL, AND IT IS BOUNDED. `booking.service_type ?? null` cannot tell
  * "never stamped" from "coaching", and migration 00273 shipped with no
@@ -453,4 +459,3 @@ async function reconcileForBusiness(
 
   return { createdFromBookings, wonFromPayments, scanned: bookings.length + payments.length, failed }
 }
-
