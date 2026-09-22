@@ -16,7 +16,19 @@ import { cn } from "@/lib/utils"
 
 export type BoardSwitcherBoard = { key: string; name: string }
 
-export function BoardSwitcher({ boards, activeKey }: { boards: BoardSwitcherBoard[]; activeKey: string }) {
+export function BoardSwitcher({
+  boards,
+  activeKey,
+  // G29 Task 7: the settings screen shows the SAME pills over the same
+  // boards, so it reuses this rather than growing a second selector that
+  // could disagree about which board is active. Defaulted, so the board
+  // page's own call is untouched.
+  basePath = "/admin/pipeline",
+}: {
+  boards: BoardSwitcherBoard[]
+  activeKey: string
+  basePath?: string
+}) {
   return (
     <nav
       aria-label="Pipeline boards"
@@ -30,7 +42,7 @@ export function BoardSwitcher({ boards, activeKey }: { boards: BoardSwitcherBoar
             // `pipelines.key` is a slug today, so this encodes to itself — but
             // the column has no format constraint, and a key with a `&` in it
             // would otherwise truncate the query string.
-            href={`/admin/pipeline?board=${encodeURIComponent(board.key)}`}
+            href={`${basePath}?board=${encodeURIComponent(board.key)}`}
             // The name the coach configured (`pipelines.name`), never the key.
             // A board renamed to "Assessments & Screens" must say so.
             aria-current={isActive ? "page" : undefined}

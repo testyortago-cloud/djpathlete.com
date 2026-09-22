@@ -8,6 +8,26 @@
 
 export type StageKind = "open" | "won" | "lost"
 
+/**
+ * The two length caps a stage list is held to. ONE home, two readers: the
+ * PUT route's Zod schema (app/api/admin/pipeline/boards/[id]/stages/route.ts)
+ * and the editor screen (components/admin/pipeline-settings.tsx).
+ *
+ * They live here rather than in the route because the editor cannot import a
+ * route module (it would drag the server-only half of the app into the client
+ * bundle), and a second copy of the number in the editor is exactly how a
+ * coach ends up typing a name the box accepted and the route refused. The
+ * refusal MESSAGES are built from these constants on both sides too, so they
+ * cannot drift apart either.
+ *
+ * Deliberately NOT enforced by `validateStageList`: these are transport
+ * limits, not board invariants, and the six things that function checks are
+ * the things that can brick a board. A 201-character stage name is merely
+ * too long.
+ */
+export const MAX_STAGE_NAME_LENGTH = 200
+export const MAX_STAGE_KEY_LENGTH = 100
+
 export type StageDraft = {
   /** null means a stage that does not exist yet. */
   id: string | null

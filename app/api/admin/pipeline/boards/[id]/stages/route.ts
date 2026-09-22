@@ -43,14 +43,17 @@ import { withAudit } from "@/lib/audit/with-audit"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import { PipelineBoardNotFoundError, readStagesForEdit, savePipelineStages } from "@/lib/db/pipeline"
+// The two length caps live in the PURE module, not here: the editor screen
+// (components/admin/pipeline-settings.tsx) is a client component and cannot
+// import this route, so a copy of the numbers over there would be a second
+// home for them — and a box that accepts what this route refuses is a 400 a
+// coach cannot act on. Same numbers, same messages, one definition.
+import { MAX_STAGE_KEY_LENGTH, MAX_STAGE_NAME_LENGTH } from "@/lib/lead-engine/stage-list"
 // Type-only, so the closed audit taxonomy is checked at compile time — a
 // slug that is not a row in `AUDIT_ACTIONS` stops the build instead of
 // writing a row the log viewer cannot name. Same convention as
 // app/api/ask/route.ts and lib/lead-engine/chat/escalate.ts.
 import type { AuditAction } from "@/lib/audit/actions"
-
-const MAX_STAGE_NAME_LENGTH = 200
-const MAX_STAGE_KEY_LENGTH = 100
 
 const STAGES_SAVED_AUDIT_ACTION: AuditAction = "pipeline.stages_saved"
 

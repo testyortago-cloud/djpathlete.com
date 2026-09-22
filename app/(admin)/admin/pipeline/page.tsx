@@ -20,6 +20,8 @@ import { DEFAULT_PIPELINE_KEY } from "@/lib/lead-engine/pipeline-move"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { possessiveName } from "@/lib/lead-engine/business-copy"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
+import Link from "next/link"
+import { Settings } from "lucide-react"
 import { PipelineBoard } from "@/components/admin/pipeline-board"
 import { BoardSwitcher } from "@/components/admin/pipeline/BoardSwitcher"
 
@@ -85,12 +87,25 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-primary">Pipeline</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {name.leading} {activeBoardName} pipeline. Drag a card to move it between stages — dropping it on Won or Lost
-          closes the deal; dropping a closed card back on an open stage reopens it.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        {/* Capped, so the settings link keeps its place on the same line
+            instead of wrapping under a full-width paragraph. */}
+        <div className="max-w-3xl">
+          <h1 className="text-2xl font-semibold text-primary">Pipeline</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {name.leading} {activeBoardName} pipeline. Drag a card to move it between stages — dropping it on Won or
+            Lost closes the deal; dropping a closed card back on an open stage reopens it.
+          </p>
+        </div>
+        {/* G29 Task 7. Carries the board being looked at, so the editor opens
+            on the same one rather than on whichever the fallback picks. */}
+        <Link
+          href={`/admin/pipeline/settings?board=${encodeURIComponent(activeKey)}`}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface/50 hover:text-foreground"
+        >
+          <Settings className="size-4" />
+          Edit stages
+        </Link>
       </div>
       {/* One board is not a choice. Every tenant create_business() has made has
           exactly one, and a lone pill would be chrome that does nothing. */}
