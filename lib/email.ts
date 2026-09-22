@@ -30,11 +30,19 @@ export {
 } from "@/lib/email/lead-alerts"
 export type { NewFunnelLeadEmailInput } from "@/lib/email/lead-alerts"
 
-// Resend verifies `send.darrenjpaul.com` only — the apex `darrenjpaul.com` has
-// never been added to the account, and sending from it returns "domain is not
-// verified" and drops the message. The fallback therefore has to name the
-// subdomain: an unset RESEND_FROM_EMAIL must not be able to reintroduce the
-// 2026-08-31 fault that killed 73 sequence runs.
+// The apex `darrenjpaul.com` has never been added to the Resend account, and
+// sending from it returns "domain is not verified" and drops the message. The
+// fallback therefore has to name a verified subdomain: an unset
+// RESEND_FROM_EMAIL must not be able to reintroduce the 2026-08-31 fault that
+// killed 73 sequence runs.
+//
+// CORRECTED 2026-09-23: this used to say Resend verifies `send.` ONLY, and
+// that is not true. `mail.darrenjpaul.com` is verified too and is what
+// production actually sends the tenant-branded mail from --
+// `business_settings.sender_email` names it, and the sequence engine has 69
+// delivered messages against it, the most recent the day before this was
+// written. Which subdomain a given path uses is therefore a choice, not a
+// constraint; only the apex is ruled out.
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@send.darrenjpaul.com>"
 
 /** CC all admin/business emails to Darren's main account */
