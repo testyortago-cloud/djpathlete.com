@@ -74,8 +74,19 @@ const SEARCH_DEBOUNCE_MS = 200
  */
 const SEARCH_LIMIT = 20
 
-/** The route's own cap (`MAX_NAME_LENGTH`), so a box cannot accept what the server refuses. */
-const MAX_NAME_LENGTH = 200
+/**
+ * The route's own cap, so a box cannot accept what the server refuses.
+ *
+ * EXPORTED SO THE ROUTE'S OWN SUITE CAN PIN IT. This and
+ * `NEEDS_A_WAY_TO_REACH_THEM` below are the two places this file restates
+ * something `app/api/admin/pipeline/opportunities/route.ts` decides, and the
+ * family has ALREADY drifted once: `lib/db/pipeline.ts`'s own refusal for the
+ * same condition says a third, different sentence ("…before filing them."), so
+ * "they match today" is not an argument. `__tests__/app/api/admin/pipeline/
+ * opportunities-route.test.ts` imports both and drives the ROUTE, so the pin
+ * fails on the side that actually refuses.
+ */
+export const MAX_NAME_LENGTH = 200
 
 /**
  * THE SAME SENTENCE the create route answers with when a new person has
@@ -85,7 +96,7 @@ const MAX_NAME_LENGTH = 200
  * is told without a round trip — the route remains the guard, and a coach who
  * reaches it some other way reads the identical words.
  */
-const NEEDS_A_WAY_TO_REACH_THEM = "Add an email or phone number for this person."
+export const NEEDS_A_WAY_TO_REACH_THEM = "Add an email or phone number for this person."
 
 const PersonFormSchema = z
   .object({
@@ -281,6 +292,12 @@ function NewCardForm({
 
   function chooseContact(contact: ContactMatch) {
     setSelected(contact)
+    // Back to empty, so the next thing typed is plainly a fresh search rather
+    // than an edit of the one that found this person. The result list keeps
+    // rendering BELOW the chosen card (see `quiet` on SearchResults), so the
+    // box never accepts keystrokes whose answer has nowhere to appear —
+    // silence that reads as broken.
+    setSearch("")
     // The other branch closes. `person` alongside `contactId` is dropped by the
     // route without a word, so it must never be possible to fill both in.
     setAddingNewPerson(false)
@@ -340,15 +357,36 @@ function NewCardForm({
     return file({ pipelineId, contactId: selected.id }, contactLabel(selected))
   }
 
+  // A SLOT THAT IS NOT ON SCREEN IS NOT A SLOT. Every `person.*` box lives
+  // inside the new-person block, so a refusal keyed to one of them arriving
+  // while that block is closed — or after "Never mind" — would be routed to a
+  // box that is not rendered and appear NOWHERE AT ALL. Unreachable today (the
+  // route cannot answer `person.*` for a contactId submission), which is
+  // exactly why it needs pinning rather than trusting: the day a `person.*`
+  // refusal can reach a closed block, the symptom is silence.
   const slot = refusal?.field ? FIELD_SLOTS[refusal.field] : undefined
-  /** The refusal the route did not attribute to a box on this screen. */
-  const dialogRefusal = refusal && !slot ? refusal : null
-  const refusalFor = (field: "name" | "email" | "phone") => (slot === field ? refusal!.message : null)
+  const slotIsOnScreen = slot !== undefined && addingNewPerson
+  /** The refusal with nowhere better to go: unattributed, or attributed to a box that is not showing. */
+  const dialogRefusal = refusal && !slotIsOnScreen ? refusal : null
+  const refusalFor = (field: "name" | "email" | "phone") => (slotIsOnScreen && slot === field ? refusal!.message : null)
 
   const nothingChosen = !addingNewPerson && !selected
 
   return (
     <form
+      data-testid="new-card-form"
+      // EVERY REFUSAL ON THIS SCREEN IS OURS. Without this the browser's own
+      // constraint validation fires first on the `type="email"` box and blocks
+      // the submit with a chrome bubble written in nobody's voice — which is
+      // precisely the failure the schema comment above rejects, and it refuses
+      // addresses the ROUTE WOULD HAVE ACCEPTED (it checks no format at all).
+      // jsdom does not run interactive validation, so no behavioural test can
+      // see this; the attribute is asserted directly instead.
+      //
+      // Form-level rather than dropping `type="email"`: the statement belongs
+      // to the whole form, so a field added later cannot quietly bring the
+      // bubble back, and the email box keeps the @-key keyboard on a phone.
+      noValidate
       onSubmit={(e) => {
         if (addingNewPerson) {
           // handleSubmit preventDefaults for us and only calls through once the
@@ -387,7 +425,7 @@ function NewCardForm({
           />
         </div>
 
-        {selected ? (
+        {selected && (
           <div
             data-testid="chosen-contact"
             className="flex items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/[0.04] px-3 py-2"
@@ -400,16 +438,22 @@ function NewCardForm({
               Choose someone else
             </Button>
           </div>
-        ) : (
-          <SearchResults
-            results={results}
-            searching={searching}
-            error={searchError}
-            term={searchedTerm}
-            typed={search}
-            onChoose={chooseContact}
-          />
         )}
+
+        {/* ALWAYS RENDERED, chosen contact or not. It used to be the `else` arm
+            of the card above, which left the search box live and firing
+            requests whose results had nowhere to go the moment somebody was
+            picked. `quiet` only drops the "type two letters" hint, which has
+            already done its job by then. */}
+        <SearchResults
+          results={results}
+          searching={searching}
+          error={searchError}
+          term={searchedTerm}
+          typed={search}
+          quiet={Boolean(selected)}
+          onChoose={chooseContact}
+        />
 
         {addingNewPerson ? (
           <div data-testid="new-person-fields" className="space-y-3 rounded-lg border border-border bg-surface/40 p-3">
@@ -475,12 +519,25 @@ function NewCardForm({
   )
 }
 
+/**
+ * Whatever the search has to say right now, and the rows it found.
+ *
+ * SAID OUT LOUD, NOT ONLY DRAWN. "Searching…", "nobody matched" and the ARRIVAL
+ * of results were announced to nobody: the rows are buttons (which is what
+ * makes the picker keyboard-operable and stays), but a list of buttons quietly
+ * replacing a sentence is not a change a screen reader reports. One
+ * `role="status"` line carries all three, and for the found case it is
+ * `sr-only` — the count belongs in the ear, not on a screen that is already
+ * showing the rows. Deliberately NOT `role="status"` on the whole region: that
+ * role is atomic, so twenty rows would be read out on every keystroke.
+ */
 function SearchResults({
   results,
   searching,
   error,
   term,
   typed,
+  quiet,
   onChoose,
 }: {
   results: ContactMatch[]
@@ -488,6 +545,8 @@ function SearchResults({
   error: string | null
   term: string
   typed: string
+  /** Somebody is already chosen, so the "type two letters" prompt has done its job. */
+  quiet: boolean
   onChoose: (contact: ContactMatch) => void
 }) {
   if (error) {
@@ -498,37 +557,53 @@ function SearchResults({
     )
   }
   if (typed.trim().length < MIN_SEARCH_LENGTH) {
-    return <p className="text-xs text-muted-foreground">Type at least two letters to look someone up.</p>
+    if (quiet) return null
+    return (
+      <p role="status" className="text-xs text-muted-foreground">
+        Type at least two letters to look someone up.
+      </p>
+    )
   }
   if (searching) {
-    return <p className="text-xs text-muted-foreground">Searching…</p>
+    return (
+      <p role="status" className="text-xs text-muted-foreground">
+        Searching…
+      </p>
+    )
   }
   if (results.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">Nobody matched &quot;{term}&quot;. Add them as someone new below.</p>
+      <p role="status" className="text-sm text-muted-foreground">
+        Nobody matched &quot;{term}&quot;. Add them as someone new below.
+      </p>
     )
   }
 
   return (
-    // ITS OWN SCROLL BOX. components/ui/dialog.tsx caps no height, so twenty
-    // matches would otherwise run off the bottom of the screen.
-    <div
-      data-testid="contact-results"
-      className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-1"
-    >
-      {results.map((contact) => (
-        <button
-          key={contact.id}
-          type="button"
-          data-testid={`contact-result-${contact.id}`}
-          onClick={() => onChoose(contact)}
-          className="block w-full rounded-md px-2.5 py-2 text-left transition-colors hover:bg-surface/60"
-        >
-          <span className="block truncate text-sm font-medium text-foreground">{contactLabel(contact)}</span>
-          <span className="block truncate text-xs text-muted-foreground">{contactDetail(contact)}</span>
-        </button>
-      ))}
-    </div>
+    <>
+      <p role="status" className="sr-only">
+        {results.length === 1 ? "1 person matched." : `${results.length} people matched.`}
+      </p>
+      {/* ITS OWN SCROLL BOX. components/ui/dialog.tsx caps no height, so twenty
+          matches would otherwise run off the bottom of the screen. */}
+      <div
+        data-testid="contact-results"
+        className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-1"
+      >
+        {results.map((contact) => (
+          <button
+            key={contact.id}
+            type="button"
+            data-testid={`contact-result-${contact.id}`}
+            onClick={() => onChoose(contact)}
+            className="block w-full rounded-md px-2.5 py-2 text-left transition-colors hover:bg-surface/60"
+          >
+            <span className="block truncate text-sm font-medium text-foreground">{contactLabel(contact)}</span>
+            <span className="block truncate text-xs text-muted-foreground">{contactDetail(contact)}</span>
+          </button>
+        ))}
+      </div>
+    </>
   )
 }
 

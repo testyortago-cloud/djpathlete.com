@@ -174,11 +174,22 @@ describe("GET /api/admin/contacts", () => {
   })
 
   it("answers 500 without leaking the database's own words when the read fails", async () => {
+    // Silenced, not merely tolerated: the route logs the real fault on purpose
+    // (that is where the PostgREST message belongs), and letting it print here
+    // puts a stack trace in an otherwise pristine run, where the next person
+    // reads it as a failure. Asserted rather than just muted, so the log the
+    // operator depends on cannot be deleted without this test noticing.
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {})
     listContactsMock.mockRejectedValue(new Error('listContacts: column "phone" does not exist'))
     const res = await GET(req("?search=dana"))
     expect(res.status).toBe(500)
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe("Could not search your contacts right now.")
     expect(body.error).not.toContain("does not exist")
+    // The reason did not vanish — it went to the log, where an operator can
+    // read it and a coach cannot.
+    expect(logged).toHaveBeenCalledTimes(1)
+    expect(String(logged.mock.calls[0][1])).toContain("does not exist")
+    logged.mockRestore()
   })
 })

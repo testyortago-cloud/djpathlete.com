@@ -232,6 +232,18 @@ vi.mock("@/lib/supabase", () => ({
 
 import { POST } from "@/app/api/admin/pipeline/opportunities/route"
 import { CARD_FILED_TIMELINE_KIND, CONTACT_ACTIVITY_KINDS } from "@/lib/lead-engine/pipeline-move"
+// G29 Task 8, fix round 1. The dialog restates two of THIS route's decisions —
+// the either/or sentence and the name cap — and nothing held the pair
+// together. This is not hypothetical drift: `lib/db/pipeline.ts`'s refusal for
+// the identical condition already says a THIRD, different sentence ("…before
+// filing them."), so "they match today" proves nothing about tomorrow.
+//
+// Pinned from THIS side, the side that actually refuses, and by DRIVING the
+// route rather than reading its source — a source grep would pass on a
+// sentence buried in a comment. The import is of two plain constants; the
+// component is a "use client" module but has no import-time DOM access, so a
+// node-env suite loads it fine.
+import { MAX_NAME_LENGTH, NEEDS_A_WAY_TO_REACH_THEM } from "@/components/admin/new-card-dialog"
 
 const STAFF_SESSION = { user: { id: "staff-1", role: "staff", permissions: {} } }
 const COACH_SESSION = { user: { id: "coach-1", role: "staff", permissions: { contacts: true } } }
@@ -380,6 +392,48 @@ describe("POST /api/admin/pipeline/opportunities", () => {
     const body = await res.json()
     expect(body.error).toMatch(/email or phone/i)
     expect(state.contacts).toHaveLength(0)
+  })
+
+  it("refuses a person with no email and no phone in the EXACT words the dialog shows", async () => {
+    // The pair, pinned. The loose `/email or phone/i` above would survive the
+    // route rewording to lib/db/pipeline.ts's variant, which the dialog does
+    // NOT say — and a coach would then read one sentence in the browser and a
+    // different one when the browser's own check was bypassed.
+    const res = await POST(
+      requestFor({ pipelineId: BOARD_ID, person: { name: "No Contact Info" } }) as never,
+      NO_PARAMS,
+    )
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe(NEEDS_A_WAY_TO_REACH_THEM)
+  })
+
+  it("refuses a name one character past the cap the dialog enforces, and accepts one exactly on it", async () => {
+    // Boundary AND message, from the imported constant rather than a retyped
+    // 200 — a cap pinned only by the number it happens to have is a cap that
+    // can drift on one side and still read as agreement.
+    const tooLong = await POST(
+      requestFor({
+        pipelineId: BOARD_ID,
+        person: { name: "x".repeat(MAX_NAME_LENGTH + 1), email: "over@example.com" },
+      }) as never,
+      NO_PARAMS,
+    )
+    expect(tooLong.status).toBe(400)
+    const body = await tooLong.json()
+    expect(body.error).toBe(`Name must be ${MAX_NAME_LENGTH} characters or fewer.`)
+    expect(body.field).toBe("person.name")
+    expect(state.contacts).toHaveLength(0)
+
+    // The presence control: without it, a route that refused EVERY name would
+    // pass the assertion above.
+    const onTheCap = await POST(
+      requestFor({
+        pipelineId: BOARD_ID,
+        person: { name: "y".repeat(MAX_NAME_LENGTH), email: "exact@example.com" },
+      }) as never,
+      NO_PARAMS,
+    )
+    expect(onTheCap.status).toBe(200)
   })
 
   it("400s naming the stage they're already in, for a duplicate open card", async () => {

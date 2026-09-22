@@ -475,6 +475,122 @@ describe("<NewCardDialog> — what it tells the coach up front", () => {
   })
 })
 
+describe("<NewCardDialog> — fix round 1", () => {
+  it("leaves every refusal to this screen, never to the browser's own bubble", () => {
+    // NOT a behavioural test, and it cannot be one: jsdom does not run
+    // interactive constraint validation, so a `type="email"` box that blocks
+    // submit on `dana@` with a chrome bubble is INVISIBLE to this suite. In a
+    // real browser it refuses addresses the route would have accepted (it
+    // checks no format at all) in wording nobody here wrote. The attribute is
+    // the only thing available to assert, so it is asserted directly.
+    openDialog()
+    expect(screen.getByTestId("new-card-form")).toHaveAttribute("novalidate")
+
+    // The control, and the reason this is `noValidate` on the form rather than
+    // `type="text"` on the box: the @-key keyboard on a phone is kept.
+    revealNewPerson()
+    expect(screen.getByLabelText("Email address")).toHaveAttribute("type", "email")
+  })
+
+  it("keeps the search box working after somebody has been chosen", async () => {
+    // MUTANT: the chosen card and the result list as the two arms of one
+    // ternary — which is what shipped. The box stayed editable and kept firing
+    // debounced requests whose answers had nowhere to render, so typing did
+    // nothing at all and read as broken.
+    searchReply = { ok: true, status: 200, body: { contacts: [DANA, MARCUS] } }
+    openDialog()
+    await search("re")
+    fireEvent.click(await screen.findByTestId(`contact-result-${DANA.id}`))
+
+    // Choosing empties the box, so the next thing typed is plainly a fresh
+    // search rather than an edit of the one that found this person.
+    expect(screen.getByLabelText("Search your contacts")).toHaveValue("")
+    expect(screen.queryByTestId("contact-results")).toBeNull()
+
+    searchReply = { ok: true, status: 200, body: { contacts: [MARCUS] } }
+    await search("hale")
+
+    // THE PAIR: the new match is on screen AND the old choice is still shown.
+    const marcus = await screen.findByTestId(`contact-result-${MARCUS.id}`)
+    expect(within(marcus).getByText("Marcus Hale")).toBeInTheDocument()
+    expect(within(screen.getByTestId("chosen-contact")).getByText("Dana Reyes")).toBeInTheDocument()
+
+    fireEvent.click(marcus)
+    const chosen = screen.getByTestId("chosen-contact")
+    expect(within(chosen).getByText("Marcus Hale")).toBeInTheDocument()
+    expect(within(chosen).queryByText("Dana Reyes")).toBeNull()
+  })
+
+  it("stops telling you to type once somebody is chosen", async () => {
+    // The prompt has done its job by then, and repeating it under the person
+    // you just picked reads as if the pick did not register.
+    searchReply = { ok: true, status: 200, body: { contacts: [DANA] } }
+    openDialog()
+    expect(screen.getByText("Type at least two letters to look someone up.")).toBeInTheDocument() // control
+
+    await search("dana")
+    fireEvent.click(await screen.findByTestId(`contact-result-${DANA.id}`))
+
+    expect(screen.queryByText("Type at least two letters to look someone up.")).toBeNull()
+  })
+
+  it("says out loud what the search is doing, in every state it can be in", async () => {
+    // MUTANT: drop `role="status"`. Rows are buttons, which is what makes the
+    // picker keyboard-operable — but a list of buttons quietly replacing a
+    // sentence is not a change a screen reader reports, so "searching",
+    // "nobody matched" and the ARRIVAL of matches were announced to nobody.
+    searchReply = { ok: true, status: 200, body: { contacts: [DANA, MARCUS] } }
+    openDialog()
+    expect(screen.getByRole("status")).toHaveTextContent("Type at least two letters to look someone up.")
+
+    await search("re")
+    expect(await screen.findByTestId(`contact-result-${MARCUS.id}`)).toBeInTheDocument()
+    // The COUNT, not the rows: role="status" is atomic, so announcing the
+    // whole region would read twenty people out on every keystroke.
+    expect(screen.getByRole("status")).toHaveTextContent("2 people matched.")
+
+    searchReply = { ok: true, status: 200, body: { contacts: [DANA] } }
+    await search("dana")
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 person matched."))
+
+    searchReply = { ok: true, status: 200, body: { contacts: [] } }
+    await search("zzz")
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent('Nobody matched "zzz"'))
+  })
+
+  it("announces that it is searching while the answer is still coming", async () => {
+    // Its own test because it needs a request that never answers — the state
+    // is otherwise gone before any assertion can see it.
+    global.fetch = vi.fn((input: unknown) =>
+      String(input).startsWith(CONTACTS_URL)
+        ? new Promise(() => {})
+        : Promise.resolve({ ok: true, json: async () => ({}) }),
+    ) as unknown as typeof fetch
+    openDialog()
+    await search("dana")
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Searching…"))
+  })
+
+  it("lands a refusal keyed to a box that is not on screen at the foot of the dialog", async () => {
+    // Unreachable in production today — the route cannot answer `person.*` for
+    // a contactId submission — which is exactly why it is pinned rather than
+    // trusted. Every `person.*` box lives inside the new-person block, so
+    // routing a refusal to one while that block is closed rendered it NOWHERE,
+    // and the symptom of that regression is silence.
+    searchReply = { ok: true, status: 200, body: { contacts: [DANA] } }
+    createReply = { ok: false, status: 400, body: { error: "Name is required.", field: "person.name" } }
+    openDialog()
+    await search("dana")
+    fireEvent.click(await screen.findByTestId(`contact-result-${DANA.id}`))
+    expect(screen.queryByTestId("new-person-fields")).toBeNull() // control: the block really is closed
+    submit()
+
+    const slot = await screen.findByTestId("new-card-refusal")
+    expect(within(slot).getByText("Name is required.")).toBeInTheDocument()
+  })
+})
+
 // ---------------------------------------------------------------------------
 // The board page — the wiring, not the board.
 //

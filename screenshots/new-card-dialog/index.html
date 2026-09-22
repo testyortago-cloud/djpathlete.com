@@ -113,7 +113,9 @@
           <code>04-already-on-the-board.png</code> — the server's own sentence, printed word for word:
           <em>"Ana Sousa is already on Coaching, in Consulted."</em> It names the person, the board and the step,
           so the coach knows where to go and look. The chosen contact is kept — a refusal does not throw the
-          coach's work away.
+          coach's work away. The search box above it is back to empty and still live: typing there shows fresh
+          matches <em>below</em> the chosen card, so nothing on this screen is ever a box that accepts keystrokes
+          and answers nowhere.
         </figcaption>
       </figure>
 
@@ -128,6 +130,9 @@
         <tr><td>03</td><td>Neither email nor phone is refused in the browser, under the box</td><td class="ok">shown</td></tr>
         <tr><td>04</td><td>The duplicate refusal is displayed verbatim, not swallowed</td><td class="ok">shown</td></tr>
         <tr><td>04</td><td>A refusal keeps the chosen contact</td><td class="ok">shown</td></tr>
+        <tr><td>04</td><td>The search box stays live once somebody is chosen</td><td class="ok">shown (empty and ready)</td></tr>
+        <tr><td>—</td><td>The browser's own validation bubble never fires (<code>noValidate</code>)</td><td>attribute-level; jsdom cannot run interactive validation</td></tr>
+        <tr><td>—</td><td>"Searching…", "nobody matched" and the match count are announced (<code>role="status"</code>)</td><td>pinned by test, not visible as a picture</td></tr>
         <tr><td>—</td><td>A hand-made card never enrols anybody in a sequence</td><td>enforced in the DAL; stated on screen, not visible as a picture</td></tr>
       </table>
 

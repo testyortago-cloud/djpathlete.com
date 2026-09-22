@@ -285,9 +285,26 @@ try {
     throw new Error(`"${ANA.term}" matched ${await anaRow.count()} contacts; refusing to click a person at random`)
   }
   await anaRow.first().click()
-  await page.waitForTimeout(200)
-  await addToBoard(page).click()
-  await page.waitForTimeout(1500)
+
+  // EACH STEP ASSERTED, not assumed. A click that silently fails to select
+  // leaves the submit button disabled, and Playwright's own click would then
+  // wait 30s and time out somewhere unrelated — or worse, a future change
+  // makes the same no-op end in a card actually being created. The refusal
+  // this shot exists to photograph is only reachable with a contact chosen.
+  const chosen = page.getByTestId("chosen-contact")
+  await chosen.waitFor({ state: "visible", timeout: 5000 })
+  console.log(`  chose: ${(await chosen.innerText()).split("\n")[0]}`)
+
+  const submit = addToBoard(page)
+  if (await submit.isDisabled()) throw new Error("the submit button is disabled with a contact chosen")
+  await submit.click()
+  // Waits for the REFUSAL rather than for the clock. A fixed sleep here is
+  // what made the previous failure report as "said nothing" instead of saying
+  // which step went wrong.
+  await page
+    .getByTestId("new-card-refusal")
+    .waitFor({ state: "visible", timeout: 10000 })
+    .catch(() => {})
 
   const refusal = page.getByTestId("new-card-refusal")
   const said = (await refusal.count()) > 0 ? (await refusal.first().innerText()).trim() : ""
