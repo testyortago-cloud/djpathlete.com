@@ -1,3 +1,5 @@
+// @vitest-environment node
+//
 // Live dev-clone test for migration 00277 — the `to_stage_id` cross-check
 // added to `save_pipeline_stages` by the whole-branch review (Important 1).
 //
@@ -19,7 +21,89 @@
 // answers success and the cards are gone from both boards; fixed it refuses
 // and nothing moves. That is what the main test below drives.
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+
+// ---------------------------------------------------------------------------
+// THE STATIC HALF, WHICH ALWAYS RUNS (re-review, small item 2).
+//
+// Everything below the `describeIf` needs `NEXT_PUBLIC_SUPABASE_URL` and
+// `SUPABASE_SERVICE_ROLE_KEY`; without them vitest SKIPS the whole block, and
+// a skipped suite reads as a green suite — this repo has already been caught
+// by exactly that (`playwright.config.ts` never loaded `.env.local`, and the
+// e2e lane guarded deleted UI for weeks). In this worktree `.env.local` is
+// symlinked so the live half does run; on CI or a fresh clone it would report
+// success while checking nothing at all.
+//
+// So the predicate itself is also asserted against the migration TEXT, which
+// needs no database and cannot be skipped. This is the convention 00272,
+// 00274 and 00257 already follow. It proves the file says the right thing; the
+// live half below proves the database DOES the right thing. Neither replaces
+// the other.
+//
+// Comment lines are stripped first — this migration's header discusses
+// `to_stage_id` and `v_submitted_ids` at length in prose, so an unstripped
+// search would match the explanation rather than the code, and would stay
+// green if the predicate itself were deleted.
+// ---------------------------------------------------------------------------
+
+const MIGRATION = "supabase/migrations/00277_save_pipeline_stages_checks_the_destination.sql"
+const RAW = readFileSync(join(process.cwd(), MIGRATION), "utf8")
+const SQL = RAW.split("\n")
+  .filter((line) => !line.trim().startsWith("--"))
+  .map((line) => (line.includes("'") ? line : line.replace(/--.*$/, "")))
+  .join("\n")
+
+/** The body of step 1's card-move UPDATE, on its own. */
+function moveCardsUpdate(): string {
+  const after = SQL.split("UPDATE public.opportunities o")
+  expect(after.length, "expected exactly one card-move UPDATE in this migration").toBe(2)
+  return after[1].split(";")[0]
+}
+
+describe("00277 — the migration text itself", () => {
+  it("replaces save_pipeline_stages rather than creating a second function", () => {
+    expect(SQL).toContain("CREATE OR REPLACE FUNCTION public.save_pipeline_stages(")
+    expect(SQL.match(/CREATE OR REPLACE FUNCTION/g) ?? []).toHaveLength(1)
+  })
+
+  // THE WHOLE POINT OF THE MIGRATION, asserted inside the ONE statement it
+  // belongs to. A file-wide `toContain` would pass if the predicate were
+  // moved to the DELETE, where it would silently do nothing.
+  it("cross-checks to_stage_id against the submitted ids, inside the card-move UPDATE", () => {
+    const update = moveCardsUpdate()
+    expect(update).toContain("(m->>'to_stage_id')::uuid = ANY(v_submitted_ids)")
+    expect(update).toContain("v_submitted_ids IS NOT NULL")
+  })
+
+  // The mirror it is the mirror OF. Losing this one would reopen review
+  // finding 1 of the first round (a move off a SURVIVING stage), which 00276
+  // closed — a `CREATE OR REPLACE` that forgot it would be a silent
+  // regression, because the function would still compile and still run.
+  it("keeps 00276's from_stage_id cross-check, which this one is the mirror of", () => {
+    expect(moveCardsUpdate()).toContain("NOT ((m->>'from_stage_id')::uuid = ANY(v_submitted_ids))")
+  })
+
+  // PRESENCE CONTROL for the three above: the stripper must not have eaten
+  // the file. Without this, a bad regex that reduced SQL to "" would make
+  // every `toContain` above fail loudly — but a bad `moveCardsUpdate` split
+  // returning the whole file would make them all pass vacuously.
+  it("reads a real function body, not an empty string or the whole file", () => {
+    expect(SQL.length).toBeGreaterThan(1000)
+    const update = moveCardsUpdate()
+    expect(update.length).toBeGreaterThan(100)
+    expect(update).not.toContain("DELETE FROM public.pipeline_stages")
+  })
+
+  // Re-review, small item 5: the hazard this function does NOT close is
+  // written down rather than fixed, so the next reader does not have to
+  // rediscover it. If somebody ever adds the predicate, delete this test with
+  // the comment — do not leave it asserting the absence of a fix.
+  it("says out loud that from_stage_id carries no pipeline_id predicate", () => {
+    expect(RAW).toMatch(/no `?pipeline_id`? predicate/i)
+  })
+})
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY

@@ -14,9 +14,24 @@
 // line, so the skip costs nothing and stops a leftover import from being
 // reported as a caller. Comment lines are skipped so prose ABOUT a seam is
 // never mistaken for a use of it.
-import { readdirSync, readFileSync, statSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 
+/**
+ * The directories a seam inventory walks by DEFAULT: the running application.
+ *
+ * Deliberately not everything. `scripts/` is one-off operator tooling, and for
+ * the tenancy seams a seed script naming `platformBusinessId` is not a caller
+ * the inventory is about — measured, not assumed:
+ * `scripts/seed-rotational-performance-index.ts` does exactly that today, and
+ * widening this constant would report it as a missing inventory entry in
+ * `platform-inventory.test.ts`.
+ *
+ * A seam whose risk DOES live in tooling passes its own wider list instead —
+ * see `callersOf`'s `roots` parameter, and
+ * `__tests__/lib/lead-engine/enroll-call-site-inventory.test.ts`, where a
+ * bulk-import script is the whole point.
+ */
 export const SEAM_ROOTS = ["app", "lib", "components"] as const
 
 export function walk(dir: string, out: string[] = []): string[] {
@@ -35,14 +50,25 @@ export function isCommentLine(line: string): boolean {
 }
 
 /**
- * Repo-relative paths of every file under app/, lib/ and components/ that
- * references `identifier` on a code line, excluding `excludeFile` (the seam's
- * own file, which defines it). Sorted.
+ * Repo-relative paths of every file under `roots` that references `identifier`
+ * on a code line, excluding `excludeFile` (the seam's own file, which defines
+ * it). Sorted.
+ *
+ * `roots` defaults to `SEAM_ROOTS`; a caller passes a wider list when the seam
+ * it is protecting can be reached from tooling. A root that does not exist is
+ * skipped rather than throwing, so a caller may name an optional directory.
  */
-export function callersOf(identifier: string, excludeFile: string, root: string = process.cwd()): string[] {
+export function callersOf(
+  identifier: string,
+  excludeFile: string,
+  root: string = process.cwd(),
+  roots: readonly string[] = SEAM_ROOTS,
+): string[] {
   const hits: string[] = []
-  for (const seamRoot of SEAM_ROOTS) {
-    for (const file of walk(join(root, seamRoot))) {
+  for (const seamRoot of roots) {
+    const base = join(root, seamRoot)
+    if (!existsSync(base)) continue
+    for (const file of walk(base)) {
       const rel = relative(root, file)
       if (rel === excludeFile) continue
       const refs = readFileSync(file, "utf8")

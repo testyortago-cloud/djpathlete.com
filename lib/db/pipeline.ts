@@ -61,6 +61,7 @@ import {
   strandedStageProblems,
   invalidDestinationProblems,
   kindChangeVisibilityProblems,
+  movedClosedCardProblems,
   type StageDraft,
   type StageProblem,
   type SavedStage,
@@ -1931,14 +1932,21 @@ export async function listPipelines(businessId: string): Promise<Array<{ id: str
  * (components/admin/pipeline-settings.tsx) puts a free `kind` dropdown on
  * every row, so a stage's kind can now change UNDER cards that are already
  * sitting on it, without any card moving anywhere. The premise is therefore
- * no longer given — it is ENFORCED, by `kindChangeVisibilityProblems`
- * (lib/lead-engine/stage-list.ts), which `savePipelineStages` and the PUT
- * route both run: a `won` or `lost` stage still holding CLOSED cards cannot
- * be turned `open`. Without that refusal, flipping Won to "still open" would
- * make every settled deal on it fail the `outcome == null` filter above —
- * still in the database, still counted in revenue, on no screen anywhere.
- * The guard is what keeps this function's filter honest; do not remove one
- * without removing the other.
+ * no longer given — it is ENFORCED, by TWO checks in
+ * lib/lead-engine/stage-list.ts that `savePipelineStages` and the PUT route
+ * both run, and it takes both:
+ *
+ *   * `kindChangeVisibilityProblems` — a `won` or `lost` stage still holding
+ *     CLOSED cards cannot be turned `open`.
+ *   * `movedClosedCardProblems` — and those cards cannot be MOVED onto a
+ *     stage that will be open either, when the stage they sit on is removed.
+ *     Same end state, other door: the first check never looks at a stage that
+ *     is being removed, because a removed stage is not in the submitted list.
+ *
+ * Without both, a settled deal ends up on a stage this function filters
+ * `outcome == null` — still in the database, still counted in revenue, on no
+ * screen anywhere. They are what keep this function's filter honest; do not
+ * remove either without removing the filter.
  */
 // `pipelineKey` is typed `string | undefined` rather than `pipelineKey?:
 // string` — a bare `?` marks a parameter optional in the ordering sense TS
@@ -2494,10 +2502,16 @@ export async function savePipelineStages(input: {
   //   * `kindChangeVisibilityProblems` — a `won`/`lost` stage holding closed
   //     cards being turned `open`, which takes every one of them off the
   //     board (whole-branch review, Important 2 / controller ruling R19).
+  //   * `movedClosedCardProblems` — the SAME end state reached through the
+  //     other door: closed cards moved OFF a `won`/`lost` stage that is being
+  //     removed, ONTO a stage that will be open (re-review). Neither of the
+  //     two checks above can see it — one asks only whether the destination
+  //     survives, the other only ever looks at surviving stages' kinds.
   const rowProblems = [
     ...strandedStageProblems(oldStages, plan, cardCountByStageId),
     ...invalidDestinationProblems(oldStages, plan),
     ...kindChangeVisibilityProblems(oldStages, input.stages, closedCardCountByStageId),
+    ...movedClosedCardProblems(oldStages, input.stages, plan, closedCardCountByStageId),
   ]
   if (rowProblems.length > 0) {
     return { ok: false, problems: rowProblems }

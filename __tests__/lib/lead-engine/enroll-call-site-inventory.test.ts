@@ -31,6 +31,25 @@
 // (__tests__/helpers/seam-callers.ts): code lines only, imports and comments
 // skipped, so prose ABOUT enrolment is never mistaken for a use of it.
 //
+// IT WALKS `scripts/` AND `functions/src/` TOO, unlike the tenancy
+// inventories (re-review, small item 3). The default `SEAM_ROOTS` is the
+// running application, and for a tenancy seam a seed script is not a caller
+// worth reporting. For THIS seam the opposite is true: a bulk-import backfill
+// is a script, and it is the exact scenario named four paragraphs up. A seam
+// whose motivating risk lives in tooling has to look in tooling.
+//
+// WHAT THIS STILL CANNOT SEE, so nobody over-trusts it: an ALIASED import.
+//
+//     import { enrollIfTriggered as enrol } from "@/lib/lead-engine/enroll"
+//     await enrol({ ... })
+//
+// escapes every check in this file — the walker matches the identifier, the
+// import line is skipped by design, and `enrol(` is not `enrollIfTriggered`.
+// Nothing here is load-bearing against a determined rename; it is a tripwire
+// against the ordinary accident, which is somebody reaching for the familiar
+// function in a new file. The presence controls below are what keep it from
+// silently checking nothing.
+//
 // IF THIS TEST FAILS, DO NOT JUST ADD THE NEW FILE TO THE LIST. Read what the
 // new caller does first. A second caller of `enrollIfTriggered` is a second
 // place a person can be enrolled, and every non-enrolling path in the app
@@ -45,6 +64,15 @@ const ROOT = process.cwd()
 
 /** Where `enrollIfTriggered` is defined. Excluded from the caller walk. */
 const DEFINITION = "lib/lead-engine/enroll.ts"
+
+/**
+ * Wider than `SEAM_ROOTS`, on purpose — see this file's header. `functions/`
+ * has `rootDir: "src"` and cannot import from `lib/`, so it cannot reach this
+ * function today; it is walked anyway because "cannot import it" is a build
+ * configuration, not a promise, and the twin-copy convention in this repo is
+ * exactly how a `lib/` helper ends up living in `functions/src/` as well.
+ */
+const ROOTS = ["app", "lib", "components", "scripts", "functions/src"] as const
 
 /**
  * The ONE file allowed to call it, and the ONE function inside that file.
@@ -78,11 +106,22 @@ describe("enrollIfTriggered's call-site inventory", () => {
   // — a renamed helper, a moved directory, a typo in the identifier —
   // would make every assertion below pass while checking nothing at all.
   it("finds the one file that does call it", () => {
-    expect(callersOf("enrollIfTriggered", DEFINITION)).toContain(ONLY_CALLER_FILE)
+    expect(callersOf("enrollIfTriggered", DEFINITION, process.cwd(), ROOTS)).toContain(ONLY_CALLER_FILE)
+  })
+
+  // THE SECOND PRESENCE CONTROL, for the WIDENING itself. Without it, a
+  // `ROOTS` entry that silently matched nothing — a renamed directory, a typo
+  // — would leave `scripts/` unwatched while this file's header claims it is
+  // watched. Asserted on a known caller of a DIFFERENT seam, because
+  // `scripts/` has (correctly) no caller of this one.
+  it("really does walk scripts/, so the widening is not decorative", () => {
+    expect(callersOf("platformBusinessId", "lib/tenancy/platform.ts", process.cwd(), ROOTS)).toContain(
+      "scripts/seed-rotational-performance-index.ts",
+    )
   })
 
   it("is called from that file and no other, so a non-enrolling path stays non-enrolling by construction", () => {
-    const callers = callersOf("enrollIfTriggered", DEFINITION)
+    const callers = callersOf("enrollIfTriggered", DEFINITION, process.cwd(), ROOTS)
     expect(
       callers,
       "A SECOND caller of enrollIfTriggered has appeared. G29's promise — a card a coach files by hand " +

@@ -980,6 +980,71 @@ describe("savePipelineStages", () => {
     expect(rpcCalls).toHaveLength(1)
   })
 
+  // -------------------------------------------------------------------------
+  // RE-REVIEW, IMPORTANT RESIDUAL. The same end state as the kind-change case
+  // above, reached through the removal DESTINATION instead: finished deals
+  // moved off a Won stage that is being removed, onto a stage that is open.
+  // -------------------------------------------------------------------------
+
+  it("refuses sending a removed Won stage's finished deals to a stage that stays open", async () => {
+    const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
+    store.opportunities.push(
+      { id: "opp-1", business_id: SINGLETON_BUSINESS_ID, pipeline_id: id, stage_id: "stage-won", contact_id: "c1", outcome: "won" },
+      { id: "opp-2", business_id: SINGLETON_BUSINESS_ID, pipeline_id: id, stage_id: "stage-won", contact_id: "c2", outcome: "won" },
+    )
+
+    const result = await savePipelineStages({
+      pipelineId: id,
+      businessId: SINGLETON_BUSINESS_ID,
+      // A replacement Won row, the old Won stage dropped — so the list is
+      // perfectly valid and neither of the other two checks fires.
+      stages: [
+        { id: "stage-open", key: "consult_booked", name: "Consult Booked", kind: "open", amberAfterDays: 3, redAfterDays: 7 },
+        { id: null, key: "won_2", name: "Won", kind: "won", amberAfterDays: null, redAfterDays: null },
+        { id: "stage-lost", key: "lost", name: "Lost", kind: "lost", amberAfterDays: null, redAfterDays: null },
+      ],
+      destinations: { "stage-won": "stage-open" },
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("unreachable")
+    expect(result.problems).toEqual([
+      {
+        index: null,
+        message:
+          'Stage "Won" holds 2 cards that are already won or lost. Moving them to "Consult Booked", which is ' +
+          "still open, would take them off the board, where nobody would find them. Send them to a Won or Lost " +
+          "stage instead.",
+      },
+    ])
+    expect(rpcCalls).toHaveLength(0)
+  })
+
+  // THE PRESENCE CONTROL: the identical removal, sent to the Lost stage, is
+  // accepted — the cards stay on a stage the board shows in full.
+  it("control: the same removal is accepted when the destination stays a closed stage", async () => {
+    const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
+    store.opportunities.push(
+      { id: "opp-1", business_id: SINGLETON_BUSINESS_ID, pipeline_id: id, stage_id: "stage-won", contact_id: "c1", outcome: "won" },
+      { id: "opp-2", business_id: SINGLETON_BUSINESS_ID, pipeline_id: id, stage_id: "stage-won", contact_id: "c2", outcome: "won" },
+    )
+
+    const result = await savePipelineStages({
+      pipelineId: id,
+      businessId: SINGLETON_BUSINESS_ID,
+      stages: [
+        { id: "stage-open", key: "consult_booked", name: "Consult Booked", kind: "open", amberAfterDays: 3, redAfterDays: 7 },
+        { id: null, key: "won_2", name: "Won", kind: "won", amberAfterDays: null, redAfterDays: null },
+        { id: "stage-lost", key: "lost", name: "Lost", kind: "lost", amberAfterDays: null, redAfterDays: null },
+      ],
+      destinations: { "stage-won": "stage-lost" },
+    })
+
+    expect(result).toEqual({ ok: true })
+    expect(rpcCalls).toHaveLength(1)
+    expect(rpcCalls[0].args.p_move_cards).toEqual([{ from_stage_id: "stage-won", to_stage_id: "stage-lost" }])
+  })
+
   it("sends a removal's move-card destination in snake_case (from_stage_id/to_stage_id)", async () => {
     const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
     store.opportunities.push({

@@ -755,6 +755,79 @@ describe("POST /api/admin/pipeline/opportunities", () => {
   })
 
   // -------------------------------------------------------------------------
+  // THE AUDIT ROW (whole-branch review, Important 5; pinned here on
+  // re-review, small item 4). `recordAuditMock` was installed in this suite
+  // and never asserted, so deleting the `metadata` callback — or reading the
+  // wrong keys off the response — would have gone unnoticed. Every other
+  // route in that wave got an assertion and a presence control; this is its.
+  //
+  // The target names the BOARD and carries a label only when a NEW PERSON was
+  // typed, so for the common case — picking somebody already on file — the
+  // row recorded neither who was filed nor which card it became, though both
+  // ids are sitting in the response body.
+  // -------------------------------------------------------------------------
+
+  describe("the audit row says who was filed and which card it became", () => {
+    function auditCall() {
+      return recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.opportunity_created_manually")
+    }
+
+    it("records the contact and opportunity ids for an EXISTING contact, which the target cannot name", async () => {
+      seedDana()
+      const res = await POST(requestFor({ pipelineId: BOARD_ID, contactId: DANA_ID }) as never, NO_PARAMS)
+      expect(res.status).toBe(200)
+      const body = await res.json()
+
+      const call = auditCall()
+      expect(call?.[0].outcome).toBe("success")
+      // THE ids, not "some ids": matched against the response body and the
+      // store, so a callback echoing a constant would fail.
+      expect(call?.[0].metadata).toEqual({ opportunity_id: body.opportunityId, contact_id: DANA_ID })
+      expect(state.opportunities[0].id).toBe(body.opportunityId)
+      // And the target still has no label on this path — which is the whole
+      // reason the metadata has to carry them.
+      expect(call?.[0].target).toEqual({ type: "pipeline_board", id: BOARD_ID })
+    })
+
+    it("records them for a newly typed person too, alongside the label", async () => {
+      const res = await POST(
+        requestFor({ pipelineId: BOARD_ID, person: { name: "Dana Reyes", email: "dana@example.com" } }) as never,
+        NO_PARAMS,
+      )
+      expect(res.status).toBe(200)
+      const body = await res.json()
+
+      const call = auditCall()
+      expect(call?.[0].metadata).toEqual({ opportunity_id: body.opportunityId, contact_id: body.contactId })
+      expect(call?.[0].target).toEqual({ type: "pipeline_board", id: BOARD_ID, label: "Dana Reyes" })
+    })
+
+    // THE PRESENCE CONTROL. Without it, a callback that invented ids — or one
+    // that returned the same object whatever happened — would pass both tests
+    // above. A REFUSED create has neither key in its body, so the row must
+    // carry neither rather than guessing.
+    it("records no ids when the card was refused", async () => {
+      seedDana()
+      state.opportunities.push({
+        id: "opp-existing",
+        business_id: BUSINESS_ID,
+        pipeline_id: BOARD_ID,
+        contact_id: DANA_ID,
+        stage_id: STAGE_CONSULTED.id,
+        outcome: null,
+        value_cents: null,
+      })
+
+      const res = await POST(requestFor({ pipelineId: BOARD_ID, contactId: DANA_ID }) as never, NO_PARAMS)
+      expect(res.status).toBe(400)
+
+      const call = auditCall()
+      expect(call?.[0].outcome).not.toBe("success")
+      expect(call?.[0].metadata).toEqual({})
+    })
+  })
+
+  // -------------------------------------------------------------------------
   // THE ENROLMENT TEST, AND ITS PRESENCE CONTROL — the heart of this task.
   // -------------------------------------------------------------------------
 

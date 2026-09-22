@@ -168,6 +168,85 @@ export function planStageSave(
 }
 
 /**
+ * Every card-move that would land CLOSED cards on an OPEN stage, in English.
+ * [] means no settled deal disappears.
+ *
+ * THE RULE: cards moved off a `won` or `lost` stage that is being removed
+ * must not be sent to a stage that will be `open` after the save.
+ *
+ * WHY THIS EXISTS SEPARATELY (re-review, Important residual). It is the state
+ * `kindChangeVisibilityProblems` below was written to prevent, reached
+ * through the OTHER door — and neither of the two checks either side of it
+ * can see it:
+ *
+ *   * `invalidDestinationProblems` asks only whether the destination
+ *     SURVIVES. An open stage that survives passes.
+ *   * `kindChangeVisibilityProblems` inspects only SURVIVING stages' kinds. A
+ *     stage being removed is not in the submitted list at all, so it never
+ *     looks at it; and the destination's own kind is not changing.
+ *
+ * So: add a replacement Won row, remove the old Won stage, send its cards to
+ * an open stage. Three clicks, no refusal, and every settled deal on it now
+ * carries `outcome != null` on a stage `readBoard` filters `outcome == null`
+ * — in the database, in the revenue figures, on no screen. Identical damage,
+ * different route in.
+ *
+ * KEYED ON THE KIND THE DESTINATION WILL HAVE, not the one it has today: the
+ * same save can re-kind it, and what matters is the board that exists
+ * afterwards. Read from the SUBMITTED draft, therefore, never from
+ * `oldStages`.
+ *
+ * A FROM-STAGE THAT IS ALREADY `open` IS NOT REFUSED, even when it holds
+ * closed cards. Those cards are invisible already, so no move can make them
+ * more so — and refusing would block the one edit that REPAIRS them (sending
+ * them to a Won stage). Only the direction that newly hides a row is refused,
+ * the same rule `kindChangeVisibilityProblems` follows.
+ *
+ * `index: null`: a destination is chosen in the "these cards need somewhere
+ * to go" block, which belongs to the board rather than to one table row.
+ */
+export function movedClosedCardProblems(
+  oldStages: SavedStage[],
+  newStages: StageDraft[],
+  plan: StageSavePlan,
+  closedCardCountByStageId: Map<string, number>,
+): StageProblem[] {
+  const oldById = new Map(oldStages.map((s) => [s.id, s]))
+  const submittedById = new Map(
+    newStages.filter((s): s is StageDraft & { id: string } => s.id !== null).map((s) => [s.id, s]),
+  )
+
+  return plan.moveCards
+    .flatMap((move) => {
+      const from = oldById.get(move.fromStageId)
+      if (!from || from.kind === "open") return []
+
+      const closed = closedCardCountByStageId.get(move.fromStageId) ?? 0
+      if (closed === 0) return []
+
+      // A destination that is not in the submitted list is not surviving, and
+      // `invalidDestinationProblems` already refuses it in its own words.
+      // Saying it twice, differently, is worse than saying it once.
+      const to = submittedById.get(move.toStageId)
+      if (!to || to.kind !== "open") return []
+
+      const fromLabel = from.name.trim() || from.key
+      const toLabel = to.name.trim() || to.key
+      const one = closed === 1
+      return [
+        {
+          index: null,
+          message:
+            `Stage "${fromLabel}" holds ${closed} ${one ? "card that is" : "cards that are"} already won or lost. ` +
+            `Moving ${one ? "it" : "them"} to "${toLabel}", which is still open, would take ` +
+            `${one ? "it" : "them"} off the board, where nobody would find ${one ? "it" : "them"}. ` +
+            `Send ${one ? "it" : "them"} to a Won or Lost stage instead.`,
+        },
+      ]
+    })
+}
+
+/**
  * Every stage whose `kind` change would take cards OFF the board, in English.
  * [] means no card disappears.
  *

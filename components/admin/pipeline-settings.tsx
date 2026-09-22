@@ -74,6 +74,7 @@ import {
   MAX_STAGE_NAME_LENGTH,
   invalidDestinationProblems,
   kindChangeVisibilityProblems,
+  movedClosedCardProblems,
   planStageSave,
   strandedStageProblems,
   validateStageList,
@@ -592,11 +593,21 @@ function StageEditor({
     () => kindChangeVisibilityProblems(stages, drafts, closedCardCountMap),
     [stages, drafts, closedCardCountMap],
   )
+  /**
+   * The same damage through the other door: finished deals moved off a Won or
+   * Lost stage that is being removed, onto a stage that is still open. The
+   * picker below no longer OFFERS an open stage in that case — but a filtered
+   * dropdown is a convenience, not a guard, so the refusal runs regardless.
+   */
+  const movedClosed = useMemo(
+    () => movedClosedCardProblems(stages, drafts, plan, closedCardCountMap),
+    [stages, drafts, plan, closedCardCountMap],
+  )
 
   /** What stops a save. The server's own problems are shown but never block a retry. */
   const blocking = useMemo(
-    () => [...listProblems, ...localFieldProblems, ...stranded, ...badDestinations, ...hiddenCards],
-    [listProblems, localFieldProblems, stranded, badDestinations, hiddenCards],
+    () => [...listProblems, ...localFieldProblems, ...stranded, ...badDestinations, ...hiddenCards, ...movedClosed],
+    [listProblems, localFieldProblems, stranded, badDestinations, hiddenCards, movedClosed],
   )
   const allProblems = useMemo(() => [...blocking, ...serverProblems], [blocking, serverProblems])
   const boardLevelProblems = allProblems.filter((p) => p.index === null)
@@ -607,12 +618,37 @@ function StageEditor({
   /** Removed stages that still hold cards — each needs somewhere for them to go. */
   const strandedRemovals = plan.removedStageIds
     .filter((id) => (cardCounts[id] ?? 0) > 0)
-    .map((id) => ({ id, stage: stages.find((s) => s.id === id) ?? null, cards: cardCounts[id] ?? 0 }))
+    .map((id) => {
+      const stage = stages.find((s) => s.id === id) ?? null
+      return {
+        id,
+        stage,
+        cards: cardCounts[id] ?? 0,
+        /**
+         * True when this removal's cards include finished deals — which can
+         * only be moved somewhere they stay visible. Keyed on the stage's own
+         * kind as well as the count, because closed cards sitting on an OPEN
+         * stage are already invisible and moving them cannot make it worse.
+         */
+        closed: stage && stage.kind !== "open" ? (closedCardCounts[id] ?? 0) : 0,
+      }
+    })
 
-  /** Only a stage that already EXISTS can receive cards — a row with `id: null` has no row to move them to yet. */
-  const destinationOptions = rows
-    .filter((r) => r.id !== null)
-    .map((r) => ({ id: r.id as string, name: r.name.trim() || "Untitled stage" }))
+  /**
+   * Only a stage that already EXISTS can receive cards — a row with `id: null`
+   * has no row to move them to yet.
+   *
+   * `forClosed` narrows that to the stages a FINISHED deal can land on without
+   * vanishing. A picker that cannot express the mistake beats a refusal after
+   * the fact; `movedClosedCardProblems` still refuses it either way, because a
+   * guard on the client path is not a guard.
+   */
+  function destinationOptionsFor(forClosed: boolean) {
+    return rows
+      .filter((r) => r.id !== null)
+      .filter((r) => !forClosed || r.kind !== "open")
+      .map((r) => ({ id: r.id as string, name: r.name.trim() || "Untitled stage" }))
+  }
 
   /**
    * Every edit clears the server's stale complaints — both of them. They
@@ -768,9 +804,19 @@ function StageEditor({
               const label = `Where should the ${cardsPhrase(removal.cards).toLowerCase()} on "${
                 removal.stage?.name ?? removal.id
               }" go?`
+              const onlyClosedHomes = removal.closed > 0
               return (
                 <div key={removal.id}>
                   <Label htmlFor={`destination-${removal.id}`}>{label}</Label>
+                  {onlyClosedHomes ? (
+                    // Said BEFORE the list is opened, so a short list of
+                    // choices reads as a rule rather than as a bug.
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {removal.closed === 1 ? "One of these is" : `${removal.closed} of these are`} already won or lost,
+                      so they can only move to a Won or Lost stage — anywhere else and they would disappear off the
+                      board.
+                    </p>
+                  ) : null}
                   <select
                     id={`destination-${removal.id}`}
                     value={destinations[removal.id] ?? ""}
@@ -778,7 +824,7 @@ function StageEditor({
                     className="mt-1 h-9 rounded-lg border border-border bg-white px-3 text-sm text-foreground"
                   >
                     <option value="">Choose a stage…</option>
-                    {destinationOptions.map((option) => (
+                    {destinationOptionsFor(onlyClosedHomes).map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.name}
                       </option>

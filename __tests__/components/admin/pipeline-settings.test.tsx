@@ -383,6 +383,88 @@ describe("<PipelineSettings> — an edit that would lose cards", () => {
     fireEvent.change(screen.getByLabelText("Stage 3 kind"), { target: { value: "open" } })
     expect(screen.queryByText(/already won or lost/)).not.toBeInTheDocument()
   })
+
+  // -------------------------------------------------------------------------
+  // RE-REVIEW, IMPORTANT RESIDUAL. Same damage, other door: the removal
+  // DESTINATION. The picker now cannot express it, and the save refuses it
+  // anyway — a filtered dropdown is a convenience, not a guard.
+  // -------------------------------------------------------------------------
+
+  it("offers a removed Won stage's finished deals only somewhere they stay visible, and says why", () => {
+    renderSettings({ cardCounts: { s3: 2 }, closedCardCounts: { s3: 2 } })
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove stage 3" }))
+
+    const picker = screen.getByLabelText('Where should the 2 cards on "Won" go?')
+    const options = within(picker as HTMLElement)
+      .getAllByRole("option")
+      .map((o) => o.textContent)
+    // Enquired and Consulted are both still on the board and both still open;
+    // offering either is how the cards became invisible.
+    expect(options).toEqual(["Choose a stage…", "Lost"])
+    expect(
+      screen.getByText(
+        /2 of these are already won or lost, so they can only move to a Won or Lost stage/,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  // THE PRESENCE CONTROL: the same picker on a removal whose cards are all
+  // still open offers EVERY surviving stage. Without it, a screen that always
+  // hid the open stages would pass the test above.
+  it("control: a removal with no finished deals may still go anywhere", () => {
+    renderSettings()
+    fireEvent.click(screen.getByRole("button", { name: "Remove stage 2" }))
+    const picker = screen.getByLabelText('Where should the 2 cards on "Consulted" go?')
+    expect(
+      within(picker as HTMLElement)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Choose a stage…", "Enquired", "Won", "Lost"])
+    expect(screen.queryByText(/already won or lost, so they can only move/)).not.toBeInTheDocument()
+  })
+
+  // THE SECOND CONTROL, and the one a mutation found missing: a removal off an
+  // OPEN stage that happens to hold closed cards must still offer everywhere.
+  // Those cards are invisible already, so no destination can make it worse —
+  // and narrowing the list here would block the one edit that REPAIRS them,
+  // which is sending them to a Won or Lost stage.
+  it("control: closed cards on an already-open stage may still go anywhere", () => {
+    renderSettings({ cardCounts: { s2: 2 }, closedCardCounts: { s2: 2 } })
+    fireEvent.click(screen.getByRole("button", { name: "Remove stage 2" }))
+    const picker = screen.getByLabelText('Where should the 2 cards on "Consulted" go?')
+    expect(
+      within(picker as HTMLElement)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Choose a stage…", "Enquired", "Won", "Lost"])
+    expect(screen.queryByText(/already won or lost, so they can only move/)).not.toBeInTheDocument()
+  })
+
+  // AND THE REFUSAL IS STILL REACHABLE, which is why it is not merely a
+  // filtered list. Choose the one legal destination, then re-kind THAT stage
+  // to "still open" — the chosen destination is now exactly the thing the
+  // picker refused to offer, and nothing about the dropdown can catch it.
+  it("refuses a destination that a later edit turns into an open stage", () => {
+    renderSettings({ cardCounts: { s3: 2 }, closedCardCounts: { s3: 2 } })
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove stage 3" }))
+    fireEvent.change(screen.getByLabelText('Where should the 2 cards on "Won" go?'), { target: { value: "s4" } })
+    // Control: at this point the destination is legal, so the refusal below
+    // is caused by the kind change and nothing else.
+    expect(screen.queryByText(/which is still open/)).not.toBeInTheDocument()
+
+    // Rows have renumbered: Lost is stage 3 now.
+    fireEvent.change(screen.getByLabelText("Stage 3 kind"), { target: { value: "open" } })
+
+    expect(
+      within(screen.getByTestId("board-problems")).getByText(
+        'Stage "Won" holds 2 cards that are already won or lost. Moving them to "Lost", which is still open, ' +
+          "would take them off the board, where nobody would find them. Send them to a Won or Lost stage instead.",
+      ),
+    ).toBeInTheDocument()
+    expect(saveButton()).toBeDisabled()
+  })
 })
 
 describe("<PipelineSettings> — the save payload", () => {

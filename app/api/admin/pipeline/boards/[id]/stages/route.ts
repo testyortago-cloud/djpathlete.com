@@ -79,15 +79,29 @@ const STAGES_SAVED_AUDIT_ACTION: AuditAction = "pipeline.stages_saved"
 const AUDIT_STAGE_CHANGE_HEADER = "x-audit-stage-change"
 
 /**
- * How many stage keys go into one list on the audit row.
+ * How many stage keys go into ONE list on the audit row. PER LIST, NOT IN
+ * TOTAL — and the arithmetic below is why that distinction is stated rather
+ * than assumed.
  *
- * `scrubMetadata` (lib/audit/scrub.ts) does not truncate an over-large
- * metadata bag — it THROWS THE WHOLE THING AWAY and keeps a 1KB sample. A
- * stage key can be 100 characters (MAX_STAGE_KEY_LENGTH), so a board with
- * enough of them could push four lists past 8KB and lose every field,
- * including the small ones that matter most. 40 per list keeps the worst case
- * around 4KB while being far more stages than a real board has; anything past
- * it is recorded as a count instead of silently dropped.
+ * `scrubMetadata` (lib/audit/scrub.ts:49) does not truncate an over-large
+ * metadata bag: past 8192 serialized characters it THROWS THE WHOLE THING
+ * AWAY and keeps a 1KB sample. A stage key can be 100 characters
+ * (MAX_STAGE_KEY_LENGTH).
+ *
+ * SO BE HONEST ABOUT THE WORST CASE. 40 keys x 100 characters is ~4KB for one
+ * list; there are FOUR key lists plus `moved_cards` (two keys and a number per
+ * entry), so a board pathological in both dimensions can still reach roughly
+ * 16-24KB and lose the bag. This cap does not prevent that and is not claimed
+ * to. What it does is bound the damage and keep the ordinary case — a board
+ * with four stages and short keys, which is every real board — two orders of
+ * magnitude clear of the threshold.
+ *
+ * The degradation is GRACEFUL and needs no code: the audit row still exists,
+ * still names the actor, the action and the board, and carries
+ * `{truncated: true, sample}` instead of the field list. Losing the
+ * before/after detail on a 40-stage board is a worse row, not a lost one.
+ * Anything past the cap is recorded as a count (`lists_truncated`) rather
+ * than dropped in silence.
  */
 const MAX_AUDIT_KEYS = 40
 

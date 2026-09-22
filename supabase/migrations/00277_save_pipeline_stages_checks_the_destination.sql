@@ -38,6 +38,24 @@
 -- dev clone running the old body with the new text on disk and nothing to
 -- say so. `CREATE OR REPLACE` on the same signature is the whole change.
 --
+-- WHAT THIS FUNCTION STILL DOES NOT CHECK, written down rather than fixed
+-- (re-review). `from_stage_id` HAS NO `pipeline_id` PREDICATE. Step 1's
+-- UPDATE scopes the rows it moves on `o.business_id = p_business_id` and on
+-- the stage ids it was handed, but never on `o.pipeline_id = p_pipeline_id`.
+-- So a caller holding the service-role key could hand this function a
+-- `from_stage_id` belonging to ANOTHER BOARD OF THE SAME TENANT and pull that
+-- board's cards onto this one.
+--
+-- NOT reachable through the route: `planStageSave`
+-- (lib/lead-engine/stage-list.ts) only ever emits moves for stages it read
+-- off THIS board, and `savePipelineStages` is the only caller. It is a
+-- service-role-only hazard, and the fix would be a third predicate on a
+-- statement that already carries three — noted here so the next reader does
+-- not have to rediscover it, and so nobody mistakes this function's defences
+-- for complete. This note covers 00276 as well: that file is applied and is
+-- deliberately not edited, and this migration is the current authority for
+-- the function body.
+--
 -- Everything below is 00276's body verbatim apart from the two marked lines.
 -- The function is short enough that restating it is cheaper than a patch
 -- nobody can read as a whole.

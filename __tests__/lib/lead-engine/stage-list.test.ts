@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   invalidDestinationProblems,
   kindChangeVisibilityProblems,
+  movedClosedCardProblems,
   planStageSave,
   strandedStageProblems,
   validateStageList,
@@ -404,5 +405,153 @@ describe("validateStageList — the key is trimmed consistently", () => {
   // must still be fine — the fix must not turn every padded key into a clash.
   it("still accepts two different keys when one of them is padded", () => {
     expect(validateStageList([open("enquiry"), { ...open("x"), key: " consulted " }, won(), lost()])).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// RE-REVIEW, IMPORTANT RESIDUAL. The state Important 2 was raised to prevent,
+// reached through the other door: closed cards MOVED off a won/lost stage
+// that is being removed, onto a stage that is still open.
+// ---------------------------------------------------------------------------
+
+describe("movedClosedCardProblems", () => {
+  const oldStages: SavedStage[] = [
+    { id: "s1", key: "enquiry", position: 1, name: "Enquiry", kind: "open", amberAfterDays: null, redAfterDays: null },
+    { id: "s2", key: "won", position: 2, name: "Won", kind: "won", amberAfterDays: null, redAfterDays: null },
+    { id: "s3", key: "lost", position: 3, name: "Lost", kind: "lost", amberAfterDays: null, redAfterDays: null },
+  ]
+  const draft = (id: string | null, key: string, name: string, kind: "open" | "won" | "lost"): StageDraft => ({
+    id,
+    key,
+    name,
+    kind,
+    amberAfterDays: null,
+    redAfterDays: null,
+  })
+
+  /** The reachable edit: a replacement Won row, the old Won stage removed, its cards sent to an open stage. */
+  const submittedWithReplacementWon: StageDraft[] = [
+    draft("s1", "enquiry", "Enquiry", "open"),
+    draft(null, "won_2", "Won", "won"),
+    draft("s3", "lost", "Lost", "lost"),
+  ]
+  const removeWonPlan = {
+    moveCards: [{ fromStageId: "s2", toStageId: "s1" }],
+    removedStageIds: ["s2"],
+    keptStageIds: ["s1", "s3"],
+  }
+
+  it("refuses sending finished deals to a stage that will still be open, naming both stages", () => {
+    expect(
+      movedClosedCardProblems(oldStages, submittedWithReplacementWon, removeWonPlan, new Map([["s2", 2]])),
+    ).toEqual([
+      {
+        index: null,
+        message:
+          'Stage "Won" holds 2 cards that are already won or lost. Moving them to "Enquiry", which is still open, ' +
+          "would take them off the board, where nobody would find them. Send them to a Won or Lost stage instead.",
+      },
+    ])
+  })
+
+  // THE TEST THE BRIEF ASKED FOR, stated as an assertion rather than as a
+  // claim: NEITHER of the two checks either side of this one can see this
+  // edit. `invalidDestinationProblems` asks only whether the destination
+  // survives, and "Enquiry" does. `kindChangeVisibilityProblems` only ever
+  // looks at SURVIVING stages' kinds, and the stage at risk is the one being
+  // removed. So if either half of the pair were missing, the save would go
+  // through — which is exactly how this got past the first fix wave.
+  it("is the ONLY one of the three checks that sees this edit", () => {
+    expect(invalidDestinationProblems(oldStages, removeWonPlan)).toEqual([])
+    expect(kindChangeVisibilityProblems(oldStages, submittedWithReplacementWon, new Map([["s2", 2]]))).toEqual([])
+    expect(
+      movedClosedCardProblems(oldStages, submittedWithReplacementWon, removeWonPlan, new Map([["s2", 2]])),
+    ).toHaveLength(1)
+  })
+
+  it("says one card, not 1 cards", () => {
+    expect(
+      movedClosedCardProblems(oldStages, submittedWithReplacementWon, removeWonPlan, new Map([["s2", 1]]))[0].message,
+    ).toBe(
+      'Stage "Won" holds 1 card that is already won or lost. Moving it to "Enquiry", which is still open, ' +
+        "would take it off the board, where nobody would find it. Send it to a Won or Lost stage instead.",
+    )
+  })
+
+  // THE PRESENCE CONTROL: the identical removal, sent somewhere the cards stay
+  // visible. Without it, a function that refused every move off a Won stage
+  // would pass every assertion above.
+  it("allows the same cards to move to a stage that will be won or lost", () => {
+    expect(
+      movedClosedCardProblems(
+        oldStages,
+        submittedWithReplacementWon,
+        { ...removeWonPlan, moveCards: [{ fromStageId: "s2", toStageId: "s3" }] },
+        new Map([["s2", 2]]),
+      ),
+    ).toEqual([])
+  })
+
+  // THE KIND THE DESTINATION WILL HAVE, not the one it has today. Here the
+  // open stage is being re-kinded to `lost` in the SAME save, so the cards
+  // stay visible and nothing is refused — reading `oldStages` for the
+  // destination's kind would wrongly refuse this.
+  it("reads the destination's SUBMITTED kind, so a stage being re-kinded in the same save counts as its new kind", () => {
+    const reKinded: StageDraft[] = [
+      draft("s1", "enquiry", "Enquiry", "lost"),
+      draft(null, "won_2", "Won", "won"),
+      draft("s3", "lost", "Lost", "open"),
+    ]
+    expect(movedClosedCardProblems(oldStages, reKinded, removeWonPlan, new Map([["s2", 2]]))).toEqual([])
+  })
+
+  // And the converse, so the lookup cannot pass by always reading `oldStages`:
+  // a destination that is `won` today but `open` in this save IS refused.
+  it("refuses a destination that is being turned open by the same save", () => {
+    const reKinded: StageDraft[] = [
+      draft("s1", "enquiry", "Enquiry", "open"),
+      draft("s3", "lost", "Lost", "open"),
+      draft(null, "won_2", "Won", "won"),
+      draft(null, "lost_2", "Lost", "lost"),
+    ]
+    const plan = {
+      moveCards: [{ fromStageId: "s2", toStageId: "s3" }],
+      removedStageIds: ["s2"],
+      keptStageIds: ["s1", "s3"],
+    }
+    expect(movedClosedCardProblems(oldStages, reKinded, plan, new Map([["s2", 2]]))[0].message).toContain(
+      'Moving them to "Lost", which is still open',
+    )
+  })
+
+  it("says nothing when the stage being emptied holds no finished deals", () => {
+    expect(movedClosedCardProblems(oldStages, submittedWithReplacementWon, removeWonPlan, new Map())).toEqual([])
+  })
+
+  // An OPEN stage's closed cards are already invisible, so no move can make
+  // them more so — and refusing would block the one edit that repairs them.
+  it("says nothing about closed cards moving off an already-open stage", () => {
+    const plan = {
+      moveCards: [{ fromStageId: "s1", toStageId: "s3" }],
+      removedStageIds: ["s1"],
+      keptStageIds: ["s2", "s3"],
+    }
+    const submitted = [draft("s2", "won", "Won", "won"), draft("s3", "lost", "Lost", "open")]
+    expect(movedClosedCardProblems(oldStages, submitted, plan, new Map([["s1", 3]]))).toEqual([])
+  })
+
+  // `invalidDestinationProblems` already refuses a destination that is not
+  // surviving, in its own words. Two different sentences about one mistake is
+  // worse than one.
+  it("stays quiet about a destination that is not surviving, which another check already names", () => {
+    const plan = {
+      moveCards: [{ fromStageId: "s2", toStageId: "s1" }],
+      removedStageIds: ["s1", "s2"],
+      keptStageIds: ["s3"],
+    }
+    const submitted = [draft("s3", "lost", "Lost", "lost"), draft(null, "won_2", "Won", "won")]
+    expect(movedClosedCardProblems(oldStages, submitted, plan, new Map([["s2", 2]]))).toEqual([])
+    // And the check that DOES own that message is speaking.
+    expect(invalidDestinationProblems(oldStages, plan)).toHaveLength(1)
   })
 })
