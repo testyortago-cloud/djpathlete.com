@@ -161,18 +161,34 @@ export function planStageSave(
  *
  * Separate from `planStageSave` so the route can ask the question without
  * building a plan, and so the message lives beside the other messages.
+ *
+ * NAMES THE STAGE THE WAY THE COACH NAMED IT, and counts cards the way a
+ * person would (controller ruling R16). It used to say
+ * `Stage "consulted" still has 2 card(s) on it` — the stored KEY, which the
+ * editor renders as an unchangeable grey box a coach never types, and
+ * `card(s)`, which nobody says out loud. Both the route (as a 400) and the
+ * editor (inline) print this exact string, so it is read by a coach on a
+ * screen, not by a developer in a log. `name` has been on `SavedStage` since
+ * R2 widened it for the editor; the key and then the id remain as fallbacks
+ * for a row whose name is somehow blank, because a message that silently
+ * names nothing is worse than one naming a key.
  */
 export function strandedStageProblems(
   oldStages: SavedStage[],
   plan: StageSavePlan,
   cardCountByStageId: Map<string, number>,
 ): StageProblem[] {
-  const keyOf = new Map(oldStages.map((s) => [s.id, s.key]))
+  const labelOf = new Map(oldStages.map((s) => [s.id, s.name.trim() || s.key]))
   const moved = new Set(plan.moveCards.map((m) => m.fromStageId))
   return plan.removedStageIds
     .filter((id) => (cardCountByStageId.get(id) ?? 0) > 0 && !moved.has(id))
-    .map((id) => ({
-      index: null,
-      message: `Stage "${keyOf.get(id) ?? id}" still has ${cardCountByStageId.get(id)} card(s) on it. Say which stage they should move to before removing it.`,
-    }))
+    .map((id) => {
+      const cards = cardCountByStageId.get(id) ?? 0
+      return {
+        index: null,
+        message:
+          `Stage "${labelOf.get(id) ?? id}" still has ${cards} ${cards === 1 ? "card" : "cards"} on it. ` +
+          `Say which stage they should move to before removing it.`,
+      }
+    })
 }

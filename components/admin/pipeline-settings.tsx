@@ -6,6 +6,14 @@
 // archives and creates boards, because this screen is the only surface those
 // three routes have.
 //
+// THREE CARDS, THREE REQUESTS, THREE PIECES OF STATE. `PipelineSettings` only
+// composes: `BoardCard` (PATCH this board), `StageEditor` (PUT its stages) and
+// `NewBoardCard` (POST another board) each own their own busy flag and their
+// own refusal. They shared one pair until fix round 1, and the consequence was
+// exact: a duplicate-name 400 from the create box rendered under the card about
+// the board being EDITED, a screenful away, while the box that caused it said
+// nothing. An error can now only land on the card whose request produced it.
+//
 // THE RULES ARE NOT RE-IMPLEMENTED HERE. `validateStageList`, `planStageSave`
 // and `strandedStageProblems` (lib/lead-engine/stage-list.ts) are the SAME
 // pure functions the route and the DAL call before writing. Running them here
@@ -171,6 +179,15 @@ function suggestKey(name: string): string {
   return collapsed.slice(0, MAX_STAGE_KEY_LENGTH).replace(/_+$/g, "")
 }
 
+/**
+ * The board routes' own cap (`MAX_NAME_LENGTH` in both
+ * app/api/admin/pipeline/boards/route.ts and boards/[id]/route.ts). Stated
+ * here as a named constant rather than a bare 200 in two `maxLength`
+ * attributes — the stage caps earned their one home in stage-list.ts; this
+ * one at least has a name that says which refusal it mirrors.
+ */
+const MAX_BOARD_NAME_LENGTH = 200
+
 function cardsPhrase(count: number): string {
   if (count === 0) return "No cards"
   return count === 1 ? "1 card" : `${count} cards`
@@ -198,6 +215,17 @@ function fieldProblems(rows: EditableStage[]): StageProblem[] {
   return problems
 }
 
+/**
+ * The screen: three cards that share a board and nothing else.
+ *
+ * SPLIT ON PURPOSE (fix round 1, Important 1). All three used to live in one
+ * component over one `boardBusy` / `boardError` pair, and a duplicate-name
+ * refusal from "Add another board" therefore printed under the card about the
+ * board being EDITED, ~135 lines up the page, while the box that caused it
+ * said nothing. The seam is one card per feature, each owning its own busy
+ * flag and its own refusal, so an error has only one place it can go: the
+ * card whose request produced it.
+ */
 export function PipelineSettings({
   board,
   stages,
@@ -216,17 +244,302 @@ export function PipelineSettings({
   /** `board.key === DEFAULT_PIPELINE_KEY`. Decided by the server so this file needs no constant. */
   isDefaultBoard?: boolean
 }) {
+  return (
+    <div className="space-y-6 font-body">
+      <BoardCard board={board} isDefaultBoard={isDefaultBoard} />
+      <StageEditor board={board} stages={stages} cardCounts={cardCounts} />
+      <NewBoardCard />
+    </div>
+  )
+}
+
+/**
+ * A refusal off a 400, and WHICH BOX it is about.
+ *
+ * `field` is the route's own (`{ error, field }`) — both board routes name
+ * the failing path rather than answering a bare "Invalid request body",
+ * precisely so a screen can put the sentence against the box that caused it.
+ * Discarding it is what let a create refusal render against the rename card.
+ * `null` means the route named nothing (a readable DAL refusal, or no
+ * response at all), and those render at the foot of the card.
+ */
+type BoardRefusal = { message: string; field: string | null }
+
+/** Reads `{ error, field }` off a 400 without trusting either to be present. */
+function toRefusal(payload: { error?: unknown; field?: unknown }, fallback: string): BoardRefusal {
+  return {
+    message: typeof payload.error === "string" && payload.error.length > 0 ? payload.error : fallback,
+    field: typeof payload.field === "string" && payload.field.length > 0 ? payload.field : null,
+  }
+}
+
+/** The refusal shown under one box, or null when it belongs to the card as a whole. */
+function refusalForField(refusal: BoardRefusal | null, field: string): BoardRefusal | null {
+  return refusal && refusal.field === field ? refusal : null
+}
+
+function refusalForCard(refusal: BoardRefusal | null, fields: string[]): BoardRefusal | null {
+  return refusal && (refusal.field === null || !fields.includes(refusal.field)) ? refusal : null
+}
+
+// ---------------------------------------------------------------------------
+// The board being edited: rename, and archive.
+// ---------------------------------------------------------------------------
+
+function BoardCard({ board, isDefaultBoard }: { board: PipelineSettingsBoard; isDefaultBoard: boolean }) {
+  const router = useRouter()
+  const [name, setName] = useState(board.name)
+  const [busy, setBusy] = useState(false)
+  const [refusal, setRefusal] = useState<BoardRefusal | null>(null)
+  const [confirmingArchive, setConfirmingArchive] = useState(false)
+
+  useEffect(() => {
+    setName(board.name)
+    setConfirmingArchive(false)
+    setRefusal(null)
+  }, [board])
+
+  async function patchBoard(patch: { name?: string; status?: "archived" }, successMessage: string) {
+    if (busy) return
+    setBusy(true)
+    setRefusal(null)
+    try {
+      const res = await fetch(`/api/admin/pipeline/boards/${board.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      })
+      const payload = (await res.json().catch(() => ({}))) as { error?: string; field?: string }
+      if (!res.ok) {
+        // VERBATIM. The default board's archive refusal is written for a
+        // coach to read and act on; a generic "that did not work" would hide
+        // the one sentence that says why.
+        const next = toRefusal(payload, "That change could not be saved.")
+        setRefusal(next)
+        toast.error(next.message)
+        return
+      }
+      toast.success(successMessage)
+      router.refresh()
+    } catch {
+      const message = "That change could not be saved. Check your connection and try again."
+      setRefusal({ message, field: null })
+      toast.error(message)
+    } finally {
+      setBusy(false)
+      setConfirmingArchive(false)
+    }
+  }
+
+  const nameRefusal = refusalForField(refusal, "name")
+  const cardRefusal = refusalForCard(refusal, ["name"])
+
+  return (
+    <section data-testid="board-card" className="rounded-xl border border-border bg-white p-4 shadow-sm">
+      <h2 className="text-lg font-semibold text-primary">This board</h2>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <div className="min-w-64 flex-1">
+          <Label htmlFor="board-name">Board name</Label>
+          <Input
+            id="board-name"
+            value={name}
+            maxLength={MAX_BOARD_NAME_LENGTH}
+            onChange={(e) => {
+              setName(e.target.value)
+              // The refusal described the name they have just changed.
+              setRefusal(null)
+            }}
+            className="mt-1"
+          />
+          {nameRefusal ? (
+            <p role="alert" className="mt-1 text-sm text-destructive">
+              {nameRefusal.message}
+            </p>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy || name.trim().length === 0 || name === board.name}
+          onClick={() => void patchBoard({ name: name.trim() }, "Renamed the board.")}
+        >
+          Save board name
+        </Button>
+      </div>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Its short name is <span className="font-mono">{board.key}</span>. That one never changes — every card already
+        filed against this board points at it.
+      </p>
+
+      <div className="mt-4 border-t border-border pt-4">
+        {isDefaultBoard ? (
+          <p className="text-sm text-muted-foreground">
+            This is the board every enquiry lands on when nothing else claims it, so it cannot be archived.
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Archiving takes this board off the pipeline screens. Its cards are not deleted, but you will not be able to
+            bring it back yourself yet — ask your developer if you need it again.
+          </p>
+        )}
+        <div className="mt-2 flex items-center gap-2">
+          {confirmingArchive ? (
+            <>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={busy}
+                onClick={() => void patchBoard({ status: "archived" }, `Archived "${board.name}".`)}
+              >
+                Yes, archive it
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setConfirmingArchive(false)}>
+                Cancel
+              </Button>
+            </>
+          ) : (
+            // Deliberately NOT disabled for the default board. The route is
+            // the guard, and it answers with a sentence explaining why —
+            // which is worth more than a button that quietly does nothing.
+            // The note above says the same thing before it is clicked, so the
+            // refusal confirms what the coach was already told rather than
+            // ambushing them.
+            <Button type="button" variant="outline" disabled={busy} onClick={() => setConfirmingArchive(true)}>
+              Archive this board
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {cardRefusal ? (
+        <p role="alert" className="mt-3 text-sm text-destructive">
+          {cardRefusal.message}
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Another board entirely. Its own request, its own state, its own error slot.
+// ---------------------------------------------------------------------------
+
+function NewBoardCard() {
+  const router = useRouter()
+  const [name, setName] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [refusal, setRefusal] = useState<BoardRefusal | null>(null)
+
+  async function handleCreateBoard() {
+    const trimmed = name.trim()
+    if (trimmed.length === 0 || busy) return
+    setBusy(true)
+    setRefusal(null)
+    try {
+      const res = await fetch("/api/admin/pipeline/boards", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      })
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string
+        field?: string
+        board?: { id?: string; key?: string }
+      }
+      if (!res.ok) {
+        // The refusal a coach will actually hit here is
+        // `A board with the key "camps" already exists for this business.
+        // Choose a different name.` — about the name in THIS box, and the
+        // route says so with `field: "name"`. It belongs under this box.
+        const next = toRefusal(payload, "That board could not be created.")
+        setRefusal(next)
+        toast.error(next.message)
+        return
+      }
+      toast.success(`Created "${trimmed}".`)
+      setName("")
+      // Straight into the new board's own settings — it starts with only the
+      // Won and Lost stages `createPipelineBoard` seeds, so there is always
+      // something to do next.
+      if (payload.board?.key) {
+        router.push(`/admin/pipeline/settings?board=${encodeURIComponent(payload.board.key)}`)
+      }
+      router.refresh()
+    } catch {
+      const message = "That board could not be created. Check your connection and try again."
+      setRefusal({ message, field: null })
+      toast.error(message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const nameRefusal = refusalForField(refusal, "name")
+  const cardRefusal = refusalForCard(refusal, ["name"])
+
+  return (
+    <section data-testid="new-board-card" className="rounded-xl border border-border bg-white p-4 shadow-sm">
+      <h2 className="text-lg font-semibold text-primary">Add another board</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        A new board starts with a Won stage and a Lost stage. Add the steps in between once it exists.
+      </p>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <div className="min-w-64 flex-1">
+          <Label htmlFor="new-board-name">New board name</Label>
+          <Input
+            id="new-board-name"
+            value={name}
+            maxLength={MAX_BOARD_NAME_LENGTH}
+            placeholder="Camps &amp; clinics"
+            onChange={(e) => {
+              setName(e.target.value)
+              setRefusal(null)
+            }}
+            className="mt-1"
+          />
+          {nameRefusal ? (
+            <p role="alert" className="mt-1 text-sm text-destructive">
+              {nameRefusal.message}
+            </p>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy || name.trim().length === 0}
+          onClick={() => void handleCreateBoard()}
+        >
+          Create board
+        </Button>
+      </div>
+      {cardRefusal ? (
+        <p role="alert" className="mt-3 text-sm text-destructive">
+          {cardRefusal.message}
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// The stage list — the half of this screen that saves as ONE object.
+// ---------------------------------------------------------------------------
+
+function StageEditor({
+  board,
+  stages,
+  cardCounts,
+}: {
+  board: PipelineSettingsBoard
+  stages: SavedStage[]
+  cardCounts: Record<string, number>
+}) {
   const router = useRouter()
   const [rows, setRows] = useState<EditableStage[]>(() => toEditable(stages))
   const [destinations, setDestinations] = useState<Record<string, string>>({})
   const [serverProblems, setServerProblems] = useState<StageProblem[]>([])
   const [savingStages, setSavingStages] = useState(false)
   const [stageError, setStageError] = useState<string | null>(null)
-  const [boardName, setBoardName] = useState(board.name)
-  const [boardBusy, setBoardBusy] = useState(false)
-  const [boardError, setBoardError] = useState<string | null>(null)
-  const [confirmingArchive, setConfirmingArchive] = useState(false)
-  const [newBoardName, setNewBoardName] = useState("")
   const nextKeyRef = useRef(0)
 
   // No local state survives a successful save except what comes back down as
@@ -238,12 +551,6 @@ export function PipelineSettings({
     setServerProblems([])
     setStageError(null)
   }, [stages])
-
-  useEffect(() => {
-    setBoardName(board.name)
-    setConfirmingArchive(false)
-    setBoardError(null)
-  }, [board])
 
   const drafts = useMemo(() => toDrafts(rows), [rows])
   const cardCountMap = useMemo(() => new Map(Object.entries(cardCounts)), [cardCounts])
@@ -276,11 +583,25 @@ export function PipelineSettings({
     .filter((r) => r.id !== null)
     .map((r) => ({ id: r.id as string, name: r.name.trim() || "Untitled stage" }))
 
-  /** Every edit clears the server's stale complaints; they describe a payload that no longer exists. */
-  function editRows(next: (prev: EditableStage[]) => EditableStage[]) {
+  /**
+   * Every edit clears the server's stale complaints — both of them. They
+   * describe a payload that no longer exists, and a refusal still sitting in
+   * the footer after the coach has fixed the thing it named reads as a save
+   * that failed again.
+   */
+  function clearStaleRefusals() {
     setServerProblems([])
     setStageError(null)
+  }
+
+  function editRows(next: (prev: EditableStage[]) => EditableStage[]) {
+    clearStaleRefusals()
     setRows(next)
+  }
+
+  function chooseDestination(removedStageId: string, destinationStageId: string) {
+    clearStaleRefusals()
+    setDestinations((prev) => ({ ...prev, [removedStageId]: destinationStageId }))
   }
 
   function updateRow(key: string, patch: Partial<EditableStage>) {
@@ -380,310 +701,126 @@ export function PipelineSettings({
     }
   }
 
-  async function patchBoard(patch: { name?: string; status?: "archived" }, successMessage: string) {
-    if (boardBusy) return
-    setBoardBusy(true)
-    setBoardError(null)
-    try {
-      const res = await fetch(`/api/admin/pipeline/boards/${board.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(patch),
-      })
-      const payload = (await res.json().catch(() => ({}))) as { error?: string }
-      if (!res.ok) {
-        // VERBATIM. The default board's archive refusal is written for a
-        // coach to read and act on; a generic "that did not work" would hide
-        // the one sentence that says why.
-        const message = payload.error ?? "That change could not be saved."
-        setBoardError(message)
-        toast.error(message)
-        return
-      }
-      toast.success(successMessage)
-      router.refresh()
-    } catch {
-      const message = "That change could not be saved. Check your connection and try again."
-      setBoardError(message)
-      toast.error(message)
-    } finally {
-      setBoardBusy(false)
-      setConfirmingArchive(false)
-    }
-  }
-
-  async function handleCreateBoard() {
-    const name = newBoardName.trim()
-    if (name.length === 0 || boardBusy) return
-    setBoardBusy(true)
-    setBoardError(null)
-    try {
-      const res = await fetch("/api/admin/pipeline/boards", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name }),
-      })
-      const payload = (await res.json().catch(() => ({}))) as {
-        error?: string
-        board?: { id?: string; key?: string }
-      }
-      if (!res.ok) {
-        const message = payload.error ?? "That board could not be created."
-        setBoardError(message)
-        toast.error(message)
-        return
-      }
-      toast.success(`Created "${name}".`)
-      setNewBoardName("")
-      // Straight into the new board's own settings — it starts with only the
-      // Won and Lost stages `createPipelineBoard` seeds, so there is always
-      // something to do next.
-      if (payload.board?.key) {
-        router.push(`/admin/pipeline/settings?board=${encodeURIComponent(payload.board.key)}`)
-      }
-      router.refresh()
-    } catch {
-      const message = "That board could not be created. Check your connection and try again."
-      setBoardError(message)
-      toast.error(message)
-    } finally {
-      setBoardBusy(false)
-    }
-  }
-
   return (
-    <div className="space-y-6 font-body">
-      {/* ---------------------------------------------------------------- */}
-      {/* The board itself                                                  */}
-      {/* ---------------------------------------------------------------- */}
-      <section className="rounded-xl border border-border bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-semibold text-primary">This board</h2>
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          <div className="min-w-64 flex-1">
-            <Label htmlFor="board-name">Board name</Label>
-            <Input
-              id="board-name"
-              value={boardName}
-              maxLength={200}
-              onChange={(e) => setBoardName(e.target.value)}
-              className="mt-1"
-            />
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={boardBusy || boardName.trim().length === 0 || boardName === board.name}
-            onClick={() => void patchBoard({ name: boardName.trim() }, "Renamed the board.")}
-          >
-            Save board name
-          </Button>
+    <form
+      data-testid="stage-form"
+      onSubmit={(e) => {
+        e.preventDefault()
+        void handleSaveStages()
+      }}
+      className="space-y-4"
+    >
+      {boardLevelProblems.length > 0 ? (
+        <div
+          role="alert"
+          data-testid="board-problems"
+          className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
+        >
+          <p className="font-medium">Fix these before you can save:</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {boardLevelProblems.map((p, i) => (
+              <li key={i}>{p.message}</li>
+            ))}
+          </ul>
         </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Its short name is <span className="font-mono">{board.key}</span>. That one never changes — every card already
-          filed against this board points at it.
-        </p>
+      ) : null}
 
-        <div className="mt-4 border-t border-border pt-4">
-          {isDefaultBoard ? (
-            <p className="text-sm text-muted-foreground">
-              This is the board every enquiry lands on when nothing else claims it, so it cannot be archived.
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Archiving takes this board off the pipeline screens. Its cards are not deleted, but you will not be able
-              to bring it back yourself yet — ask your developer if you need it again.
-            </p>
-          )}
-          <div className="mt-2 flex items-center gap-2">
-            {confirmingArchive ? (
-              <>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  disabled={boardBusy}
-                  onClick={() => void patchBoard({ status: "archived" }, `Archived "${board.name}".`)}
-                >
-                  Yes, archive it
-                </Button>
-                <Button type="button" variant="ghost" onClick={() => setConfirmingArchive(false)}>
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              // Deliberately NOT disabled for the default board. The route is
-              // the guard, and it answers with a sentence explaining why —
-              // which is worth more than a button that quietly does nothing.
-              <Button type="button" variant="outline" disabled={boardBusy} onClick={() => setConfirmingArchive(true)}>
-                Archive this board
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {boardError ? (
-          <p role="alert" className="mt-3 text-sm text-destructive">
-            {boardError}
+      {strandedRemovals.length > 0 ? (
+        <div className="rounded-xl border border-border bg-surface/40 p-4">
+          <p className="text-sm font-medium text-primary">These cards need somewhere to go</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            You have taken a stage off the board that still has cards on it. Say where they should move to, and they
+            will be moved in the same step that removes the stage.
           </p>
-        ) : null}
-      </section>
-
-      {/* ---------------------------------------------------------------- */}
-      {/* The stage list                                                    */}
-      {/* ---------------------------------------------------------------- */}
-      <form
-        data-testid="stage-form"
-        onSubmit={(e) => {
-          e.preventDefault()
-          void handleSaveStages()
-        }}
-        className="space-y-4"
-      >
-        {boardLevelProblems.length > 0 ? (
-          <div
-            role="alert"
-            data-testid="board-problems"
-            className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
-          >
-            <p className="font-medium">Fix these before you can save:</p>
-            <ul className="mt-2 list-disc space-y-1 pl-5">
-              {boardLevelProblems.map((p, i) => (
-                <li key={i}>{p.message}</li>
-              ))}
-            </ul>
+          <div className="mt-3 space-y-3">
+            {strandedRemovals.map((removal) => {
+              const label = `Where should the ${cardsPhrase(removal.cards).toLowerCase()} on "${
+                removal.stage?.name ?? removal.id
+              }" go?`
+              return (
+                <div key={removal.id}>
+                  <Label htmlFor={`destination-${removal.id}`}>{label}</Label>
+                  <select
+                    id={`destination-${removal.id}`}
+                    value={destinations[removal.id] ?? ""}
+                    onChange={(e) => chooseDestination(removal.id, e.target.value)}
+                    className="mt-1 h-9 rounded-lg border border-border bg-white px-3 text-sm text-foreground"
+                  >
+                    <option value="">Choose a stage…</option>
+                    {destinationOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )
+            })}
           </div>
-        ) : null}
-
-        {strandedRemovals.length > 0 ? (
-          <div className="rounded-xl border border-border bg-surface/40 p-4">
-            <p className="text-sm font-medium text-primary">These cards need somewhere to go</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              You have taken a stage off the board that still has cards on it. Say where they should move to, and they
-              will be moved in the same step that removes the stage.
-            </p>
-            <div className="mt-3 space-y-3">
-              {strandedRemovals.map((removal) => {
-                const label = `Where should the ${cardsPhrase(removal.cards).toLowerCase()} on "${
-                  removal.stage?.name ?? removal.id
-                }" go?`
-                return (
-                  <div key={removal.id}>
-                    <Label htmlFor={`destination-${removal.id}`}>{label}</Label>
-                    <select
-                      id={`destination-${removal.id}`}
-                      value={destinations[removal.id] ?? ""}
-                      onChange={(e) => {
-                        setServerProblems([])
-                        setDestinations((prev) => ({ ...prev, [removal.id]: e.target.value }))
-                      }}
-                      className="mt-1 h-9 rounded-lg border border-border bg-white px-3 text-sm text-foreground"
-                    >
-                      <option value="">Choose a stage…</option>
-                      {destinationOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ) : null}
-
-        <DataTableCard>
-          <DataTableToolbar className="items-center justify-between sm:items-center">
-            <div>
-              <h2 className="text-lg font-semibold text-primary">Stages</h2>
-              <p className="text-sm text-muted-foreground">
-                Drag a stage to change the order cards move through. Every board needs one Won stage and one Lost stage.
-              </p>
-            </div>
-            <Button type="button" variant="outline" onClick={addRow} className="shrink-0">
-              <Plus className="size-4" />
-              Add a stage
-            </Button>
-          </DataTableToolbar>
-
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <DataTable>
-              <DataTableHeader>
-                <DataTableHead className="w-24">Order</DataTableHead>
-                <DataTableHead>Name</DataTableHead>
-                <DataTableHead>Short name</DataTableHead>
-                <DataTableHead>Kind</DataTableHead>
-                <DataTableHead>Slow after (days)</DataTableHead>
-                <DataTableHead>No reply after (days)</DataTableHead>
-                <DataTableHead>Cards</DataTableHead>
-                <DataTableHead align="right">Remove</DataTableHead>
-              </DataTableHeader>
-              <tbody>
-                <SortableContext items={rows.map((r) => r._key)} strategy={verticalListSortingStrategy}>
-                  {rows.map((row, index) => (
-                    <StageRow
-                      key={row._key}
-                      row={row}
-                      index={index}
-                      total={rows.length}
-                      cards={row.id ? (cardCounts[row.id] ?? 0) : 0}
-                      problems={problemsForRow(index)}
-                      onChange={(patch) => updateRow(row._key, patch)}
-                      onChangeName={(name) => changeName(row, name)}
-                      onMoveUp={() => moveRow(index, -1)}
-                      onMoveDown={() => moveRow(index, 1)}
-                      onRemove={() => removeRow(row._key)}
-                    />
-                  ))}
-                </SortableContext>
-                {rows.length === 0 ? (
-                  <DataTableEmpty colSpan={8}>
-                    This board has no stages. Add at least one Won stage and one Lost stage before saving.
-                  </DataTableEmpty>
-                ) : null}
-              </tbody>
-            </DataTable>
-          </DndContext>
-
-          <DataTableFooter>
-            <p className="text-sm text-destructive">{stageError ?? ""}</p>
-            <Button type="submit" disabled={savingStages || blocking.length > 0}>
-              {savingStages ? "Saving…" : "Save stages"}
-            </Button>
-          </DataTableFooter>
-        </DataTableCard>
-      </form>
-
-      {/* ---------------------------------------------------------------- */}
-      {/* Another board                                                     */}
-      {/* ---------------------------------------------------------------- */}
-      <section className="rounded-xl border border-border bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-semibold text-primary">Add another board</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          A new board starts with a Won stage and a Lost stage. Add the steps in between once it exists.
-        </p>
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          <div className="min-w-64 flex-1">
-            <Label htmlFor="new-board-name">New board name</Label>
-            <Input
-              id="new-board-name"
-              value={newBoardName}
-              maxLength={200}
-              placeholder="Camps &amp; clinics"
-              onChange={(e) => setNewBoardName(e.target.value)}
-              className="mt-1"
-            />
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={boardBusy || newBoardName.trim().length === 0}
-            onClick={() => void handleCreateBoard()}
-          >
-            Create board
-          </Button>
         </div>
-      </section>
-    </div>
+      ) : null}
+
+      <DataTableCard>
+        <DataTableToolbar className="items-center justify-between sm:items-center">
+          <div>
+            <h2 className="text-lg font-semibold text-primary">Stages</h2>
+            <p className="text-sm text-muted-foreground">
+              Drag a stage to change the order cards move through. Every board needs one Won stage and one Lost stage.
+            </p>
+          </div>
+          <Button type="button" variant="outline" onClick={addRow} className="shrink-0">
+            <Plus className="size-4" />
+            Add a stage
+          </Button>
+        </DataTableToolbar>
+
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead className="w-24">Order</DataTableHead>
+              <DataTableHead>Name</DataTableHead>
+              <DataTableHead>Short name</DataTableHead>
+              <DataTableHead>Kind</DataTableHead>
+              <DataTableHead>Slow after (days)</DataTableHead>
+              <DataTableHead>No reply after (days)</DataTableHead>
+              <DataTableHead>Cards</DataTableHead>
+              <DataTableHead align="right">Remove</DataTableHead>
+            </DataTableHeader>
+            <tbody>
+              <SortableContext items={rows.map((r) => r._key)} strategy={verticalListSortingStrategy}>
+                {rows.map((row, index) => (
+                  <StageRow
+                    key={row._key}
+                    row={row}
+                    index={index}
+                    total={rows.length}
+                    cards={row.id ? (cardCounts[row.id] ?? 0) : 0}
+                    problems={problemsForRow(index)}
+                    onChange={(patch) => updateRow(row._key, patch)}
+                    onChangeName={(name) => changeName(row, name)}
+                    onMoveUp={() => moveRow(index, -1)}
+                    onMoveDown={() => moveRow(index, 1)}
+                    onRemove={() => removeRow(row._key)}
+                  />
+                ))}
+              </SortableContext>
+              {rows.length === 0 ? (
+                <DataTableEmpty colSpan={8}>
+                  This board has no stages. Add at least one Won stage and one Lost stage before saving.
+                </DataTableEmpty>
+              ) : null}
+            </tbody>
+          </DataTable>
+        </DndContext>
+
+        <DataTableFooter>
+          <p className="text-sm text-destructive">{stageError ?? ""}</p>
+          <Button type="submit" disabled={savingStages || blocking.length > 0}>
+            {savingStages ? "Saving…" : "Save stages"}
+          </Button>
+        </DataTableFooter>
+      </DataTableCard>
+    </form>
   )
 }
 

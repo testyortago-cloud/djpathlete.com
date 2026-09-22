@@ -112,6 +112,31 @@ function saveButton(): HTMLElement {
   return screen.getByRole("button", { name: "Save stages" })
 }
 
+/** The two board cards, so an error can be asserted to be on ONE of them. */
+function boardCard(): HTMLElement {
+  return screen.getByTestId("board-card")
+}
+
+function newBoardCard(): HTMLElement {
+  return screen.getByTestId("new-board-card")
+}
+
+/**
+ * The block that holds ONE labelled box — its label, its input and the slot a
+ * field-level refusal renders into.
+ *
+ * Scoping to the whole card is not enough to prove the route's `field` was
+ * read: a card-level fallback message is inside the card too. This is what
+ * tells "under the box that caused it" apart from "somewhere on the same
+ * card".
+ */
+function fieldBlock(label: string): HTMLElement {
+  const input = screen.getByLabelText(label)
+  const block = input.parentElement
+  if (!block) throw new Error(`no field block around "${label}"`)
+  return block
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   global.fetch = okFetch()
@@ -238,16 +263,17 @@ describe("<PipelineSettings> — removing a stage that holds cards", () => {
     expect(options).not.toContain("Consulted")
 
     // Until a destination is chosen the save is refused, in the same words
-    // the route would use (strandedStageProblems).
+    // the route would use (strandedStageProblems) — the stage's NAME, and
+    // "2 cards", not the key and not "card(s)" (R16).
     expect(
       screen.getByText(
-        'Stage "consulted" still has 2 card(s) on it. Say which stage they should move to before removing it.',
+        'Stage "Consulted" still has 2 cards on it. Say which stage they should move to before removing it.',
       ),
     ).toBeInTheDocument()
     expect(saveButton()).toBeDisabled()
 
     fireEvent.change(picker, { target: { value: "s1" } })
-    expect(screen.queryByText(/still has 2 card\(s\) on it/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/still has 2 cards on it/)).not.toBeInTheDocument()
     expect(saveButton()).toBeEnabled()
   })
 
@@ -256,6 +282,26 @@ describe("<PipelineSettings> — removing a stage that holds cards", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove stage 1" }))
     expect(screen.queryByLabelText(/Where should/)).not.toBeInTheDocument()
     expect(saveButton()).toBeEnabled()
+  })
+
+  // Fix round 1, item 4. The picker's onChange used to clear `serverProblems`
+  // but not `stageError`, so the footer kept showing the refusal the coach had
+  // just acted on. Every step before the last one exists to isolate the picker
+  // as the ONLY thing that happens between the refusal and the assertion —
+  // editing a row, removing one or adding one all clear it through a
+  // different path.
+  it("clears a stale save refusal the moment the coach answers the destination question", async () => {
+    renderSettings()
+    fireEvent.click(screen.getByRole("button", { name: "Remove stage 2" }))
+    const picker = screen.getByLabelText('Where should the 2 cards on "Consulted" go?')
+    fireEvent.change(picker, { target: { value: "s1" } })
+
+    global.fetch = failFetch(400, { error: "This stage list could not be saved." })
+    fireEvent.click(saveButton())
+    await waitFor(() => expect(screen.getByText("This stage list could not be saved.")).toBeInTheDocument())
+
+    fireEvent.change(picker, { target: { value: "s3" } })
+    expect(screen.queryByText("This stage list could not be saved.")).not.toBeInTheDocument()
   })
 
   it("sends the destination map with the save", async () => {
@@ -372,6 +418,44 @@ describe("<PipelineSettings> — the route's length caps, enforced at the field"
     expect(saveButton()).toBeEnabled()
   })
 
+  it("stops an over-long key on its own row too — the branch maxLength cannot reach", () => {
+    renderSettings()
+    // A saved stage's key box is read-only, so the reachable case is a NEW
+    // stage. `fireEvent.change` bypasses `maxLength` exactly as a paste does.
+    fireEvent.click(screen.getByRole("button", { name: "Add a stage" }))
+    fireEvent.change(screen.getByLabelText("Stage 5 name"), { target: { value: "Proposal sent" } })
+    expect(saveButton()).toBeEnabled() // presence control
+
+    fireEvent.change(screen.getByLabelText("Stage 5 key"), { target: { value: "k".repeat(101) } })
+    expect(within(row(4)).getByText("Stage key must be 100 characters or fewer.")).toBeInTheDocument()
+    expect(within(row(0)).queryByText("Stage key must be 100 characters or fewer.")).not.toBeInTheDocument()
+    expect(saveButton()).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText("Stage 5 key"), { target: { value: "k".repeat(100) } })
+    expect(saveButton()).toBeEnabled()
+  })
+
+  it("refuses a negative or fractional number of days at the field", () => {
+    renderSettings()
+    const days = () => screen.getByLabelText("Stage 1: days in this step before it looks slow")
+    const message = "Days must be a whole number, 0 or more. Leave it blank for no warning."
+    expect(screen.queryByText(message)).not.toBeInTheDocument() // presence control
+
+    // `type="number"` accepts both of these in a real browser, and `toDays`
+    // turns each into null — so this check is the only thing between them and
+    // a save that silently clears the threshold.
+    for (const bad of ["-5", "1.5"]) {
+      fireEvent.change(days(), { target: { value: bad } })
+      expect(within(row(0)).getByText(message)).toBeInTheDocument()
+      expect(within(row(1)).queryByText(message)).not.toBeInTheDocument()
+      expect(saveButton()).toBeDisabled()
+    }
+
+    fireEvent.change(days(), { target: { value: "2" } })
+    expect(screen.queryByText(message)).not.toBeInTheDocument()
+    expect(saveButton()).toBeEnabled()
+  })
+
   it("caps the boxes themselves at the same limits the route uses", () => {
     renderSettings()
     expect(screen.getByLabelText("Stage 1 name")).toHaveAttribute("maxlength", "200")
@@ -393,21 +477,48 @@ describe("<PipelineSettings> — the board itself", () => {
     expect(lastBody<{ name: string }>()).toEqual({ name: "One-to-one coaching" })
   })
 
-  it("shows the route's refusal VERBATIM when the default board cannot be archived", async () => {
+  it("shows the route's refusal VERBATIM when the default board cannot be archived, on the card it is about", async () => {
     renderSettings({ isDefaultBoard: true })
     const refusal =
       'The board "Coaching" is where every unrouted enquiry lands, so it cannot be archived. Point the default somewhere else first.'
+    // No `field` — this one is a readable DAL refusal about the board as a
+    // whole, not about a box, so it belongs at the foot of THIS card.
     global.fetch = failFetch(400, { error: refusal })
 
     fireEvent.click(screen.getByRole("button", { name: "Archive this board" }))
     fireEvent.click(screen.getByRole("button", { name: "Yes, archive it" }))
 
-    await waitFor(() => expect(screen.getByText(refusal)).toBeInTheDocument())
+    await waitFor(() => expect(within(boardCard()).getByText(refusal)).toBeInTheDocument())
+    // The other card must not be carrying somebody else's refusal.
+    expect(within(newBoardCard()).queryByText(refusal)).not.toBeInTheDocument()
     expect(toast.error).toHaveBeenCalledWith(refusal)
     // It must not pretend the archive happened.
     expect(toast.success).not.toHaveBeenCalled()
   })
 
+  // The pre-emptive half of the same rule. The post-click refusal above is
+  // the route doing its job; this sentence is what stops the coach being
+  // ambushed by it, and the two `it`s are each other's presence control —
+  // one asserts the default board's note and the absence of the other, the
+  // next asserts exactly the reverse.
+  it("says the default board cannot be archived BEFORE anyone clicks", () => {
+    renderSettings({ isDefaultBoard: true })
+    expect(
+      within(boardCard()).getByText(
+        "This is the board every enquiry lands on when nothing else claims it, so it cannot be archived.",
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Archiving takes this board off the pipeline screens/)).not.toBeInTheDocument()
+  })
+
+  it("warns instead that archiving is one-way, on a board that CAN be archived", () => {
+    renderSettings({ board: { id: "board-2", key: "camps_clinics", name: "Camps & Clinics" }, isDefaultBoard: false })
+    expect(within(boardCard()).getByText(/Archiving takes this board off the pipeline screens/)).toBeInTheDocument()
+    expect(screen.queryByText(/it cannot be archived/)).not.toBeInTheDocument()
+  })
+})
+
+describe("<PipelineSettings> — the add-another-board card", () => {
   it("creates another board", async () => {
     renderSettings()
     global.fetch = okFetch({ ok: true, board: { id: "board-2", key: "camps", name: "Camps" } })
@@ -419,6 +530,47 @@ describe("<PipelineSettings> — the board itself", () => {
     expect(url).toBe("/api/admin/pipeline/boards")
     expect((init as RequestInit).method).toBe("POST")
     expect(lastBody<{ name: string }>()).toEqual({ name: "Camps" })
+  })
+
+  // THE BUG THIS EXISTS FOR (fix round 1, Important 1). Rename, archive and
+  // create shared one `boardError`, which rendered only inside the "This
+  // board" card — so a duplicate-name 400 printed against the board being
+  // EDITED, ~135 lines up the page, while the box that caused it said
+  // nothing at all. The route names the field; the screen has to use it.
+  it("puts a refused creation under the box that caused it, not under the board being edited", async () => {
+    renderSettings()
+    const refusal = 'A board with the key "camps" already exists for this business. Choose a different name.'
+    global.fetch = failFetch(400, { error: refusal, field: "name" })
+
+    fireEvent.change(screen.getByLabelText("New board name"), { target: { value: "Camps" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create board" }))
+
+    await waitFor(() => expect(within(newBoardCard()).getByText(refusal)).toBeInTheDocument())
+    // Not merely on the right CARD — under the right BOX. The route answers
+    // `field: "name"` precisely so this is possible.
+    expect(within(fieldBlock("New board name")).getByText(refusal)).toBeInTheDocument()
+    expect(within(boardCard()).queryByText(refusal)).not.toBeInTheDocument()
+    expect(toast.error).toHaveBeenCalledWith(refusal)
+    expect(toast.success).not.toHaveBeenCalled()
+
+    // And it goes away once the coach does what it asked.
+    fireEvent.change(screen.getByLabelText("New board name"), { target: { value: "Camps and clinics" } })
+    expect(screen.queryByText(refusal)).not.toBeInTheDocument()
+  })
+
+  it("falls back to the foot of its own card when the route names no field", async () => {
+    renderSettings()
+    global.fetch = failFetch(500, {})
+    fireEvent.change(screen.getByLabelText("New board name"), { target: { value: "Camps" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create board" }))
+
+    await waitFor(() =>
+      expect(within(newBoardCard()).getByText("That board could not be created.")).toBeInTheDocument(),
+    )
+    // The converse of the test above: with no field named, it must NOT be
+    // pinned to a box it may have nothing to do with.
+    expect(within(fieldBlock("New board name")).queryByText("That board could not be created.")).not.toBeInTheDocument()
+    expect(within(boardCard()).queryByText("That board could not be created.")).not.toBeInTheDocument()
   })
 })
 

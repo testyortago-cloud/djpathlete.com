@@ -51,6 +51,10 @@ vi.mock("@/lib/db/pipeline", () => {
 })
 
 import { PUT } from "@/app/api/admin/pipeline/boards/[id]/stages/route"
+// The real constants, from the one module that defines them — the route
+// imports these same two. Not mocked: the only module factory above replaces
+// @/lib/db/pipeline, and stage-list.ts is pure.
+import { MAX_STAGE_KEY_LENGTH, MAX_STAGE_NAME_LENGTH } from "@/lib/lead-engine/stage-list"
 import { NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { PipelineBoardNotFoundError } from "@/lib/db/pipeline"
 
@@ -197,6 +201,67 @@ describe("PUT /api/admin/pipeline/boards/[id]/stages", () => {
     expect(body.field).toContain("name")
   })
 
+  // G29 Task 7 fix round 1, item 3. MAX_STAGE_NAME_LENGTH and
+  // MAX_STAGE_KEY_LENGTH moved into lib/lead-engine/stage-list.ts so the
+  // editor screen and this route read ONE definition — but until these four
+  // cases existed, `grep "characters or fewer" __tests__/app/api/admin/pipeline/`
+  // returned nothing: the caps had two readers and only the editor's copy was
+  // pinned. These assert the message AND the boundary from the side that
+  // actually refuses, so shrinking either constant, or dropping either
+  // `.max()`, fails here rather than only in a component test.
+  //
+  // The constants are imported, not retyped: a test that hardcodes 200 and an
+  // implementation that hardcodes 200 agree by luck, not by construction.
+  // `.trim()` runs BEFORE `.max()` in the schema chain, which is why the
+  // "exactly at the cap" cases pad with no surrounding whitespace.
+  describe("the two length caps, pinned from the refusing side", () => {
+    it(`accepts a name of exactly ${MAX_STAGE_NAME_LENGTH} characters`, async () => {
+      const res = await PUT(
+        putReq({ stages: [{ ...OPEN_STAGE, name: "x".repeat(MAX_STAGE_NAME_LENGTH) }, WON_STAGE, LOST_STAGE] }) as never,
+        boardParams,
+      )
+      expect(res.status).toBe(200)
+      expect(savePipelineStagesMock).toHaveBeenCalled()
+    })
+
+    it(`400s a name one character over, with the message the editor shows too`, async () => {
+      const res = await PUT(
+        putReq({
+          stages: [{ ...OPEN_STAGE, name: "x".repeat(MAX_STAGE_NAME_LENGTH + 1) }, WON_STAGE, LOST_STAGE],
+        }) as never,
+        boardParams,
+      )
+      expect(res.status).toBe(400)
+      const body = await res.json()
+      expect(body.error).toBe(`Stage name must be ${MAX_STAGE_NAME_LENGTH} characters or fewer.`)
+      expect(body.field).toBe("stages.0.name")
+      expect(savePipelineStagesMock).not.toHaveBeenCalled()
+    })
+
+    it(`accepts a key of exactly ${MAX_STAGE_KEY_LENGTH} characters`, async () => {
+      const res = await PUT(
+        putReq({ stages: [{ ...OPEN_STAGE, key: "k".repeat(MAX_STAGE_KEY_LENGTH) }, WON_STAGE, LOST_STAGE] }) as never,
+        boardParams,
+      )
+      expect(res.status).toBe(200)
+      expect(savePipelineStagesMock).toHaveBeenCalled()
+    })
+
+    it(`400s a key one character over, with the message the editor shows too`, async () => {
+      const res = await PUT(
+        putReq({
+          stages: [{ ...OPEN_STAGE, key: "k".repeat(MAX_STAGE_KEY_LENGTH + 1) }, WON_STAGE, LOST_STAGE],
+        }) as never,
+        boardParams,
+      )
+      expect(res.status).toBe(400)
+      const body = await res.json()
+      expect(body.error).toBe(`Stage key must be ${MAX_STAGE_KEY_LENGTH} characters or fewer.`)
+      expect(body.field).toBe("stages.0.key")
+      expect(savePipelineStagesMock).not.toHaveBeenCalled()
+    })
+  })
+
   it("400s a `position` field on a stage instead of silently accepting it", async () => {
     const res = await PUT(
       putReq({ stages: [{ ...OPEN_STAGE, position: 1 }, WON_STAGE, LOST_STAGE] }) as never,
@@ -265,7 +330,7 @@ describe("PUT /api/admin/pipeline/boards/[id]/stages", () => {
       problems: [
         {
           index: null,
-          message: `Stage "open" still has 2 card(s) on it. Say which stage they should move to before removing it.`,
+          message: `Stage "Open" still has 2 cards on it. Say which stage they should move to before removing it.`,
         },
       ],
     })
@@ -273,7 +338,7 @@ describe("PUT /api/admin/pipeline/boards/[id]/stages", () => {
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(Array.isArray(body.problems)).toBe(true)
-    expect(body.problems[0].message).toContain('Stage "open" still has 2 card(s)')
+    expect(body.problems[0].message).toContain('Stage "Open" still has 2 cards')
   })
 
   it("200s a valid save, and calls savePipelineStages with the stages in SUBMITTED ORDER and the RESOLVED businessId", async () => {

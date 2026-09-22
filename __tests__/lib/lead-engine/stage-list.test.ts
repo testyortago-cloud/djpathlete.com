@@ -119,6 +119,32 @@ describe("planStageSave", () => {
   // destination was named for a stage that turns out to hold nothing. A
   // caller that always sends a destination (rather than omitting it for
   // empty stages) must not produce a phantom move.
+  // G29 Task 7 fix round 1, item 6. The editor holds its destination map in
+  // state and hands the WHOLE map to this function on every render — including
+  // an entry for a stage the coach has since put back on the board. Unreachable
+  // from the screen today (there is no undo-remove), and the save-time payload
+  // filters to the stranded removals anyway, so this pins the TOLERANCE rather
+  // than a live path: a destination keyed to a stage that is still in the list
+  // must produce no move at all, not a move off a stage that is staying.
+  it("ignores a destination keyed to a stage it is not removing", () => {
+    const next: StageDraft[] = [
+      { ...open("enquiry"), id: "s1" },
+      { ...open("booked"), id: "s2" },
+      { ...won(), id: "s3" },
+      { ...lost(), id: "s4" },
+    ]
+    const plan = planStageSave(
+      oldStages,
+      next,
+      new Map([["s2", 4]]),
+      // s2 is still on the board; this entry is a leftover.
+      new Map([["s2", "s1"]]),
+    )
+    expect(plan.removedStageIds).toEqual([])
+    expect(plan.moveCards).toEqual([])
+    expect(plan.keptStageIds.sort()).toEqual(["s1", "s2", "s3", "s4"])
+  })
+
   it("does not move phantom cards off an empty stage even when a destination was given", () => {
     const next: StageDraft[] = [{ ...open("enquiry"), id: "s1" }, { ...won(), id: "s3" }, { ...lost(), id: "s4" }]
     const plan = planStageSave(oldStages, next, new Map([["s2", 0]]), new Map([["s2", "s1"]]))
@@ -133,11 +159,32 @@ describe("strandedStageProblems", () => {
     { id: "s2", key: "booked", position: 2, name: "Booked", kind: "open", amberAfterDays: 3, redAfterDays: 7 },
   ]
 
-  it("names the stage and the number of cards when nothing was moved", () => {
+  // R16: the NAME, not the key, and real pluralisation. This string is
+  // printed to a coach twice over — inline by the editor and as the route's
+  // 400 — so "booked" (a grey box they cannot even type in) and "card(s)"
+  // were both wrong on a screen. The fixture's name and key deliberately
+  // differ so a regression to the key cannot pass by coincidence.
+  it("names the stage the way the coach named it, and counts cards like a person", () => {
     const plan = { moveCards: [], removedStageIds: ["s2"], keptStageIds: ["s1"] }
     expect(strandedStageProblems(oldStages, plan, new Map([["s2", 4]]))).toEqual([
-      { index: null, message: 'Stage "booked" still has 4 card(s) on it. Say which stage they should move to before removing it.' },
+      { index: null, message: 'Stage "Booked" still has 4 cards on it. Say which stage they should move to before removing it.' },
     ])
+  })
+
+  it("says one card, not 1 cards", () => {
+    const plan = { moveCards: [], removedStageIds: ["s2"], keptStageIds: ["s1"] }
+    expect(strandedStageProblems(oldStages, plan, new Map([["s2", 1]]))[0].message).toBe(
+      'Stage "Booked" still has 1 card on it. Say which stage they should move to before removing it.',
+    )
+  })
+
+  // A name is not NOT NULL in any useful sense once a row has been edited by
+  // hand, and a message naming nothing at all ("Stage \"\" still has…") is
+  // worse than one naming the key.
+  it("falls back to the key when a stage's name is blank", () => {
+    const blankNamed: SavedStage[] = [{ ...oldStages[1], name: "   " }]
+    const plan = { moveCards: [], removedStageIds: ["s2"], keptStageIds: [] }
+    expect(strandedStageProblems(blankNamed, plan, new Map([["s2", 2]]))[0].message).toContain('Stage "booked"')
   })
 
   it("is silent when the cards were given a destination", () => {

@@ -613,8 +613,16 @@ describe("savePipelineStages", () => {
     expect(result.ok).toBe(false)
     if (result.ok) throw new Error("unreachable")
     expect(result.problems).toHaveLength(1)
-    expect(result.problems[0].message).toContain("consult_booked")
-    expect(result.problems[0].message).toContain("1 card")
+    // R16: the message a coach reads names the stage the way THEY named it
+    // ("Consult Booked"), never the stored key ("consult_booked"), and says
+    // "1 card" rather than "1 card(s)". The fixture's name and key differ by
+    // more than case, so neither assertion can pass by coincidence, and the
+    // exact string is pinned rather than a `toContain` that "1 cards" would
+    // also satisfy.
+    expect(result.problems[0].message).toBe(
+      'Stage "Consult Booked" still has 1 card on it. Say which stage they should move to before removing it.',
+    )
+    expect(result.problems[0].message).not.toContain("consult_booked")
     expect(rpcCalls).toHaveLength(0)
   })
 
