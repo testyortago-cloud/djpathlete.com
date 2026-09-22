@@ -17,6 +17,7 @@ const canAccessMock = vi.fn()
 const resolveTenantMock = vi.fn()
 const createPipelineBoardMock = vi.fn()
 const updatePipelineBoardMock = vi.fn()
+const readBoardRowMock = vi.fn()
 const recordAuditMock = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
@@ -50,6 +51,9 @@ vi.mock("@/lib/db/pipeline", () => {
   return {
     createPipelineBoard: (...a: unknown[]) => createPipelineBoardMock(...a),
     updatePipelineBoard: (...a: unknown[]) => updatePipelineBoardMock(...a),
+    // The PATCH route reads the board BEFORE the update, for the audit row
+    // only — see that route's own comment on why it is not a gate.
+    readBoardRow: (...a: unknown[]) => readBoardRowMock(...a),
     PipelineBoardNotFoundError,
   }
 })
@@ -63,6 +67,25 @@ const STAFF_SESSION = { user: { id: "staff-1", role: "staff", permissions: {} } 
 const COACH_SESSION = { user: { id: "coach-1", role: "staff", permissions: { contacts: true } } }
 
 const SINGLETON = "00000000-0000-0000-0000-000000000001"
+
+/**
+ * The board-name cap, RETYPED on purpose.
+ *
+ * It has three homes — `MAX_NAME_LENGTH` in app/api/admin/pipeline/boards/route.ts,
+ * the same constant in boards/[id]/route.ts, and `MAX_BOARD_NAME_LENGTH` in
+ * components/admin/pipeline-settings.tsx — and the whole-branch review
+ * deliberately did NOT collapse them: three reviewed files would have to
+ * change for a cap nobody has ever hit. What it DID find is that none of the
+ * three was pinned at all (`grep "Board name must be" __tests__/` returned
+ * nothing), so shrinking any one of them, or dropping a `.max()`, was silent.
+ *
+ * A retyped number agreeing with a hardcoded one is agreement by luck, which
+ * is why the tests below pin the BOUNDARY IN BOTH DIRECTIONS on both routes:
+ * a cap moved to 100 fails the "exactly on it" case, and a `.max()` deleted
+ * entirely fails the "one over" case. A test that only refused would pass
+ * against a route that refuses everything.
+ */
+const MAX_BOARD_NAME_LENGTH = 200
 /** The coach's own tenant — deliberately NOT the singleton. */
 const BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
 const BOARD_ID = "board-1"
@@ -86,6 +109,15 @@ function patchReq(body: unknown) {
 const NO_PARAMS = { params: Promise.resolve({}) }
 const boardParams = { params: Promise.resolve({ id: BOARD_ID }) }
 
+/**
+ * What the database currently holds for BOARD_ID, and who owns it —
+ * `readBoardRowMock` compares its ACTUAL arguments against this rather than
+ * answering the same thing whatever it is handed. Same discipline as
+ * stages-route.test.ts's `knownBoard`: an argument-blind mock would pass
+ * every test here even if the route read a stale id or a hardcoded tenant.
+ */
+let knownBoard: { id: string; businessId: string; key: string; name: string; status: string } | null
+
 beforeEach(() => {
   // resetAllMocks, not clearAllMocks: a queued `*Once` implementation left
   // over from a previous test leaks across the boundary and misattributes
@@ -96,6 +128,13 @@ beforeEach(() => {
   resolveTenantMock.mockResolvedValue({ businessId: BUSINESS_ID, choices: [], isOperator: false })
   createPipelineBoardMock.mockResolvedValue({ id: BOARD_ID, key: "camps_clinics" })
   updatePipelineBoardMock.mockResolvedValue(undefined)
+  knownBoard = { id: BOARD_ID, businessId: BUSINESS_ID, key: "camps_clinics", name: "Camps & Clinics", status: "active" }
+  readBoardRowMock.mockImplementation((id: string, businessId: string) => {
+    if (knownBoard && id === knownBoard.id && businessId === knownBoard.businessId) {
+      return Promise.resolve({ id: knownBoard.id, key: knownBoard.key, name: knownBoard.name, status: knownBoard.status })
+    }
+    return Promise.resolve(null)
+  })
   recordAuditMock.mockResolvedValue(undefined)
 })
 
@@ -140,6 +179,39 @@ describe("POST /api/admin/pipeline/boards", () => {
     expect(body.error).toContain("already exists")
   })
 
+  describe("the board-name cap, pinned from the refusing side", () => {
+    it(`accepts a name of exactly ${MAX_BOARD_NAME_LENGTH} characters`, async () => {
+      // `.trim()` runs BEFORE `.max()` in the schema chain, so the
+      // "exactly on it" case pads with no surrounding whitespace.
+      const res = await POST(postReq({ name: "x".repeat(MAX_BOARD_NAME_LENGTH) }) as never, NO_PARAMS)
+      expect(res.status).toBe(200)
+      expect(createPipelineBoardMock).toHaveBeenCalled()
+    })
+
+    it(`400s a name one character over, naming the field and saying the number`, async () => {
+      const res = await POST(postReq({ name: "x".repeat(MAX_BOARD_NAME_LENGTH + 1) }) as never, NO_PARAMS)
+      expect(res.status).toBe(400)
+      const body = await res.json()
+      expect(body.error).toBe(`Board name must be ${MAX_BOARD_NAME_LENGTH} characters or fewer.`)
+      expect(body.field).toBe("name")
+      expect(createPipelineBoardMock).not.toHaveBeenCalled()
+    })
+
+    it(`the rename route accepts exactly ${MAX_BOARD_NAME_LENGTH} and refuses one more, in the same words`, async () => {
+      const onTheCap = await PATCH(patchReq({ name: "x".repeat(MAX_BOARD_NAME_LENGTH) }) as never, boardParams)
+      expect(onTheCap.status).toBe(200)
+
+      const over = await PATCH(patchReq({ name: "x".repeat(MAX_BOARD_NAME_LENGTH + 1) }) as never, boardParams)
+      expect(over.status).toBe(400)
+      const body = await over.json()
+      // The two routes carry SEPARATE copies of this cap and this sentence.
+      // Asserting the identical string on both is what would catch one of
+      // them drifting.
+      expect(body.error).toBe(`Board name must be ${MAX_BOARD_NAME_LENGTH} characters or fewer.`)
+      expect(body.field).toBe("name")
+    })
+  })
+
   it("200s a valid create, and calls createPipelineBoard with the RESOLVED tenant's businessId", async () => {
     const res = await POST(postReq({ name: "Camps & Clinics" }) as never, NO_PARAMS)
     expect(res.status).toBe(200)
@@ -153,6 +225,26 @@ describe("POST /api/admin/pipeline/boards", () => {
     await POST(postReq({ name: "Camps & Clinics" }) as never, NO_PARAMS)
     const call = recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.board_created")
     expect(call?.[0].target).toEqual({ type: "pipeline_board", id: BOARD_ID, label: "Camps & Clinics" })
+  })
+
+  // Whole-branch review, Important 5. The KEY is the one fact about a new
+  // board that nothing else on the row carries and nothing can later change —
+  // a renamed board is unfindable from a row holding only its old name.
+  it("records the created board's key in the audit metadata", async () => {
+    await POST(postReq({ name: "Camps & Clinics" }) as never, NO_PARAMS)
+    const call = recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.board_created")
+    expect(call?.[0].metadata).toEqual({ key: "camps_clinics" })
+  })
+
+  // The presence control for the assertion above: a metadata callback that
+  // returned {} unconditionally would pass nothing here, and a callback that
+  // invented a key would pass the success case. A REFUSED create has no
+  // board in its body, so the key must be absent rather than guessed.
+  it("records no key when the create was refused", async () => {
+    createPipelineBoardMock.mockRejectedValue(new Error("A board with the key \"camps_clinics\" already exists."))
+    await POST(postReq({ name: "Camps & Clinics" }) as never, NO_PARAMS)
+    const call = recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.board_created")
+    expect(call?.[0].metadata).toEqual({})
   })
 })
 
@@ -265,5 +357,68 @@ describe("PATCH /api/admin/pipeline/boards/[id]", () => {
     await PATCH(patchReq({ name: "Renamed board" }) as never, boardParams)
     const call = recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.board_updated")
     expect(call?.[0].target).toEqual({ type: "pipeline_board", id: BOARD_ID })
+  })
+
+  // -------------------------------------------------------------------------
+  // WHAT CHANGED (whole-branch review, Important 5). Spec §2.3 collapsed the
+  // old design's per-stage audit slugs into single rows on the argument that
+  // "the metadata carries the before/after"; no metadata callback was ever
+  // written, so an ARCHIVE recorded a bare uuid — no label, no status,
+  // nothing distinguishing it from a rename.
+  // -------------------------------------------------------------------------
+
+  describe("the audit row says what changed", () => {
+    it("names the board on an ARCHIVE, which carries no name of its own", async () => {
+      const res = await PATCH(patchReq({ status: "archived" }) as never, boardParams)
+      expect(res.status).toBe(200)
+
+      const call = recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.board_updated")
+      // The label is what makes the row findable by a human. It cannot come
+      // from the request — an archive sends only `{status}` — so it comes
+      // from the board as it was read before the write.
+      expect(call?.[0].target).toEqual({ type: "pipeline_board", id: BOARD_ID, label: "Camps & Clinics" })
+      expect(call?.[0].metadata).toMatchObject({
+        status: "archived",
+        previous_status: "active",
+        previous_name: "Camps & Clinics",
+        fields: ["status"],
+      })
+    })
+
+    it("records the name a rename replaced, not only the new one", async () => {
+      await PATCH(patchReq({ name: "One-to-one coaching" }) as never, boardParams)
+      const call = recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.board_updated")
+      expect(call?.[0].target).toEqual({ type: "pipeline_board", id: BOARD_ID, label: "One-to-one coaching" })
+      expect(call?.[0].metadata).toMatchObject({ previous_name: "Camps & Clinics", fields: ["name"] })
+      // A rename sends no status, so none is claimed.
+      expect(call?.[0].metadata.status).toBeUndefined()
+    })
+
+    it("reads the board with the id from the URL and the RESOLVED tenant, never a body-supplied one", async () => {
+      await PATCH(patchReq({ name: "One-to-one coaching" }) as never, boardParams)
+      expect(readBoardRowMock.mock.calls[0]).toEqual([BOARD_ID, BUSINESS_ID])
+    })
+
+    it("does not leak a board it could not read for this tenant — no previous name at all", async () => {
+      // A board that exists for somebody ELSE: `readBoardRowMock` compares
+      // the arguments it was actually given against what exists, so the read
+      // misses and the route must not invent a label.
+      knownBoard = { id: BOARD_ID, businessId: "99999999-9999-9999-9999-999999999999", key: "k", name: "Someone Else's Board", status: "active" }
+      updatePipelineBoardMock.mockRejectedValue(new PipelineBoardNotFoundError(BOARD_ID))
+
+      const res = await PATCH(patchReq({ status: "archived" }) as never, boardParams)
+      expect(res.status).toBe(404)
+
+      const call = recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.board_updated")
+      expect(call?.[0].metadata.previous_name).toBeUndefined()
+      expect(JSON.stringify(call?.[0])).not.toContain("Someone Else's Board")
+    })
+
+    it("does not send the internal x-audit-* headers to the caller", async () => {
+      const res = await PATCH(patchReq({ name: "One-to-one coaching" }) as never, boardParams)
+      // `stripAuditHeaders` runs after the callbacks. If this ever fails, the
+      // previous board name is being handed to the browser.
+      expect([...res.headers.keys()].filter((k) => k.startsWith("x-audit-"))).toEqual([])
+    })
   })
 })

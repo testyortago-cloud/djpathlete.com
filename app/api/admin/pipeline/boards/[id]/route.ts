@@ -21,7 +21,7 @@ import { auth } from "@/lib/auth"
 import { withAudit } from "@/lib/audit/with-audit"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
-import { PipelineBoardNotFoundError, updatePipelineBoard } from "@/lib/db/pipeline"
+import { PipelineBoardNotFoundError, readBoardRow, updatePipelineBoard } from "@/lib/db/pipeline"
 // Type-only, so the closed audit taxonomy is checked at compile time — a
 // slug that is not a row in `AUDIT_ACTIONS` stops the build instead of
 // writing a row the log viewer cannot name. Same convention as
@@ -31,6 +31,21 @@ import type { AuditAction } from "@/lib/audit/actions"
 const MAX_NAME_LENGTH = 200
 
 const BOARD_UPDATED_AUDIT_ACTION: AuditAction = "pipeline.board_updated"
+
+/**
+ * The internal channel the handler hands the board's PREVIOUS name and status
+ * to the audit callbacks on — the two facts that stop existing the moment the
+ * UPDATE lands, so nothing downstream can recover them.
+ *
+ * `x-audit-` prefix is load-bearing: `stripAuditHeaders` (lib/audit/with-audit.ts)
+ * deletes every header carrying it AFTER the callbacks have read them, so
+ * neither value reaches the browser. URI-encoded because a board name is free
+ * text and `Headers.set` throws on anything outside latin-1 — one accented
+ * character in a board name would otherwise turn a successful rename into a
+ * 500.
+ */
+const AUDIT_PREVIOUS_NAME_HEADER = "x-audit-previous-name"
+const AUDIT_PREVIOUS_STATUS_HEADER = "x-audit-previous-status"
 
 const UpdateBoardSchema = z
   .object({
@@ -64,6 +79,37 @@ export const PATCH = withAudit(
       } catch {
         return { type: "pipeline_board", id }
       }
+    },
+    // WHAT CHANGED, not merely which board (whole-branch review, Important
+    // 5). This row used to carry a board id and — only when the body happened
+    // to include a `name` — a label. An ARCHIVE sends `{status:"archived"}`
+    // and no name, so "who archived Camps & Clinics" answered with a bare
+    // uuid: no label, no status, nothing saying the board was archived at
+    // all rather than renamed.
+    //
+    // Reads the ORIGINAL request, which is safe HERE and would not be on the
+    // sibling routes: this route's `target` resolver above takes the id from
+    // `ctx.params` and never touches the request, and the handler parses a
+    // CLONE — so the original body is still unread by the time `withAudit`
+    // calls this. The previous name and status cannot come from the request
+    // at all (they are what the request is replacing), so they arrive on the
+    // headers above.
+    metadata: async (request, response) => {
+      const meta: Record<string, unknown> = {}
+      try {
+        const body = (await request.json()) as Record<string, unknown> | null
+        if (body && typeof body === "object") {
+          meta.fields = Object.keys(body)
+          if (typeof body.status === "string") meta.status = body.status
+        }
+      } catch {
+        /* an unparseable or already-consumed body costs the fields, not the row */
+      }
+      const previousName = response.headers.get(AUDIT_PREVIOUS_NAME_HEADER)
+      if (previousName) meta.previous_name = decodeURIComponent(previousName)
+      const previousStatus = response.headers.get(AUDIT_PREVIOUS_STATUS_HEADER)
+      if (previousStatus) meta.previous_status = previousStatus
+      return meta
     },
   },
   async (request, ctx) => {
@@ -104,6 +150,15 @@ export const PATCH = withAudit(
       )
     }
 
+    // READ BEFORE THE WRITE, FOR THE AUDIT ROW ONLY — see the `metadata`
+    // callback above. This is deliberately NOT a gate: a null here is left
+    // alone and `updatePipelineBoard` below is still the one place a
+    // nonexistent or foreign-tenant board is refused, because duplicating an
+    // existence check into this route is precisely what controller ruling
+    // R10 argued against. It is also why a failure to read is swallowed: the
+    // rename or archive must not fail over a label lookup.
+    const previous = await readBoardRow(id, businessId).catch(() => null)
+
     try {
       await updatePipelineBoard({
         pipelineId: id,
@@ -124,9 +179,19 @@ export const PATCH = withAudit(
       return NextResponse.json({ error: message }, { status: 400 })
     }
 
-    return NextResponse.json({
+    // The board's name AFTER the update — the submitted one on a rename, the
+    // unchanged one on an archive. Always present when the board could be
+    // read, so the audit target carries a human label on every successful
+    // PATCH rather than only on a rename.
+    const nameAfter = parsed.data.name ?? previous?.name
+    const response = NextResponse.json({
       ok: true,
-      board: { id, ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}) },
+      board: { id, ...(nameAfter !== undefined ? { name: nameAfter } : {}) },
     })
+    if (previous) {
+      response.headers.set(AUDIT_PREVIOUS_NAME_HEADER, encodeURIComponent(previous.name))
+      response.headers.set(AUDIT_PREVIOUS_STATUS_HEADER, previous.status)
+    }
+    return response
   },
 )

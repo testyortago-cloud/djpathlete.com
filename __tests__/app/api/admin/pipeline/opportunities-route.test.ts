@@ -436,6 +436,127 @@ describe("POST /api/admin/pipeline/opportunities", () => {
     expect(onTheCap.status).toBe(200)
   })
 
+  // -------------------------------------------------------------------------
+  // A MISTYPED IDENTIFIER (whole-branch review, Important 4).
+  //
+  // Nothing anywhere exercised a malformed one. The route's Zod required only
+  // `.min(1)`, the DAL's friendly pre-check tested raw truthiness, and
+  // `upsertContactIdentity` normalises BEFORE it checks — so `dana@gmail`
+  // with no phone reached its internal throw and the coach read
+  // "upsertContactIdentity needs at least one usable identifier (email or
+  // phone)" in the dialog, and again in a toast.
+  //
+  // Task 8's `noValidate` on the form removed the browser's own check too, so
+  // a string with no `@` at all now reaches the server.
+  // -------------------------------------------------------------------------
+
+  describe("an email the server cannot use", () => {
+    /** The sentence a coach must never see. */
+    const INTERNAL = "upsertContactIdentity"
+
+    it("400s an address with no top-level domain, quoting it back, with no internal function name", async () => {
+      const res = await POST(
+        requestFor({ pipelineId: BOARD_ID, person: { name: "Dana Reyes", email: "dana@gmail" } }) as never,
+        NO_PARAMS,
+      )
+      expect(res.status).toBe(400)
+      const body = await res.json()
+      expect(body.error).toBe(
+        '"dana@gmail" does not look like an email address. Check the spelling, or give another way to reach this person.',
+      )
+      expect(body.error).not.toContain(INTERNAL)
+      // And nothing was written on the way to the refusal.
+      expect(state.contacts).toHaveLength(0)
+      expect(state.opportunities).toHaveLength(0)
+    })
+
+    it("400s a string with no @ at all — the case `noValidate` let through", async () => {
+      const res = await POST(
+        requestFor({ pipelineId: BOARD_ID, person: { name: "Dana Reyes", email: "danareyes" } }) as never,
+        NO_PARAMS,
+      )
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toContain('"danareyes" does not look like an email address.')
+      expect(state.contacts).toHaveLength(0)
+    })
+
+    it("names BOTH when an unusable email and an unusable phone were typed", async () => {
+      const res = await POST(
+        requestFor({ pipelineId: BOARD_ID, person: { name: "Dana Reyes", email: "dana@gmail", phone: "555" } }) as never,
+        NO_PARAMS,
+      )
+      expect(res.status).toBe(400)
+      const body = await res.json()
+      expect(body.error).toBe(
+        '"dana@gmail" does not look like an email address. "555" does not look like a phone number. ' +
+          "Check the spelling, or give another way to reach this person.",
+      )
+    })
+
+    // THE PRESENCE CONTROL. Without it, a route that refused EVERY typed
+    // person would pass all three tests above.
+    it("control: the same request with a usable address is accepted", async () => {
+      const res = await POST(
+        requestFor({ pipelineId: BOARD_ID, person: { name: "Dana Reyes", email: "dana@example.com" } }) as never,
+        NO_PARAMS,
+      )
+      expect(res.status).toBe(200)
+      expect(state.contacts).toHaveLength(1)
+      expect(state.opportunities).toHaveLength(1)
+    })
+
+    // The second control, in the other direction: ONE usable identifier is
+    // enough, so a junk phone alongside a good email must not refuse. The
+    // guard is "nothing usable at all", not "everything usable".
+    it("control: a usable email with an unusable phone is still accepted", async () => {
+      const res = await POST(
+        requestFor({
+          pipelineId: BOARD_ID,
+          person: { name: "Dana Reyes", email: "dana@example.com", phone: "555" },
+        }) as never,
+        NO_PARAMS,
+      )
+      expect(res.status).toBe(200)
+      expect(state.opportunities).toHaveLength(1)
+    })
+
+    // A usable PHONE with no email at all — the other half of "at least one".
+    it("control: a usable phone on its own is accepted", async () => {
+      const res = await POST(
+        requestFor({ pipelineId: BOARD_ID, person: { name: "Dana Reyes", phone: "+12025550188" } }) as never,
+        NO_PARAMS,
+      )
+      expect(res.status).toBe(200)
+      expect(state.opportunities).toHaveLength(1)
+    })
+  })
+
+  // Whole-branch review, small item 4. `valueCents` is accepted but no dialog
+  // writes it; `opportunities.value_cents` is int4, so a large integer used to
+  // reach the INSERT and come back as Postgres' raw 22003.
+  describe("valueCents", () => {
+    it("400s an amount past the cap instead of letting the column overflow", async () => {
+      seedDana()
+      const res = await POST(
+        requestFor({ pipelineId: BOARD_ID, contactId: DANA_ID, valueCents: 9_999_999_999 }) as never,
+        NO_PARAMS,
+      )
+      expect(res.status).toBe(400)
+      expect((await res.json()).field).toBe("valueCents")
+      expect(state.opportunities).toHaveLength(0)
+    })
+
+    it("control: a large but sane amount still goes through and is stored", async () => {
+      seedDana()
+      const res = await POST(
+        requestFor({ pipelineId: BOARD_ID, contactId: DANA_ID, valueCents: 2_000_000_000 }) as never,
+        NO_PARAMS,
+      )
+      expect(res.status).toBe(200)
+      expect(state.opportunities[0].value_cents).toBe(2_000_000_000)
+    })
+  })
+
   it("400s naming the stage they're already in, for a duplicate open card", async () => {
     seedDana()
     state.opportunities.push({

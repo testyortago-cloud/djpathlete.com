@@ -59,15 +59,26 @@ export function validateStageList(stages: StageDraft[]): StageProblem[] {
     if (stage.name.trim().length === 0) {
       problems.push({ index, message: "Every stage needs a name." })
     }
-    if (stage.key.trim().length === 0) {
+    // ONE key value through all three branches (whole-branch review, small
+    // item 6). This used to test emptiness on `stage.key.trim()` and then
+    // dedupe on the RAW `stage.key`, so `"enquiry"` and `" enquiry"` read as
+    // two different keys to this function while the database's
+    // `pipeline_stages_key_per_pipeline` unique index — and the SQL, which
+    // stores whatever it is handed — would have to decide between them.
+    // Unreachable through the route or the editor (both `.trim()` on the way
+    // in), so this is the function's own contract being made consistent
+    // rather than a live bug: a checker that half-trims is a checker whose
+    // answer depends on which half a future caller happens to hit.
+    const key = stage.key.trim()
+    if (key.length === 0) {
       problems.push({ index, message: "Every stage needs a key." })
-    } else if (seenKeys.has(stage.key)) {
+    } else if (seenKeys.has(key)) {
       problems.push({
         index,
-        message: `Two stages share the key "${stage.key}". Keys must be unique on a board.`,
+        message: `Two stages share the key "${key}". Keys must be unique on a board.`,
       })
     } else {
-      seenKeys.set(stage.key, index)
+      seenKeys.set(key, index)
     }
 
     // Both present, or the comparison is meaningless. The CHECK constraint on
@@ -154,6 +165,116 @@ export function planStageSave(
   }
 
   return plan
+}
+
+/**
+ * Every stage whose `kind` change would take cards OFF the board, in English.
+ * [] means no card disappears.
+ *
+ * THE RULE: a stage that is `won` or `lost` today and `open` in the submitted
+ * list must not still be holding CLOSED cards.
+ *
+ * WHY (whole-branch review, Important 2; controller ruling R19). `readBoard`
+ * (lib/db/pipeline.ts) renders an `open` column as
+ * `outcome == null ? show : hide`, and a `won`/`lost` column as "show
+ * everything". Its doc comment used to justify that asymmetry by saying won
+ * and lost stages "are only ever reached through a close, so their cards
+ * always carry a matching outcome" — true until THIS branch put a free `kind`
+ * dropdown on every row of the editor. Flip a Won stage to "still open" and
+ * every settled deal on it fails the `outcome == null` filter: still in the
+ * database, still counted in revenue, on no screen anywhere. Not lost —
+ * INVISIBLE, which is worse than lost, because nobody goes looking.
+ *
+ * REFUSED, NOT WARNED. A warning on the editor is not a guard: the route and
+ * the DAL are, which is why this is a pure function both of them call rather
+ * than a sentence rendered in a component.
+ *
+ * THE OTHER DIRECTION IS DELIBERATELY NOT REFUSED. `open -> won` makes
+ * outcome-null cards show up in the Won column as deals nobody won — wrong,
+ * but VISIBLE and reversible: the coach can see them and change the kind
+ * back. Only the direction that hides rows gets a refusal, because only that
+ * direction produces a state the screen cannot show a coach at all.
+ *
+ * `index` is the position in the SUBMITTED array, so the editor renders it
+ * against the row whose dropdown caused it.
+ */
+export function kindChangeVisibilityProblems(
+  oldStages: SavedStage[],
+  newStages: StageDraft[],
+  closedCardCountByStageId: Map<string, number>,
+): StageProblem[] {
+  const oldById = new Map(oldStages.map((s) => [s.id, s]))
+  const problems: StageProblem[] = []
+
+  newStages.forEach((stage, index) => {
+    if (stage.id === null) return
+    const before = oldById.get(stage.id)
+    if (!before) return
+    if (before.kind === "open" || stage.kind !== "open") return
+
+    const closed = closedCardCountByStageId.get(stage.id) ?? 0
+    if (closed === 0) return
+
+    const label = before.name.trim() || before.key
+    problems.push({
+      index,
+      message:
+        `Stage "${label}" holds ${closed} ${closed === 1 ? "card that is" : "cards that are"} already won or lost. ` +
+        `Changing it to a stage that is still open would take ${closed === 1 ? "it" : "them"} off the board, ` +
+        `where nobody would find ${closed === 1 ? "it" : "them"}. ` +
+        `Move ${closed === 1 ? "that card" : "those cards"} to another stage first.`,
+    })
+  })
+
+  return problems
+}
+
+/**
+ * Every card-move in the plan that points somewhere the save will not leave
+ * standing. [] means every destination survives.
+ *
+ * WHY THIS IS SEPARATE FROM `planStageSave`. That function REPORTS what an
+ * edit does; it does not decide what is allowed — the same division
+ * `strandedStageProblems` above sits on. It happily emits
+ * `{fromStageId: "s2", toStageId: "s3"}` for a save whose `removedStageIds`
+ * contains BOTH, because nothing asked it not to.
+ *
+ * WHAT THAT COST, before this existed (whole-branch review, Important 1).
+ * Three clicks reach it: remove a stage holding cards, pick a second stage as
+ * their destination, then remove that second stage too. `validateStageList`
+ * sees a perfectly legal list; `strandedStageProblems` sees a removal WITH a
+ * destination and says nothing; the editor's Save button stays enabled. The
+ * SQL then moves the cards onto a stage it is about to DELETE, and the whole
+ * save dies on `opportunities_stage_id_fkey` — a raw Postgres string on a
+ * coach's screen, for an edit the screen invited them to make.
+ *
+ * TWO DIFFERENT WRONG DESTINATIONS, and they get different sentences because
+ * they are different mistakes. A destination that is BEING REMOVED is a
+ * coach's ordinary slip. A destination that is not a stage on this board at
+ * all cannot be produced by the editor — it means a crafted request, and the
+ * honest sentence for it does not claim the stage is being removed.
+ *
+ * `index: null` on both: a destination is chosen in the "these cards need
+ * somewhere to go" block, which belongs to the board rather than to one row
+ * of the stage table.
+ */
+export function invalidDestinationProblems(oldStages: SavedStage[], plan: StageSavePlan): StageProblem[] {
+  const labelOf = new Map(oldStages.map((s) => [s.id, s.name.trim() || s.key]))
+  const kept = new Set(plan.keptStageIds)
+  const known = new Set(oldStages.map((s) => s.id))
+
+  return plan.moveCards
+    .filter((move) => !kept.has(move.toStageId))
+    .map((move) => {
+      const from = labelOf.get(move.fromStageId) ?? move.fromStageId
+      const to = labelOf.get(move.toStageId) ?? move.toStageId
+      return {
+        index: null,
+        message: known.has(move.toStageId)
+          ? `The stage you chose for the cards on "${from}" ("${to}") is being removed too. Pick one that is staying.`
+          : `The stage you chose for the cards on "${from}" is not a stage on this board. Pick one that is staying.`,
+      }
+    })
 }
 
 /**

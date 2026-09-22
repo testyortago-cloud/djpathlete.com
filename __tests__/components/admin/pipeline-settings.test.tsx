@@ -72,6 +72,7 @@ function renderSettings(
     board: { id: string; key: string; name: string }
     stages: SavedStage[]
     cardCounts: Record<string, number>
+    closedCardCounts: Record<string, number>
     isDefaultBoard: boolean
   }> = {},
 ) {
@@ -85,6 +86,11 @@ function renderSettings(
       // spread matters: a component keying counts by ROW INDEX instead of by
       // stage id passed an earlier version of this fixture.
       cardCounts={over.cardCounts ?? { s2: 2, s4: 1 }}
+      // The CLOSED subset, by default the Lost stage's one card. Deliberately
+      // NOT the same map: a screen that read `cardCounts` where it means
+      // `closedCardCounts` would refuse a kind change on Consulted, which
+      // holds only open cards.
+      closedCardCounts={over.closedCardCounts ?? { s4: 1 }}
       isDefaultBoard={over.isDefaultBoard ?? true}
     />,
   )
@@ -319,6 +325,66 @@ describe("<PipelineSettings> — removing a stage that holds cards", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// WHOLE-BRANCH REVIEW, IMPORTANT 1 and 2. Two edits the screen used to invite
+// and then let the coach save.
+// ---------------------------------------------------------------------------
+
+describe("<PipelineSettings> — an edit that would lose cards", () => {
+  it("refuses a destination the same save is also removing, and disables Save", () => {
+    renderSettings()
+
+    // Three clicks, exactly as a coach reaches it: remove the stage holding
+    // cards, send them to another stage, then remove that stage too.
+    fireEvent.click(screen.getByRole("button", { name: "Remove stage 2" }))
+    fireEvent.change(screen.getByLabelText('Where should the 2 cards on "Consulted" go?'), {
+      target: { value: "s1" },
+    })
+    // Control: at this point the save is legal, so the refusal below is
+    // caused by the NEXT click and nothing else.
+    expect(saveButton()).toBeEnabled()
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove stage 1" }))
+
+    const top = screen.getByTestId("board-problems")
+    expect(
+      within(top).getByText(
+        'The stage you chose for the cards on "Consulted" ("Enquired") is being removed too. Pick one that is staying.',
+      ),
+    ).toBeInTheDocument()
+    expect(saveButton()).toBeDisabled()
+  })
+
+  it("refuses turning a stage that holds finished deals back into an open one, on that row", () => {
+    // The Won stage holds two cards, both already won.
+    renderSettings({ cardCounts: { s3: 2 }, closedCardCounts: { s3: 2 } })
+
+    // Presence control: the message is not on screen before the change.
+    expect(screen.queryByText(/already won or lost/)).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("Stage 3 kind"), { target: { value: "open" } })
+
+    expect(
+      within(row(2)).getByText(
+        'Stage "Won" holds 2 cards that are already won or lost. Changing it to a stage that is still open ' +
+          "would take them off the board, where nobody would find them. Move those cards to another stage first.",
+      ),
+    ).toBeInTheDocument()
+    // Against the row whose dropdown caused it, not the one above it.
+    expect(within(row(1)).queryByText(/already won or lost/)).not.toBeInTheDocument()
+    expect(saveButton()).toBeDisabled()
+  })
+
+  // THE PRESENCE CONTROL for the refusal above: the identical change on a Won
+  // stage whose cards are all still OPEN hides nothing, so it is allowed.
+  // Without this, a screen that refused every kind change would pass.
+  it("allows the same change when the stage holds no finished deals", () => {
+    renderSettings({ cardCounts: { s3: 2 }, closedCardCounts: {} })
+    fireEvent.change(screen.getByLabelText("Stage 3 kind"), { target: { value: "open" } })
+    expect(screen.queryByText(/already won or lost/)).not.toBeInTheDocument()
+  })
+})
+
 describe("<PipelineSettings> — the save payload", () => {
   it("PUTs the whole list in array order and sends NO position field", async () => {
     renderSettings()
@@ -536,19 +602,28 @@ describe("<PipelineSettings> — the add-another-board card", () => {
   // create shared one `boardError`, which rendered only inside the "This
   // board" card — so a duplicate-name 400 printed against the board being
   // EDITED, ~135 lines up the page, while the box that caused it said
-  // nothing at all. The route names the field; the screen has to use it.
-  it("puts a refused creation under the box that caused it, not under the board being edited", async () => {
+  // nothing at all.
+  //
+  // THE MOCK HERE USED TO BE WRONG (whole-branch review, small item 5). It
+  // answered `{ error, field: "name" }` for a duplicate-name refusal, and
+  // app/api/admin/pipeline/boards/route.ts does not: `field` is attached ONLY
+  // on the Zod path (the `safeParse` failure), while a readable DAL refusal —
+  // which a duplicate key is — comes back as `{ error }` alone. So the test
+  // was pinning a contract nothing produces. The Zod path has its own test
+  // below; this one now models what a duplicate name actually returns.
+  it("puts a refused creation on the card that caused it, not on the board being edited", async () => {
     renderSettings()
     const refusal = 'A board with the key "camps" already exists for this business. Choose a different name.'
-    global.fetch = failFetch(400, { error: refusal, field: "name" })
+    global.fetch = failFetch(400, { error: refusal })
 
     fireEvent.change(screen.getByLabelText("New board name"), { target: { value: "Camps" } })
     fireEvent.click(screen.getByRole("button", { name: "Create board" }))
 
     await waitFor(() => expect(within(newBoardCard()).getByText(refusal)).toBeInTheDocument())
-    // Not merely on the right CARD — under the right BOX. The route answers
-    // `field: "name"` precisely so this is possible.
-    expect(within(fieldBlock("New board name")).getByText(refusal)).toBeInTheDocument()
+    // With no `field` named, it belongs at the foot of the card rather than
+    // pinned to a box the route did not blame.
+    expect(within(fieldBlock("New board name")).queryByText(refusal)).not.toBeInTheDocument()
+    // The bug this test exists for: never on the OTHER card.
     expect(within(boardCard()).queryByText(refusal)).not.toBeInTheDocument()
     expect(toast.error).toHaveBeenCalledWith(refusal)
     expect(toast.success).not.toHaveBeenCalled()
@@ -556,6 +631,38 @@ describe("<PipelineSettings> — the add-another-board card", () => {
     // And it goes away once the coach does what it asked.
     fireEvent.change(screen.getByLabelText("New board name"), { target: { value: "Camps and clinics" } })
     expect(screen.queryByText(refusal)).not.toBeInTheDocument()
+  })
+
+  // Whole-branch review, Important 3. The seed gained a third stage — an
+  // OPEN one at position 1 — because a hand-made card files onto position 1
+  // and used to land in "Won" on a brand-new board. This sentence is the only
+  // place the screen tells a coach what they are about to get, and it said
+  // the old two-stage story. Pinned both ways: it must name the new stage,
+  // and it must not still claim the board starts with only Won and Lost.
+  it("tells the coach what a new board actually starts with", () => {
+    renderSettings()
+    expect(
+      within(newBoardCard()).getByText(
+        "A new board starts with three stages: New enquiry, Won and Lost. Add the steps in between once it exists.",
+      ),
+    ).toBeInTheDocument()
+    expect(within(newBoardCard()).queryByText(/starts with a Won stage and a Lost stage/)).not.toBeInTheDocument()
+  })
+
+  // THE ZOD PATH, which is the one that really does answer `field`. Covered
+  // separately so both shapes the route can return are pinned, and so the
+  // "under the box" behaviour is still tested against a refusal that
+  // genuinely names a box.
+  it("puts the route's field-named refusal under the box it names", async () => {
+    renderSettings()
+    const refusal = "Board name must be 200 characters or fewer."
+    global.fetch = failFetch(400, { error: refusal, field: "name" })
+
+    fireEvent.change(screen.getByLabelText("New board name"), { target: { value: "Camps" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create board" }))
+
+    await waitFor(() => expect(within(fieldBlock("New board name")).getByText(refusal)).toBeInTheDocument())
+    expect(within(boardCard()).queryByText(refusal)).not.toBeInTheDocument()
   })
 
   it("falls back to the foot of its own card when the route names no field", async () => {
@@ -596,6 +703,7 @@ describe("/admin/pipeline/settings — the server component", () => {
         ["s2", 2],
         ["s4", 1],
       ]),
+      closedCardCountByStageId: new Map([["s4", 1]]),
     })
   })
 

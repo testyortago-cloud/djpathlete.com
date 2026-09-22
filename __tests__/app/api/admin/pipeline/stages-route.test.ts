@@ -112,7 +112,11 @@ const EXISTING_BOARD_STAGES = {
     { id: "stage-won", key: "won", position: 2, name: "Won", kind: "won" as const, amberAfterDays: null, redAfterDays: null },
     { id: "stage-lost", key: "lost", position: 3, name: "Lost", kind: "lost" as const, amberAfterDays: null, redAfterDays: null },
   ],
-  cardCountByStageId: new Map<string, number>(),
+  // Two cards on the open stage, so the audit row's `moved_cards` has
+  // something real to count. A stage with zero cards would let a broken
+  // count pass by coincidence.
+  cardCountByStageId: new Map<string, number>([["stage-open", 2]]),
+  closedCardCountByStageId: new Map<string, number>(),
 }
 
 function putReq(body: unknown) {
@@ -152,7 +156,11 @@ beforeEach(() => {
     if (knownBoard && id === knownBoard.id && businessId === knownBoard.businessId) {
       return Promise.resolve(EXISTING_BOARD_STAGES)
     }
-    return Promise.resolve({ stages: [], cardCountByStageId: new Map<string, number>() })
+    return Promise.resolve({
+      stages: [],
+      cardCountByStageId: new Map<string, number>(),
+      closedCardCountByStageId: new Map<string, number>(),
+    })
   })
   savePipelineStagesMock.mockResolvedValue({ ok: true })
   recordAuditMock.mockResolvedValue(undefined)
@@ -396,9 +404,120 @@ describe("PUT /api/admin/pipeline/boards/[id]/stages", () => {
     expect(call?.[0].outcome).toBe("success")
   })
 
-  it("the audit target names the board and labels the submitted stage count", async () => {
+  // R16, applied again by the whole-branch review: "3 stage(s) submitted" is
+  // programmer pluralisation, printed on /admin/audit-logs — a screen a coach
+  // reads. Both cases are pinned so a fix that just deleted the "(s)" fails
+  // the singular one.
+  it("the audit target names the board and labels the submitted stage count, in words a person would use", async () => {
     await PUT(putReq({ stages: VALID_STAGES }) as never, boardParams)
     const call = recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.stages_saved")
-    expect(call?.[0].target).toEqual({ type: "pipeline_board", id: BOARD_ID, label: "3 stage(s) submitted" })
+    expect(call?.[0].target).toEqual({ type: "pipeline_board", id: BOARD_ID, label: "3 stages submitted" })
+  })
+
+  it("says one stage, not 1 stages", async () => {
+    // Refused by validateStageList inside savePipelineStages in production —
+    // which is mocked here, and irrelevant: the LABEL is built from the raw
+    // submitted count before any of that runs.
+    savePipelineStagesMock.mockResolvedValue({ ok: false, problems: [] })
+    await PUT(putReq({ stages: [WON_STAGE] }) as never, boardParams)
+    const call = recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.stages_saved")
+    expect(call?.[0].target.label).toBe("1 stage submitted")
+  })
+
+  // -------------------------------------------------------------------------
+  // WHAT THE SAVE DID (whole-branch review, Important 5).
+  //
+  // `pipeline.stages_saved` is THE destructive operation in this feature — it
+  // deletes stages and relocates real cards — and its audit row used to carry
+  // a board id and "5 stage(s) submitted". Nothing said which stage went, how
+  // many cards moved, or where to. Spec §2.3 collapsed five per-stage slugs
+  // into this one on the explicit promise that "the metadata carries the
+  // before/after stage list", and no metadata callback was ever written.
+  // -------------------------------------------------------------------------
+
+  describe("the audit row says what changed", () => {
+    function metadataOf() {
+      const call = recordAuditMock.mock.calls.find((c) => c[0].action === "pipeline.stages_saved")
+      return call?.[0].metadata as Record<string, unknown>
+    }
+
+    it("carries the before and after stage keys, in order", async () => {
+      // Submitted in a DIFFERENT order from the stored one, so a metadata
+      // builder that echoed `before` for both, or sorted either, fails.
+      await PUT(putReq({ stages: [LOST_STAGE, OPEN_STAGE, WON_STAGE] }) as never, boardParams)
+      expect(metadataOf()).toMatchObject({
+        stages_before: ["open", "won", "lost"],
+        stages_after: ["lost", "open", "won"],
+        stages_removed: [],
+        stages_added: [],
+        moved_cards: [],
+      })
+    })
+
+    it("names the stage that was removed, the one that was added, and the cards that moved", async () => {
+      const replacement = { ...OPEN_STAGE, id: null, key: "enquiry", name: "Enquiry" }
+      await PUT(
+        putReq({
+          stages: [replacement, WON_STAGE, LOST_STAGE],
+          destinations: { "stage-open": "stage-won" },
+        }) as never,
+        boardParams,
+      )
+      expect(metadataOf()).toMatchObject({
+        stages_before: ["open", "won", "lost"],
+        stages_after: ["enquiry", "won", "lost"],
+        stages_removed: ["open"],
+        stages_added: ["enquiry"],
+        // KEYS, not ids: the ids mean nothing to a person reading the log,
+        // and a key is the one identifier that never changes afterwards.
+        moved_cards: [{ from: "open", to: "won", cards: 2 }],
+      })
+    })
+
+    it("claims no move for a destination named against a stage that is staying", async () => {
+      // `planStageSave` ignores it, so the save performs no move — and an
+      // audit row asserting a move that did not happen is worse than one
+      // asserting none.
+      await PUT(
+        putReq({ stages: VALID_STAGES, destinations: { "stage-open": "stage-won" } }) as never,
+        boardParams,
+      )
+      expect(metadataOf().moved_cards).toEqual([])
+    })
+
+    it("records the attempt even when the save was REFUSED", async () => {
+      savePipelineStagesMock.mockResolvedValue({
+        ok: false,
+        problems: [{ index: null, message: "A board needs exactly one Won stage. This one has 0." }],
+      })
+      const res = await PUT(putReq({ stages: [OPEN_STAGE, LOST_STAGE] }) as never, boardParams)
+      expect(res.status).toBe(400)
+      // What somebody TRIED to do is worth as much to an investigator as
+      // what landed.
+      expect(metadataOf()).toMatchObject({ stages_before: ["open", "won", "lost"], stages_after: ["open", "lost"] })
+    })
+
+    it("carries nothing when the board was never read (404), rather than inventing a before", async () => {
+      knownBoard = null
+      const res = await PUT(putReq({ stages: VALID_STAGES }) as never, boardParams)
+      expect(res.status).toBe(404)
+      expect(metadataOf()).toEqual({})
+    })
+
+    it("does not send the internal x-audit-* header to the caller", async () => {
+      const res = await PUT(putReq({ stages: VALID_STAGES }) as never, boardParams)
+      expect([...res.headers.keys()].filter((k) => k.startsWith("x-audit-"))).toEqual([])
+    })
+
+    it("survives a stage key the latin-1 header encoding would otherwise reject", async () => {
+      // `Headers.set` THROWS on a value outside latin-1, and a stage key is
+      // client-supplied — so without the URI encoding one emoji would turn a
+      // successful save into a 500. Driven end to end rather than asserted on
+      // the encoder.
+      const exotic = { ...OPEN_STAGE, id: null, key: "café_☕", name: "Café" }
+      const res = await PUT(putReq({ stages: [exotic, WON_STAGE, LOST_STAGE] }) as never, boardParams)
+      expect(res.status).toBe(200)
+      expect(metadataOf()).toMatchObject({ stages_added: ["café_☕"] })
+    })
   })
 })

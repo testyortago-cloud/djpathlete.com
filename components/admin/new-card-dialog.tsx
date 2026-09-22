@@ -105,9 +105,21 @@ const PersonFormSchema = z
       .trim()
       .min(1, "Add their name.")
       .max(MAX_NAME_LENGTH, `Name must be ${MAX_NAME_LENGTH} characters or fewer.`),
-    // NOT `.email()`. The route does not check the format, and a box that
-    // refuses what the server would have accepted is a worse failure than a
-    // typo — it has no way out.
+    // NOT `.email()` — and the REASON has changed, so read this before
+    // putting one back. It used to say "the route does not check the format,
+    // and a box that refuses what the server would have accepted is a worse
+    // failure than a typo". That was false (whole-branch review, Important
+    // 4): the route's Zod only checks the box is not empty, and the layer
+    // below it (`createOpportunityManually`, lib/db/pipeline.ts) normalises
+    // the address and REFUSES one it cannot use, quoting it back. The server
+    // is therefore STRICTER than this box, not looser — the opposite of what
+    // the old comment claimed.
+    //
+    // What this schema still buys is the one refusal worth having without a
+    // round trip: "no way to reach them at all", in the same words the route
+    // answers with (NEEDS_A_WAY_TO_REACH_THEM, below). A malformed address is
+    // left to the server, whose sentence names what was typed — which is more
+    // than a generic "that is not an email" could say here.
     email: z.string().trim(),
     phone: z.string().trim(),
   })

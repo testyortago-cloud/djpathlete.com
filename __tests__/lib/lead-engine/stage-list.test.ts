@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
+  invalidDestinationProblems,
+  kindChangeVisibilityProblems,
   planStageSave,
   strandedStageProblems,
   validateStageList,
@@ -195,5 +197,212 @@ describe("strandedStageProblems", () => {
   it("is silent when the removed stage was empty", () => {
     const plan = { moveCards: [], removedStageIds: ["s2"], keptStageIds: ["s1"] }
     expect(strandedStageProblems(oldStages, plan, new Map([["s2", 0]]))).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WHOLE-BRANCH REVIEW, IMPORTANT 1. A destination the same save is removing.
+// ---------------------------------------------------------------------------
+
+describe("invalidDestinationProblems", () => {
+  const oldStages: SavedStage[] = [
+    { id: "s1", key: "enquiry", position: 1, name: "Enquiry", kind: "open", amberAfterDays: 3, redAfterDays: 7 },
+    { id: "s2", key: "consulted", position: 2, name: "Consulted", kind: "open", amberAfterDays: 3, redAfterDays: 7 },
+    { id: "s3", key: "proposal", position: 3, name: "Proposal", kind: "open", amberAfterDays: 3, redAfterDays: 7 },
+  ]
+
+  it("refuses a destination that is also being removed, naming both stages", () => {
+    const plan = {
+      moveCards: [{ fromStageId: "s2", toStageId: "s3" }],
+      removedStageIds: ["s2", "s3"],
+      keptStageIds: ["s1"],
+    }
+    expect(invalidDestinationProblems(oldStages, plan)).toEqual([
+      {
+        index: null,
+        message:
+          'The stage you chose for the cards on "Consulted" ("Proposal") is being removed too. Pick one that is staying.',
+      },
+    ])
+  })
+
+  // A different sentence for a different mistake: a destination that is not a
+  // stage on this board cannot honestly be described as "being removed too".
+  it("refuses a destination that is not a stage on this board, without claiming it is being removed", () => {
+    const plan = {
+      moveCards: [{ fromStageId: "s2", toStageId: "another-boards-stage" }],
+      removedStageIds: ["s2"],
+      keptStageIds: ["s1", "s3"],
+    }
+    const problems = invalidDestinationProblems(oldStages, plan)
+    expect(problems).toEqual([
+      {
+        index: null,
+        message: 'The stage you chose for the cards on "Consulted" is not a stage on this board. Pick one that is staying.',
+      },
+    ])
+    expect(problems[0].message).not.toContain("being removed too")
+  })
+
+  // THE PRESENCE CONTROL. Without it a function that refused EVERY move would
+  // pass both tests above.
+  it("is silent when the destination is a stage that stays", () => {
+    const plan = {
+      moveCards: [{ fromStageId: "s2", toStageId: "s1" }],
+      removedStageIds: ["s2"],
+      keptStageIds: ["s1", "s3"],
+    }
+    expect(invalidDestinationProblems(oldStages, plan)).toEqual([])
+  })
+
+  it("is silent when there is nothing to move", () => {
+    expect(
+      invalidDestinationProblems(oldStages, { moveCards: [], removedStageIds: ["s2"], keptStageIds: ["s1", "s3"] }),
+    ).toEqual([])
+  })
+
+  it("falls back to the key when the stage being emptied has a blank name", () => {
+    const blank: SavedStage[] = [{ ...oldStages[1], name: "  " }, oldStages[2]]
+    const plan = { moveCards: [{ fromStageId: "s2", toStageId: "s3" }], removedStageIds: ["s2", "s3"], keptStageIds: [] }
+    expect(invalidDestinationProblems(blank, plan)[0].message).toContain('cards on "consulted"')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WHOLE-BRANCH REVIEW, IMPORTANT 2 (controller ruling R19). A `kind` change
+// that takes settled deals off the board.
+// ---------------------------------------------------------------------------
+
+describe("kindChangeVisibilityProblems", () => {
+  const oldStages: SavedStage[] = [
+    { id: "s1", key: "enquiry", position: 1, name: "Enquiry", kind: "open", amberAfterDays: null, redAfterDays: null },
+    { id: "s2", key: "won", position: 2, name: "Won", kind: "won", amberAfterDays: null, redAfterDays: null },
+    { id: "s3", key: "lost", position: 3, name: "Lost", kind: "lost", amberAfterDays: null, redAfterDays: null },
+  ]
+  const draft = (id: string | null, key: string, name: string, kind: "open" | "won" | "lost"): StageDraft => ({
+    id,
+    key,
+    name,
+    kind,
+    amberAfterDays: null,
+    redAfterDays: null,
+  })
+
+  it("refuses turning a won stage open while it holds closed cards, at that row's index", () => {
+    const problems = kindChangeVisibilityProblems(
+      oldStages,
+      [draft("s1", "enquiry", "Enquiry", "open"), draft("s2", "won", "Won", "open"), draft("s3", "lost", "Lost", "lost")],
+      new Map([["s2", 4]]),
+    )
+    expect(problems).toEqual([
+      {
+        index: 1,
+        message:
+          'Stage "Won" holds 4 cards that are already won or lost. Changing it to a stage that is still open ' +
+          "would take them off the board, where nobody would find them. Move those cards to another stage first.",
+      },
+    ])
+  })
+
+  it("says one card, not 1 cards", () => {
+    const problems = kindChangeVisibilityProblems(
+      oldStages,
+      [draft("s1", "enquiry", "Enquiry", "open"), draft("s2", "won", "Won", "open"), draft("s3", "lost", "Lost", "lost")],
+      new Map([["s2", 1]]),
+    )
+    expect(problems[0].message).toBe(
+      'Stage "Won" holds 1 card that is already won or lost. Changing it to a stage that is still open ' +
+        "would take it off the board, where nobody would find it. Move that card to another stage first.",
+    )
+  })
+
+  it("refuses the LOST stage on the same rule, not only the won one", () => {
+    const problems = kindChangeVisibilityProblems(
+      oldStages,
+      [draft("s1", "enquiry", "Enquiry", "open"), draft("s2", "won", "Won", "won"), draft("s3", "lost", "Lost", "open")],
+      new Map([["s3", 2]]),
+    )
+    expect(problems).toHaveLength(1)
+    expect(problems[0].index).toBe(2)
+    expect(problems[0].message).toContain('Stage "Lost"')
+  })
+
+  // THE PRESENCE CONTROL: the same stage, the same closed cards, no kind
+  // change. Renaming Won while it holds settled deals is the ORDINARY thing a
+  // coach does, and refusing it would make the board uneditable.
+  it("allows renaming a won stage that holds closed cards, because nothing disappears", () => {
+    expect(
+      kindChangeVisibilityProblems(
+        oldStages,
+        [draft("s1", "enquiry", "Enquiry", "open"), draft("s2", "won", "Closed won", "won"), draft("s3", "lost", "Lost", "lost")],
+        new Map([["s2", 4]]),
+      ),
+    ).toEqual([])
+  })
+
+  // The other half of the same guard. A stage that is ALREADY open cannot
+  // hide anything by staying open, whatever the count says.
+  it("allows an open stage to stay open, whatever its closed count", () => {
+    expect(
+      kindChangeVisibilityProblems(
+        oldStages,
+        [draft("s1", "enquiry", "Enquiry", "open"), draft("s2", "won", "Won", "won"), draft("s3", "lost", "Lost", "lost")],
+        new Map([["s1", 3]]),
+      ),
+    ).toEqual([])
+  })
+
+  // Deliberately NOT refused — see the function's own doc comment. `open ->
+  // won` puts outcome-null cards in the Won column, which is wrong but
+  // VISIBLE, and a coach can undo it by looking at it.
+  it("allows an open stage to become won, which mislabels cards but hides none", () => {
+    expect(
+      kindChangeVisibilityProblems(
+        oldStages,
+        [draft("s1", "enquiry", "Enquiry", "won"), draft("s2", "won", "Won", "open"), draft("s3", "lost", "Lost", "lost")],
+        new Map([["s1", 3]]),
+      ),
+    ).toEqual([])
+  })
+
+  it("says nothing about a stage holding no closed cards", () => {
+    expect(
+      kindChangeVisibilityProblems(
+        oldStages,
+        [draft("s1", "enquiry", "Enquiry", "open"), draft("s2", "won", "Won", "open"), draft("s3", "lost", "Lost", "lost")],
+        new Map(),
+      ),
+    ).toEqual([])
+  })
+
+  it("ignores a brand-new stage, which has no cards and no previous kind", () => {
+    expect(
+      kindChangeVisibilityProblems(
+        oldStages,
+        [draft(null, "new", "New", "open"), draft("s2", "won", "Won", "won"), draft("s3", "lost", "Lost", "lost")],
+        new Map([["s2", 4]]),
+      ),
+    ).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WHOLE-BRANCH REVIEW, small item 6. `validateStageList` tested emptiness on
+// the TRIMMED key and deduped on the RAW one.
+// ---------------------------------------------------------------------------
+
+describe("validateStageList — the key is trimmed consistently", () => {
+  it("sees two stages whose keys differ only in whitespace as the same key", () => {
+    const problems = validateStageList([open("enquiry"), { ...open("x"), key: " enquiry " }, won(), lost()])
+    expect(problems).toContainEqual({
+      index: 1,
+      message: 'Two stages share the key "enquiry". Keys must be unique on a board.',
+    })
+  })
+
+  // THE PRESENCE CONTROL: two genuinely different keys, one of them padded,
+  // must still be fine — the fix must not turn every padded key into a clash.
+  it("still accepts two different keys when one of them is padded", () => {
+    expect(validateStageList([open("enquiry"), { ...open("x"), key: " consulted " }, won(), lost()])).toEqual([])
   })
 })

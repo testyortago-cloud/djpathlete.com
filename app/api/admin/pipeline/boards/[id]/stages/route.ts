@@ -57,6 +57,115 @@ import type { AuditAction } from "@/lib/audit/actions"
 
 const STAGES_SAVED_AUDIT_ACTION: AuditAction = "pipeline.stages_saved"
 
+/**
+ * The internal channel the handler hands the BEFORE/AFTER stage lists to the
+ * `metadata` callback on. Nothing else can carry them: this route's `target`
+ * resolver reads the ORIGINAL request (see its comment), `withAudit` runs
+ * that resolver BEFORE `metadata`, and a request body can only be read once —
+ * so by the time `metadata` runs there is no request left to parse, and the
+ * "before" was never in the request anyway. It is read out of the database by
+ * the pre-check below.
+ *
+ * `x-audit-` prefix is load-bearing: `stripAuditHeaders` (lib/audit/with-audit.ts)
+ * deletes every header with it AFTER `metadata` has read them, so this never
+ * reaches the browser. Same channel app/api/admin/sms/send/route.ts uses for
+ * `x-audit-consent-override`.
+ *
+ * URI-ENCODED, not raw JSON. A stage `key` is submitted by the client and
+ * `Headers.set` throws on a value outside latin-1 — one emoji in a key would
+ * turn a successful save into a 500. `encodeURIComponent` makes any string
+ * safe, and the callback decodes it.
+ */
+const AUDIT_STAGE_CHANGE_HEADER = "x-audit-stage-change"
+
+/**
+ * How many stage keys go into one list on the audit row.
+ *
+ * `scrubMetadata` (lib/audit/scrub.ts) does not truncate an over-large
+ * metadata bag — it THROWS THE WHOLE THING AWAY and keeps a 1KB sample. A
+ * stage key can be 100 characters (MAX_STAGE_KEY_LENGTH), so a board with
+ * enough of them could push four lists past 8KB and lose every field,
+ * including the small ones that matter most. 40 per list keeps the worst case
+ * around 4KB while being far more stages than a real board has; anything past
+ * it is recorded as a count instead of silently dropped.
+ */
+const MAX_AUDIT_KEYS = 40
+
+function capKeys(keys: string[]): { keys: string[]; omitted?: number } {
+  if (keys.length <= MAX_AUDIT_KEYS) return { keys }
+  return { keys: keys.slice(0, MAX_AUDIT_KEYS), omitted: keys.length - MAX_AUDIT_KEYS }
+}
+
+/**
+ * What this save DID, in stage KEYS — the thing `pipeline.stages_saved` was
+ * missing entirely (whole-branch review, Important 5).
+ *
+ * Spec §2.3 collapsed the old design's five per-stage audit slugs into this
+ * one with the argument that "one save is one audit row … the metadata
+ * carries the before/after stage list". No metadata callback was ever
+ * written, so what an investigator actually got was a board id and
+ * `"5 stage(s) submitted"` — for THE destructive operation in this feature,
+ * the one that deletes stages and relocates real cards.
+ *
+ * KEYS, NOT NAMES. A key is immutable once created (invariant 4) and a name
+ * is the thing a coach edits, often in the very save being recorded — so a
+ * row built from names could describe a stage nobody can find afterwards.
+ * `added` carries the new stages' keys because a brand-new stage has no id
+ * yet; everything else is matched on id and reported by key.
+ */
+function describeStageChange(
+  existing: Array<{ id: string; key: string }>,
+  submitted: Array<{ id: string | null; key: string }>,
+  destinations: Record<string, string>,
+  cardCountByStageId: Map<string, number>,
+): Record<string, unknown> {
+  const keyById = new Map(existing.map((s) => [s.id, s.key]))
+  const submittedIds = new Set(submitted.map((s) => s.id).filter((id): id is string => id !== null))
+
+  const before = existing.map((s) => s.key)
+  const after = submitted.map((s) => s.key)
+  const removed = existing.filter((s) => !submittedIds.has(s.id)).map((s) => s.key)
+  const added = submitted.filter((s) => s.id === null).map((s) => s.key)
+
+  // Only the moves the save will actually perform: a destination named for a
+  // stage that is staying, or for one holding no cards, produces no move —
+  // `planStageSave` ignores both, and an audit row claiming a move that did
+  // not happen is worse than one claiming none.
+  const movedCards = Object.entries(destinations)
+    .filter(([from]) => !submittedIds.has(from) && (cardCountByStageId.get(from) ?? 0) > 0)
+    .map(([from, to]) => ({
+      from: keyById.get(from) ?? from,
+      to: keyById.get(to) ?? to,
+      cards: cardCountByStageId.get(from) ?? 0,
+    }))
+
+  const b = capKeys(before)
+  const a = capKeys(after)
+  const r = capKeys(removed)
+  const ad = capKeys(added)
+
+  return {
+    stages_before: b.keys,
+    stages_after: a.keys,
+    stages_removed: r.keys,
+    stages_added: ad.keys,
+    moved_cards: movedCards.slice(0, MAX_AUDIT_KEYS),
+    ...(b.omitted || a.omitted || r.omitted || ad.omitted || movedCards.length > MAX_AUDIT_KEYS
+      ? { lists_truncated: true }
+      : {}),
+  }
+}
+
+/**
+ * "3 stages submitted", never "3 stage(s) submitted" (controller ruling R16,
+ * applied again here by the whole-branch review). This label is printed on
+ * /admin/audit-logs, a screen a coach reads — the same argument that took
+ * `card(s)` out of `strandedStageProblems`.
+ */
+function stagesSubmittedLabel(count: number): string {
+  return `${count} ${count === 1 ? "stage" : "stages"} submitted`
+}
+
 const StageDraftSchema = z
   .object({
     id: z.string().nullable(),
@@ -101,7 +210,20 @@ export const PUT = withAudit(
       return {
         type: "pipeline_board",
         id,
-        ...(submittedCount !== undefined ? { label: `${submittedCount} stage(s) submitted` } : {}),
+        ...(submittedCount !== undefined ? { label: stagesSubmittedLabel(submittedCount) } : {}),
+      }
+    },
+    // WHAT CHANGED, not merely which board. See `describeStageChange` above
+    // for why this row needs it more than any other in this directory, and
+    // `AUDIT_STAGE_CHANGE_HEADER` for why it arrives on a header rather than
+    // by re-reading the request.
+    metadata: async (_request, response) => {
+      const raw = response.headers.get(AUDIT_STAGE_CHANGE_HEADER)
+      if (!raw) return {}
+      try {
+        return JSON.parse(decodeURIComponent(raw)) as Record<string, unknown>
+      } catch {
+        return {}
       }
     },
   },
@@ -144,14 +266,30 @@ export const PUT = withAudit(
       )
     }
 
+    // Set once the board's CURRENT stage list is known, and stamped onto
+    // every response produced after that point — the refusals included. An
+    // audit row for a save that was REFUSED is worth exactly as much as one
+    // for a save that landed: it says what somebody tried to do.
+    let changeHeader: string | null = null
+    const stamped = (response: NextResponse) => {
+      if (changeHeader) response.headers.set(AUDIT_STAGE_CHANGE_HEADER, changeHeader)
+      return response
+    }
+
     try {
       // Existence + tenant-scoping check — see the header comment for why
       // this route cannot rely on `savePipelineStages` alone to notice a
       // nonexistent or foreign-tenant board.
-      const { stages: existingStages } = await readStagesForEdit(id, businessId)
+      const { stages: existingStages, cardCountByStageId } = await readStagesForEdit(id, businessId)
       if (existingStages.length === 0) {
         throw new PipelineBoardNotFoundError(id)
       }
+
+      changeHeader = encodeURIComponent(
+        JSON.stringify(
+          describeStageChange(existingStages, parsed.data.stages, parsed.data.destinations ?? {}, cardCountByStageId),
+        ),
+      )
 
       const result = await savePipelineStages({
         pipelineId: id,
@@ -165,10 +303,12 @@ export const PUT = withAudit(
         // `index`/`message` shape is what Task 7's editor renders a specific
         // row's error (or a board-level one, at `index: null`) from. Flattening
         // this to a string here would throw that structure away for good.
-        return NextResponse.json({ error: "This stage list could not be saved.", problems: result.problems }, { status: 400 })
+        return stamped(
+          NextResponse.json({ error: "This stage list could not be saved.", problems: result.problems }, { status: 400 }),
+        )
       }
 
-      return NextResponse.json({ ok: true, stageCount: parsed.data.stages.length })
+      return stamped(NextResponse.json({ ok: true, stageCount: parsed.data.stages.length }))
     } catch (err) {
       // `PipelineBoardNotFoundError` covers BOTH a nonexistent id and a
       // foreign tenant's board — same status, same message, on purpose (see
@@ -177,10 +317,10 @@ export const PUT = withAudit(
       // (`save_pipeline_stages failed: …`) is a readable Error and surfaces
       // as 400, not 500.
       if (err instanceof PipelineBoardNotFoundError) {
-        return NextResponse.json({ error: err.message }, { status: 404 })
+        return stamped(NextResponse.json({ error: err.message }, { status: 404 }))
       }
       const message = err instanceof Error ? err.message : "Failed to save stages"
-      return NextResponse.json({ error: message }, { status: 400 })
+      return stamped(NextResponse.json({ error: message }, { status: 400 }))
     }
   },
 )

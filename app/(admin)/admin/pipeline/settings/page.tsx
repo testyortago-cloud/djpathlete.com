@@ -54,7 +54,10 @@ export default async function PipelineSettingsPage({ searchParams }: { searchPar
     )
   }
 
-  const { stages, cardCountByStageId } = await readStagesForEdit(activeBoard.id, businessId)
+  const { stages, cardCountByStageId, closedCardCountByStageId } = await readStagesForEdit(
+    activeBoard.id,
+    businessId,
+  )
 
   return (
     <div className="space-y-6">
@@ -70,6 +73,9 @@ export default async function PipelineSettingsPage({ searchParams }: { searchPar
         // the editor takes a plain object and a stage with no cards is simply
         // absent from it.
         cardCounts={Object.fromEntries(cardCountByStageId)}
+        // The closed ones, separately — the editor needs both numbers to warn
+        // that turning a Won stage into an open one would hide settled deals.
+        closedCardCounts={Object.fromEntries(closedCardCountByStageId)}
         isDefaultBoard={activeBoard.key === DEFAULT_PIPELINE_KEY}
       />
     </div>

@@ -72,6 +72,8 @@ import { cn } from "@/lib/utils"
 import {
   MAX_STAGE_KEY_LENGTH,
   MAX_STAGE_NAME_LENGTH,
+  invalidDestinationProblems,
+  kindChangeVisibilityProblems,
   planStageSave,
   strandedStageProblems,
   validateStageList,
@@ -230,6 +232,7 @@ export function PipelineSettings({
   board,
   stages,
   cardCounts,
+  closedCardCounts,
   isDefaultBoard = false,
 }: {
   board: PipelineSettingsBoard
@@ -241,13 +244,21 @@ export function PipelineSettings({
    * server/client boundary. A stage with no cards is ABSENT, not 0.
    */
   cardCounts: Record<string, number>
+  /**
+   * readStagesForEdit's `closedCardCountByStageId`, flattened the same way —
+   * only the cards whose `outcome` is set. A SEPARATE number from
+   * `cardCounts`, not a subset the screen could derive: the two answer
+   * different questions, and only this one can say whether turning a Won
+   * stage into an open one would take settled deals off the board.
+   */
+  closedCardCounts: Record<string, number>
   /** `board.key === DEFAULT_PIPELINE_KEY`. Decided by the server so this file needs no constant. */
   isDefaultBoard?: boolean
 }) {
   return (
     <div className="space-y-6 font-body">
       <BoardCard board={board} isDefaultBoard={isDefaultBoard} />
-      <StageEditor board={board} stages={stages} cardCounts={cardCounts} />
+      <StageEditor board={board} stages={stages} cardCounts={cardCounts} closedCardCounts={closedCardCounts} />
       <NewBoardCard />
     </div>
   )
@@ -459,8 +470,8 @@ function NewBoardCard() {
       toast.success(`Created "${trimmed}".`)
       setName("")
       // Straight into the new board's own settings — it starts with only the
-      // Won and Lost stages `createPipelineBoard` seeds, so there is always
-      // something to do next.
+      // three stages `createPipelineBoard` seeds (New enquiry, Won, Lost), so
+      // there is always something to do next.
       if (payload.board?.key) {
         router.push(`/admin/pipeline/settings?board=${encodeURIComponent(payload.board.key)}`)
       }
@@ -481,7 +492,7 @@ function NewBoardCard() {
     <section data-testid="new-board-card" className="rounded-xl border border-border bg-white p-4 shadow-sm">
       <h2 className="text-lg font-semibold text-primary">Add another board</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        A new board starts with a Won stage and a Lost stage. Add the steps in between once it exists.
+        A new board starts with three stages: New enquiry, Won and Lost. Add the steps in between once it exists.
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <div className="min-w-64 flex-1">
@@ -529,10 +540,12 @@ function StageEditor({
   board,
   stages,
   cardCounts,
+  closedCardCounts,
 }: {
   board: PipelineSettingsBoard
   stages: SavedStage[]
   cardCounts: Record<string, number>
+  closedCardCounts: Record<string, number>
 }) {
   const router = useRouter()
   const [rows, setRows] = useState<EditableStage[]>(() => toEditable(stages))
@@ -554,6 +567,7 @@ function StageEditor({
 
   const drafts = useMemo(() => toDrafts(rows), [rows])
   const cardCountMap = useMemo(() => new Map(Object.entries(cardCounts)), [cardCounts])
+  const closedCardCountMap = useMemo(() => new Map(Object.entries(closedCardCounts)), [closedCardCounts])
   const listProblems = useMemo(() => validateStageList(drafts), [drafts])
   const localFieldProblems = useMemo(() => fieldProblems(rows), [rows])
   const plan = useMemo(
@@ -561,11 +575,28 @@ function StageEditor({
     [stages, drafts, cardCountMap, destinations],
   )
   const stranded = useMemo(() => strandedStageProblems(stages, plan, cardCountMap), [stages, plan, cardCountMap])
+  /**
+   * The destination picker offers only stages that are on the board RIGHT
+   * NOW, so a coach can choose one and then remove it — three clicks, no
+   * warning, and the save dies inside Postgres. The route refuses it; this is
+   * the same refusal, without the round trip.
+   */
+  const badDestinations = useMemo(() => invalidDestinationProblems(stages, plan), [stages, plan])
+  /**
+   * Turning a Won or Lost stage into an open one hides every closed card on
+   * it. Refused by the route and the DAL (controller ruling R19); shown here
+   * so the coach reads it against the dropdown that caused it rather than
+   * after a failed save.
+   */
+  const hiddenCards = useMemo(
+    () => kindChangeVisibilityProblems(stages, drafts, closedCardCountMap),
+    [stages, drafts, closedCardCountMap],
+  )
 
   /** What stops a save. The server's own problems are shown but never block a retry. */
   const blocking = useMemo(
-    () => [...listProblems, ...localFieldProblems, ...stranded],
-    [listProblems, localFieldProblems, stranded],
+    () => [...listProblems, ...localFieldProblems, ...stranded, ...badDestinations, ...hiddenCards],
+    [listProblems, localFieldProblems, stranded, badDestinations, hiddenCards],
   )
   const allProblems = useMemo(() => [...blocking, ...serverProblems], [blocking, serverProblems])
   const boardLevelProblems = allProblems.filter((p) => p.index === null)

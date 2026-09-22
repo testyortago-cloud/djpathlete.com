@@ -32,6 +32,9 @@ import type { AuditAction } from "@/lib/audit/actions"
 
 const MAX_NAME_LENGTH = 200
 
+/** See `valueCents` below — this is comfortably inside int4, which the column is. */
+const MAX_VALUE_CENTS = 2_000_000_000
+
 const OPPORTUNITY_CREATED_MANUALLY_AUDIT_ACTION: AuditAction = "pipeline.opportunity_created_manually"
 
 const PersonSchema = z
@@ -53,7 +56,22 @@ const CreateOpportunitySchema = z
     pipelineId: z.string().trim().min(1, "pipelineId is required."),
     contactId: z.string().trim().min(1).optional(),
     person: PersonSchema.optional(),
-    valueCents: z.number().int().nonnegative().optional(),
+    // ACCEPTED BUT NOT EXPOSED, deliberately (whole-branch review, small
+    // item 4). No dialog writes this today — `new-card-dialog.tsx` has no
+    // money box — so a reader finding it here may reasonably think it is dead
+    // code. It is not: `createOpportunityManually` stores it, the board reads
+    // it, and leaving the field accepted means the box can be added to the
+    // dialog later without touching this route or the DAL.
+    //
+    // THE CAP IS NOT DECORATION. `opportunities.value_cents` is `integer`
+    // (migration 00219), so anything past 2,147,483,647 fails the INSERT with
+    // Postgres' `22003` numeric_value_out_of_range — which this route's catch
+    // would surface to a coach as a raw `createOpportunityManually failed: …`
+    // 400. `.max()` answers the same refusal in English, before the write,
+    // the way every other cap in this directory does. 2,000,000,000 cents is
+    // 20 million dollars — far past any real deal, and inside int4 with room
+    // to spare.
+    valueCents: z.number().int().nonnegative().max(MAX_VALUE_CENTS, "That amount is too large.").optional(),
   })
   .strict()
   .refine((data) => Boolean(data.contactId) || Boolean(data.person), {
@@ -76,6 +94,29 @@ export const POST = withAudit(
       if (!pipelineId) return undefined
       const label = typeof body?.person?.name === "string" ? body.person.name : undefined
       return { type: "pipeline_board", id: pipelineId, ...(label ? { label } : {}) }
+    },
+    // WHO was filed, and WHICH CARD it became (whole-branch review, Important
+    // 5). The target above names the BOARD, and carries a label only when a
+    // new person was typed — so for the common case, picking somebody already
+    // on file, the row recorded neither the contact nor the opportunity,
+    // though both are sitting in the response body this resolver already
+    // reads. "A card was made by hand on this board, by this person, at this
+    // time" is not an answer anybody can act on without the two ids.
+    //
+    // Read off the RESPONSE: both ids are minted inside
+    // `createOpportunityManually` and appear nowhere in the request. A
+    // refused attempt (400/404) has neither key in its body, so this degrades
+    // to {} rather than throwing.
+    metadata: async (_request, response) => {
+      try {
+        const body = (await response.json()) as { opportunityId?: string; contactId?: string }
+        return {
+          ...(body.opportunityId ? { opportunity_id: body.opportunityId } : {}),
+          ...(body.contactId ? { contact_id: body.contactId } : {}),
+        }
+      } catch {
+        return {}
+      }
     },
   },
   async (request) => {

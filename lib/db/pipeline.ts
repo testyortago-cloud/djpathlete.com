@@ -59,6 +59,8 @@ import {
   validateStageList,
   planStageSave,
   strandedStageProblems,
+  invalidDestinationProblems,
+  kindChangeVisibilityProblems,
   type StageDraft,
   type StageProblem,
   type SavedStage,
@@ -67,6 +69,15 @@ import {
 // (below) is built on. NEVER `recordContactEvent` — see that function's own
 // doc comment for why.
 import { upsertContactIdentity, recordEventForExistingContact } from "@/lib/db/contacts"
+// G29 (whole-branch review, Important 4). THE SAME two normalisers
+// `upsertContactIdentity` runs on the way in, called HERE first so an
+// unusable address is refused in a sentence a coach can act on instead of
+// surfacing as that function's internal message
+// ("upsertContactIdentity needs at least one usable identifier…"), which the
+// route prints verbatim as a 400 and the dialog prints verbatim on screen.
+// Both return null rather than throwing, which is exactly what makes them
+// safe to use as a look-before-you-leap check.
+import { normaliseEmail, normalisePhone } from "@/lib/lead-engine/identity"
 
 // Re-exported, not redefined: lib/lead-engine/pipeline-move.ts is now the one
 // place this string lives (see that file's comment on DEFAULT_PIPELINE_KEY).
@@ -1910,9 +1921,24 @@ export async function listPipelines(businessId: string): Promise<Array<{ id: str
  * one way that can happen is a card manually reopened onto an open stage,
  * which is also the reason `moveOpportunityManually` clears the closure
  * fields together rather than leaving a stale `outcome` behind. `won`/`lost`
- * columns show every card whose `stage_id` points at them; those stages are
- * only ever reached through a close, so their cards always carry a matching
- * outcome.
+ * columns show every card whose `stage_id` points at them, with no filter at
+ * all.
+ *
+ * WHY THAT ASYMMETRY IS SAFE, stated as it is actually true rather than as it
+ * used to be. This comment used to say won and lost stages "are only ever
+ * reached through a close, so their cards always carry a matching outcome".
+ * That was a fact about the write paths, and G29 ended it: the board editor
+ * (components/admin/pipeline-settings.tsx) puts a free `kind` dropdown on
+ * every row, so a stage's kind can now change UNDER cards that are already
+ * sitting on it, without any card moving anywhere. The premise is therefore
+ * no longer given — it is ENFORCED, by `kindChangeVisibilityProblems`
+ * (lib/lead-engine/stage-list.ts), which `savePipelineStages` and the PUT
+ * route both run: a `won` or `lost` stage still holding CLOSED cards cannot
+ * be turned `open`. Without that refusal, flipping Won to "still open" would
+ * make every settled deal on it fail the `outcome == null` filter above —
+ * still in the database, still counted in revenue, on no screen anywhere.
+ * The guard is what keeps this function's filter honest; do not remove one
+ * without removing the other.
  */
 // `pipelineKey` is typed `string | undefined` rather than `pipelineKey?:
 // string` — a bare `?` marks a parameter optional in the ordering sense TS
@@ -2101,10 +2127,28 @@ function slugifyBoardKey(name: string): string {
 }
 
 /**
- * G29. A new board is created VALID: it gets a `won` and a `lost` stage in
- * the same call that creates it, because `validateStageList` (and
- * `decideMove`) require both — a board that exists for even one request
- * without them is a board whose cards can never close.
+ * G29. A new board is created VALID AND USABLE: three stages in the same call
+ * that creates it — an `open` one at position 1, then `won`, then `lost`.
+ *
+ * WON AND LOST, because `validateStageList` (and `decideMove`) require both —
+ * a board that exists for even one request without them is a board whose
+ * cards can never close.
+ *
+ * THE OPEN STAGE AT POSITION 1, because of what happens without it
+ * (whole-branch review, Important 3 / controller ruling R19). The seed used
+ * to be two stages, Won at position 1 and Lost at 2, while
+ * `createOpportunityManually` files every hand-made card onto THE POSITION-1
+ * STAGE whatever its kind. So on a brand-new board the "Add someone" dialog
+ * announced `Their card starts in "Won".` and then filed a not-won card into
+ * Won with `outcome` null — a deal nobody won, in the column that means the
+ * deal is done. Spec §4.3 fixes the FILING rule at position 1, not the SEED,
+ * so moving Won to position 2 contradicts nothing. The alternative — refusing
+ * to file onto a non-open position-1 stage — leaves a new board unusable
+ * until somebody edits it, which is a worse first five minutes.
+ *
+ * `new` / "New enquiry" is a starting point, not a fixture: the key is
+ * immutable but the NAME, the thresholds and the order are all the editor's
+ * to change the moment the coach opens it.
  *
  * NOT atomic with the stages insert: migration 00276 has no board-creation
  * RPC, only a stage-LIST-save one, and this is a two-row write (`pipelines`,
@@ -2155,8 +2199,18 @@ export async function createPipelineBoard(input: {
   const created = pipelineRow as { id: string; key: string }
 
   const { error: stagesErr } = await supabase.from("pipeline_stages").insert([
-    { business_id: input.businessId, pipeline_id: created.id, key: "won", name: "Won", kind: "won", position: 1 },
-    { business_id: input.businessId, pipeline_id: created.id, key: "lost", name: "Lost", kind: "lost", position: 2 },
+    // POSITION 1 IS THE OPEN ONE, and that ordering is load-bearing — see the
+    // doc comment above. `createOpportunityManually` files onto position 1.
+    {
+      business_id: input.businessId,
+      pipeline_id: created.id,
+      key: "new",
+      name: "New enquiry",
+      kind: "open",
+      position: 1,
+    },
+    { business_id: input.businessId, pipeline_id: created.id, key: "won", name: "Won", kind: "won", position: 2 },
+    { business_id: input.businessId, pipeline_id: created.id, key: "lost", name: "Lost", kind: "lost", position: 3 },
   ])
   if (stagesErr) {
     // R9's compensating delete — see the doc comment above for exactly what
@@ -2201,8 +2255,18 @@ export async function createPipelineBoard(input: {
  * a card filed onto one is not lost, it is invisible, which is worse than lost
  * because nobody goes looking (see `listPipelines`' own note on why the board
  * switcher is active-only).
+ *
+ * EXPORTED since the whole-branch review (Important 5). The PATCH route
+ * (app/api/admin/pipeline/boards/[id]/route.ts) reads through it to learn the
+ * board's name and status BEFORE the update, because that is the only moment
+ * the previous values exist — `pipeline.board_updated` rows used to carry a
+ * bare uuid for an archive, so "who archived Camps & Clinics" had no answer.
+ * THAT READ IS FOR THE AUDIT ROW AND MUST NOT BECOME A GATE: `updatePipelineBoard`
+ * below is the one place a nonexistent-or-foreign-tenant board is refused (a
+ * null here is simply left alone and the DAL throws), and duplicating the
+ * existence check into the route is exactly what R10's fix argued against.
  */
-async function readBoardRow(
+export async function readBoardRow(
   pipelineId: string,
   businessId: string,
 ): Promise<{ id: string; key: string; name: string; status: string } | null> {
@@ -2311,11 +2375,25 @@ export async function updatePipelineBoard(input: {
  * outcome (open, won or lost) — a save that would strand a CLOSED card is
  * still a save that orphans a row nothing can find on the board again, and
  * `strandedStageProblems` needs the true count to refuse it.
+ *
+ * `closedCardCountByStageId` counts only the opportunities whose `outcome` is
+ * NOT null (whole-branch review, Important 2). It is a SECOND number over the
+ * same rows rather than a filter on the first, because the two answer
+ * different questions and both are needed at once: "would this removal strand
+ * anybody" (every card) and "would this kind change make settled deals
+ * invisible" (only the closed ones). `readBoard` shows a card on an `open`
+ * stage only while `outcome IS NULL`, so a stage turned from `won` to `open`
+ * takes every closed card on it off the board entirely —
+ * `kindChangeVisibilityProblems` needs this count to refuse that in English.
  */
 export async function readStagesForEdit(
   pipelineId: string,
   businessId: string,
-): Promise<{ stages: SavedStage[]; cardCountByStageId: Map<string, number> }> {
+): Promise<{
+  stages: SavedStage[]
+  cardCountByStageId: Map<string, number>
+  closedCardCountByStageId: Map<string, number>
+}> {
   const supabase = getClient()
 
   const { data: stageData, error: stageErr } = await supabase
@@ -2336,29 +2414,40 @@ export async function readStagesForEdit(
     redAfterDays: row.red_after_days ?? null,
   }))
 
+  // `outcome` is projected alongside `stage_id` because the closed count
+  // below is derived from it. Asking for `stage_id` alone and inferring
+  // "closed" from anything else would be guessing: `outcome` is the one
+  // column that says a deal is settled, and it is the exact column
+  // `readBoard`'s own `open` filter tests.
   const { data: oppData, error: oppErr } = await supabase
     .from("opportunities")
-    .select("stage_id")
+    .select("stage_id, outcome")
     .eq("business_id", businessId)
     .eq("pipeline_id", pipelineId)
   if (oppErr) throw new Error(`opportunities read failed: ${oppErr.message}`)
 
   const cardCountByStageId = new Map<string, number>()
+  const closedCardCountByStageId = new Map<string, number>()
   for (const row of (oppData ?? []) as Row[]) {
     const stageId = row.stage_id as string
     cardCountByStageId.set(stageId, (cardCountByStageId.get(stageId) ?? 0) + 1)
+    // `!= null`, not `!== null`: an absent column reads as `undefined`, and
+    // an undefined outcome is an OPEN card, exactly as `readBoard` treats it.
+    if (row.outcome != null) {
+      closedCardCountByStageId.set(stageId, (closedCardCountByStageId.get(stageId) ?? 0) + 1)
+    }
   }
 
-  return { stages, cardCountByStageId }
+  return { stages, cardCountByStageId, closedCardCountByStageId }
 }
 
 /**
  * R7 (controller ruling): `validateStageList` runs FIRST, so an invalid list
  * never reaches the RPC — migration 00276's terminal assertion and survivor
  * check are the LAST line of defence, for a bypass of this function, not the
- * first thing a legitimate caller meets. `strandedStageProblems` runs next,
- * against the board's actual card counts, because that check needs a DB
- * read `validateStageList` (pure, no IO) cannot perform. Only once both are
+ * first thing a legitimate caller meets. The three row-aware checks run next,
+ * against the board's actual cards, because they need a DB read
+ * `validateStageList` (pure, no IO) cannot perform. Only once all four are
  * clean does this call the RPC.
  *
  * R1 (controller ruling): the camelCase -> snake_case conversion for the RPC
@@ -2377,7 +2466,10 @@ export async function savePipelineStages(input: {
     return { ok: false, problems: listProblems }
   }
 
-  const { stages: oldStages, cardCountByStageId } = await readStagesForEdit(input.pipelineId, input.businessId)
+  const { stages: oldStages, cardCountByStageId, closedCardCountByStageId } = await readStagesForEdit(
+    input.pipelineId,
+    input.businessId,
+  )
 
   const plan = planStageSave(
     oldStages,
@@ -2386,9 +2478,29 @@ export async function savePipelineStages(input: {
     new Map(Object.entries(input.destinations)),
   )
 
-  const strandedProblems = strandedStageProblems(oldStages, plan, cardCountByStageId)
-  if (strandedProblems.length > 0) {
-    return { ok: false, problems: strandedProblems }
+  // THREE CHECKS THAT NEED THE BOARD'S ACTUAL ROWS, collected and returned
+  // TOGETHER rather than one early return each: they are independent
+  // mistakes, and a coach who has made two of them should be told both at
+  // once instead of fixing one, saving, and being refused again.
+  //
+  //   * `strandedStageProblems` — a removed stage with cards and no
+  //     destination.
+  //   * `invalidDestinationProblems` — a destination that the same save is
+  //     removing, or one that is not a stage on this board at all
+  //     (whole-branch review, Important 1). Without it the SQL relocates the
+  //     cards onto a stage it then DELETEs, and the whole save dies on
+  //     `opportunities_stage_id_fkey` with a raw Postgres string on a
+  //     coach's screen.
+  //   * `kindChangeVisibilityProblems` — a `won`/`lost` stage holding closed
+  //     cards being turned `open`, which takes every one of them off the
+  //     board (whole-branch review, Important 2 / controller ruling R19).
+  const rowProblems = [
+    ...strandedStageProblems(oldStages, plan, cardCountByStageId),
+    ...invalidDestinationProblems(oldStages, plan),
+    ...kindChangeVisibilityProblems(oldStages, input.stages, closedCardCountByStageId),
+  ]
+  if (rowProblems.length > 0) {
+    return { ok: false, problems: rowProblems }
   }
 
   const supabase = getClient()
@@ -2498,10 +2610,12 @@ async function openCardExistsError(args: {
  *   - `person` — `upsertContactIdentity` (lib/db/contacts.ts) resolves/merges
  *     identity exactly as a live submission would, so a typo'd repeat of
  *     somebody already on file lands on THAT contact rather than becoming a
- *     second copy of them. It refuses a person with neither email nor phone;
- *     this function refuses the SAME thing earlier, before paying for the
- *     round trip, so the message names the actual problem rather than a
- *     generic "identifier needed".
+ *     second copy of them. It refuses a person with no USABLE identifier —
+ *     and "usable" is the word that matters: it normalises first, so
+ *     `dana@gmail` is no email at all by the time it checks. This function
+ *     runs the same two normalisers first and refuses in English, naming the
+ *     thing that was typed, rather than letting that function's internal
+ *     message reach a coach's screen.
  *
  * THE HISTORY ROW IS WRITTEN ONCE, ON BOTH BRANCHES, AFTER THE CARD EXISTS.
  * Fix round 1 changed this twice over: it used to be written only on the
@@ -2514,9 +2628,11 @@ async function openCardExistsError(args: {
  * not freshen the staleness dot.
  *
  * THE CARD lands on the board's POSITION-1 stage — whatever that stage's
- * `kind` happens to be; this function does not assume it is `open` (a
- * freshly-created board, `createPipelineBoard` above, seeds Won at position 1
- * until a coach adds an intake stage). `outcome`/`closed_at`/`closed_trigger`
+ * `kind` happens to be; this function does not assume it is `open`, because
+ * the editor can put any kind there. A FRESHLY-CREATED board now seeds an
+ * open stage at position 1 (`createPipelineBoard` above, fixed in the
+ * whole-branch review), so the ordinary first card on a new board lands
+ * somewhere sensible rather than in Won. `outcome`/`closed_at`/`closed_trigger`
  * are left null regardless — a hand-filed card starts open, full stop; a
  * coach who wants it filed as already-won or already-lost moves it there
  * afterward through the ordinary move flow, which is the one place that
@@ -2580,12 +2696,40 @@ export async function createOpportunityManually(input: {
     if (!data) throw new Error(`Contact ${input.contactId} was not found for this business.`)
     contactId = (data as { id: string }).id
   } else if (input.person) {
-    // Refused HERE, before the round trip `upsertContactIdentity` would make
-    // anyway — its own internal throw for the identical condition exists to
-    // protect every OTHER caller too, not to be this function's only line of
-    // defence.
-    if (!input.person.email && !input.person.phone) {
-      throw new Error("Add an email or phone number for this person before filing them.")
+    // NORMALISE FIRST, THEN CHECK (whole-branch review, Important 4). This
+    // used to test raw truthiness — `if (!input.person.email && ...)` — which
+    // any non-empty string satisfies. `upsertContactIdentity` normalises
+    // BEFORE it checks, and `normaliseEmail` returns null for anything
+    // failing its format test (`dana@gmail`, `danareyes`), so a mistyped
+    // address with no phone sailed past this guard and died one layer down on
+    //
+    //     upsertContactIdentity needs at least one usable identifier (email or phone)
+    //
+    // — a sentence naming an internal function, which the route surfaces as
+    // `err.message` in a 400 and the dialog prints on screen AND toasts. The
+    // check now asks the same question the layer below will: is there
+    // anything here that can actually be used?
+    //
+    // TWO REFUSALS, because they are two different mistakes. Nothing typed at
+    // all gets the sentence the route and the dialog both say (they restate
+    // it as `NEEDS_A_WAY_TO_REACH_THEM` in
+    // components/admin/new-card-dialog.tsx and as PersonSchema's refine
+    // message in app/api/admin/pipeline/opportunities/route.ts — three homes,
+    // one sentence, pinned by that route's suite). Something typed that
+    // cannot be used QUOTES IT BACK, because "add an email or phone number"
+    // is maddening to read when you just typed one.
+    const typedEmail = input.person.email?.trim() ?? ""
+    const typedPhone = input.person.phone?.trim() ?? ""
+    const usableEmail = normaliseEmail(typedEmail || null)
+    const usablePhone = normalisePhone(typedPhone || null)
+    if (!usableEmail && !usablePhone) {
+      if (!typedEmail && !typedPhone) {
+        throw new Error("Add an email or phone number for this person.")
+      }
+      const unusable: string[] = []
+      if (typedEmail) unusable.push(`"${typedEmail}" does not look like an email address.`)
+      if (typedPhone) unusable.push(`"${typedPhone}" does not look like a phone number.`)
+      throw new Error(`${unusable.join(" ")} Check the spelling, or give another way to reach this person.`)
     }
     // SEARCH-OR-CREATE, not create. `upsertContactIdentity` runs the same
     // matching and merge rules a live form submission would, so filing

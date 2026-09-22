@@ -62,6 +62,24 @@ export const POST = withAudit(
         return undefined
       }
     },
+    // The board's KEY, which nothing else on this row records (whole-branch
+    // review, Important 5). The key is what `routeToPipeline` returns and
+    // what every later `?board=` link names, and unlike the board's NAME it
+    // never changes — so an investigator reading this row a year later can
+    // still find the board, even if it has been renamed twice since.
+    //
+    // Read off the RESPONSE, not the request: the key is derived from the
+    // name by `slugifyBoardKey` inside the DAL, so it does not exist until
+    // the board does. (The request is unavailable here anyway — the `target`
+    // resolver above consumes it.)
+    metadata: async (_request, response) => {
+      try {
+        const body = (await response.json()) as { board?: { key?: string } }
+        return body.board?.key ? { key: body.board.key } : {}
+      } catch {
+        return {}
+      }
+    },
   },
   async (request) => {
     const session = await auth()

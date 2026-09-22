@@ -246,6 +246,9 @@ import {
   PipelineBoardNotFoundError,
 } from "@/lib/db/pipeline"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
+// The real validator, not a restatement of it — see the seeded-board test
+// below for why the seed is checked against the thing that would refuse it.
+import { validateStageList } from "@/lib/lead-engine/stage-list"
 
 // Matches __tests__/db/pipeline.test.ts's own convention: a second tenant id
 // that pins the ARGUMENT's value is being used, not merely its arity.
@@ -346,20 +349,63 @@ describe("createPipelineBoard", () => {
     expect(store.pipelines.filter((p) => p.key === "camps_clinics")).toHaveLength(2)
   })
 
-  it("seeds the new board with a won and a lost stage, so it is valid the moment it exists", async () => {
+  // Whole-branch review, Important 3 (controller ruling R19). The seed used
+  // to be TWO stages — Won at position 1, Lost at 2 — while
+  // `createOpportunityManually` files every hand-made card onto the
+  // POSITION-1 stage whatever its kind. So the first person a coach added to
+  // a brand-new board landed in "Won", with `outcome` null: a deal nobody
+  // won, in the column that means the deal is done. The dialog even said so
+  // out loud (`Their card starts in "Won".`).
+  it("seeds the new board with an OPEN stage at position 1, then won and lost", async () => {
     const result = await createPipelineBoard({ name: "Referrals", businessId: SINGLETON_BUSINESS_ID })
 
     const stages = store.pipeline_stages.filter((s) => s.pipeline_id === result.id)
-    expect(stages).toHaveLength(2)
+    expect(stages).toHaveLength(3)
 
+    const first = stages.find((s) => s.position === 1)!
     const won = stages.find((s) => s.kind === "won")
     const lost = stages.find((s) => s.kind === "lost")
+
+    // THE POINT OF THIS TEST: position 1 is where a hand-made card lands, so
+    // it must be a stage a card can legitimately start in.
+    expect(first.kind).toBe("open")
+    expect(first.key).toBe("new")
+
     expect(won).toBeTruthy()
     expect(lost).toBeTruthy()
-    expect(won!.position).toBe(1)
-    expect(lost!.position).toBe(2)
+    expect(won!.position).toBe(2)
+    expect(lost!.position).toBe(3)
     expect(won!.business_id).toBe(SINGLETON_BUSINESS_ID)
     expect(lost!.business_id).toBe(SINGLETON_BUSINESS_ID)
+    expect(first.business_id).toBe(SINGLETON_BUSINESS_ID)
+  })
+
+  // The seed is only worth anything if the board it produces is one the rest
+  // of the system accepts. `validateStageList` is the same pure function the
+  // route and the DAL refuse a save with, so running the seeded list through
+  // it is the real question — "exactly one won, exactly one lost, and a
+  // name and key on every row" — rather than three hand-written assertions
+  // that could all agree with each other and still describe a broken board.
+  it("produces a board validateStageList accepts, positions in order and no duplicate keys", async () => {
+    const result = await createPipelineBoard({ name: "Referrals", businessId: SINGLETON_BUSINESS_ID })
+    const stages = store.pipeline_stages
+      .filter((s) => s.pipeline_id === result.id)
+      .sort((a, b) => a.position - b.position)
+
+    expect(stages.map((s) => s.position)).toEqual([1, 2, 3])
+    expect(new Set(stages.map((s) => s.key)).size).toBe(3)
+    expect(
+      validateStageList(
+        stages.map((s) => ({
+          id: s.id,
+          key: s.key,
+          name: s.name,
+          kind: s.kind,
+          amberAfterDays: s.amber_after_days ?? null,
+          redAfterDays: s.red_after_days ?? null,
+        })),
+      ),
+    ).toEqual([])
   })
 
   // Fix round 1, Finding 1 / controller ruling R9.
@@ -566,6 +612,59 @@ describe("readStagesForEdit", () => {
 
     expect(result.stages).toHaveLength(0)
     expect(result.cardCountByStageId.size).toBe(0)
+    expect(result.closedCardCountByStageId.size).toBe(0)
+  })
+
+  // Whole-branch review, Important 2. The closed count is a SECOND number
+  // over the same rows, and the two must not be the same number: a stage
+  // holding one open card and two won ones counts 3 and 2.
+  it("counts closed cards separately from every card, on the same stage", async () => {
+    const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
+    const card = (cardId: string, stageId: string, outcome: string | null) => ({
+      id: cardId,
+      business_id: SINGLETON_BUSINESS_ID,
+      pipeline_id: id,
+      stage_id: stageId,
+      contact_id: cardId,
+      outcome,
+    })
+    store.opportunities.push(
+      card("opp-open", "stage-won", null),
+      card("opp-won-1", "stage-won", "won"),
+      card("opp-won-2", "stage-won", "won"),
+      card("opp-lost", "stage-lost", "lost"),
+    )
+
+    const result = await readStagesForEdit(id, SINGLETON_BUSINESS_ID)
+
+    expect(result.cardCountByStageId.get("stage-won")).toBe(3)
+    expect(result.closedCardCountByStageId.get("stage-won")).toBe(2)
+    expect(result.closedCardCountByStageId.get("stage-lost")).toBe(1)
+    // ABSENT, not 0 — the same shape `cardCountByStageId` uses, which the
+    // editor's `?? 0` relies on.
+    expect(result.closedCardCountByStageId.get("stage-open")).toBeUndefined()
+  })
+
+  // The projection matters: this fake returns ONLY the columns a `.select()`
+  // asked for, so a reader that forgot `outcome` would see `undefined` on
+  // every row and count zero closed cards forever. That is the mutant this
+  // pins — not the arithmetic.
+  it("asks the database for `outcome`, not just `stage_id`", async () => {
+    const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
+    store.opportunities.push({
+      id: "opp-1",
+      business_id: SINGLETON_BUSINESS_ID,
+      pipeline_id: id,
+      stage_id: "stage-won",
+      contact_id: "c1",
+      outcome: "won",
+    })
+
+    const result = await readStagesForEdit(id, SINGLETON_BUSINESS_ID)
+    expect(result.closedCardCountByStageId.get("stage-won")).toBe(1)
+
+    const oppSelect = queryLog.find((q) => q.table === "opportunities" && q.mode === "select")
+    expect(oppSelect?.projection).toContain("outcome")
   })
 })
 
@@ -674,6 +773,211 @@ describe("savePipelineStages", () => {
       amber_after_days: 3,
       red_after_days: 7,
     })
+  })
+
+  // -------------------------------------------------------------------------
+  // WHOLE-BRANCH REVIEW, IMPORTANT 1. A destination the same save is removing
+  // — or one belonging to another board entirely — used to sail through every
+  // layer: `planStageSave` emitted the move, `strandedStageProblems` saw a
+  // removal WITH a destination and said nothing, and the SQL relocated the
+  // cards onto a stage it then deleted.
+  // -------------------------------------------------------------------------
+
+  it("refuses a destination that the same save is also removing, and never calls the RPC", async () => {
+    const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
+    store.opportunities.push({
+      id: "opp-1",
+      business_id: SINGLETON_BUSINESS_ID,
+      pipeline_id: id,
+      stage_id: "stage-open",
+      contact_id: "c1",
+      outcome: null,
+    })
+    // A second open stage, so the list can lose BOTH and still be valid.
+    store.pipeline_stages.push({
+      id: "stage-proposal",
+      business_id: SINGLETON_BUSINESS_ID,
+      pipeline_id: id,
+      key: "proposal",
+      name: "Proposal",
+      position: 4,
+      kind: "open",
+      amber_after_days: null,
+      red_after_days: null,
+    })
+
+    const result = await savePipelineStages({
+      pipelineId: id,
+      businessId: SINGLETON_BUSINESS_ID,
+      // Both open stages gone; the cards were pointed at the one that is
+      // ALSO going.
+      stages: [
+        { id: "stage-won", key: "won", name: "Won", kind: "won", amberAfterDays: null, redAfterDays: null },
+        { id: "stage-lost", key: "lost", name: "Lost", kind: "lost", amberAfterDays: null, redAfterDays: null },
+      ],
+      destinations: { "stage-open": "stage-proposal" },
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("unreachable")
+    expect(result.problems).toEqual([
+      {
+        index: null,
+        message:
+          'The stage you chose for the cards on "Consult Booked" ("Proposal") is being removed too. ' +
+          "Pick one that is staying.",
+      },
+    ])
+    expect(rpcCalls).toHaveLength(0)
+  })
+
+  // THE CRAFTED-REQUEST VARIANT, and the worse one. `destinations` is
+  // `z.record(z.string(), z.string())` at the route and
+  // `opportunities.stage_id` has no composite FK tying it to `pipeline_id`,
+  // so a `to_stage_id` naming ANOTHER BOARD'S stage relocated real cards
+  // there with no error at all — after which they rendered on neither board,
+  // because `readBoard` joins stages by `pipeline_id`.
+  it("refuses a destination that is not a stage on this board at all", async () => {
+    const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
+    store.opportunities.push({
+      id: "opp-1",
+      business_id: SINGLETON_BUSINESS_ID,
+      pipeline_id: id,
+      stage_id: "stage-open",
+      contact_id: "c1",
+      outcome: null,
+    })
+
+    const result = await savePipelineStages({
+      pipelineId: id,
+      businessId: SINGLETON_BUSINESS_ID,
+      stages: [
+        { id: "stage-won", key: "won", name: "Won", kind: "won", amberAfterDays: null, redAfterDays: null },
+        { id: "stage-lost", key: "lost", name: "Lost", kind: "lost", amberAfterDays: null, redAfterDays: null },
+      ],
+      destinations: { "stage-open": "some-other-boards-stage" },
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("unreachable")
+    // A DIFFERENT sentence, because it is a different mistake — claiming the
+    // destination "is being removed too" would be untrue.
+    expect(result.problems[0].message).toBe(
+      'The stage you chose for the cards on "Consult Booked" is not a stage on this board. Pick one that is staying.',
+    )
+    expect(rpcCalls).toHaveLength(0)
+  })
+
+  // THE PRESENCE CONTROL for both refusals above: the identical save with a
+  // destination that SURVIVES goes through. Without it, a function that
+  // refused every destination would pass both.
+  it("control: the same removal with a surviving destination is accepted", async () => {
+    const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
+    store.opportunities.push({
+      id: "opp-1",
+      business_id: SINGLETON_BUSINESS_ID,
+      pipeline_id: id,
+      stage_id: "stage-open",
+      contact_id: "c1",
+      outcome: null,
+    })
+
+    const result = await savePipelineStages({
+      pipelineId: id,
+      businessId: SINGLETON_BUSINESS_ID,
+      stages: [
+        { id: "stage-won", key: "won", name: "Won", kind: "won", amberAfterDays: null, redAfterDays: null },
+        { id: "stage-lost", key: "lost", name: "Lost", kind: "lost", amberAfterDays: null, redAfterDays: null },
+      ],
+      destinations: { "stage-open": "stage-lost" },
+    })
+
+    expect(result).toEqual({ ok: true })
+    expect(rpcCalls).toHaveLength(1)
+  })
+
+  // -------------------------------------------------------------------------
+  // WHOLE-BRANCH REVIEW, IMPORTANT 2 (controller ruling R19). `readBoard`
+  // shows an `open` column only the cards whose `outcome` is null, so turning
+  // a Won stage into an open one takes every settled deal on it off the board
+  // — still in the database, still counted in revenue, on no screen.
+  // -------------------------------------------------------------------------
+
+  it("refuses turning a won stage open while it still holds closed cards, naming the stage and the count", async () => {
+    const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
+    store.opportunities.push(
+      { id: "opp-1", business_id: SINGLETON_BUSINESS_ID, pipeline_id: id, stage_id: "stage-won", contact_id: "c1", outcome: "won" },
+      { id: "opp-2", business_id: SINGLETON_BUSINESS_ID, pipeline_id: id, stage_id: "stage-won", contact_id: "c2", outcome: "won" },
+    )
+
+    const result = await savePipelineStages({
+      pipelineId: id,
+      businessId: SINGLETON_BUSINESS_ID,
+      stages: [
+        {
+          id: "stage-open",
+          key: "consult_booked",
+          name: "Consult Booked",
+          kind: "open",
+          amberAfterDays: 3,
+          redAfterDays: 7,
+        },
+        // The board keeps exactly one won and one lost stage, so
+        // `validateStageList` is happy — only the new guard can refuse this.
+        { id: "stage-won", key: "won", name: "Won", kind: "open", amberAfterDays: null, redAfterDays: null },
+        { id: "stage-lost", key: "lost", name: "Lost", kind: "won", amberAfterDays: null, redAfterDays: null },
+        { id: null, key: "lost_2", name: "Lost", kind: "lost", amberAfterDays: null, redAfterDays: null },
+      ],
+      destinations: {},
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("unreachable")
+    expect(result.problems).toEqual([
+      {
+        index: 1,
+        message:
+          'Stage "Won" holds 2 cards that are already won or lost. Changing it to a stage that is still open ' +
+          "would take them off the board, where nobody would find them. Move those cards to another stage first.",
+      },
+    ])
+    expect(rpcCalls).toHaveLength(0)
+  })
+
+  // THE PRESENCE CONTROL. The identical kind change on a Won stage holding
+  // only OPEN cards is allowed — nothing disappears, so nothing is refused.
+  it("control: the same kind change is allowed when the stage holds no closed cards", async () => {
+    const id = seedOtherBoard(SINGLETON_BUSINESS_ID)
+    store.opportunities.push({
+      id: "opp-1",
+      business_id: SINGLETON_BUSINESS_ID,
+      pipeline_id: id,
+      stage_id: "stage-won",
+      contact_id: "c1",
+      outcome: null,
+    })
+
+    const result = await savePipelineStages({
+      pipelineId: id,
+      businessId: SINGLETON_BUSINESS_ID,
+      stages: [
+        {
+          id: "stage-open",
+          key: "consult_booked",
+          name: "Consult Booked",
+          kind: "open",
+          amberAfterDays: 3,
+          redAfterDays: 7,
+        },
+        { id: "stage-won", key: "won", name: "Won", kind: "open", amberAfterDays: null, redAfterDays: null },
+        { id: "stage-lost", key: "lost", name: "Lost", kind: "won", amberAfterDays: null, redAfterDays: null },
+        { id: null, key: "lost_2", name: "Lost", kind: "lost", amberAfterDays: null, redAfterDays: null },
+      ],
+      destinations: {},
+    })
+
+    expect(result).toEqual({ ok: true })
+    expect(rpcCalls).toHaveLength(1)
   })
 
   it("sends a removal's move-card destination in snake_case (from_stage_id/to_stage_id)", async () => {
