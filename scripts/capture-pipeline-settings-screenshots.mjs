@@ -1,7 +1,7 @@
-// Drives the REAL app and captures /admin/pipeline/settings — G29 Task 7's
-// board editor — with callouts burned into each PNG by scripts/_annotate-lib.mjs.
+// Drives the REAL app and captures /admin/pipeline/settings — G29's board
+// editor — with callouts burned into each PNG by scripts/_annotate-lib.mjs.
 //
-//   npx next dev --port 3071                                       # NOT 3050
+//   npx next dev --port 3073                                       # NOT 3050
 //   node scripts/capture-pipeline-settings-screenshots.mjs
 //
 // EVERY SHOT IS THE REAL SCREEN ON THE REAL ROUTE. Nothing is rendered in a
@@ -9,20 +9,35 @@
 // the working reference, scripts/capture-sequence-management-screenshots.mjs —
 // see that file's header for why each helper exists.
 //
-// PORT IS 3071, DELIBERATELY. Several peer sessions work this same repo and
-// any of them may bring up a dev server on the default 3050 at any time.
+// IT WRITES THE SHOTS NUMBERED 00-05 of screenshots/g29-pipeline-editor, which
+// is the ONE home for this feature's deliverables. 06-10 come from
+// scripts/capture-new-card-dialog-screenshots.mjs and 11 from
+// scripts/capture-g29-hand-made-cards.mjs; all three share this port.
+//
+// PORT IS 3073, DELIBERATELY. Several peer sessions work this same repo and
+// any of them may bring up a dev server on the default 3050.
 //
 // TENANT COOKIE IS LOAD-BEARING. resolveAdminTenant() falls back to
 // choices[0] with no cookie, and on this dev clone that is a seeded test
 // business whose boards have no cards at all. Every shot here runs against
 // "Primary" (00000000-0000-0000-0000-000000000001), whose Coaching board has
-// 7 + 2 + 2 + 2 real cards on it.
+// real cards on it.
 //
-// NO STATE IS LEFT CHANGED. This screen's only network-mutating controls are
-// "Save stages" (PUT), "Save board name" / "Yes, archive it" (PATCH) and
-// "Create board" (POST). None of them is ever clicked. Shots 02 and 03 are
+// NO BOARD AND NO STAGE IS CHANGED. "Save stages" (PUT), "Save board name"
+// (PATCH) and "Create board" (POST) are never clicked. Shots 02, 03 and 04 are
 // deliberately UNSAVED local React state on the real page — a page reload
 // discards them for free, and the dev clone is shared with peer sessions.
+//
+// SHOT 05 IS THE ONE EXCEPTION, and it is safe by construction: it archives
+// the DEFAULT board, which `updatePipelineBoard` refuses before it writes
+// anything. The script proves the board is the default one BEFORE it clicks —
+// from the screen's own sentence — and re-reads the board's status from the
+// page afterwards. Aimed at any other board, that click would really archive
+// it; that is precisely why the pre-check is not optional.
+//
+// COUNTS ARE READ OFF THE SCREEN, NEVER HARD-CODED. This board gains cards
+// (scripts/capture-g29-hand-made-cards.mjs files four by hand), and a caption
+// that says "7 cards" because it did in September is a caption that lies.
 //
 // LIGHT ONLY, DELIBERATELY. The admin UI was never built against `.dark`.
 //
@@ -34,8 +49,8 @@ import { chromium } from "playwright"
 import { annotate } from "./_annotate-lib.mjs"
 
 const DEV_REF = "anjvztjiokcgiyhobknq"
-const APP = process.env.APP ?? "http://localhost:3071"
-const OUT = "screenshots/pipeline-settings"
+const APP = process.env.APP ?? "http://localhost:3073"
+const OUT = "screenshots/g29-pipeline-editor"
 const WIDTH = 1440
 const DSF = 2 // deviceScaleFactor; annotate() places markers in RAW pixels
 
@@ -120,10 +135,13 @@ async function resetScroll(page) {
   await page.waitForTimeout(200)
 }
 
-async function shoot(page, name, title, subtitle, markers) {
+async function shoot(page, name, title, subtitle, markers, { park = true } = {}) {
   mkdirSync(OUT, { recursive: true })
   await hideFloatingChrome(page)
-  await page.mouse.move(4, 4) // park the pointer, or its hover state lands in the shot
+  // Park the pointer, or its hover state lands in the shot. `park: false` is
+  // for the mid-reorder shot ONLY, where the pointer is holding a drag open
+  // and moving it away is what ends the thing being photographed.
+  if (park) await page.mouse.move(4, 4)
   const raw = `${OUT}/.raw-${name}.png`
   await page.screenshot({ path: raw, fullPage: true })
   const r = await annotate(raw, `${OUT}/${name}.png`, { title, subtitle, markers })
@@ -148,6 +166,30 @@ const saveStages = (page) => page.getByRole("button", { name: "Save stages" })
 /** The real problem strip, excluding Next's invisible route announcer (`#__next-route-announcer__`). */
 const problemStrip = (page) => page.locator('[data-testid="board-problems"]')
 
+/** The "N cards" cell on one stage row, whatever N happens to be today. */
+const cardsCell = (page, n) => row(page, n).getByText(/^(No cards|1 card|\d+ cards)$/)
+
+function must(condition, message) {
+  if (!condition) throw new Error(`ASSERTION FAILED: ${message}`)
+}
+
+/**
+ * Every stage row's card count, read off the screen. The captions quote these
+ * rather than restating a number that was true in September — this board gains
+ * cards, and a caption nobody re-checks is the one that goes wrong quietly.
+ */
+async function readCardCounts(page) {
+  const rows = await page.locator('[data-testid^="stage-row-"]').count()
+  const counts = []
+  for (let i = 0; i < rows; i += 1) {
+    const text = ((await cardsCell(page, i).first().textContent()) ?? "").trim()
+    const n = text === "No cards" ? 0 : Number(text.split(" ")[0])
+    must(Number.isInteger(n), `stage row ${i}: could not read a card count out of "${text}"`)
+    counts.push(n)
+  }
+  return counts
+}
+
 const browser = await launchChromium()
 const ctx = await browser.newContext({ viewport: { width: WIDTH, height: 1000 }, deviceScaleFactor: DSF })
 
@@ -166,17 +208,19 @@ try {
   await resetScroll(page)
   await shoot(
     page,
-    "00-board-link",
+    "00-the-way-in",
     "The way in",
     "/admin/pipeline — the board, with the new entrance to its settings",
     [
+      // BELOW the link, not to its left. Task 8 put an "Add someone" button in
+      // exactly the gap this marker used to sit in, and the disc landed on top
+      // of that button's own label — a callout that covers something else is
+      // worse than no callout.
       await markerOn(
         page,
         page.getByRole("link", { name: "Edit stages" }),
         "New. “Edit stages” opens the settings for the board you are looking at — not for whichever board happens to be first.",
-        {
-          place: "left",
-        },
+        { place: "center", dy: 38 },
       ),
     ],
   )
@@ -190,13 +234,17 @@ try {
   if (rows !== 4) {
     throw new Error(`expected 4 stage rows on Primary's Coaching board, got ${rows} — the tenant cookie did not take`)
   }
+  const counts = await readCardCounts(page)
+  const total = counts.reduce((a, b) => a + b, 0)
+  console.log(`  coaching: cards per stage=${counts.join("/")} total=${total}`)
+  must(total > 0, "Primary's Coaching board has no cards at all — the tenant cookie did not take")
 
   await resetScroll(page)
   await shoot(
     page,
     "01-editor",
     "The board editor, as it loads",
-    "/admin/pipeline/settings?board=coaching — Primary's real Coaching board, 13 real cards across its four stages",
+    `/admin/pipeline/settings?board=coaching — Primary's real Coaching board, ${total} real cards across its ${rows} stages`,
     [
       // `exact: true` — Playwright's getByLabel is a SUBSTRING match, so a
       // bare "Board name" also matches "New board name" at the bottom of the
@@ -229,7 +277,10 @@ try {
       ),
       await markerOn(
         page,
-        row(page, 0).getByText("7 cards"),
+        // Matched on the SHAPE of the phrase, not on a number. The board gains
+        // cards; a locator pinned to "7 cards" points at nothing the day it
+        // becomes eight, and markerOn would then place the disc at (100, 100).
+        cardsCell(page, 0),
         "How many cards sit on this stage right now. You need this before you remove one.",
         { place: "after", dx: 10 },
       ),
@@ -248,7 +299,89 @@ try {
     ],
   )
 
-  // ---------------------------------------------------------- 02 the refusal
+  // ------------------------------------------------------- 02 mid-reorder
+  // A REAL @dnd-kit DRAG, HELD OPEN — not a picture of a finished one. The
+  // whole page is made to fit the viewport first, because mouse coordinates
+  // are viewport coordinates: with the table below the fold the press lands
+  // somewhere else entirely and the drag never starts.
+  const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight)
+  await page.setViewportSize({ width: WIDTH, height: Math.max(1000, pageHeight + 40) })
+  await page.waitForTimeout(400)
+  await resetScroll(page)
+
+  const handleBox = await page.getByLabel("Drag to reorder stage 2").boundingBox()
+  must(handleBox !== null, "the drag handle on stage 2 has no box — the stage table did not render")
+  const thirdRowBox = await row(page, 2).boundingBox()
+  must(thirdRowBox !== null, "stage row 3 has no box — the stage table did not render")
+
+  const grabX = handleBox.x + handleBox.width / 2
+  const grabY = handleBox.y + handleBox.height / 2
+  await page.mouse.move(grabX, grabY)
+  await page.mouse.down()
+  // In steps, never one jump. @dnd-kit's PointerSensor only starts a drag once
+  // the pointer has travelled 4px, and it counts that across real move events.
+  await page.mouse.move(grabX, grabY + 14, { steps: 8 })
+  await page.mouse.move(grabX, thirdRowBox.y + thirdRowBox.height * 0.55, { steps: 24 })
+  await page.waitForTimeout(400)
+
+  // THE EFFECT IS ASSERTED, NOT ASSUMED. @dnd-kit fades the row it is carrying
+  // to `opacity-50`. Without this check a drag that never started would be
+  // photographed as an ordinary table and captioned as a reorder — which is
+  // exactly the silent no-op these scripts are written against.
+  const carrying = await row(page, 1).evaluate((el) => el.className.includes("opacity-50"))
+  must(carrying, "the drag never started — stage 2's row is not marked as being carried")
+  const shifted = await row(page, 2).evaluate((el) => (el.getAttribute("style") ?? "").includes("translate"))
+  must(shifted, "the row below did not move out of the way — nothing about this shot would show a reorder")
+
+  await shoot(
+    page,
+    "02-mid-reorder",
+    "Moving a stage, mid-drag",
+    "“Consulted” is being carried down past “Won”. Nothing is saved until Save stages is pressed — and this drag was never let go of",
+    [
+      // Aimed at the row a coach is NOT dragging, so the disc cannot sit on
+      // top of the thing the next two captions are about.
+      await markerOn(
+        page,
+        page.getByLabel("Drag to reorder stage 1"),
+        "Grab the dots to drag a stage. The arrows beside them do the same thing one step at a time, without a mouse.",
+        { place: "left" },
+      ),
+      // ROW INDEX, NOT SCREEN POSITION. The rows keep their order in the page
+      // while a drag is open and are moved by a transform, so row 2 is "Won"
+      // — which the drag has pushed UP to second place — and row 1 is
+      // "Consulted", which is being carried DOWN to third. boundingBox()
+      // follows the transform, so each marker lands where its row now LOOKS.
+      // The markers sit out in the right-hand margin: every column in this
+      // table already has something in it.
+      await markerOn(
+        page,
+        row(page, 2).getByLabel("Remove stage 3"),
+        "The stages below shuffle out of the way as you go, showing where the one you are carrying would land.",
+        { place: "after", dx: 10 },
+      ),
+      await markerOn(
+        page,
+        row(page, 1).getByLabel("Remove stage 2"),
+        "The stage you have picked up goes faint while you carry it, so you can see which one is moving.",
+        { place: "after", dx: 10 },
+      ),
+      await markerOn(
+        page,
+        saveStages(page),
+        "The order only becomes real when you press this. Close the page instead and nothing has changed.",
+        { place: "after", dx: 10 },
+      ),
+    ],
+    { park: false },
+  )
+
+  // Let the drag go, and put the viewport back the way the other shots want it.
+  await page.mouse.up()
+  await page.setViewportSize({ width: WIDTH, height: 1000 })
+  await page.waitForTimeout(300)
+
+  // ------------------------------------------------- 03 the two kinds of refusal
   // Two problems at once, of the two DIFFERENT kinds: a blank name belongs to
   // one stage, "two Won stages" belongs to the board.
   await nameBox(page, 2).fill("")
@@ -265,7 +398,7 @@ try {
   await resetScroll(page)
   await shoot(
     page,
-    "02-problems",
+    "03-stage-problems",
     "What it says when the list would not work",
     "Nothing was sent — these appear as you type, and the same rules run again on the server",
     [
@@ -290,21 +423,31 @@ try {
     ],
   )
 
-  // ------------------------------------------------- 03 the destination picker
+  // ------------------------------------------------- 04 the destination picker
   await page.reload({ waitUntil: "networkidle" })
   await page.waitForTimeout(900)
   await page.getByRole("button", { name: "Remove stage 2" }).click() // Consulted, 2 cards
   await page.waitForTimeout(300)
 
-  const picker = page.getByLabel('Where should the 2 cards on "Consulted" go?')
+  // The label names the count, which is not this script's to predict — cards
+  // move on and off "Consulted" like any other stage.
+  // `cardsPhrase(n).toLowerCase()` builds the middle of this label, so the
+  // alternatives are lower-case. A capital "No cards" here matches nothing.
+  const picker = page.getByLabel(/^Where should the (no cards|1 card|\d+ cards) on "Consulted" go\?$/)
   if ((await picker.count()) === 0) throw new Error("the destination picker did not appear for a stage holding cards")
+  // The sentence the screen itself asks, quoted into the caption band rather
+  // than restated. `Where should the 2 cards on "Consulted" go?` is written by
+  // the app from live counts; a hand-typed "two" goes stale the first time a
+  // card moves.
+  const pickerLabel = ((await page.locator('label[for^="destination-"]').first().textContent()) ?? "").trim()
+  must(pickerLabel.length > 0, "the destination picker has no label to quote")
 
   await resetScroll(page)
   await shoot(
     page,
-    "03-cards-need-a-home",
+    "04-cards-need-a-home",
     "Taking a stage off a board that still has cards on it",
-    "The two cards on “Consulted” have to be told where to go — they are moved in the same step that removes the stage",
+    `${pickerLabel} — they are moved in the same step that removes the stage, never dropped`,
     [
       await markerOn(
         page,
@@ -324,7 +467,86 @@ try {
     ],
   )
 
-  console.log("\n  done — nothing was saved; every shot above is unsaved local state on the real page")
+  // ------------------------------- 05 the board that will not let itself go
+  // THE ONE CLICK IN THIS FILE THAT REALLY SENDS SOMETHING. It is safe because
+  // of WHICH board it is aimed at, and nothing else — so which board it is
+  // aimed at is proved first, from the screen's own words, before the click.
+  await page.reload({ waitUntil: "networkidle" })
+  await page.waitForTimeout(900)
+  await resetScroll(page)
+
+  // KEYED ON WORDS ONLY THE NOTE SAYS. The server's refusal ends "…so it
+  // cannot be archived." too, so a locator built on that phrase matches three
+  // elements the moment the refusal appears and the marker goes to whichever
+  // is first in the page.
+  const defaultNote = page.getByText("This is the board every enquiry lands on", { exact: false })
+  must(
+    (await defaultNote.count()) === 1,
+    "this screen does not say it is the default board — REFUSING to click Archive, because on any other board those two clicks really do archive it",
+  )
+
+  await page.getByRole("button", { name: "Archive this board" }).click()
+  const confirm = page.getByRole("button", { name: "Yes, archive it" })
+  await confirm.waitFor({ state: "visible", timeout: 5000 })
+  await confirm.click()
+
+  // Waits for the REFUSAL, not for the clock. A fixed sleep here is what turns
+  // "the server said no" and "the server said nothing and archived the board"
+  // into the same-looking run.
+  const boardCard = page.getByTestId("board-card")
+  const archiveRefusal = boardCard.getByRole("alert")
+  await archiveRefusal.waitFor({ state: "visible", timeout: 15000 }).catch(() => {})
+  const said = (await archiveRefusal.count()) > 0 ? (await archiveRefusal.first().innerText()).trim() : ""
+  console.log(`  server said: ${said || "(nothing — NO REFUSAL, THE BOARD MAY HAVE BEEN ARCHIVED)"}`)
+  must(
+    said.includes("cannot be archived"),
+    `expected the default board's refusal and did not get it — said: "${said}"`,
+  )
+
+  await resetScroll(page)
+  await shoot(
+    page,
+    "05-cannot-archive-the-default-board",
+    "The one board that will not let itself be put away",
+    "The Coaching board is where every new enquiry lands when nothing else claims it, so archiving it would send people nowhere",
+    [
+      await markerOn(
+        page,
+        defaultNote,
+        "You are told before you press anything: this board cannot be archived, and why.",
+        { place: "left" },
+      ),
+      // On the LEFT. The refusal is a full-width paragraph, so "after" puts
+      // the disc past the card's own right edge, where annotate() clamps it
+      // into the corner of the image.
+      await markerOn(
+        page,
+        archiveRefusal,
+        "The server's own answer, word for word. It names the board and says what to do instead — point the default at another board first.",
+        { place: "left" },
+      ),
+      await markerOn(
+        page,
+        page.getByRole("button", { name: "Archive this board" }),
+        "The button is not greyed out on purpose. A button that quietly does nothing tells you nothing; this one answers you.",
+        { place: "after", dx: 10 },
+      ),
+    ],
+  )
+
+  // AND THE BOARD IS STILL THERE. The refusal is the server's word for it; the
+  // board pill still being on this screen after a reload is the board's own.
+  // `listPipelines` is active-only, so an archived Coaching would be gone.
+  await page.reload({ waitUntil: "networkidle" })
+  await page.waitForTimeout(900)
+  const stillThere = await page.getByRole("navigation", { name: "Pipeline boards" }).getByText("Coaching").count()
+  must(stillThere === 1, "the Coaching board is no longer on the board switcher — IT MAY HAVE BEEN ARCHIVED")
+  console.log("  verified after the fact: the Coaching board is still active")
+
+  console.log(
+    "\n  done — no board and no stage was changed. Shots 01-04 are unsaved local state on the real page;" +
+      " shot 05's PATCH was refused by the server before it wrote anything.",
+  )
 } finally {
   await ctx.close()
   await browser.close()

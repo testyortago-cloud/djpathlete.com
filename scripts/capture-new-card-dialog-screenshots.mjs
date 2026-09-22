@@ -2,7 +2,7 @@
 // on a pipeline board by hand — with callouts burned into each PNG by
 // scripts/_annotate-lib.mjs.
 //
-//   npx next dev --port 3072                                       # NOT 3050
+//   npx next dev --port 3073                                       # NOT 3050
 //   node scripts/capture-new-card-dialog-screenshots.mjs
 //
 // EVERY SHOT IS THE REAL SCREEN ON THE REAL ROUTE, at /admin/pipeline. Nothing
@@ -10,15 +10,20 @@
 // helpers copied from scripts/capture-pipeline-settings-screenshots.mjs (Task
 // 7) — see that file's header for why each helper exists.
 //
-// PORT IS 3072, DELIBERATELY. Several peer sessions work this same repo and
-// any of them may bring up a dev server on 3050 or 3071.
+// IT WRITES THE SHOTS NUMBERED 06-10 of screenshots/g29-pipeline-editor, which
+// is the ONE home for this feature's deliverables. 00-05 come from
+// scripts/capture-pipeline-settings-screenshots.mjs and 11 from
+// scripts/capture-g29-hand-made-cards.mjs; all three share this port.
+//
+// PORT IS 3073, DELIBERATELY. Several peer sessions work this same repo and
+// any of them may bring up a dev server on the default 3050.
 //
 // TENANT COOKIE IS LOAD-BEARING. resolveAdminTenant() falls back to choices[0]
 // with no cookie, and on this dev clone that is a seeded test business with no
 // contacts to search. Every shot here runs against "Primary", whose contact
 // spine has the real people below in it.
 //
-// NOTHING IS CREATED. This is the one capture in this feature that clicks a
+// NOTHING IS CREATED. This is the one capture in this FILE that clicks a
 // button which POSTs, and it is safe by construction: ANA is a contact who
 // ALREADY has an open card on Primary's Coaching board, so the route refuses
 // with the duplicate message BEFORE it writes anything (the pre-check runs
@@ -39,8 +44,8 @@ import { chromium } from "playwright"
 import { annotate } from "./_annotate-lib.mjs"
 
 const DEV_REF = "anjvztjiokcgiyhobknq"
-const APP = process.env.APP ?? "http://localhost:3072"
-const OUT = "screenshots/new-card-dialog"
+const APP = process.env.APP ?? "http://localhost:3073"
+const OUT = "screenshots/g29-pipeline-editor"
 const WIDTH = 1440
 const DSF = 2 // deviceScaleFactor; annotate() places markers in RAW pixels
 
@@ -169,23 +174,23 @@ try {
   await page.goto(`${APP}/admin/pipeline?board=coaching`, { waitUntil: "networkidle" })
   await page.waitForTimeout(900) // hydration — a control clicked too early has no handler attached yet
 
-  // POSITIVE EVIDENCE BEFORE THE ONE DESTRUCTIVE-LOOKING BRANCH. Shot 04 posts
+  // POSITIVE EVIDENCE BEFORE THE ONE DESTRUCTIVE-LOOKING BRANCH. Shot 10 posts
   // for real and is only safe because Ana already has a card. If she does not,
   // this run would CREATE one on a shared dev clone.
   const anaCard = page.getByTitle(ANA.name)
   if ((await anaCard.count()) === 0) {
     throw new Error(
-      `refusing to run: "${ANA.name}" has no card on Primary's Coaching board, so shot 04 would CREATE one`,
+      `refusing to run: "${ANA.name}" has no card on Primary's Coaching board, so shot 10 would CREATE one`,
     )
   }
   console.log(`  verified: ${ANA.name} already holds an open card on Coaching`)
 
-  // ------------------------------------------------------- 00 the way in
+  // ------------------------------------------------------- 06 the way in
   await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }))
   await page.waitForTimeout(200)
   await shoot(
     page,
-    "00-the-button",
+    "06-add-someone-button",
     "The way in",
     "/admin/pipeline — the board, with the new way to put somebody on it by hand",
     [
@@ -198,7 +203,7 @@ try {
     ],
   )
 
-  // ------------------------------------------------------- 01 the search
+  // ------------------------------------------------------- 07 the search
   await openDialog(page)
   await searchBox(page).fill(MANY)
   await page.waitForTimeout(1200)
@@ -207,7 +212,7 @@ try {
   if (rows === 0) throw new Error(`the search for "${MANY}" returned nothing — is the tenant cookie set?`)
   await shoot(
     page,
-    "01-searching",
+    "07-searching",
     "Looking somebody up",
     "Type two letters or more and the people you already have appear — real contacts from this business",
     [
@@ -227,7 +232,7 @@ try {
     ],
   )
 
-  // ------------------------------------------------- 02 somebody new
+  // ------------------------------------------------- 08 somebody new
   await page.getByRole("button", { name: "Add someone new" }).click()
   await page.waitForTimeout(300)
   await page.getByLabel("Their name").fill("Rosa Delgado")
@@ -235,7 +240,7 @@ try {
   await page.waitForTimeout(200)
   await shoot(
     page,
-    "02-somebody-new",
+    "08-somebody-new",
     "Somebody who is not in your contacts yet",
     "Name, plus one way to reach them. A phone number on its own is enough — the email box can stay empty",
     [
@@ -255,13 +260,13 @@ try {
     ],
   )
 
-  // ------------------------- 03 the refusal that never leaves the browser
+  // ------------------------- 09 the refusal that never leaves the browser
   await page.getByLabel("Phone number").fill("")
   await addToBoard(page).click()
   await page.waitForTimeout(400)
   await shoot(
     page,
-    "03-needs-a-way-to-reach-them",
+    "09-no-way-to-reach-them",
     "A new person with no way to reach them",
     "Refused before anything is sent — and the sentence sits under the box it is about",
     [
@@ -274,7 +279,7 @@ try {
     ],
   )
 
-  // ------------------------------- 04 the server's own refusal, verbatim
+  // ------------------------------- 10 the server's own refusal, verbatim
   await page.reload({ waitUntil: "networkidle" })
   await page.waitForTimeout(900)
   await openDialog(page)
@@ -315,7 +320,7 @@ try {
 
   await shoot(
     page,
-    "04-already-on-the-board",
+    "10-already-on-the-board",
     "Somebody who is already on this board",
     "The server's own words, printed exactly as it said them — who, which board, and which step they are sitting in",
     [
