@@ -1,14 +1,17 @@
 import { FieldValue, getFirestore } from "firebase-admin/firestore"
 import { extractImagePrompts, PROMPT_VERSION } from "./ai/image-prompts.js"
-import { generateFalImage } from "./lib/fal-client.js"
+import { generateOpenRouterImage } from "./lib/openrouter-image.js"
 import { transcodeAndUpload, RENDER_DIMENSIONS, FINAL_DIMENSIONS } from "./lib/image-pipeline.js"
 import { generateAltText } from "./lib/image-alt-text.js"
 import { findQualifyingSections, spliceInlineImages } from "./lib/html-splice.js"
 import { judgeImageQuality, QUALITY_RETRY_THRESHOLD } from "./lib/image-quality-judge.js"
 import { getSupabase } from "./lib/supabase.js"
 
-const HERO_MODEL = "fal-ai/flux-pro/v1.1-ultra"
-const INLINE_MODEL = "fal-ai/flux-pro/v1.1"
+// GPT Image 2.5 via OpenRouter (was fal Flux Pro until 2026-09-23). Same split as
+// before: the precision tier for the hero, the speed tier for inline images.
+// Same list price for both.
+const HERO_MODEL = "openai/gpt-image-2.5-sunburst"
+const INLINE_MODEL = "openai/gpt-image-2.5-flare"
 
 // Mirrors the CHECK constraint on blog_posts.category (migration 00043).
 // Kept as a local alias because functions/ has rootDir:"src" and cannot
@@ -81,37 +84,36 @@ async function generateJudgeAndRetry(args: GenerateAndJudgeArgs): Promise<Genera
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     attempts++
-    const fal = await generateFalImage({
+    const img = await generateOpenRouterImage({
       model: args.model,
       prompt: args.prompt,
       width: args.renderWidth,
       height: args.renderHeight,
-      // Let fal pick a fresh seed on each attempt by not passing one.
     })
     const upload = await transcodeAndUpload({
-      buffer: fal.buffer,
+      buffer: img.buffer,
       slug: args.slug,
       kind: args.kind,
       sectionIdx: args.sectionIdx,
     })
     const judgment = await judgeImageQuality({
-      buffer: fal.buffer,
-      mime: fal.mime,
+      buffer: img.buffer,
+      mime: img.mime,
       originalPrompt: args.prompt,
     }).catch((err) => {
       console.warn(`[blog-image-generation] judge threw for ${args.kind}: ${(err as Error).message}`)
       return { score: 7, reasons: ["judge threw — accepting"], judge_failed: true }
     })
-    const alt = (await generateAltText(fal.buffer, fal.mime).catch(() => "")) || args.prompt.slice(0, 120)
+    const alt = (await generateAltText(img.buffer, img.mime).catch(() => "")) || args.prompt.slice(0, 120)
 
     lastResult = {
       url: upload.url,
       width: upload.width,
       height: upload.height,
       alt,
-      buffer: fal.buffer,
-      mime: fal.mime,
-      seed: fal.seed,
+      buffer: img.buffer,
+      mime: img.mime,
+      seed: img.seed,
       quality_score: judgment.score,
       quality_reasons: judgment.reasons,
       judge_failed: judgment.judge_failed,
@@ -120,7 +122,7 @@ async function generateJudgeAndRetry(args: GenerateAndJudgeArgs): Promise<Genera
 
     // Retry only if (a) the judge says the image is bad AND (b) the judge itself succeeded.
     // If the judge itself failed (parse error or thrown), accept the image — retrying
-    // would double fal spend without quality signal.
+    // would double image spend without quality signal.
     if (judgment.judge_failed) break
     if (judgment.score >= QUALITY_RETRY_THRESHOLD) break
   }

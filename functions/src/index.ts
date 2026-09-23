@@ -313,7 +313,7 @@ export const blogImageGeneration = onDocumentCreated(
     timeoutSeconds: 540,
     memory: "1GiB",
     region: "us-central1",
-    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, falKey],
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, openrouterApiKey],
   },
   async (event) => {
     const data = event.data?.data()

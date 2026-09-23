@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   extractImagePrompts: vi.fn(),
-  generateFalImage: vi.fn(),
+  generateOpenRouterImage: vi.fn(),
   transcodeAndUpload: vi.fn(),
   generateAltText: vi.fn(),
   judgeImageQuality: vi.fn(),
@@ -14,7 +14,7 @@ vi.mock("../ai/image-prompts.js", () => ({
   extractImagePrompts: mocks.extractImagePrompts,
   PROMPT_VERSION: "v2",
 }))
-vi.mock("../lib/fal-client.js", () => ({ generateFalImage: mocks.generateFalImage }))
+vi.mock("../lib/openrouter-image.js", () => ({ generateOpenRouterImage: mocks.generateOpenRouterImage }))
 vi.mock("../lib/image-pipeline.js", () => ({
   transcodeAndUpload: mocks.transcodeAndUpload,
   RENDER_DIMENSIONS: {
@@ -82,7 +82,7 @@ describe("handleBlogImageGeneration", () => {
       hero_prompt: "hero prompt",
       inline_prompts: [{ section_h2: "Section A", prompt: "a prompt" }],
     })
-    mocks.generateFalImage.mockResolvedValue({
+    mocks.generateOpenRouterImage.mockResolvedValue({
       buffer: Buffer.from("png"),
       mime: "image/png",
       seed: 1234,
@@ -101,7 +101,7 @@ describe("handleBlogImageGeneration", () => {
     await handleBlogImageGeneration("job-1")
 
     expect(mocks.extractImagePrompts).toHaveBeenCalledTimes(1)
-    expect(mocks.generateFalImage).toHaveBeenCalledTimes(2)
+    expect(mocks.generateOpenRouterImage).toHaveBeenCalledTimes(2)
     expect(mocks.transcodeAndUpload).toHaveBeenCalledTimes(2)
     expect(mocks.generateAltText).toHaveBeenCalledTimes(2)
 
@@ -110,7 +110,7 @@ describe("handleBlogImageGeneration", () => {
         cover_image_url: "https://supa/x-hero.webp",
         cover_image_meta: expect.objectContaining({
           seed: 1234,
-          model: "fal-ai/flux-pro/v1.1-ultra",
+          model: "openai/gpt-image-2.5-sunburst",
           prompt_version: expect.stringMatching(/^v\d+$/),
           quality_score: 9,
           judge_failed: false,
@@ -120,7 +120,7 @@ describe("handleBlogImageGeneration", () => {
           expect.objectContaining({
             url: "https://supa/x-section-1.webp",
             seed: 1234,
-            model: "fal-ai/flux-pro/v1.1",
+            model: "openai/gpt-image-2.5-flare",
             prompt_version: expect.stringMatching(/^v\d+$/),
             quality_score: 9,
             judge_failed: false,
@@ -135,9 +135,9 @@ describe("handleBlogImageGeneration", () => {
   })
 
   it("survives a single inline-image failure: hero proceeds, post is updated with cover only", async () => {
-    mocks.generateFalImage
+    mocks.generateOpenRouterImage
       .mockResolvedValueOnce({ buffer: Buffer.from("hero"), mime: "image/png", seed: 11 })
-      .mockRejectedValueOnce(new Error("fal 503"))
+      .mockRejectedValueOnce(new Error("image 503"))
 
     await handleBlogImageGeneration("job-1")
 
@@ -152,7 +152,7 @@ describe("handleBlogImageGeneration", () => {
   })
 
   it("fails the job when hero generation fails", async () => {
-    mocks.generateFalImage.mockRejectedValueOnce(new Error("fal 500 hero"))
+    mocks.generateOpenRouterImage.mockRejectedValueOnce(new Error("image 500 hero"))
 
     await handleBlogImageGeneration("job-1")
 
@@ -166,7 +166,7 @@ describe("handleBlogImageGeneration", () => {
       .mockResolvedValueOnce({ score: 4, reasons: ["plastic skin"], judge_failed: false })
       .mockResolvedValueOnce({ score: 8, reasons: ["fixed"], judge_failed: false })
       .mockResolvedValueOnce({ score: 8, reasons: ["fine"], judge_failed: false })
-    mocks.generateFalImage
+    mocks.generateOpenRouterImage
       .mockResolvedValueOnce({ buffer: Buffer.from("a"), mime: "image/png", seed: 1 })
       .mockResolvedValueOnce({ buffer: Buffer.from("b"), mime: "image/png", seed: 2 })
       .mockResolvedValueOnce({ buffer: Buffer.from("c"), mime: "image/png", seed: 3 })
@@ -174,7 +174,7 @@ describe("handleBlogImageGeneration", () => {
     await handleBlogImageGeneration("job-1")
 
     // Hero was generated twice (initial + 1 retry), inline once
-    expect(mocks.generateFalImage).toHaveBeenCalledTimes(3)
+    expect(mocks.generateOpenRouterImage).toHaveBeenCalledTimes(3)
     expect(mocks.transcodeAndUpload).toHaveBeenCalledTimes(3)
     expect(mocks.judgeImageQuality).toHaveBeenCalledTimes(3)
 
@@ -188,7 +188,7 @@ describe("handleBlogImageGeneration", () => {
     await handleBlogImageGeneration("job-1")
 
     // Hero: 2 attempts (initial + 1 retry) — never a 3rd. Inline: 1.
-    expect(mocks.generateFalImage).toHaveBeenCalledTimes(3)
+    expect(mocks.generateOpenRouterImage).toHaveBeenCalledTimes(3)
     expect(mocks.transcodeAndUpload).toHaveBeenCalledTimes(3)
     expect(mocks.judgeImageQuality).toHaveBeenCalledTimes(3)
   })
@@ -199,7 +199,7 @@ describe("handleBlogImageGeneration", () => {
     await handleBlogImageGeneration("job-1")
 
     // Hero: 1 attempt (no retry because judge_failed). Inline: 1.
-    expect(mocks.generateFalImage).toHaveBeenCalledTimes(2)
+    expect(mocks.generateOpenRouterImage).toHaveBeenCalledTimes(2)
     expect(mocks.transcodeAndUpload).toHaveBeenCalledTimes(2)
     expect(mocks.judgeImageQuality).toHaveBeenCalledTimes(2)
   })
