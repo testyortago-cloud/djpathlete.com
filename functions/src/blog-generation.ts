@@ -222,7 +222,11 @@ const blogResultSchema = z.object({
   content: z.string(),
   category: z.enum(["Performance", "Recovery", "Coaching", "Youth Development"]),
   tags: z.array(z.string()),
-  meta_description: z.string().transform(capMetaDescription),
+  // Plain string on purpose, capped AFTER validation (see finalResult). A
+  // `.transform()` here converts to an empty JSON schema `{}`, which Fable's
+  // structured-output validator rejects outright — every blog draft 400'd with
+  // "Provider returned error" from 2026-09-12 (the move to Fable) until this.
+  meta_description: z.string(),
   faq: z.array(faqEntrySchema).max(5).optional().default([]),
 })
 
@@ -409,7 +413,11 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
     // Step 3: Validate all URLs in the generated content — remove any 404s
     const validatedContent = await validateUrls(finalContent.content)
     const contentWithAnchors = injectAnchorIds(validatedContent)
-    const finalResult = { ...finalContent, content: contentWithAnchors }
+    const finalResult = {
+      ...finalContent,
+      content: contentWithAnchors,
+      meta_description: capMetaDescription(finalContent.meta_description),
+    }
 
     // Log generation (non-fatal)
     try {

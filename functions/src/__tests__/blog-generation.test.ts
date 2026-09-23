@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { toJSONSchema } from "zod"
 
 const {
   mockCallAgent,
@@ -176,6 +177,40 @@ describe("handleBlogGeneration — insert flow", () => {
       expect.anything(),
       expect.anything(),
     )
+  })
+
+  // Fable's structured-output validator 400s ("Provider returned error") on an
+  // empty `{}` schema, which is what a `.transform()` field converts to. Converted
+  // with the same options callAgent's toToolInputSchema uses.
+  it("sends a schema with no empty property schemas (Fable rejects `{}`)", async () => {
+    await handleBlogGeneration("job-1")
+    const schema = mockCallAgent.mock.calls[0][2]
+    const json = toJSONSchema(schema, { unrepresentable: "any" }) as { properties: Record<string, object> }
+    const empty = Object.entries(json.properties)
+      .filter(([, v]) => Object.keys(v).length === 0)
+      .map(([k]) => k)
+    expect(empty).toEqual([])
+    expect(json.properties.meta_description).toEqual({ type: "string" })
+  })
+
+  it("caps an over-long meta_description at 160 chars before insert", async () => {
+    mockCallAgent.mockReset()
+    mockCallAgent.mockResolvedValue({
+      content: {
+        title: "T",
+        slug: "t",
+        excerpt: "e",
+        content: "<p>c</p>",
+        category: "Performance",
+        tags: ["a"],
+        meta_description: "x".repeat(200),
+      },
+      tokens_used: 100,
+    })
+    await handleBlogGeneration("job-1")
+    const inserted = blogInsert.mock.calls[0][0].meta_description as string
+    expect(inserted).toHaveLength(158)
+    expect(inserted.endsWith("…")).toBe(true)
   })
 
   it("does NOT re-prompt when first pass meets target word count", async () => {
