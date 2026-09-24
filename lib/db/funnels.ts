@@ -5,6 +5,7 @@
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import { hasIntakeColumns } from "@/lib/db/funnel-schema-support"
+import { SlugTakenError } from "@/lib/db/businesses"
 import { ENTRY_STEP_SLUG } from "@/lib/funnels/templates"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import type { CompileError, FunnelNode } from "@/lib/funnels/compile/types"
@@ -29,10 +30,15 @@ function getClient() {
 // ---------------------------------------------------------------------------
 
 export async function listFunnels(
+  businessId: string,
   opts: { status?: FunnelStatus; kind?: FunnelKind } = {},
 ): Promise<Funnel[]> {
   const supabase = getClient()
-  let query = supabase.from("funnels").select("*").order("updated_at", { ascending: false })
+  let query = supabase
+    .from("funnels")
+    .select("*")
+    .eq("business_id", businessId)
+    .order("updated_at", { ascending: false })
   if (opts.status) query = query.eq("status", opts.status)
   // Deliberately only applied when asked. Callers that want both types — the
   // leads inbox, the builder's own lookups — must keep getting both.
@@ -42,9 +48,14 @@ export async function listFunnels(
   return (data ?? []) as Funnel[]
 }
 
-export async function getFunnelById(id: string): Promise<Funnel | null> {
+export async function getFunnelById(businessId: string, id: string): Promise<Funnel | null> {
   const supabase = getClient()
-  const { data, error } = await supabase.from("funnels").select("*").eq("id", id).maybeSingle()
+  const { data, error } = await supabase
+    .from("funnels")
+    .select("*")
+    .eq("business_id", businessId)
+    .eq("id", id)
+    .maybeSingle()
   if (error) throw new Error(`getFunnelById: ${error.message}`)
   return (data as Funnel | null) ?? null
 }
@@ -54,11 +65,12 @@ function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`)
 }
 
-export async function getFunnelBySlug(slug: string): Promise<Funnel | null> {
+export async function getFunnelBySlug(businessId: string, slug: string): Promise<Funnel | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("funnels")
     .select("*")
+    .eq("business_id", businessId)
     // Slugs are validated as [a-z0-9-] on write, so escaping only ever changes
     // a request that was never going to match a real row — e.g. `/go/%25`
     // (a literal "%"), which unescaped matches every funnel and makes
@@ -124,6 +136,7 @@ export interface CreateFunnelInput {
  * discard its result.
  */
 export async function createFunnel(
+  businessId: string,
   input: CreateFunnelInput,
 ): Promise<Funnel & { entryStepId: string }> {
   const supabase = getClient()
@@ -138,6 +151,7 @@ export async function createFunnel(
   const { data, error } = await supabase
     .from("funnels")
     .insert({
+      business_id: businessId,
       slug: input.slug,
       name: input.name,
       description: input.description ?? null,
@@ -161,7 +175,16 @@ export async function createFunnel(
     })
     .select("*")
     .single()
-  if (error) throw new Error(`createFunnel: ${error.message}`)
+  if (error) {
+    // Per-tenant uniqueness (migration 00278: funnels_business_id_slug_key on
+    // (business_id, lower(slug))) means an admin typing a slug their OWN
+    // tenant already uses now reaches Postgres's unique violation, where
+    // before there was only one tenant to collide with. Mirrors the
+    // businesses.ts SlugTakenError shape rather than inventing a second one,
+    // so a route can answer a field error instead of a bare 500.
+    if (error.code === "23505") throw new SlugTakenError(input.slug)
+    throw new Error(`createFunnel: ${error.message}`)
+  }
 
   const funnel = data as Funnel
 
@@ -184,6 +207,12 @@ export async function createFunnel(
     .insert(
       planned.map((step, index) => ({
         funnel_id: funnel.id,
+        // Stamped from the same businessId as the parent funnel above, not
+        // left to the column default — the composite FK
+        // (funnel_id, business_id) -> funnels(id, business_id) requires the
+        // two to agree, and the default's only job is to survive the deploy
+        // window, not to be a source of truth a writer leans on.
+        business_id: businessId,
         // The entry step's path is not the client's to choose: `/go/<slug>` is
         // served by whichever step is `index`. The validator refuses anything
         // else; this makes it true regardless.
@@ -205,9 +234,7 @@ export async function createFunnel(
   // that RETURNING comes back in VALUES order, and the create dialog routes the
   // owner straight into whichever step this names — so `stepRows[0]` would
   // occasionally open the confirmation page as though it were step one.
-  const entry = (stepRows as { id: string; slug: string }[] | null)?.find(
-    (row) => row.slug === ENTRY_STEP_SLUG,
-  )
+  const entry = (stepRows as { id: string; slug: string }[] | null)?.find((row) => row.slug === ENTRY_STEP_SLUG)
   if (!entry) throw new Error("createFunnel(entry step): the entry step was not returned")
 
   return { ...funnel, entryStepId: entry.id }
@@ -239,7 +266,7 @@ export type UpdateFunnelInput = Partial<
   >
 > & { offer?: { kind: OfferKind; ref: string } | null }
 
-export async function updateFunnel(id: string, input: UpdateFunnelInput): Promise<Funnel> {
+export async function updateFunnel(businessId: string, id: string, input: UpdateFunnelInput): Promise<Funnel> {
   const supabase = getClient()
   const { offer, audience, starts_at, ends_at, auto_offline_at_end, notify_emails, ...core } = input
 
@@ -254,9 +281,7 @@ export async function updateFunnel(id: string, input: UpdateFunnelInput): Promis
   // present keeps both halves of the paired CHECK in step.
   const intakeColumns = intake
     ? {
-        ...(offer === undefined
-          ? {}
-          : { offer_kind: offer?.kind ?? null, offer_ref: offer?.ref ?? null }),
+        ...(offer === undefined ? {} : { offer_kind: offer?.kind ?? null, offer_ref: offer?.ref ?? null }),
         ...(audience === undefined ? {} : { audience }),
         ...(starts_at === undefined ? {} : { starts_at }),
         ...(ends_at === undefined ? {} : { ends_at }),
@@ -268,6 +293,7 @@ export async function updateFunnel(id: string, input: UpdateFunnelInput): Promis
   const { data, error } = await supabase
     .from("funnels")
     .update({ ...core, ...intakeColumns, updated_at: new Date().toISOString() })
+    .eq("business_id", businessId)
     .eq("id", id)
     .select("*")
     .single()
@@ -275,9 +301,9 @@ export async function updateFunnel(id: string, input: UpdateFunnelInput): Promis
   return data as Funnel
 }
 
-export async function deleteFunnel(id: string): Promise<void> {
+export async function deleteFunnel(businessId: string, id: string): Promise<void> {
   const supabase = getClient()
-  const { error } = await supabase.from("funnels").delete().eq("id", id)
+  const { error } = await supabase.from("funnels").delete().eq("business_id", businessId).eq("id", id)
   if (error) throw new Error(`deleteFunnel: ${error.message}`)
 }
 
@@ -285,11 +311,12 @@ export async function deleteFunnel(id: string): Promise<void> {
 // Steps
 // ---------------------------------------------------------------------------
 
-export async function listSteps(funnelId: string): Promise<FunnelStep[]> {
+export async function listSteps(businessId: string, funnelId: string): Promise<FunnelStep[]> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("funnel_steps")
     .select("*")
+    .eq("business_id", businessId)
     .eq("funnel_id", funnelId)
     .order("position", { ascending: true })
   if (error) throw new Error(`listSteps: ${error.message}`)
@@ -309,18 +336,26 @@ export async function listSteps(funnelId: string): Promise<FunnelStep[]> {
  * ONLY THE COLUMNS THE WALK NEEDS. `select("*")` would pull every page's
  * compiled HTML alongside its document.
  */
-export async function listStepDocuments(): Promise<
-  { id: string; funnel_id: string; name: string; project_data: unknown }[]
-> {
+export async function listStepDocuments(
+  businessId: string,
+): Promise<{ id: string; funnel_id: string; name: string; project_data: unknown }[]> {
   const supabase = getClient()
-  const { data, error } = await supabase.from("funnel_steps").select("id, funnel_id, name, project_data")
+  const { data, error } = await supabase
+    .from("funnel_steps")
+    .select("id, funnel_id, name, project_data")
+    .eq("business_id", businessId)
   if (error) throw new Error(`listStepDocuments: ${error.message}`)
   return (data ?? []) as { id: string; funnel_id: string; name: string; project_data: unknown }[]
 }
 
-export async function getStep(id: string): Promise<FunnelStep | null> {
+export async function getStep(businessId: string, id: string): Promise<FunnelStep | null> {
   const supabase = getClient()
-  const { data, error } = await supabase.from("funnel_steps").select("*").eq("id", id).maybeSingle()
+  const { data, error } = await supabase
+    .from("funnel_steps")
+    .select("*")
+    .eq("business_id", businessId)
+    .eq("id", id)
+    .maybeSingle()
   if (error) throw new Error(`getStep: ${error.message}`)
   return (data as FunnelStep | null) ?? null
 }
@@ -332,13 +367,14 @@ export interface CreateStepInput {
   position?: number
 }
 
-export async function createStep(input: CreateStepInput): Promise<FunnelStep> {
+export async function createStep(businessId: string, input: CreateStepInput): Promise<FunnelStep> {
   const supabase = getClient()
-  const existing = await listSteps(input.funnel_id)
+  const existing = await listSteps(businessId, input.funnel_id)
   const { data, error } = await supabase
     .from("funnel_steps")
     .insert({
       funnel_id: input.funnel_id,
+      business_id: businessId,
       slug: input.slug,
       name: input.name,
       position: input.position ?? existing.length,
@@ -353,22 +389,16 @@ export async function createStep(input: CreateStepInput): Promise<FunnelStep> {
 export type UpdateStepInput = Partial<
   Pick<
     FunnelStep,
-    | "slug"
-    | "name"
-    | "position"
-    | "seo_title"
-    | "seo_description"
-    | "og_image_url"
-    | "noindex"
-    | "project_data"
+    "slug" | "name" | "position" | "seo_title" | "seo_description" | "og_image_url" | "noindex" | "project_data"
   >
 >
 
-export async function updateStep(id: string, input: UpdateStepInput): Promise<FunnelStep> {
+export async function updateStep(businessId: string, id: string, input: UpdateStepInput): Promise<FunnelStep> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("funnel_steps")
     .update({ ...input, updated_at: new Date().toISOString() })
+    .eq("business_id", businessId)
     .eq("id", id)
     .select("*")
     .single()
@@ -376,18 +406,15 @@ export async function updateStep(id: string, input: UpdateStepInput): Promise<Fu
   return data as FunnelStep
 }
 
-export async function deleteStep(id: string): Promise<void> {
+export async function deleteStep(businessId: string, id: string): Promise<void> {
   const supabase = getClient()
-  const { error } = await supabase.from("funnel_steps").delete().eq("id", id)
+  const { error } = await supabase.from("funnel_steps").delete().eq("business_id", businessId).eq("id", id)
   if (error) throw new Error(`deleteStep: ${error.message}`)
 }
 
 /** Saves the editor draft. Does not affect what visitors currently see. */
-export async function saveStepDraft(
-  id: string,
-  projectData: unknown,
-): Promise<FunnelStep> {
-  return updateStep(id, { project_data: projectData })
+export async function saveStepDraft(businessId: string, id: string, projectData: unknown): Promise<FunnelStep> {
+  return updateStep(businessId, id, { project_data: projectData })
 }
 
 // ---------------------------------------------------------------------------
@@ -403,13 +430,16 @@ export type PublishStepResult =
  * and points the step at it. A compile failure writes nothing — the live page
  * keeps serving the previous version.
  */
-export async function publishStep(input: {
-  stepId: string
-  html: string
-  css: string
-  projectData?: unknown
-  publishedBy?: string | null
-}): Promise<PublishStepResult> {
+export async function publishStep(
+  businessId: string,
+  input: {
+    stepId: string
+    html: string
+    css: string
+    projectData?: unknown
+    publishedBy?: string | null
+  },
+): Promise<PublishStepResult> {
   const compiled = compileFunnelStep({ html: input.html, css: input.css })
   if (!compiled.ok) return { ok: false, errors: compiled.errors }
 
@@ -418,6 +448,7 @@ export async function publishStep(input: {
   const { data: latest, error: latestError } = await supabase
     .from("funnel_step_versions")
     .select("version")
+    .eq("business_id", businessId)
     .eq("step_id", input.stepId)
     .order("version", { ascending: false })
     .limit(1)
@@ -429,6 +460,7 @@ export async function publishStep(input: {
     .from("funnel_step_versions")
     .insert({
       step_id: input.stepId,
+      business_id: businessId,
       version: nextVersion,
       nodes: compiled.nodes,
       css: compiled.css,
@@ -444,6 +476,7 @@ export async function publishStep(input: {
   const { error: pointerError } = await supabase
     .from("funnel_steps")
     .update({ published_version_id: version.id, updated_at: new Date().toISOString() })
+    .eq("business_id", businessId)
     .eq("id", input.stepId)
   if (pointerError) throw new Error(`publishStep(pointer): ${pointerError.message}`)
 
@@ -467,11 +500,12 @@ export async function publishStep(input: {
  * Takes the version ID rather than the step ID because every caller has already
  * loaded the step row and holds it.
  */
-export async function getVersionNumber(versionId: string): Promise<number | null> {
+export async function getVersionNumber(businessId: string, versionId: string): Promise<number | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("funnel_step_versions")
     .select("version")
+    .eq("business_id", businessId)
     .eq("id", versionId)
     .maybeSingle()
   if (error) throw new Error(`getVersionNumber: ${error.message}`)
@@ -491,18 +525,24 @@ export interface PublishedStep {
  *
  * `includeUnpublished` is for the owner's preview — it falls back to the latest
  * version regardless of the funnel's status.
+ *
+ * TAKES THE TENANT FIRST and passes it down to `getFunnelBySlug`, then filters
+ * the step and version reads on it too — a step (and the version it points at)
+ * is reachable only within its own funnel's tenant, never merely by an id that
+ * happens to exist under a different business.
  */
 export async function getPublishedStep(
+  businessId: string,
   funnelSlug: string,
   stepSlug?: string,
   opts: { includeUnpublished?: boolean } = {},
 ): Promise<PublishedStep | null> {
-  const funnel = await getFunnelBySlug(funnelSlug)
+  const funnel = await getFunnelBySlug(businessId, funnelSlug)
   if (!funnel) return null
   if (funnel.status !== "published" && !opts.includeUnpublished) return null
 
   const supabase = getClient()
-  let query = supabase.from("funnel_steps").select("*").eq("funnel_id", funnel.id)
+  let query = supabase.from("funnel_steps").select("*").eq("business_id", businessId).eq("funnel_id", funnel.id)
   query = stepSlug ? query.eq("slug", stepSlug) : query.eq("is_entry", true)
 
   const { data: stepRow, error: stepError } = await query.maybeSingle()
@@ -511,7 +551,7 @@ export async function getPublishedStep(
 
   const step = stepRow as FunnelStep
 
-  let versionQuery = supabase.from("funnel_step_versions").select("*")
+  let versionQuery = supabase.from("funnel_step_versions").select("*").eq("business_id", businessId)
   if (step.published_version_id) {
     versionQuery = versionQuery.eq("id", step.published_version_id)
   } else if (opts.includeUnpublished) {
@@ -541,15 +581,12 @@ export async function getPublishedStep(
 /** One indexable public funnel page, as `app/sitemap.ts` needs it. */
 export interface PublishedFunnelStepRef {
   funnel: Pick<Funnel, "name" | "slug">
-  step: Pick<
-    FunnelStep,
-    "name" | "slug" | "is_entry" | "seo_title" | "seo_description" | "og_image_url" | "noindex"
-  >
+  step: Pick<FunnelStep, "name" | "slug" | "is_entry" | "seo_title" | "seo_description" | "og_image_url" | "noindex">
   updatedAt: string
 }
 
 /**
- * Every `/go/` page that belongs in the sitemap.
+ * Every `/go/` page that belongs in the sitemap, for ONE tenant.
  *
  * THREE CONDITIONS, AND ALL THREE ARE LOAD-BEARING:
  *
@@ -563,27 +600,26 @@ export interface PublishedFunnelStepRef {
  *      The sitemap is a request to index; excluding the row is the only way to
  *      keep the two signals agreeing.
  *
- * TENANCY, STATED HONESTLY RATHER THAN IMPLIED: there is no predicate here
- * because there is nothing to predicate on — `funnels` has no `business_id`
- * column (18 columns, none of them a tenant key; checked against
- * `information_schema` on 2026-09-19). The sibling event reader in
- * `app/sitemap.ts` filters by `platformBusinessId()`; doing the same here
- * would mean inventing a column, and writing the constant in would be a new
- * `SINGLETON_BUSINESS_ID` reference in all but name. When `funnels` becomes
- * tenant-scoped this reader needs the predicate — it is a reader with no
- * tenant filter, which the repo's own rule calls a leak with a fuse in it.
+ * TENANCY: until migration 00278 `funnels` had no `business_id` column at all
+ * (checked against `information_schema` on 2026-09-19), so this function could
+ * not predicate and the caller in `app/sitemap.ts` got every tenant's funnels
+ * unconditionally. Both queries below now filter on `business_id`, matching the
+ * sibling event reader in the same file, which filters by `platformBusinessId()`.
+ * This function no longer decides which tenant belongs in the sitemap; its
+ * caller does, by the id it passes in.
  *
  * Two queries rather than one embedded select: `.in()` keeps it at two round
  * trips regardless of row count, and an embedded filter on the child of a
  * PostgREST join is the kind of thing that silently returns parents with empty
  * children instead of no parents.
  */
-export async function listPublishedFunnelSteps(): Promise<PublishedFunnelStepRef[]> {
+export async function listPublishedFunnelSteps(businessId: string): Promise<PublishedFunnelStepRef[]> {
   const supabase = getClient()
 
   const { data: funnelRows, error: funnelError } = await supabase
     .from("funnels")
     .select("id, name, slug")
+    .eq("business_id", businessId)
     .eq("status", "published")
   if (funnelError) throw new Error(`listPublishedFunnelSteps(funnels): ${funnelError.message}`)
 
@@ -595,6 +631,7 @@ export async function listPublishedFunnelSteps(): Promise<PublishedFunnelStepRef
     .select(
       "funnel_id, name, slug, is_entry, seo_title, seo_description, og_image_url, noindex, updated_at, published_version_id",
     )
+    .eq("business_id", businessId)
     .in(
       "funnel_id",
       funnels.map((row) => row.id),
@@ -665,11 +702,10 @@ function isPre00230SchemaError(error: { code?: string; message?: string }): bool
   return POST_00230_COLUMNS.some((column) => (error.message ?? "").includes(`'${column}'`))
 }
 
-export async function createSubmission(
-  input: CreateSubmissionInput,
-): Promise<FunnelSubmission> {
+export async function createSubmission(businessId: string, input: CreateSubmissionInput): Promise<FunnelSubmission> {
   const supabase = getClient()
   const row = {
+    business_id: businessId,
     funnel_id: input.funnel_id,
     step_id: input.step_id,
     form_key: input.form_key,
@@ -722,7 +758,7 @@ export async function createSubmission(
  * than one per card. Paginated because `.select()` caps at ~1000 rows and this
  * is a growth table.
  */
-export async function getSubmissionCountsByFunnel(): Promise<Record<string, number>> {
+export async function getSubmissionCountsByFunnel(businessId: string): Promise<Record<string, number>> {
   const supabase = getClient()
   const counts: Record<string, number> = {}
   const PAGE = 1000
@@ -731,6 +767,7 @@ export async function getSubmissionCountsByFunnel(): Promise<Record<string, numb
     const { data, error } = await supabase
       .from("funnel_submissions")
       .select("funnel_id")
+      .eq("business_id", businessId)
       .range(from, from + PAGE - 1)
     if (error) throw new Error(`getSubmissionCountsByFunnel: ${error.message}`)
 
@@ -758,6 +795,7 @@ export async function getSubmissionCountsByFunnel(): Promise<Record<string, numb
  * claims the form contained.
  */
 export async function getPublishedFormConfig(
+  businessId: string,
   stepId: string,
   formKey: string,
 ): Promise<Record<string, unknown> | null> {
@@ -765,17 +803,18 @@ export async function getPublishedFormConfig(
   const { data: stepRow, error: stepError } = await supabase
     .from("funnel_steps")
     .select("published_version_id")
+    .eq("business_id", businessId)
     .eq("id", stepId)
     .maybeSingle()
   if (stepError) throw new Error(`getPublishedFormConfig(step): ${stepError.message}`)
 
-  const versionId = (stepRow as { published_version_id: string | null } | null)
-    ?.published_version_id
+  const versionId = (stepRow as { published_version_id: string | null } | null)?.published_version_id
   if (!versionId) return null
 
   const { data: versionRow, error: versionError } = await supabase
     .from("funnel_step_versions")
     .select("nodes")
+    .eq("business_id", businessId)
     .eq("id", versionId)
     .maybeSingle()
   if (versionError) throw new Error(`getPublishedFormConfig(version): ${versionError.message}`)
@@ -785,10 +824,7 @@ export async function getPublishedFormConfig(
   return findFormIsland(nodes, formKey)
 }
 
-function findFormIsland(
-  nodes: FunnelNode[],
-  formKey: string,
-): Record<string, unknown> | null {
+function findFormIsland(nodes: FunnelNode[], formKey: string): Record<string, unknown> | null {
   for (const node of nodes) {
     if (node.t === "island" && node.name === "form" && node.props.formKey === formKey) {
       return node.props
