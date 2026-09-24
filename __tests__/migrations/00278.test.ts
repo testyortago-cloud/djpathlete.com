@@ -7,8 +7,13 @@ const SQL = readFileSync("supabase/migrations/00278_funnel_tenancy.sql", "utf8")
 describe("00278 funnel tenancy", () => {
   it("adds business_id to all seven tables", () => {
     for (const t of [
-      "funnels", "funnel_steps", "funnel_step_versions", "funnel_step_turns",
-      "funnel_submissions", "funnel_checkout_grants", "lead_magnets",
+      "funnels",
+      "funnel_steps",
+      "funnel_step_versions",
+      "funnel_step_turns",
+      "funnel_submissions",
+      "funnel_checkout_grants",
+      "lead_magnets",
     ]) {
       expect(SQL).toMatch(new RegExp(`alter table public\\.${t}\\s+add column business_id uuid not null`))
     }
@@ -38,8 +43,12 @@ describe("00278 funnel tenancy", () => {
   })
 
   it("scopes both slug indexes per tenant, preserving each one's case rule", () => {
-    expect(SQL).toContain("create unique index funnels_business_id_slug_key\n  on public.funnels (business_id, lower(slug))")
-    expect(SQL).toContain("create unique index lead_magnets_business_id_slug_key\n  on public.lead_magnets (business_id, slug)")
+    expect(SQL).toContain(
+      "create unique index funnels_business_id_slug_key\n  on public.funnels (business_id, lower(slug))",
+    )
+    expect(SQL).toContain(
+      "create unique index lead_magnets_business_id_slug_key\n  on public.lead_magnets (business_id, slug)",
+    )
     expect(SQL).toContain("drop index if exists public.funnels_slug_key")
   })
 
@@ -47,6 +56,6 @@ describe("00278 funnel tenancy", () => {
     // MUTANT: add `alter column business_id drop default`. The currently
     // deployed bundle's inserts then fail 23502 for the length of the build.
     expect(SQL).not.toMatch(/drop default/)
-    expect((SQL.match(/default '00000000-0000-0000-0000-000000000001'/g) ?? [])).toHaveLength(7)
+    expect(SQL.match(/default '00000000-0000-0000-0000-000000000001'/g) ?? []).toHaveLength(7)
   })
 })
