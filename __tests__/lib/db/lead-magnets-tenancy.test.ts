@@ -17,13 +17,20 @@
 // way to prove a wrong-tenant delete was a no-op is to read the row back
 // afterward and find it still there.
 //
-// THE FIXTURES ARE ASYMMETRIC (more rows for tenant A than tenant B, on both
-// tables) so a count-shaped bug can't hide behind equal-sized fixtures, and
-// funnel_checkout_grants deliberately gives tenant A a grant on Stripe session
-// "cs_1" while tenant B has a DIFFERENT session -- so a reader that drops its
-// business_id predicate would answer tenant B's "has cs_1 been processed?"
-// with a wrong "yes", which is the exact double-grant this file exists to
-// prevent.
+// lead_magnets IS ASYMMETRIC (tenant A has more rows than tenant B) so a
+// count-shaped bug can't hide behind an equal-sized fixture there.
+// funnel_checkout_grants ends up row-count-symmetric (2 and 2) once tenant B
+// has its own opportunity grant alongside its own session grant -- and that
+// is fine, not a regression of the asymmetry rule: every read on this table
+// is a single-row existence check (.maybeSingle() on one id), never a count
+// or a list, so an equal row COUNT cannot make a wrong predicate coincidentally
+// return the right answer the way it could for a list/count read. What has to
+// differ instead, and does, is which VALUE each tenant's row carries: tenant
+// A's session grant uses "cs_1" while tenant B's uses "cs_9", and tenant A's
+// opportunity grant uses "opp_1" while tenant B's uses "opp_9" -- so a reader
+// that drops its business_id predicate answers tenant B's "has cs_1 /
+// opp_1 been processed?" with a wrong "yes", which is the exact double-grant
+// this file exists to prevent.
 
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -38,8 +45,12 @@ let insertCounter = 0
 const FIXTURE: Record<string, Record<string, unknown>[]> = {}
 
 function resetFixture() {
-  // Asymmetric: A has 2 grants, B has 1. A's g1 and B's g3 use DIFFERENT
-  // Stripe session ids on purpose -- see file header.
+  // A has 2 grants, B has 2. A's g1 and B's g3 use DIFFERENT Stripe session
+  // ids on purpose -- see file header. B also gets its OWN opportunity grant
+  // (g4) rather than sharing A's "opp_1": without it, hasGrantedOpportunity's
+  // "does not see another tenant's grant" case was true only because "opp_1"
+  // happened to exist nowhere under B, not because the predicate was proven
+  // to narrow anything -- coverage by coincidence, not by construction.
   FIXTURE.funnel_checkout_grants = [
     {
       id: "g1",
@@ -78,6 +89,20 @@ function resetFixture() {
       email: "b1@example.com",
       product_kind: "program",
       product_id: "prog-3",
+      funnel_id: null,
+      step_id: null,
+      lead_id: null,
+      account_created: false,
+    },
+    {
+      id: "g4",
+      business_id: B,
+      stripe_session_id: null,
+      opportunity_id: "opp_9",
+      user_id: "u4",
+      email: "b2@example.com",
+      product_kind: "program",
+      product_id: "prog-4",
       funnel_id: null,
       step_id: null,
       lead_id: null,
@@ -232,11 +257,18 @@ describe("funnel-checkout-grants DAL is tenant-scoped", () => {
   it("hasGrantedOpportunity does not see another tenant's grant", async () => {
     expect(await hasGrantedOpportunity(A, "opp_1")).toBe(true)
     expect(await hasGrantedOpportunity(B, "opp_1")).toBe(false)
+    expect(await hasGrantedOpportunity(B, "opp_9")).toBe(true) // permissive control
   })
 
   it("filters on the business_id VALUE it was given", async () => {
     // MUTANT: `.eq("business_id", A)` hard-coded, or `.eq("stripe_session_id", businessId)`.
     await hasProcessedCheckoutSession(B, "cs_9")
+    expect(captured).toContainEqual({ col: "business_id", val: B })
+  })
+
+  it("hasGrantedOpportunity filters on the business_id VALUE it was given", async () => {
+    // MUTANT: `.eq("business_id", A)` hard-coded, or `.eq("opportunity_id", businessId)`.
+    await hasGrantedOpportunity(B, "opp_9")
     expect(captured).toContainEqual({ col: "business_id", val: B })
   })
 
