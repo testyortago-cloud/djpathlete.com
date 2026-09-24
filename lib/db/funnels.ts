@@ -561,13 +561,19 @@ export async function getPublishedStep(
 
   const step = stepRow as FunnelStep
 
+  // The early return has to happen BEFORE any builder is constructed, not
+  // just before it is awaited: a Supabase query builder is a no-op until
+  // awaited, so building one costs nothing in production, but it is
+  // observable to a test that asserts this table was never touched on the
+  // "no published version, no preview" path — a real invariant, not a
+  // fixture artifact.
+  if (!step.published_version_id && !opts.includeUnpublished) return null
+
   let versionQuery = supabase.from("funnel_step_versions").select("*").eq("business_id", businessId)
   if (step.published_version_id) {
     versionQuery = versionQuery.eq("id", step.published_version_id)
-  } else if (opts.includeUnpublished) {
-    versionQuery = versionQuery.eq("step_id", step.id).order("version", { ascending: false }).limit(1)
   } else {
-    return null
+    versionQuery = versionQuery.eq("step_id", step.id).order("version", { ascending: false }).limit(1)
   }
 
   const { data: versionRows, error: versionError } = await versionQuery

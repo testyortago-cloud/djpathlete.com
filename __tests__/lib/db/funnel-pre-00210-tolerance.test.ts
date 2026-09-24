@@ -43,9 +43,15 @@ function mockSupabase({ migrated }: { migrated: boolean }) {
   funnelInsert.mockReturnValue({
     select: () => ({ single: () => Promise.resolve({ data: { id: "f1" }, error: null }) }),
   })
-  funnelUpdate.mockReturnValue({
-    eq: () => ({ select: () => ({ single: () => Promise.resolve({ data: { id: "f1" }, error: null }) }) }),
-  })
+  // Self-referential: `.eq()` may be chained any number of times before
+  // `.select().single()`. updateFunnel now chains two (business_id, id)
+  // where it used to chain one; a fixed-depth mock silently stopped matching
+  // the real call shape instead of failing loudly on the wrong column.
+  const updateChain: Record<string, unknown> = {
+    eq: () => updateChain,
+    select: () => ({ single: () => Promise.resolve({ data: { id: "f1" }, error: null }) }),
+  }
+  funnelUpdate.mockReturnValue(updateChain)
   stepInsert.mockReturnValue({
     select: () => ({
       then: (resolve: (value: unknown) => unknown) => resolve({ data: [{ id: "s1", slug: "index" }], error: null }),

@@ -19,9 +19,15 @@ vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => ({ from }) }))
 beforeEach(() => {
   vi.clearAllMocks()
   __resetIntakeColumnCache()
-  update.mockReturnValue({
-    eq: () => ({ select: () => ({ single: () => Promise.resolve({ data: { id: "f1" }, error: null }) }) }),
-  })
+  // Self-referential: `.eq()` may be chained any number of times before
+  // `.select().single()`. updateFunnel now chains two (business_id, id)
+  // where it used to chain one; a fixed-depth mock silently stopped matching
+  // the real call shape instead of failing loudly on the wrong column.
+  const updateChain: Record<string, unknown> = {
+    eq: () => updateChain,
+    select: () => ({ single: () => Promise.resolve({ data: { id: "f1" }, error: null }) }),
+  }
+  update.mockReturnValue(updateChain)
   // The 00210 presence probe answers "migrated" — the degraded path is covered
   // in funnel-pre-00210-tolerance.test.ts.
   from.mockReturnValue({
