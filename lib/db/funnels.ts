@@ -297,7 +297,17 @@ export async function updateFunnel(businessId: string, id: string, input: Update
     .eq("id", id)
     .select("*")
     .single()
-  if (error) throw new Error(`updateFunnel: ${error.message}`)
+  if (error) {
+    // Same per-tenant constraint createFunnel can hit: a RENAME is the same
+    // admin action landing on the same funnels_business_id_slug_key index, and
+    // it deserves the same field error rather than a stack trace. Guarded on
+    // `input.slug` being present because that is the only way this update's
+    // payload could touch the column the index is on — `core` only carries
+    // `slug` when the caller supplied it, so a 23505 with no slug in play
+    // cannot be this constraint and is reported as the generic failure below.
+    if (error.code === "23505" && input.slug !== undefined) throw new SlugTakenError(input.slug)
+    throw new Error(`updateFunnel: ${error.message}`)
+  }
   return data as Funnel
 }
 
