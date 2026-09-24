@@ -17,6 +17,7 @@ import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile/css-scope"
 import { resolveFunnelStepSeo } from "@/lib/funnels/seo"
 import { buildFunnelPageSchema } from "@/lib/seo/build-funnel-page-schema"
 import { JsonLd } from "@/components/shared/JsonLd"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 interface PageProps {
   params: Promise<{ slug: string; step?: string[] }>
@@ -24,9 +25,7 @@ interface PageProps {
 }
 
 /** Only an admin or staff member may look at an unpublished funnel. */
-async function resolvePreview(
-  searchParams: Record<string, string | string[] | undefined>,
-): Promise<boolean> {
+async function resolvePreview(searchParams: Record<string, string | string[] | undefined>): Promise<boolean> {
   if (searchParams.preview !== "1") return false
   const session = await auth()
   const role = session?.user?.role
@@ -62,7 +61,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug, step } = await params
   const stepSlug = step?.[0]
 
-  const published = await getPublishedStep(slug, stepSlug).catch(() => null)
+  // PUBLIC, NO SESSION. Same Host boundary the page component below resolves
+  // — see its own comment for why a wrong-tenant slug and an unknown slug
+  // take the same branch.
+  const businessId = await resolvePublicTenant()
+  const published = await getPublishedStep(businessId, slug, stepSlug).catch(() => null)
   if (!published) return {}
 
   const { funnel, step: stepRow } = published
@@ -109,7 +112,16 @@ export default async function FunnelPage({ params, searchParams }: PageProps) {
 
   const isPreview = await resolvePreview(await searchParams)
 
-  const published = await getPublishedStep(slug, stepSlug, { includeUnpublished: isPreview })
+  // PUBLIC ROUTE, NO SESSION. The tenant is the request's Host — resolved
+  // through the one Host boundary (lib/tenancy/public.ts), which falls back
+  // to the platform business for every unclaimed Host (dev, preview deploys,
+  // every *.vercel.app URL). A slug that belongs to a DIFFERENT tenant than
+  // this one comes back null from getPublishedStep and 404s through the exact
+  // same branch below as an unknown slug — there is no separate "wrong
+  // tenant" page, because telling an anonymous visitor a page exists but
+  // belongs to someone else is a disclosure, not a courtesy.
+  const businessId = await resolvePublicTenant()
+  const published = await getPublishedStep(businessId, slug, stepSlug, { includeUnpublished: isPreview })
   if (!published) notFound()
 
   const { funnel, step: stepRow, nodes, css } = published
@@ -132,8 +144,8 @@ export default async function FunnelPage({ params, searchParams }: PageProps) {
       {css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null}
       {isPreview && funnel.status !== "published" ? (
         <div data-djp-preview-banner role="status">
-          Preview — this {funnel.kind === "page" ? "landing page" : "funnel"} is {funnel.status} and is
-          not visible to the public.
+          Preview — this {funnel.kind === "page" ? "landing page" : "funnel"} is {funnel.status} and is not visible to
+          the public.
         </div>
       ) : null}
       <NodeRenderer

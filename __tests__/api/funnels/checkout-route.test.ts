@@ -35,6 +35,10 @@ vi.mock("@/lib/stripe", () => ({
 vi.mock("@/lib/marketing/cookies", () => ({ parseAttrCookie: () => null }))
 vi.mock("@/lib/db/marketing-attribution", () => ({ getAttributionBySession: vi.fn(async () => null) }))
 vi.mock("@/lib/url", () => ({ getBaseUrl: () => "https://darrenjpaul.com" }))
+// The ONE Host boundary. Mocked to a sentinel that is NOT the platform id, so
+// a route that hard-codes platformBusinessId() (or resolves it any other way)
+// cannot pass the tenant-threading assertions below.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "checkout-biz" }))
 // The flag name lives in a LEAF module both this route and the Stripe webhook
 // import — never route-to-route, which drags a whole route's dependency tree
 // into the webhook. Real, not mocked: the name is the thing under test.
@@ -212,5 +216,18 @@ describe("the sale it does start", () => {
     createSessionMock.mockRejectedValue(new Error("stripe down"))
     const { POST } = await import("@/app/api/funnels/checkout/route")
     expect((await POST(post(body()))).status).toBe(502)
+  })
+})
+
+describe("tenancy", () => {
+  it("threads the request's own resolved tenant into the funnel and step reads", async () => {
+    // "checkout-biz" is the sentinel @/lib/tenancy/public's mock resolves to
+    // above — distinct from any platform id, so a route that reads these
+    // rows unscoped (or under platformBusinessId()) fails this rather than
+    // passing by accident.
+    const { POST } = await import("@/app/api/funnels/checkout/route")
+    await POST(post(body()))
+    expect(getFunnelByIdMock).toHaveBeenCalledWith("checkout-biz", FUNNEL_ID)
+    expect(getStepMock).toHaveBeenCalledWith("checkout-biz", STEP_ID)
   })
 })

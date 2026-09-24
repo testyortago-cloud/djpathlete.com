@@ -228,15 +228,17 @@ import { createServiceRoleClient } from "@/lib/supabase"
  * THE OUTPUT ITSELF IS KEYED TO ONE HOST -- not a caller that cannot resolve
  * a tenant, and not a placeholder either. A real resolution would make this
  * file WORSE than it is today:
- *   - app/sitemap.ts's event listing. Every URL this file emits is built from
+ *   - app/sitemap.ts's event listing AND, since G31 (funnel tenancy, migration
+ *     00278), its funnel listing too. Every URL this file emits is built from
  *     the `SITE_URL` constant (`const BASE_URL = SITE_URL`), for every
- *     section — blog, events, shop, the static pages — not only the events
- *     arm this phase touches. Threading the request's resolved business
- *     into `getPublishedEvents` here would list a second coach's camps and
- *     clinics at `darrenjpaul.com`, which is a worse leak than today's single-
- *     tenant sitemap, not a fix. A per-host sitemap needs per-host absolute
- *     URLs throughout the file — blog and shop included — which is a
- *     separate phase than events alone.
+ *     section — blog, events, shop, funnels, the static pages — not only the
+ *     arm whichever phase happens to be touching. Threading the request's
+ *     resolved business into `getPublishedEvents` or `listPublishedFunnelSteps`
+ *     here would list a second coach's camps, clinics or /go pages at
+ *     `darrenjpaul.com`, which is a worse leak than today's single-tenant
+ *     sitemap, not a fix. A per-host sitemap needs per-host absolute URLs
+ *     throughout the file — blog and shop included — which is a separate
+ *     phase than either arm alone.
  *
  * TWINS THAT CANNOT CALL THIS: functions/src/lib/tenancy-constants.ts and
  * functions/src/ads/dal.ts carry the literal because `functions/` has

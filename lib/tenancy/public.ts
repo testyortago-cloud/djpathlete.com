@@ -113,6 +113,20 @@ import { recordAudit } from "@/lib/audit/record"
  *     app/(marketing)/camps/[slug]/success/page.tsx
  *     app/(marketing)/clinics/[slug]/success/page.tsx
  *     components/funnels/islands/EventIsland.tsx
+ *
+ *   G31 (funnel tenancy, migration 00278) converted the remaining public
+ *   funnel surfaces — the ones that read/write funnels, funnel_steps,
+ *   funnel_step_versions, funnel_submissions or lead_magnets directly rather
+ *   than through an island already on this list:
+ *     app/(funnel)/go/[slug]/[[...step]]/page.tsx — both generateMetadata
+ *       and the page itself resolve independently, since Next calls them as
+ *       separate invocations; a slug that belongs to a different tenant than
+ *       this one 404s through the SAME branch an unknown slug takes.
+ *     app/api/funnels/checkout/route.ts
+ *     app/og/funnel/[slug]/[[...step]]/route.tsx — degrades to the brand
+ *       default card on a wrong-tenant slug, same as an unknown one; never
+ *       404s, per its own header.
+ *     components/marketing/blog/LeadMagnetBlock.tsx
  */
 
 /**

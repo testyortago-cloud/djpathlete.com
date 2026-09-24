@@ -25,7 +25,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Primary marketing pages
     { url: `${BASE_URL}/services`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${BASE_URL}/services/online-vs-in-person`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
-    { url: `${BASE_URL}/services/coaching-vs-training-app`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    {
+      url: `${BASE_URL}/services/coaching-vs-training-app`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
     { url: `${BASE_URL}/about`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${BASE_URL}/philosophy`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${BASE_URL}/blog`, lastModified: now, changeFrequency: "weekly", priority: 0.8 },
@@ -144,7 +149,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // `docs/funnel-seo-audit-2026-09-19.md` §7.
   let funnelPages: MetadataRoute.Sitemap = []
   try {
-    const steps = await listPublishedFunnelSteps()
+    // platformBusinessId(): same reasoning as the event block above. Every
+    // URL in this file is built from the single BASE_URL constant (blog,
+    // events, shop, funnels, the static pages alike), so threading the
+    // request's resolved tenant into just this block would advertise a
+    // second coach's /go pages under darrenjpaul.com's own URL — a worse
+    // defect than today's single-tenant sitemap, not a fix. A per-host
+    // sitemap needs per-host absolute URLs throughout the whole file; see
+    // lib/tenancy/platform.ts.
+    const steps = await listPublishedFunnelSteps(platformBusinessId())
     funnelPages = steps.map((entry) => ({
       url: `${BASE_URL}${funnelStepPath(entry.funnel.slug, entry.step)}`,
       lastModified: new Date(entry.updatedAt),
