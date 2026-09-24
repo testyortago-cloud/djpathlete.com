@@ -146,7 +146,7 @@ export async function createFunnel(
   // satisfies, and for why `.env.local` hits it every time. When the columns
   // are absent everything below degrades to the exact insert this function
   // performed before 00210 rather than 500ing.
-  const intake = await hasIntakeColumns(supabase)
+  const intake = await hasIntakeColumns(businessId, supabase)
 
   const { data, error } = await supabase
     .from("funnels")
@@ -274,7 +274,7 @@ export async function updateFunnel(businessId: string, id: string, input: Update
   // kind, goal — predates 00210 and always writes; the intake half is dropped
   // when the columns are not there yet. A rename, and more importantly a
   // PUBLISH, must not fail because a migration is fifteen seconds behind.
-  const intake = await hasIntakeColumns(supabase)
+  const intake = await hasIntakeColumns(businessId, supabase)
 
   // `undefined` means "not supplied" and must not become a write; an explicit
   // `null` means "clear it" and must. Spreading each key only when it is

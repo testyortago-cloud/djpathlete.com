@@ -98,23 +98,15 @@ vi.mock("@/lib/supabase", () => ({
         },
         maybeSingle: () => settle("maybeSingle"),
         single: () => settle("single"),
-        then: (
-          onFulfilled?: ((value: Reply) => unknown) | null,
-          onRejected?: ((reason: unknown) => unknown) | null,
-        ) => settle("await").then(onFulfilled, onRejected),
+        then: (onFulfilled?: ((value: Reply) => unknown) | null, onRejected?: ((reason: unknown) => unknown) | null) =>
+          settle("await").then(onFulfilled, onRejected),
       }
       return api
     },
   }),
 }))
 
-import {
-  getDraft,
-  appendTurn,
-  listTurns,
-  revertToRevision,
-  TURN_HISTORY_LIMIT,
-} from "@/lib/db/funnel-builder"
+import { getDraft, appendTurn, listTurns, revertToRevision, TURN_HISTORY_LIMIT } from "@/lib/db/funnel-builder"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 const calls = h.calls as QueryRecord[]
@@ -129,6 +121,13 @@ function find(table: string, op: QueryRecord["op"]): QueryRecord | undefined {
 
 const STEP = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 const PROGRAM = "11111111-1111-4111-8111-111111111111"
+// G31 (migration 00278): every function here now takes a tenant first. The
+// VALUE is not under test here — funnel-builder-tenancy.test.ts owns that —
+// this file only needs one fixed id to keep exercising the optimistic-lock
+// and transcript behaviour the fake was built to pin. Every `.filters` array
+// asserted below is updated to lead with `["business_id", BUSINESS_ID]`,
+// matching the `.eq("business_id", ...)` this file's DAL now issues first.
+const BUSINESS_ID = "bbbbbbbb-0000-0000-0000-00000000000b"
 
 function doc(headline = "Train like an athlete"): SectionDoc {
   return {
@@ -159,14 +158,17 @@ describe("getDraft", () => {
     const stored = doc()
     onQuery(() => ({ data: { project_data: stored, doc_revision: 7 }, error: null }))
 
-    const draft = await getDraft(STEP)
+    const draft = await getDraft(BUSINESS_ID, STEP)
 
     // Revision asserted as 7, not merely "a number": a DAL that returned a
     // hardcoded 0 would satisfy every optimistic-lock caller by handing them a
     // number the row never had, and the CAS would then fail forever.
     expect(draft).toEqual({ doc: stored, docInvalid: false, revision: 7 })
     const q = find("funnel_steps", "select")
-    expect(q?.filters).toEqual([["id", STEP]])
+    expect(q?.filters).toEqual([
+      ["business_id", BUSINESS_ID],
+      ["id", STEP],
+    ])
     // MUTANT: `.select("project_data")` — drop `doc_revision` from the column
     // list. The assertion above cannot see it, because the fake replies with
     // both fields whatever was asked for; against real PostgREST `doc_revision`
@@ -189,7 +191,7 @@ describe("getDraft", () => {
     const grapesJs = { pages: [{ frames: [] }], styles: [], assets: [] }
     onQuery(() => ({ data: { project_data: grapesJs, doc_revision: 3 }, error: null }))
 
-    const draft = await getDraft(STEP)
+    const draft = await getDraft(BUSINESS_ID, STEP)
 
     expect(draft).toEqual({ doc: null, docInvalid: true, revision: 3 })
   })
@@ -199,13 +201,13 @@ describe("getDraft", () => {
     // null" the test above would pass for the wrong reason.
     onQuery(() => ({ data: { project_data: null, doc_revision: 0 }, error: null }))
 
-    expect(await getDraft(STEP)).toEqual({ doc: null, docInvalid: false, revision: 0 })
+    expect(await getDraft(BUSINESS_ID, STEP)).toEqual({ doc: null, docInvalid: false, revision: 0 })
   })
 
   it("returns null when the STEP itself does not exist", async () => {
     onQuery(() => ({ data: null, error: null }))
 
-    expect(await getDraft(STEP)).toBeNull()
+    expect(await getDraft(BUSINESS_ID, STEP)).toBeNull()
   })
 
   it("throws on a PostgREST error rather than reporting an empty draft", async () => {
@@ -213,7 +215,7 @@ describe("getDraft", () => {
     // error here is the same data-loss path as the docInvalid case.
     onQuery(() => ({ data: null, error: { message: "boom" } }))
 
-    await expect(getDraft(STEP)).rejects.toThrow(/getDraft/)
+    await expect(getDraft(BUSINESS_ID, STEP)).rejects.toThrow(/getDraft/)
   })
 })
 
@@ -237,10 +239,11 @@ describe("appendTurn — the optimistic lock", () => {
     // each other. Nothing else in this file or the suite notices.
     acceptSwapThenInsert()
 
-    await appendTurn({ stepId: STEP, expectedRevision: 4, role: "assistant", doc: doc() })
+    await appendTurn(BUSINESS_ID, { stepId: STEP, expectedRevision: 4, role: "assistant", doc: doc() })
 
     const swap = find("funnel_steps", "update")
     expect(swap?.filters).toEqual([
+      ["business_id", BUSINESS_ID],
       ["id", STEP],
       ["doc_revision", 4],
     ])
@@ -270,7 +273,7 @@ describe("appendTurn — the optimistic lock", () => {
       return { data: { id: "turn-1" }, error: null }
     })
 
-    const result = await appendTurn({ stepId: STEP, expectedRevision: 4, role: "assistant", doc: doc() })
+    const result = await appendTurn(BUSINESS_ID, { stepId: STEP, expectedRevision: 4, role: "assistant", doc: doc() })
 
     expect(result).toEqual({ ok: false, reason: "stale_revision", currentRevision: 9 })
     expect(find("funnel_step_turns", "insert")).toBeUndefined()
@@ -287,7 +290,7 @@ describe("appendTurn — the optimistic lock", () => {
       return { data: null, error: null }
     })
 
-    expect(await appendTurn({ stepId: STEP, expectedRevision: 0, role: "user" })).toEqual({
+    expect(await appendTurn(BUSINESS_ID, { stepId: STEP, expectedRevision: 0, role: "user" })).toEqual({
       ok: false,
       reason: "not_found",
     })
@@ -302,7 +305,7 @@ describe("appendTurn — the optimistic lock", () => {
     const broken = { v: 1, engine: "sections", theme: {}, sections: [] } as unknown as SectionDoc
 
     await expect(
-      appendTurn({ stepId: STEP, expectedRevision: 4, role: "assistant", doc: broken }),
+      appendTurn(BUSINESS_ID, { stepId: STEP, expectedRevision: 4, role: "assistant", doc: broken }),
     ).rejects.toThrow()
 
     expect(calls).toHaveLength(0)
@@ -320,7 +323,7 @@ describe("appendTurn — what it writes", () => {
   it("writes the document into project_data and stamps the turn at expectedRevision + 1", async () => {
     const built = doc("Come back stronger")
 
-    const result = await appendTurn({
+    const result = await appendTurn(BUSINESS_ID, {
       stepId: STEP,
       expectedRevision: 4,
       role: "assistant",
@@ -365,7 +368,7 @@ describe("appendTurn — what it writes", () => {
     // MUTANT: always setting `project_data`, which on a user turn or a failed
     // turn writes null over the owner's page. A user turn must move the
     // revision and nothing else.
-    await appendTurn({
+    await appendTurn(BUSINESS_ID, {
       stepId: STEP,
       expectedRevision: 4,
       role: "user",
@@ -381,7 +384,7 @@ describe("appendTurn — what it writes", () => {
   })
 
   it("defaults source to 'ai' and blocked to false without swallowing an explicit value", async () => {
-    await appendTurn({
+    await appendTurn(BUSINESS_ID, {
       stepId: STEP,
       expectedRevision: 4,
       role: "assistant",
@@ -418,12 +421,15 @@ describe("listTurns", () => {
       error: null,
     }))
 
-    const turns = await listTurns(STEP)
+    const turns = await listTurns(BUSINESS_ID, STEP)
 
     expect(turns.map((t) => t.revision)).toEqual([1, 2, 3])
     const q = find("funnel_step_turns", "select")
     expect(q?.order).toEqual({ column: "revision", ascending: false })
-    expect(q?.filters).toEqual([["step_id", STEP]])
+    expect(q?.filters).toEqual([
+      ["business_id", BUSINESS_ID],
+      ["step_id", STEP],
+    ])
     // MUTANT: a narrowed column list. `listTurns` returns whole `FunnelStepTurn`
     // rows straight into the chat and into `revertToRevision`, so anything less
     // than `*` silently drops `doc` and makes every revert a no-doc refusal.
@@ -438,7 +444,7 @@ describe("listTurns", () => {
     // past the cap it exists to stay under.
     onQuery(() => ({ data: [], error: null }))
 
-    await listTurns(STEP)
+    await listTurns(BUSINESS_ID, STEP)
 
     expect(find("funnel_step_turns", "select")?.limit).toBe(200)
     expect(TURN_HISTORY_LIMIT).toBe(200)
@@ -463,7 +469,7 @@ describe("revertToRevision", () => {
       return { data: { id: "turn-new", revision: 7 }, error: null }
     })
 
-    const result = await revertToRevision({ stepId: STEP, toRevision: 2, createdBy: "user-1" })
+    const result = await revertToRevision(BUSINESS_ID, { stepId: STEP, toRevision: 2, createdBy: "user-1" })
 
     expect(result).toMatchObject({ ok: true, revision: 7 })
     // APPEND-ONLY. MUTANT: implementing undo as a delete of the turns above
@@ -480,6 +486,7 @@ describe("revertToRevision", () => {
     expect(swap?.payload?.project_data).toEqual(old)
     // ...and the CAS still guards it.
     expect(swap?.filters).toEqual([
+      ["business_id", BUSINESS_ID],
       ["id", STEP],
       ["doc_revision", 6],
     ])
@@ -503,7 +510,7 @@ describe("revertToRevision", () => {
       return { data: null, error: null }
     })
 
-    expect(await revertToRevision({ stepId: STEP, toRevision: 2 })).toEqual({
+    expect(await revertToRevision(BUSINESS_ID, { stepId: STEP, toRevision: 2 })).toEqual({
       ok: false,
       reason: "revision_has_no_doc",
     })
@@ -513,7 +520,7 @@ describe("revertToRevision", () => {
   it("reports a revision that does not exist without writing anything", async () => {
     onQuery(() => ({ data: null, error: null }))
 
-    expect(await revertToRevision({ stepId: STEP, toRevision: 99 })).toEqual({
+    expect(await revertToRevision(BUSINESS_ID, { stepId: STEP, toRevision: 99 })).toEqual({
       ok: false,
       reason: "revision_not_found",
     })
@@ -529,7 +536,7 @@ describe("revertToRevision", () => {
       return { data: { doc_revision: 12 }, error: null }
     })
 
-    expect(await revertToRevision({ stepId: STEP, toRevision: 2 })).toEqual({
+    expect(await revertToRevision(BUSINESS_ID, { stepId: STEP, toRevision: 2 })).toEqual({
       ok: false,
       reason: "stale_revision",
       currentRevision: 12,

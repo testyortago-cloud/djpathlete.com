@@ -9,16 +9,19 @@
 // never seen 00210, so without this every local funnel create would 500 too.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import {
-  hasIntakeColumns,
-  __resetIntakeColumnCache,
-  INTAKE_PROBE_COLUMN,
-} from "@/lib/db/funnel-schema-support"
+import { hasIntakeColumns, __resetIntakeColumnCache, INTAKE_PROBE_COLUMN } from "@/lib/db/funnel-schema-support"
 
 const limit = vi.fn()
 const select = vi.fn(() => ({ limit }))
 const from = vi.fn(() => ({ select }))
 const client = { from } as never
+
+// G31 (migration 00278): hasIntakeColumns now takes a tenant first, purely for
+// signature consistency and its warn-log context — the probe itself answers a
+// question about the SCHEMA (does this database have migration 00210?), which
+// cannot differ per tenant, so it is not filtered and one fixed id is enough
+// to exercise every case below.
+const BUSINESS_ID = "aaaaaaaa-0000-0000-0000-00000000000a"
 
 /** PostgREST's shape for "you asked for a column that does not exist". */
 const UNDEFINED_COLUMN = {
@@ -34,7 +37,7 @@ beforeEach(() => {
 describe("hasIntakeColumns", () => {
   it("is true when the probe column reads cleanly", async () => {
     limit.mockResolvedValue({ data: [], error: null })
-    expect(await hasIntakeColumns(client)).toBe(true)
+    expect(await hasIntakeColumns(BUSINESS_ID, client)).toBe(true)
   })
 
   it("is false when the column does not exist", async () => {
@@ -42,12 +45,12 @@ describe("hasIntakeColumns", () => {
     // then be reported as present and every insert would 500 — the exact
     // failure this module exists to prevent.
     limit.mockResolvedValue({ data: null, error: UNDEFINED_COLUMN })
-    expect(await hasIntakeColumns(client)).toBe(false)
+    expect(await hasIntakeColumns(BUSINESS_ID, client)).toBe(false)
   })
 
   it("probes the funnels table for a column 00210 adds", async () => {
     limit.mockResolvedValue({ data: [], error: null })
-    await hasIntakeColumns(client)
+    await hasIntakeColumns(BUSINESS_ID, client)
     expect(from).toHaveBeenCalledWith("funnels")
     expect(select).toHaveBeenCalledWith(INTAKE_PROBE_COLUMN)
   })
@@ -56,9 +59,9 @@ describe("hasIntakeColumns", () => {
     // Columns cannot disappear, so one successful probe settles it forever.
     // Probing per create would put an extra round trip on every funnel.
     limit.mockResolvedValue({ data: [], error: null })
-    await hasIntakeColumns(client)
-    await hasIntakeColumns(client)
-    await hasIntakeColumns(client)
+    await hasIntakeColumns(BUSINESS_ID, client)
+    await hasIntakeColumns(BUSINESS_ID, client)
+    await hasIntakeColumns(BUSINESS_ID, client)
     expect(select).toHaveBeenCalledTimes(1)
   })
 
@@ -68,17 +71,17 @@ describe("hasIntakeColumns", () => {
     // serve degraded funnels until its next cold start, which on a warm
     // serverless instance could be hours.
     limit.mockResolvedValue({ data: null, error: UNDEFINED_COLUMN })
-    expect(await hasIntakeColumns(client)).toBe(false)
+    expect(await hasIntakeColumns(BUSINESS_ID, client)).toBe(false)
 
     limit.mockResolvedValue({ data: [], error: null })
-    expect(await hasIntakeColumns(client, { now: Date.now() + 120_000 })).toBe(true)
+    expect(await hasIntakeColumns(BUSINESS_ID, client, { now: Date.now() + 120_000 })).toBe(true)
   })
 
   it("does not re-probe on every call while the answer is false", async () => {
     // The recovery above must not become a probe per create during the window.
     limit.mockResolvedValue({ data: null, error: UNDEFINED_COLUMN })
-    await hasIntakeColumns(client)
-    await hasIntakeColumns(client)
+    await hasIntakeColumns(BUSINESS_ID, client)
+    await hasIntakeColumns(BUSINESS_ID, client)
     expect(select).toHaveBeenCalledTimes(1)
   })
 
@@ -87,11 +90,11 @@ describe("hasIntakeColumns", () => {
     // works. Failing "present" would mean a 500. A transient network error
     // must not take funnel creation down.
     limit.mockResolvedValue({ data: null, error: { code: "08006", message: "connection failure" } })
-    expect(await hasIntakeColumns(client)).toBe(false)
+    expect(await hasIntakeColumns(BUSINESS_ID, client)).toBe(false)
   })
 
   it("does not throw when the probe itself rejects", async () => {
     limit.mockRejectedValue(new Error("boom"))
-    await expect(hasIntakeColumns(client)).resolves.toBe(false)
+    await expect(hasIntakeColumns(BUSINESS_ID, client)).resolves.toBe(false)
   })
 })

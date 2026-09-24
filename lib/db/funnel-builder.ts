@@ -45,6 +45,16 @@
 // `source: 'revert'`. Undo is itself undoable and history stays linear, which
 // matters because the chat transcript is the owner's only view of what
 // happened.
+//
+// TENANCY (G31 / migration 00278): every exported function takes `businessId`
+// as its first argument and filters (or stamps) `business_id` on both tables
+// this file touches. `funnel_step_turns_step_business_fkey` is a COMPOSITE
+// foreign key on `(step_id, business_id)` referencing `funnel_steps (id,
+// business_id)`, so `appendTurn`'s insert must stamp the same `business_id`
+// the compare-and-swap just verified the step belongs to — a mismatched value
+// is not a leak here, it is a foreign-key violation, but stamping the wrong
+// (attacker-controlled) tenant id would still write a turn under a step it
+// does not belong to if that pair happened to exist.
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
@@ -142,11 +152,12 @@ export interface StepDraft {
  * itself does not exist — distinct from a step that exists with no document,
  * which is `{doc: null, docInvalid: false, revision: 0}`.
  */
-export async function getDraft(stepId: string): Promise<StepDraft | null> {
+export async function getDraft(businessId: string, stepId: string): Promise<StepDraft | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("funnel_steps")
     .select("project_data, doc_revision")
+    .eq("business_id", businessId)
     .eq("id", stepId)
     .maybeSingle()
   if (error) throw new Error(`getDraft: ${error.message}`)
@@ -225,11 +236,12 @@ export type AppendTurnResult =
   | { ok: false; reason: "not_found" }
 
 /** Reads just the revision, for reporting what a stale caller should re-sync to. */
-async function readRevision(stepId: string): Promise<number | null> {
+async function readRevision(businessId: string, stepId: string): Promise<number | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("funnel_steps")
     .select("doc_revision")
+    .eq("business_id", businessId)
     .eq("id", stepId)
     .maybeSingle()
   if (error) throw new Error(`readRevision: ${error.message}`)
@@ -261,7 +273,7 @@ async function readRevision(stepId: string): Promise<number | null> {
  * a stale revision: a stale revision is two humans working at once and is
  * reported as a result, a malformed document is a caller bug.
  */
-export async function appendTurn(input: AppendTurnInput): Promise<AppendTurnResult> {
+export async function appendTurn(businessId: string, input: AppendTurnInput): Promise<AppendTurnResult> {
   const hasDoc = input.doc !== undefined && input.doc !== null
   if (hasDoc) sectionDocSchema.parse(input.doc)
 
@@ -279,13 +291,14 @@ export async function appendTurn(input: AppendTurnInput): Promise<AppendTurnResu
   const { data: swapped, error: swapError } = await supabase
     .from("funnel_steps")
     .update(stepUpdate)
+    .eq("business_id", businessId)
     .eq("id", input.stepId)
     .eq("doc_revision", input.expectedRevision)
     .select("doc_revision")
   if (swapError) throw new Error(`appendTurn(revision swap): ${swapError.message}`)
 
   if (!swapped || swapped.length === 0) {
-    const currentRevision = await readRevision(input.stepId)
+    const currentRevision = await readRevision(businessId, input.stepId)
     if (currentRevision === null) return { ok: false, reason: "not_found" }
     return { ok: false, reason: "stale_revision", currentRevision }
   }
@@ -294,6 +307,11 @@ export async function appendTurn(input: AppendTurnInput): Promise<AppendTurnResu
     .from("funnel_step_turns")
     .insert({
       step_id: input.stepId,
+      // STAMPED explicitly, never left to the column default — see the file
+      // header. The CAS above already proved this step belongs to
+      // `businessId`, so this is also the only value the composite FK
+      // (step_id, business_id) -> funnel_steps(id, business_id) will accept.
+      business_id: businessId,
       revision: nextRevision,
       parent_revision: input.expectedRevision,
       role: input.role,
@@ -346,11 +364,12 @@ export const TURN_HISTORY_LIMIT = 200
  * turns the chat would silently show the first day's conversation and none of
  * today's, which reads as data loss rather than a paging bound.
  */
-export async function listTurns(stepId: string): Promise<FunnelStepTurn[]> {
+export async function listTurns(businessId: string, stepId: string): Promise<FunnelStepTurn[]> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("funnel_step_turns")
     .select("*")
+    .eq("business_id", businessId)
     .eq("step_id", stepId)
     .order("revision", { ascending: false })
     .limit(TURN_HISTORY_LIMIT)
@@ -360,6 +379,7 @@ export async function listTurns(stepId: string): Promise<FunnelStepTurn[]> {
 
 /** One turn by its revision number, or null. Used by the revert path. */
 export async function getTurnByRevision(
+  businessId: string,
   stepId: string,
   revision: number,
 ): Promise<FunnelStepTurn | null> {
@@ -367,6 +387,7 @@ export async function getTurnByRevision(
   const { data, error } = await supabase
     .from("funnel_step_turns")
     .select("*")
+    .eq("business_id", businessId)
     .eq("step_id", stepId)
     .eq("revision", revision)
     .maybeSingle()
@@ -418,14 +439,14 @@ export type RevertResult =
  * may have been holding for a while, and re-reading is strictly safer than
  * trusting an old number the UI never had reason to refresh.
  */
-export async function revertToRevision(input: RevertInput): Promise<RevertResult> {
-  const target = await getTurnByRevision(input.stepId, input.toRevision)
+export async function revertToRevision(businessId: string, input: RevertInput): Promise<RevertResult> {
+  const target = await getTurnByRevision(businessId, input.stepId, input.toRevision)
   if (!target) return { ok: false, reason: "revision_not_found" }
   if (target.doc === null || target.doc === undefined) {
     return { ok: false, reason: "revision_has_no_doc" }
   }
 
-  const currentRevision = await readRevision(input.stepId)
+  const currentRevision = await readRevision(businessId, input.stepId)
   if (currentRevision === null) return { ok: false, reason: "not_found" }
 
   const parsed = sectionDocSchema.safeParse(target.doc)
@@ -434,12 +455,10 @@ export async function revertToRevision(input: RevertInput): Promise<RevertResult
     // to write back into the draft — the registry may have tightened since it
     // was saved. Loud, because silently reverting to a document the renderer
     // will reject is worse than refusing.
-    throw new Error(
-      `revertToRevision: turn ${input.toRevision} holds a document that is no longer a valid SectionDoc`,
-    )
+    throw new Error(`revertToRevision: turn ${input.toRevision} holds a document that is no longer a valid SectionDoc`)
   }
 
-  const result = await appendTurn({
+  const result = await appendTurn(businessId, {
     stepId: input.stepId,
     expectedRevision: currentRevision,
     role: "assistant",

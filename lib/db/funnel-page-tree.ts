@@ -14,6 +14,11 @@
 // client re-syncs instead of silently overwriting: a PageTree is a FULL
 // SNAPSHOT, so a lost update is not a merge conflict, it is a page reverting to
 // whatever the other tab had.
+//
+// TENANCY (G31 / migration 00278): both exported functions take `businessId`
+// first and filter `funnel_steps` on it, same as `funnel-builder.ts`'s shared
+// `readRevision` — the two files' compare-and-swaps must keep agreeing about
+// what "current" means, and that now includes which tenant is asking.
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import { pageTreeSchema } from "@/lib/funnels/tree/schema"
@@ -36,11 +41,12 @@ export type SavePageTreeResult =
   | { ok: false; reason: "stale_revision"; currentRevision: number }
   | { ok: false; reason: "not_found" }
 
-async function readRevision(stepId: string): Promise<number | null> {
+async function readRevision(businessId: string, stepId: string): Promise<number | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("funnel_steps")
     .select("doc_revision")
+    .eq("business_id", businessId)
     .eq("id", stepId)
     .maybeSingle()
   if (error) throw new Error(`readRevision: ${error.message}`)
@@ -53,11 +59,12 @@ async function readRevision(stepId: string): Promise<number | null> {
  * `treeInvalid` rather than swapped for an empty page — silently handing the
  * editor a blank canvas would let the owner save over content they still had.
  */
-export async function getPageTree(stepId: string): Promise<PageTreeDraft | null> {
+export async function getPageTree(businessId: string, stepId: string): Promise<PageTreeDraft | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("funnel_steps")
     .select("page_tree, doc_revision")
+    .eq("business_id", businessId)
     .eq("id", stepId)
     .maybeSingle()
   if (error) throw new Error(`getPageTree: ${error.message}`)
@@ -81,6 +88,7 @@ export async function getPageTree(stepId: string): Promise<PageTreeDraft | null>
  * the one a future non-route caller would also pass through.
  */
 export async function savePageTree(
+  businessId: string,
   stepId: string,
   tree: PageTree,
   expectedRevision: number,
@@ -97,13 +105,14 @@ export async function savePageTree(
       doc_revision: nextRevision,
       updated_at: new Date().toISOString(),
     })
+    .eq("business_id", businessId)
     .eq("id", stepId)
     .eq("doc_revision", expectedRevision)
     .select("doc_revision")
   if (error) throw new Error(`savePageTree: ${error.message}`)
 
   if (!swapped || swapped.length === 0) {
-    const currentRevision = await readRevision(stepId)
+    const currentRevision = await readRevision(businessId, stepId)
     if (currentRevision === null) return { ok: false, reason: "not_found" }
     return { ok: false, reason: "stale_revision", currentRevision }
   }
