@@ -50,6 +50,20 @@ describe("00278 funnel tenancy", () => {
       "create unique index lead_magnets_business_id_slug_key\n  on public.lead_magnets (business_id, slug)",
     )
     expect(SQL).toContain("drop index if exists public.funnels_slug_key")
+
+    // lead_magnets_slug_key is a table UNIQUE constraint (00112), not a bare
+    // index like funnels_slug_key — DROP INDEX on it fails against a real
+    // database ("cannot drop index ... because constraint ... requires it").
+    // MUTANT 1: revert to the broken `drop index if exists
+    // public.lead_magnets_slug_key`. The migration then fails on apply,
+    // where it has not run yet. MUTANT 2: delete the removal line outright.
+    // The old table-wide UNIQUE(slug) then survives beside the new
+    // per-tenant index, and lead magnet slugs stay globally unique — the
+    // migration silently fails its own stated purpose. A presence assertion
+    // alone would pass if someone added the fixed line without removing the
+    // broken one, so both are asserted.
+    expect(SQL).toContain("drop constraint if exists lead_magnets_slug_key")
+    expect(SQL).not.toContain("drop index if exists public.lead_magnets_slug_key")
   })
 
   it("keeps the default, because the deploy window depends on it", () => {
