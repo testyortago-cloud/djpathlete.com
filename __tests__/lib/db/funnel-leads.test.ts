@@ -46,6 +46,12 @@ vi.mock("@/lib/supabase", () => ({
 
 import { countLeads, listLeads, searchClause } from "@/lib/db/funnel-leads"
 
+// G31 (migration 00278): both functions now take a tenant first. The value
+// itself is not under test here — funnel-leads-tenancy.test.ts owns that —
+// this file only needs ONE fixed id to keep exercising the filter-shape and
+// row-flattening behaviour below.
+const BIZ = "biz-1"
+
 beforeEach(() => {
   calls.length = 0
   listResult = { data: [], error: null }
@@ -91,15 +97,18 @@ describe("listLeads and countLeads narrow identically", () => {
     // MUTANT: filtering the list and counting the whole table. The footer would
     // read "412 leads" above a list of 3 — and the operator would reasonably
     // conclude the page is broken, or worse, that 409 leads are missing.
-    await listLeads(filters)
-    await countLeads(filters)
+    await listLeads(BIZ, filters)
+    await countLeads(BIZ, filters)
 
     const [list, count] = calls
     const filterOps = (record: (typeof calls)[number]) =>
       record.ops.filter(([method]) => ["eq", "gte", "or"].includes(method))
 
     expect(filterOps(list)).toEqual(filterOps(count))
+    // business_id leads every op — applyFilters (G31) stamps it first and
+    // unconditionally, ahead of anything LeadFilters supplies.
     expect(filterOps(list)).toEqual([
+      ["eq", "business_id", BIZ],
       ["eq", "funnel_id", "f1"],
       ["eq", "status", "new"],
       ["gte", "created_at", "2026-08-01T00:00:00.000Z"],
@@ -107,11 +116,16 @@ describe("listLeads and countLeads narrow identically", () => {
     ])
   })
 
-  it("adds no filter clauses at all when nothing is filtered", () => {
+  it("adds only the tenant filter when nothing else is filtered", () => {
     // MUTANT: `eq("status", undefined)`. PostgREST would match nothing and the
-    // unfiltered inbox would render empty.
-    return listLeads().then(() => {
-      expect(calls[0].ops.filter(([method]) => ["eq", "gte", "or"].includes(method))).toEqual([])
+    // unfiltered inbox would render empty. Pre-G31 this asserted an EMPTY op
+    // list; now business_id is unconditional, so the honest empty case is
+    // "just the tenant predicate, nothing more" — see
+    // funnel-leads-tenancy.test.ts for the case that proves it actually narrows.
+    return listLeads(BIZ).then(() => {
+      expect(calls[0].ops.filter(([method]) => ["eq", "gte", "or"].includes(method))).toEqual([
+        ["eq", "business_id", BIZ],
+      ])
     })
   })
 
@@ -119,12 +133,12 @@ describe("listLeads and countLeads narrow identically", () => {
     // MUTANT: `(await listLeads(filters)).length`. It is capped at ~1000 by
     // PostgREST, so the count would silently plateau exactly when the number
     // starts to matter.
-    await countLeads({})
+    await countLeads(BIZ, {})
     expect(calls[0].select).toBe("id")
   })
 
   it("orders newest first and never asks for more than the page cap", async () => {
-    await listLeads({ limit: 5000 })
+    await listLeads(BIZ, { limit: 5000 })
     const ops = Object.fromEntries(calls[0].ops.map(([method, ...args]) => [method, args]))
     expect(ops.order).toEqual(["created_at", { ascending: false }])
     // 1000 rows starting at 0 -> range(0, 999). A limit above the cap is
@@ -143,7 +157,7 @@ describe("what a row becomes on the way out", () => {
       data: [{ id: "lead-1", funnel_id: "f1", step_id: "s1", payload: {}, funnels: null, funnel_steps: null }],
       error: null,
     }
-    return listLeads().then((leads) => {
+    return listLeads(BIZ).then((leads) => {
       expect(leads[0].kind).toBe("form")
       expect(leads[0].quiz_attempt_id).toBeNull()
     })
@@ -165,7 +179,7 @@ describe("what a row becomes on the way out", () => {
       ],
       error: null,
     }
-    return listLeads().then((leads) => {
+    return listLeads(BIZ).then((leads) => {
       expect(leads[0].kind).toBe("quiz")
       expect(leads[0].quiz_attempt_id).toBe("aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa")
     })

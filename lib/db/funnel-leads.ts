@@ -15,6 +15,17 @@
 // PostgREST silently caps `.select()` at ~1000 rows — the failure mode is not
 // an error, it is a page that quietly stops showing older leads once the
 // business gets busy enough for it to matter.
+//
+// TENANCY (G31 / migration 00278): every reader here takes `businessId` as its
+// first argument and every `funnel_submissions` query is scoped through
+// `applyFilters`, which stamps the predicate once, unconditionally, so no
+// combination of LeadFilters can omit it. THE EMBED STRING BELOW MUST NOT
+// CHANGE SHAPE: 00278 replaced (not added alongside) the FKs from
+// funnel_submissions to funnels/funnel_steps with composite ones carrying
+// business_id, specifically so PostgREST keeps resolving exactly one
+// relationship per table pair. A second FK, or a select widened to "*", would
+// make PostgREST answer PGRST201 ("more than one relationship was found") and
+// the inbox would render every row with a blank page column and no error.
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { FunnelLeadStatus, FunnelSubmission } from "@/types/database"
@@ -84,14 +95,18 @@ interface Filterable {
 }
 
 /**
- * Applies every filter that translates directly to PostgREST.
+ * Applies every filter that translates directly to PostgREST — `business_id`
+ * FIRST and UNCONDITIONALLY, then whatever LeadFilters supplies.
  *
  * ONE PLACE, used by the list read, the count and the export — so a filter that
  * narrows the table cannot narrow the count differently, which is how a page
- * ends up reporting "12 leads" above a list of 3.
+ * ends up reporting "12 leads" above a list of 3. The tenant predicate lives
+ * HERE and only here, applied before any optional filter is even inspected, so
+ * no combination of LeadFilters — including none at all — can produce a query
+ * that omits it.
  */
-function applyFilters<T>(query: T, filters: LeadFilters): T {
-  let q = query as Filterable
+function applyFilters<T>(query: T, businessId: string, filters: LeadFilters): T {
+  let q = (query as Filterable).eq("business_id", businessId)
   if (filters.funnelId) q = q.eq("funnel_id", filters.funnelId)
   if (filters.stepId) q = q.eq("step_id", filters.stepId)
   if (filters.status) q = q.eq("status", filters.status)
@@ -120,14 +135,14 @@ export function searchClause(term: string | undefined): string | null {
   return `name.ilike.%${cleaned}%,email.ilike.%${cleaned}%,phone.ilike.%${cleaned}%`
 }
 
-/** One page of leads, newest first. */
-export async function listLeads(filters: LeadFilters = {}): Promise<FunnelLead[]> {
+/** One page of leads for one tenant, newest first. */
+export async function listLeads(businessId: string, filters: LeadFilters = {}): Promise<FunnelLead[]> {
   const supabase = getClient()
   const limit = Math.min(filters.limit ?? 100, PAGE)
   const offset = filters.offset ?? 0
 
   const base = supabase.from("funnel_submissions").select(SELECT_WITH_PAGE)
-  const filtered = applyFilters(base, filters)
+  const filtered = applyFilters(base, businessId, filters)
   const { data, error } = await (filtered as typeof base)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1)
@@ -155,13 +170,23 @@ export interface QuizLeadOutcome {
  *
  * The score is READ here and never copied onto the submission, so there is one
  * answer to "what did they score" rather than two that can drift apart.
+ *
+ * `quiz_attempts` carries `business_id` too (migration 00228), so this filters
+ * on it the same as every other read in this file — a quiz lead's attempt id
+ * is a real uuid another tenant cannot guess, but "cannot guess" is not the
+ * same guarantee as "cannot be asked for", and this file's whole job is to not
+ * rely on the difference.
  */
-export async function getQuizOutcomesForLeads(attemptIds: string[]): Promise<Record<string, QuizLeadOutcome>> {
+export async function getQuizOutcomesForLeads(
+  businessId: string,
+  attemptIds: string[],
+): Promise<Record<string, QuizLeadOutcome>> {
   if (attemptIds.length === 0) return {}
   const supabase = getClient()
   const { data, error } = await supabase
     .from("quiz_attempts")
     .select("id, score, tier_key, profile_key")
+    .eq("business_id", businessId)
     .in("id", attemptIds)
   if (error) throw new Error(`getQuizOutcomesForLeads: ${error.message}`)
 
@@ -176,11 +201,11 @@ export async function getQuizOutcomesForLeads(attemptIds: string[]): Promise<Rec
   return out
 }
 
-/** How many leads match, for pagination and for the header count. */
-export async function countLeads(filters: LeadFilters = {}): Promise<number> {
+/** How many leads match, for one tenant — for pagination and the header count. */
+export async function countLeads(businessId: string, filters: LeadFilters = {}): Promise<number> {
   const supabase = getClient()
   const base = supabase.from("funnel_submissions").select("id", { count: "exact", head: true })
-  const filtered = applyFilters(base, filters)
+  const filtered = applyFilters(base, businessId, filters)
   const { count, error } = await (filtered as typeof base)
   if (error) throw new Error(`countLeads: ${error.message}`)
   return count ?? 0
@@ -193,19 +218,24 @@ export async function countLeads(filters: LeadFilters = {}): Promise<number> {
  * 1000 rows is worse than one that fails, because it produces a plausible file
  * that is missing leads with no indication that anything is absent.
  */
-export async function listLeadsForExport(filters: LeadFilters = {}): Promise<FunnelLead[]> {
+export async function listLeadsForExport(businessId: string, filters: LeadFilters = {}): Promise<FunnelLead[]> {
   const out: FunnelLead[] = []
   for (let offset = 0; ; offset += PAGE) {
-    const page = await listLeads({ ...filters, limit: PAGE, offset })
+    const page = await listLeads(businessId, { ...filters, limit: PAGE, offset })
     out.push(...page)
     if (page.length < PAGE) break
   }
   return out
 }
 
-export async function getLead(id: string): Promise<FunnelLead | null> {
+export async function getLead(businessId: string, id: string): Promise<FunnelLead | null> {
   const supabase = getClient()
-  const { data, error } = await supabase.from("funnel_submissions").select(SELECT_WITH_PAGE).eq("id", id).maybeSingle()
+  const { data, error } = await supabase
+    .from("funnel_submissions")
+    .select(SELECT_WITH_PAGE)
+    .eq("business_id", businessId)
+    .eq("id", id)
+    .maybeSingle()
   if (error) throw new Error(`getLead: ${error.message}`)
   return data ? flatten(data as JoinedRow) : null
 }
@@ -217,11 +247,12 @@ export async function getLead(id: string): Promise<FunnelLead | null> {
  * its timestamp are one statement and cannot disagree — and so a status set
  * back to what it already was still records that someone looked.
  */
-export async function setLeadStatus(id: string, status: FunnelLeadStatus): Promise<FunnelLead> {
+export async function setLeadStatus(businessId: string, id: string, status: FunnelLeadStatus): Promise<FunnelLead> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("funnel_submissions")
     .update({ status, status_changed_at: new Date().toISOString() })
+    .eq("business_id", businessId)
     .eq("id", id)
     .select(SELECT_WITH_PAGE)
     .single()
@@ -230,12 +261,13 @@ export async function setLeadStatus(id: string, status: FunnelLeadStatus): Promi
 }
 
 /** Coach-side free text. Empty string clears it rather than storing "". */
-export async function setLeadNotes(id: string, notes: string): Promise<FunnelLead> {
+export async function setLeadNotes(businessId: string, id: string, notes: string): Promise<FunnelLead> {
   const supabase = getClient()
   const trimmed = notes.trim()
   const { data, error } = await supabase
     .from("funnel_submissions")
     .update({ notes: trimmed.length > 0 ? trimmed : null })
+    .eq("business_id", businessId)
     .eq("id", id)
     .select(SELECT_WITH_PAGE)
     .single()
@@ -250,11 +282,14 @@ export async function setLeadNotes(id: string, notes: string): Promise<FunnelLea
  * GROUP BY, and pulling every row back to count them in JS is exactly the
  * unpaginated read this file exists to avoid.
  */
-export async function countLeadsByStatus(filters: LeadFilters = {}): Promise<Record<FunnelLeadStatus, number>> {
+export async function countLeadsByStatus(
+  businessId: string,
+  filters: LeadFilters = {},
+): Promise<Record<FunnelLeadStatus, number>> {
   const [newCount, contacted, signedUp] = await Promise.all([
-    countLeads({ ...filters, status: "new" }),
-    countLeads({ ...filters, status: "contacted" }),
-    countLeads({ ...filters, status: "signed_up" }),
+    countLeads(businessId, { ...filters, status: "new" }),
+    countLeads(businessId, { ...filters, status: "contacted" }),
+    countLeads(businessId, { ...filters, status: "signed_up" }),
   ])
   return { new: newCount, contacted, signed_up: signedUp }
 }
