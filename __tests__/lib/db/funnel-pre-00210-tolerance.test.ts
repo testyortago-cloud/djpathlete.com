@@ -12,6 +12,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { __resetIntakeColumnCache, INTAKE_PROBE_COLUMN } from "@/lib/db/funnel-schema-support"
 
+const BUSINESS_ID = "55555555-5555-4555-8555-555555555555"
+
 const funnelInsert = vi.fn()
 const funnelUpdate = vi.fn()
 const stepInsert = vi.fn()
@@ -46,8 +48,7 @@ function mockSupabase({ migrated }: { migrated: boolean }) {
   })
   stepInsert.mockReturnValue({
     select: () => ({
-      then: (resolve: (value: unknown) => unknown) =>
-        resolve({ data: [{ id: "s1", slug: "index" }], error: null }),
+      then: (resolve: (value: unknown) => unknown) => resolve({ data: [{ id: "s1", slug: "index" }], error: null }),
     }),
   })
   from.mockImplementation((table: string) =>
@@ -76,7 +77,7 @@ describe("createFunnel before 00210 lands", () => {
     mockSupabase({ migrated: false })
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({
+    await createFunnel(BUSINESS_ID, {
       slug: "camp",
       name: "Camp",
       kind: "funnel",
@@ -95,7 +96,7 @@ describe("createFunnel before 00210 lands", () => {
     mockSupabase({ migrated: false })
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({ slug: "camp", name: "Camp", kind: "funnel", template: "event", steps: PLAN })
+    await createFunnel(BUSINESS_ID, { slug: "camp", name: "Camp", kind: "funnel", template: "event", steps: PLAN })
 
     expect(funnelInsert.mock.calls[0][0]).toMatchObject({
       slug: "camp",
@@ -110,7 +111,7 @@ describe("createFunnel before 00210 lands", () => {
     mockSupabase({ migrated: false })
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({ slug: "camp", name: "Camp", kind: "funnel", steps: PLAN })
+    await createFunnel(BUSINESS_ID, { slug: "camp", name: "Camp", kind: "funnel", steps: PLAN })
 
     const rows = stepInsert.mock.calls[0][0] as Record<string, unknown>[]
     expect(rows).toHaveLength(2)
@@ -126,7 +127,7 @@ describe("createFunnel before 00210 lands", () => {
     mockSupabase({ migrated: false })
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({ slug: "free-trial", name: "Free Trial", kind: "page", goal: "leads" })
+    await createFunnel(BUSINESS_ID, { slug: "free-trial", name: "Free Trial", kind: "page", goal: "leads" })
 
     const row = funnelInsert.mock.calls[0][0] as Record<string, unknown>
     expect(row).toMatchObject({ kind: "page", goal: "leads" })
@@ -138,7 +139,7 @@ describe("createFunnel before 00210 lands", () => {
     mockSupabase({ migrated: false })
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({ slug: "camp", name: "Camp", kind: "funnel" })
+    await createFunnel(BUSINESS_ID, { slug: "camp", name: "Camp", kind: "funnel" })
 
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("00210"))
   })
@@ -152,7 +153,7 @@ describe("createFunnel once 00210 has landed", () => {
     mockSupabase({ migrated: true })
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({
+    await createFunnel(BUSINESS_ID, {
       slug: "camp",
       name: "Camp",
       kind: "funnel",
@@ -175,7 +176,7 @@ describe("updateFunnel before 00210 lands", () => {
     mockSupabase({ migrated: false })
     const { updateFunnel } = await import("@/lib/db/funnels")
 
-    await updateFunnel("f1", { name: "Renamed", audience: "Tennis players" })
+    await updateFunnel(BUSINESS_ID, "f1", { name: "Renamed", audience: "Tennis players" })
 
     const row = funnelUpdate.mock.calls[0][0] as Record<string, unknown>
     expect(row.name).toBe("Renamed")
@@ -188,7 +189,7 @@ describe("updateFunnel before 00210 lands", () => {
     mockSupabase({ migrated: false })
     const { updateFunnel } = await import("@/lib/db/funnels")
 
-    await updateFunnel("f1", { status: "published" })
+    await updateFunnel(BUSINESS_ID, "f1", { status: "published" })
 
     expect((funnelUpdate.mock.calls[0][0] as Record<string, unknown>).status).toBe("published")
   })
@@ -197,7 +198,7 @@ describe("updateFunnel before 00210 lands", () => {
     mockSupabase({ migrated: true })
     const { updateFunnel } = await import("@/lib/db/funnels")
 
-    await updateFunnel("f1", { audience: "Tennis players", ends_at: "2026-08-15T00:00:00.000Z" })
+    await updateFunnel(BUSINESS_ID, "f1", { audience: "Tennis players", ends_at: "2026-08-15T00:00:00.000Z" })
 
     expect(funnelUpdate.mock.calls[0][0]).toMatchObject({
       audience: "Tennis players",

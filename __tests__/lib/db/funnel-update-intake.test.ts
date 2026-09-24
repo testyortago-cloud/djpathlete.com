@@ -9,6 +9,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { __resetIntakeColumnCache } from "@/lib/db/funnel-schema-support"
 
+const BUSINESS_ID = "55555555-5555-4555-8555-555555555555"
+
 const update = vi.fn()
 const from = vi.fn()
 
@@ -30,7 +32,7 @@ beforeEach(() => {
 
 async function patch(input: Record<string, unknown>) {
   const { updateFunnel } = await import("@/lib/db/funnels")
-  await updateFunnel("f1", input)
+  await updateFunnel(BUSINESS_ID, "f1", input)
   return update.mock.calls[0][0] as Record<string, unknown>
 }
 

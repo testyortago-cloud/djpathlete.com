@@ -5,6 +5,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
+const BUSINESS_ID = "55555555-5555-4555-8555-555555555555"
+
 const eq = vi.fn()
 const order = vi.fn()
 const insert = vi.fn()
@@ -38,7 +40,7 @@ describe("listFunnels({ kind })", () => {
     from.mockReturnValue(queryBuilder({ data: [], error: null }))
     const { listFunnels } = await import("@/lib/db/funnels")
 
-    await listFunnels({ kind: "page" })
+    await listFunnels(BUSINESS_ID, { kind: "page" })
 
     expect(eq).toHaveBeenCalledWith("kind", "page")
   })
@@ -49,7 +51,7 @@ describe("listFunnels({ kind })", () => {
     from.mockReturnValue(queryBuilder({ data: [], error: null }))
     const { listFunnels } = await import("@/lib/db/funnels")
 
-    await listFunnels()
+    await listFunnels(BUSINESS_ID)
 
     expect(eq).not.toHaveBeenCalledWith("kind", expect.anything())
   })
@@ -70,8 +72,7 @@ describe("createFunnel", () => {
     })
     stepInsert.mockReturnValue({
       select: () => ({
-        then: (resolve: (value: unknown) => unknown) =>
-          resolve({ data: [{ id: "s1", slug: "index" }], error: null }),
+        then: (resolve: (value: unknown) => unknown) => resolve({ data: [{ id: "s1", slug: "index" }], error: null }),
       }),
     })
     from.mockImplementation((table: string) =>
@@ -86,16 +87,14 @@ describe("createFunnel", () => {
     mockBothTables()
 
     const { createFunnel } = await import("@/lib/db/funnels")
-    await createFunnel({
+    await createFunnel(BUSINESS_ID, {
       slug: "camp-2026",
       name: "Camp 2026",
       kind: "funnel",
       goal: "event",
     })
 
-    expect(funnelInsert).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "funnel", goal: "event" }),
-    )
+    expect(funnelInsert).toHaveBeenCalledWith(expect.objectContaining({ kind: "funnel", goal: "event" }))
   })
 
   it("returns the entry step id so the caller can open the builder", async () => {
@@ -105,7 +104,7 @@ describe("createFunnel", () => {
     mockBothTables()
 
     const { createFunnel } = await import("@/lib/db/funnels")
-    const result = await createFunnel({ slug: "free-trial", name: "Free Trial" })
+    const result = await createFunnel(BUSINESS_ID, { slug: "free-trial", name: "Free Trial" })
 
     expect(result.entryStepId).toBe("s1")
   })
