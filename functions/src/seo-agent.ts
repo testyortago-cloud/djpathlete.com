@@ -8,7 +8,7 @@ import { getSupabase } from "./lib/supabase.js"
 import { readFewShots } from "./lib/few-shots.js"
 import { gatherSeoSignals } from "./seo/signals.js"
 import { reasonAboutWeek } from "./seo/reason.js"
-import { executeAction, type ExecutionResult } from "./seo/execute.js"
+import { executeAction, type AgentContext, type ExecutionResult } from "./seo/execute.js"
 import { runSelfCritique, shouldReRunAfterCritique } from "./lib/self-critique.js"
 
 const WARM_UP_MIN_DISTINCT_DATES = 28
@@ -25,8 +25,20 @@ export async function handleSeoAgent(jobId: string): Promise<void> {
 
   await jobRef.update({ status: "processing", updatedAt: FieldValue.serverTimestamp() })
 
-  const input = job.input as { userId: string }
+  const input = job.input as { userId: string; businessId?: unknown }
   const userId = input.userId
+  // The business whose owners a flag_for_human alert goes to, stamped by the
+  // enqueue route since G35 (app/api/admin/internal/seo-agent). A job enqueued
+  // by a route older than that carries none; it is threaded as null — never
+  // defaulted to the platform — and the flag executor skips its alert. Said
+  // here once, so a run whose flags all come back "not sent" explains itself.
+  const businessId =
+    typeof input.businessId === "string" && input.businessId !== "" ? input.businessId : null
+  if (!businessId) {
+    console.warn(
+      `[seo-agent] Job ${jobId} has no input.businessId (enqueued before G35?); a flag_for_human action will not be sent`,
+    )
+  }
 
   const startTime = Date.now()
 
@@ -141,14 +153,20 @@ export async function handleSeoAgent(jobId: string): Promise<void> {
     const memoId = (memoInsert as { id: string }).id
 
     // Step 3b: execute each action in order, writing back the result to the memo.
-    const ctx = { memoId, userId }
+    const ctx: AgentContext = { memoId, userId, businessId }
     const results: ExecutionResult[] = []
     for (const action of finalDecision.actions) {
       const r = await executeAction(action, ctx, signals)
       results.push(r)
-      console.log(
-        `[seo-agent] action rank=${action.rank} tool=${action.tool} executed=${r.executed} target=${r.execution_target_id ?? "null"}`,
-      )
+      // r.error and r.rejection_reason used to be dropped here: only executed
+      // and target were printed, the memo keeps only those two, and the job
+      // still ends "completed". That is how every flag_for_human dying on
+      // PGRST205 went unseen. A failed action logs as an error, a guardrail
+      // rejection (a decision, not a fault) as a warning.
+      const line = `[seo-agent] action rank=${action.rank} tool=${action.tool} executed=${r.executed} target=${r.execution_target_id ?? "null"}`
+      if (r.error) console.error(`${line} error=${r.error}`)
+      else if (r.rejection_reason) console.warn(`${line} rejected=${r.rejection_reason}`)
+      else console.log(line)
     }
 
     // Step 4: update the memo's actions[] with executed flags + target ids.

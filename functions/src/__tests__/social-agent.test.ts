@@ -1,8 +1,20 @@
-import { describe, it, expect, vi } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+
+// G35. handleSocialAgentRun is driven end to end at the bottom of this file,
+// so the job document and the Supabase client are faked for the whole file.
+// The helper suites above never reach either: each passes its own `supabase`.
+const h = vi.hoisted(() => ({ jobGet: vi.fn(), jobUpdate: vi.fn(), from: vi.fn() }))
+vi.mock("firebase-admin/firestore", () => ({
+  getFirestore: () => ({ collection: () => ({ doc: () => ({ get: h.jobGet, update: h.jobUpdate }) }) }),
+  FieldValue: { serverTimestamp: () => "server-ts" },
+}))
+vi.mock("../lib/supabase.js", () => ({ getSupabase: () => ({ from: h.from }) }))
+
 import {
   buildCopywriterUserMessage,
   buildReviewerUserMessage,
   buildTrendingBlock,
+  handleSocialAgentRun,
   latestTavilyTopics,
   listConnectedSocialPlatforms,
   pickTopic,
@@ -346,5 +358,169 @@ describe("listConnectedSocialPlatforms", () => {
     // and AgentPlatform drift apart, this assignment will fail tsc.
     const all: AgentPlatform[] = [...SUPPORTED_PLATFORMS]
     expect(all).toHaveLength(6)
+  })
+})
+
+describe("handleSocialAgentRun — no eligible topic (G35)", () => {
+  // Every recent post matches the approved brief's dont_do, so the strategist
+  // picks nothing and the handler takes the no_eligible_topic branch: a memo,
+  // an alert to the owners of the job's business, and a completed-but-skipped
+  // job. The REAL scorer decides that ("deload" is in the post's title).
+  const BRIEF = {
+    id: "brief-1",
+    week_of: "2026-09-21",
+    themes: [],
+    audience_focus: "",
+    priority_channel: "social",
+    keywords_to_chase: [],
+    hooks_to_test: [],
+    ctas: [],
+    dont_do: ["deload"],
+  }
+  const MEMBERS = [
+    { business_id: "biz-1", user_id: "owner-1", role: "owner" },
+    { business_id: "biz-2", user_id: "owner-2", role: "owner" },
+  ]
+  let inserted: Array<Record<string, unknown>> = []
+  const spies: Array<{ mockRestore: () => void }> = []
+  function silence(method: "warn" | "error") {
+    const spy = vi.spyOn(console, method).mockImplementation(() => {})
+    spies.push(spy)
+    return spy
+  }
+  const messages = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.map((c) => String(c[0]))
+
+  function route(opts: { membersError?: { code: string; message: string } } = {}) {
+    inserted = []
+    h.from.mockImplementation((table: string) => {
+      if (table === "strategy_briefs") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: BRIEF, error: null }),
+        }
+      }
+      if (table === "blog_posts") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue({
+            data: [{ id: "b1", title: "Deload weeks, explained", slug: "deload-weeks", excerpt: null, content: null }],
+            error: null,
+          }),
+        }
+      }
+      if (table === "social_agent_memos") {
+        return { insert: vi.fn().mockResolvedValue({ error: null }) }
+      }
+      if (table === "business_members") {
+        // Filtered by what the caller asked for, so the test can tell WHICH
+        // business reached the read.
+        const filters: Array<[string, unknown]> = []
+        const builder = {
+          select: (_columns: string) => builder,
+          eq: (column: string, value: unknown) => {
+            filters.push([column, value])
+            return builder
+          },
+          order: (_column: string, _o?: unknown) => builder,
+          then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+            Promise.resolve(
+              opts.membersError
+                ? { data: null, error: opts.membersError }
+                : {
+                    data: MEMBERS.filter((m) =>
+                      filters.every(([c, v]) => (m as Record<string, unknown>)[c] === v),
+                    ).map((m) => ({ user_id: m.user_id })),
+                    error: null,
+                  },
+            ).then(resolve, reject),
+        }
+        return builder
+      }
+      if (table === "notifications") {
+        return {
+          insert: (rows: Array<Record<string, unknown>>) => {
+            inserted.push(...rows)
+            return {
+              select: (_columns: string) =>
+                Promise.resolve({
+                  data: rows.map((r) => ({ id: `notif-${String(r.user_id)}`, user_id: r.user_id })),
+                  error: null,
+                }),
+            }
+          },
+        }
+      }
+      throw new Error(`unexpected table ${table}`)
+    })
+  }
+  const job = (input: Record<string, unknown>) =>
+    h.jobGet.mockResolvedValue({ data: () => ({ status: "pending", type: "social_agent_run", input }) })
+
+  beforeEach(() => {
+    h.from.mockReset()
+    h.jobGet.mockReset()
+    h.jobUpdate.mockReset()
+    h.jobUpdate.mockResolvedValue(undefined)
+  })
+  afterEach(() => {
+    for (const s of spies.splice(0)) s.mockRestore()
+  })
+
+  // MUTANTS, all caught by the exact row: the old `profiles` read (PGRST205,
+  // so no bell at all); the dead link /admin/social-agent/memos; the platform
+  // business in place of the job's (it would bell owner-1).
+  it("bells the owners of the job's business, linking to the brief on /admin/strategy", async () => {
+    route()
+    job({ platform: "linkedin", businessId: "biz-2" })
+    await handleSocialAgentRun("job-1")
+    expect(inserted).toEqual([
+      {
+        user_id: "owner-2",
+        type: "warning",
+        title: "Social agent could not find an eligible topic",
+        message: "All recent published posts matched the brief's dont_do filter. Brief id: brief-1",
+        link: "/admin/strategy",
+        is_read: false,
+      },
+    ])
+    expect(h.jobUpdate.mock.calls.at(-1)?.[0]).toMatchObject({
+      status: "completed",
+      result: { skipped: "no_eligible_topic", brief_id: "brief-1" },
+    })
+  })
+
+  // MUTANT: default a missing businessId to the platform business. A job
+  // enqueued before G35 sends no alert and says so; it still completes.
+  it("sends no alert for a job with no businessId, warns, and still completes", async () => {
+    const warn = silence("warn")
+    route()
+    job({ platform: "linkedin" })
+    await handleSocialAgentRun("job-old-route")
+    expect(h.from).not.toHaveBeenCalledWith("business_members")
+    expect(inserted).toEqual([])
+    // Presence control: the branch DID run — its memo was written.
+    expect(h.from).toHaveBeenCalledWith("social_agent_memos")
+    expect(messages(warn).some((m) => m.includes("no input.businessId"))).toBe(true)
+    expect(h.jobUpdate.mock.calls.at(-1)?.[0]).toMatchObject({ status: "completed" })
+  })
+
+  // MUTANT: the helper's result ignored, the way the profiles read's error was
+  // (`const { data: admins } = …`). A failed alert is logged, not swallowed,
+  // and the job still completes: the agent's decision not to draft stands.
+  it("logs a failed alert instead of dropping it", async () => {
+    const error = silence("error")
+    route({ membersError: { code: "42501", message: "permission denied" } })
+    job({ platform: "linkedin", businessId: "biz-2" })
+    await handleSocialAgentRun("job-2")
+    expect(messages(error)).toContainEqual(
+      expect.stringContaining("business_members read failed (42501 permission denied)"),
+    )
+    expect(inserted).toEqual([])
+    expect(h.jobUpdate.mock.calls.at(-1)?.[0]).toMatchObject({ status: "completed" })
   })
 })

@@ -108,23 +108,6 @@ const KNOWN_REFUSED: { file: string; table: string; select: string; code: string
       "assessments. Needs a rewrite against the real schema, not a rename.",
   },
   {
-    file: "functions/src/seo/execute.ts",
-    table: "profiles",
-    select: "id",
-    code: "PGRST205",
-    why:
-      "There is no profiles table; users carries role. The SEO agent's flag-for-human action returns this " +
-      "error every time, so no flag has reached the admin. Pointing it at users makes an untenanted " +
-      "'first admin' reader live, which is a tenancy decision (G35), not a typo.",
-  },
-  {
-    file: "functions/src/social-agent.ts",
-    table: "profiles",
-    select: "id",
-    code: "PGRST205",
-    why: "Same missing profiles table: the 'no eligible topic' notification to the admin is never sent. See seo/execute.ts.",
-  },
-  {
     file: "functions/src/social-outcome-tracker.ts",
     table: "social_analytics",
     select: "social_post_id, likes, comments, shares, impressions, engagement_rate, captured_at",

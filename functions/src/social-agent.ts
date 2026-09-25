@@ -19,9 +19,10 @@
 //      Per-platform failures are logged and skipped; the run continues.
 //   4. One aggregate social_agent_memos row records all platforms.
 //
-// Input: { platform?: AgentPlatform; blogPostId?: string }
+// Input: { platform?: AgentPlatform; blogPostId?: string; businessId?: string }
 //   platform — if set, only that platform runs (overrides connection filter).
 //   blogPostId — manual topic override.
+//   businessId — whose owners get the "no eligible topic" alert (G35).
 
 import { FieldValue, getFirestore } from "firebase-admin/firestore"
 import { z } from "zod"
@@ -29,6 +30,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { callAgent, MODEL_SONNET } from "./ai/anthropic.js"
 import { getSupabase } from "./lib/supabase.js"
 import { fewShotsBlock } from "./lib/few-shots.js"
+import { notifyBusinessOwners } from "./lib/notify-business-owners.js"
 import { scoreBlogVsBrief } from "./strategy/brief-blog-scorer.js"
 
 export const SUPPORTED_PLATFORMS = [
@@ -44,6 +46,14 @@ export type AgentPlatform = (typeof SUPPORTED_PLATFORMS)[number]
 export interface SocialAgentInput {
   platform?: AgentPlatform
   blogPostId?: string
+  /**
+   * The business whose owners the "no eligible topic" alert goes to, stamped
+   * by both enqueue routes since G35 (the platform's own, by construction:
+   * nothing this agent reads or writes has a business_id). Optional here only
+   * because a job enqueued before G35 does not carry it; such a job sends no
+   * alert rather than guessing a business.
+   */
+  businessId?: string
 }
 
 export interface BlogTopic {
@@ -592,22 +602,31 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
           dissents_from_brief: false,
           dissent_reason: null,
         })
-        // Notify the coach (admin) — mirrors executeFlagForHuman shape.
-        const { data: admins } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("role", "admin")
-          .limit(1)
-        const adminId = (admins as Array<{ id: string }> | null)?.[0]?.id
-        if (adminId) {
-          await supabase.from("notifications").insert({
-            user_id: adminId,
+        // Tell the owners of the job's business (G35). This used to read
+        // `profiles` for "the first admin" — a table that does not exist —
+        // and destructured only `data`, so the PGRST205 vanished and this
+        // alert has never been sent. The helper's result is checked now: a
+        // failed alert is logged, and the job still completes, because the
+        // agent's decision not to draft stands either way.
+        //
+        // The link is the brief, on /admin/strategy: its dont_do is what
+        // filtered every topic. The old /admin/social-agent/memos is not a page.
+        const businessId =
+          typeof input.businessId === "string" && input.businessId !== "" ? input.businessId : null
+        if (!businessId) {
+          console.warn(
+            `[social-agent] Job ${jobId} has no input.businessId (enqueued before G35?); the "no eligible topic" alert was not sent`,
+          )
+        } else {
+          const alert = await notifyBusinessOwners(supabase, businessId, {
             type: "warning",
             title: "Social agent could not find an eligible topic",
             message: `All recent published posts matched the brief's dont_do filter. Brief id: ${brief.id}`,
-            link: "/admin/social-agent/memos",
-            is_read: false,
+            link: "/admin/strategy",
           })
+          if (!alert.ok) {
+            console.error(`[social-agent] Job ${jobId} "no eligible topic" alert failed: ${alert.error}`)
+          }
         }
         await jobRef.update({
           status: "completed",
