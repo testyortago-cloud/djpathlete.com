@@ -285,10 +285,22 @@ export function BusinessSettingsForm({
             <Label htmlFor="sms_sender_phone">Sender phone number</Label>
             <Input
               id="sms_sender_phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="off"
+              placeholder="+1 202 555 0123"
               aria-invalid={!!errors.sms_sender_phone}
+              aria-describedby="sms-sender-phone-hint"
               {...register("sms_sender_phone")}
             />
-            {errors.sms_sender_phone && <p className="text-xs text-error">{errors.sms_sender_phone.message}</p>}
+            {errors.sms_sender_phone ? (
+              <p className="text-xs text-error">{errors.sms_sender_phone.message}</p>
+            ) : (
+              <p id="sms-sender-phone-hint" className="text-xs text-muted-foreground">
+                The number your texts are sent from. Start with + and the country code, exactly as Twilio shows
+                it. It is saved without spaces, for example +12025550123.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

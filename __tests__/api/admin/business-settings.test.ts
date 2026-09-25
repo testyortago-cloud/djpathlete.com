@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // vi.hoisted so the class exists by the time the factory below (which names
 // it) is invoked -- mock factories are hoisted above this file's own
 // top-level statements.
-const { NoAccessibleBusinessError, BusinessSettingsMissingError } = vi.hoisted(() => {
+const { NoAccessibleBusinessError, BusinessSettingsMissingError, SmsSenderPhoneTakenError } = vi.hoisted(() => {
   class NoAccessibleBusinessError extends Error {
     constructor() {
       super("This account has no business it can access")
@@ -17,7 +17,13 @@ const { NoAccessibleBusinessError, BusinessSettingsMissingError } = vi.hoisted((
       this.name = "BusinessSettingsMissingError"
     }
   }
-  return { NoAccessibleBusinessError, BusinessSettingsMissingError }
+  class SmsSenderPhoneTakenError extends Error {
+    constructor() {
+      super("sms_sender_phone is already another business's sender number")
+      this.name = "SmsSenderPhoneTakenError"
+    }
+  }
+  return { NoAccessibleBusinessError, BusinessSettingsMissingError, SmsSenderPhoneTakenError }
 })
 
 const settingsCalls: Array<{ patch: unknown; businessId: string }> = []
@@ -27,13 +33,16 @@ let getSettingsImpl: (id: string) => Promise<unknown> = (id: string) => {
   getSettingsCalls.push(id)
   return Promise.resolve({ business_id: id, display_name: "B" })
 }
+let updateSettingsImpl: (businessId: string) => Promise<unknown> = (businessId: string) =>
+  Promise.resolve({ business_id: businessId })
 
 vi.mock("@/lib/db/businesses", () => ({
   getBusiness: (id: string) => Promise.resolve({ id, name: "B", slug: "b", status: "active" }),
   updateBusiness: (id: string, patch: unknown) => { businessCalls.push({ id, patch }); return Promise.resolve({ id, ...(patch as object) }) },
   getBusinessSettings: (id: string) => getSettingsImpl(id),
-  updateBusinessSettings: (patch: unknown, businessId: string) => { settingsCalls.push({ patch, businessId }); return Promise.resolve({ business_id: businessId }) },
+  updateBusinessSettings: (patch: unknown, businessId: string) => { settingsCalls.push({ patch, businessId }); return updateSettingsImpl(businessId) },
   BusinessSettingsMissingError,
+  SmsSenderPhoneTakenError,
 }))
 
 let tenant = { businessId: "bbb", choices: [{ id: "bbb", name: "B", slug: "b" }], isOperator: false }
@@ -85,6 +94,7 @@ beforeEach(() => {
     getSettingsCalls.push(id)
     return Promise.resolve({ business_id: id, display_name: "B" })
   }
+  updateSettingsImpl = (businessId: string) => Promise.resolve({ business_id: businessId })
   listDomainsCalls = 0
   listDomainsImpl = () => Promise.resolve({ ok: true, domains: ["send.darrenjpaul.com"] })
 })
@@ -284,5 +294,50 @@ describe("PATCH /api/admin/businesses/[id] -- sender_email domain verification (
     })
     expect(res.status).toBe(200)
     expect(listDomainsCalls).toBe(0)
+  })
+})
+
+// G33. The form validates first, but the route is the gate: anything that can
+// PATCH this URL reaches updateBusinessSettings through this parse alone.
+describe("PATCH /api/admin/businesses/[id] -- sms_sender_phone (G33)", () => {
+  function patchPhone(value: string) {
+    return PATCH(req({ settings: { sms_sender_phone: value } }), { params: Promise.resolve({ id: "bbb" }) })
+  }
+
+  it("REFUSES a national-format number and writes nothing", async () => {
+    const res = await patchPhone("(202) 555-0123")
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(JSON.stringify(body.issues)).toMatch(/country code/i)
+    expect(settingsCalls).toHaveLength(0)
+  })
+
+  it("writes the E.164 form of what was typed -- MUTANT: a schema that validates without transforming stores '+1 (202) 555-0123', which never equals the To Twilio posts", async () => {
+    const res = await patchPhone("+1 (202) 555-0123")
+    expect(res.status).toBe(200)
+    expect(settingsCalls).toHaveLength(1)
+    expect((settingsCalls[0].patch as { sms_sender_phone: string }).sms_sender_phone).toBe("+12025550123")
+  })
+
+  it("lets the number be cleared", async () => {
+    const res = await patchPhone("")
+    expect(res.status).toBe(200)
+    expect((settingsCalls[0].patch as { sms_sender_phone: string }).sms_sender_phone).toBe("")
+  })
+
+  it("answers 409 with a reason, not a 500, when another business already sends from that number -- MUTANT: letting SmsSenderPhoneTakenError escape answers 500, and the form says 'try again', which never helps", async () => {
+    updateSettingsImpl = () => Promise.reject(new SmsSenderPhoneTakenError())
+    const res = await patchPhone("+1 202 555 0123")
+    const body = await res.json()
+    expect(res.status).toBe(409)
+    expect(body.error).toMatch(/another business/i)
+    // Says THAT the number is taken, never WHOSE it is: the other business is
+    // another tenant.
+    expect(body.error).not.toMatch(/bbb|aaa/)
+  })
+
+  it("CONTROL: any other write failure still propagates, rather than being dressed up as a taken number", async () => {
+    updateSettingsImpl = () => Promise.reject(Object.assign(new Error("boom"), { code: "57014" }))
+    await expect(patchPhone("+1 202 555 0123")).rejects.toThrow("boom")
   })
 })
