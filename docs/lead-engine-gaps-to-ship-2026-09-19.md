@@ -610,8 +610,23 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 - **THE LESSON, and this comment had been wrong twice by the time it was fixed:** it first claimed Resend verifies `send.` ONLY, then was "corrected" to say `mail.` was verified *too*. Both were inferences from a DELIVERY LOG — what `business_settings.sender_email` happened to name, what had delivered recently. **A delivery log tells you what someone CHOSE; only `GET /domains` tells you what is ALLOWED.** The note now in `lib/email.ts` records that so the next reader queries the list.
 - `lib/email/sender-domains.ts` is deliberately untouched: it reads the live list at runtime so its behaviour cannot go stale, and its mentions of the old subdomain are the 08-31 incident narrative plus one illustrative example that doubles as a test fixture.
 
-### G31 · The funnel subsystem has no `business_id` · **L**
-- `funnels`, `funnel_steps`, `funnel_step_versions`, `funnel_submissions`, `funnel_step_turns`, `funnel_checkout_grants`, `lead_magnets`: add `business_id NOT NULL DEFAULT` platform (tolerate the old schema for one deploy), tenant predicates on every `lib/db/funnels.ts` and `lib/db/funnel-leads.ts` reader, `/go/<slug>` resolved by Host then slug (slugs unique per business), `loadCatalogues()` unfrozen, `platform.ts` inventory updated and the `SINGLETON` comment in `lib/db/funnels.ts:572` retired. Tests per reader (mutate the predicate VALUE, not the arity).
+### G31 · The funnel subsystem has no `business_id` · **L** · **BUILT + MERGED 2026-09-25**
+- Was: `funnels`, `funnel_steps`, `funnel_step_versions`, `funnel_submissions`, `funnel_step_turns`, `funnel_checkout_grants`, `lead_magnets` with no tenant key, every reader over them unscoped, and `/go/<slug>` resolved by slug alone.
+- **Shipped when:** add `business_id NOT NULL DEFAULT` platform (tolerate the old schema for one deploy), tenant predicates on every `lib/db/funnels.ts` and `lib/db/funnel-leads.ts` reader, `/go/<slug>` resolved by Host then slug (slugs unique per business), `loadCatalogues()` unfrozen, `platform.ts` inventory updated and the `SINGLETON` comment in `lib/db/funnels.ts:572` retired. Tests per reader (mutate the predicate VALUE, not the arity). **All of it done.**
+- **Built on `worktree-g31-funnel-tenancy` off `main@534c21b4`. TWO MERGES, deliberately: `2c3a659d` (migration `00278` alone) then `2b4dd3c1` (the code).** Spec `docs/superpowers/specs/2026-09-24-funnel-tenancy-design.md`, plan `docs/superpowers/plans/2026-09-24-funnel-tenancy.md`. 22 commits, 115 files, +6450/-946.
+- **THE ROW UNDERSTATED ITS OWN SCOPE, measured not inherited.** It names two DAL files; there are **seven** — `funnel-builder.ts`, `lead-magnets.ts`, `funnel-checkout-grants.ts`, `funnel-page-tree.ts` and `funnel-schema-support.ts` join the two — and **47 exported functions, not 29**, of which 45 needed the tenant and 2 are genuinely pure (`searchClause`, a string builder; `__resetIntakeColumnCache`, a test hook). A grep for bare table access across `app`, `lib`, `components` and `functions/src` found nothing outside those seven, so the DAL boundary does hold.
+- **`funnels.slug` was ALREADY unique** — `pg_constraint` does not list plain unique *indexes*, and `funnels_slug_key` is one, on `lower(slug)`. There was no latent duplicate-slug bug; what changed is that index's scope. `lead_magnets_slug_key`, by contrast, is a table CONSTRAINT, so it needed `drop constraint` — `drop index` is refused on a constraint-backed index and would have **failed the migration on production**.
+- **Why two merges.** `apply-migrations.yml` applies on push while Vercel is still building and nothing sequences the two. Shipping the predicates alongside the column would have meant a "column missing? read unscoped" fallback in 47 readers, and a tolerance path that never turns off is a cross-tenant leak nobody sees. Push 1 carried the spec, the plan, the migration and its test — **no application code** — so every deployed reader kept working on the column's DEFAULT. Push 2 followed only after the migration was **confirmed applied to production**: 7 columns, 5 cascading composite FKs, per-tenant slug indexes, 0 nulls across 9 funnels. **The DEFAULT must outlive this branch**; dropping it is a later row and needs the seed/capture scripts fixed first (below).
+- **Composite FKs REPLACE the simple ones, never supplement them.** The leads inbox embeds `funnels` and `funnel_steps` through `funnel_submissions`, which has an FK to both; two relationships per pair makes PostgREST answer `PGRST201` instead of rows. `00252` hit this for events and the fix is followed here, with `ON DELETE CASCADE` carried onto all five — `deleteFunnel` and `deleteStep` depend on that cascade.
+- **TWO DEFECTS NO UNIT TEST COULD HAVE FOUND, both caught by the live two-tenant run:**
+  - **The leads inbox was 500ing for every tenant.** Its embed used a `:column` hint (`funnels:funnel_id`), which cannot resolve against a composite FK — PostgREST returned `PGRST200`. Not a tenancy leak: a full admin-surface outage. Every mock-based test passed, because they all mock PostgREST. Worse, the spec's own instruction to "preserve the embed string byte-identical", and the test written to enforce it, actively **pinned the bug**. Fixed to `"*, funnels(name, slug), funnel_steps(name)"`, which works only because the FKs were replaced rather than supplemented.
+  - **`?preview=1` leaked another tenant's unpublished funnel.** It gated on the GLOBAL session role and then resolved the tenant from the Host, so a `staff` member of tenant B could read tenant A's draft on the platform host. Now requires membership of the resolved tenant and fails closed on a read error.
+- **Two more the whole-branch review found in seams between individually-correct tasks:** `SlugTakenError` was thrown by the DAL while both routes still classified by the substrings "duplicate"/"unique", so a reused slug 500'd where it used to 409; and two admin pages called `resolveAdminTenant()` unguarded, rendering a 500 page instead of `notFound()`.
+- **The funnel-window cron iterates businesses** (`listBusinesses({activeOnly:true})` then per-business), with per-business and per-funnel isolation. Resolving a single tenant would have left a second tenant's expired page published forever while the cron reported success nightly.
+- **A funnel purchase is now filed under the FUNNEL's tenant, not the payer's.** `createFunnelProgramCheckoutSession` stamps `businessId` into the Stripe session metadata and the webhook prefers it, **falling back to `payerBusinessId` when absent** — sessions created before the deploy still complete, so that fallback is not optional. Without this, coach B's sale landed on coach A whenever the buyer was already A's contact, plus an idempotency false negative that silently re-ran account creation, program assignment and the welcome email.
+- **Verified:** `tsc --noEmit` 238 errors / 54 files with a per-file set byte-identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`, re-run on the MERGED tree because `main` had moved; `npm run build` exit 0 on the merged tree; `SINGLETON_BUSINESS_ID` unchanged at 5; all four `__tests__/lib/tenancy/` suites green including both inventory reverse-checks; **19/19 checks driven over real HTTP against a second tenant in the dev clone**, cleanup verified on all four runs.
+- **Deliberately not done, and each is recorded rather than implied:** `resolvePublicTenant` is not wrapped in react `cache()`, so `/go` does two `business_domains` lookups per render and a transient failure on exactly one can render one tenant's metadata over another's body — the fix touches all ~27 callers and was not worth taking unreviewed. Seed and capture **scripts** still omit `business_id` and look parents up by slug with no predicate; they must be fixed **before the column DEFAULT can be dropped**. `programs`, `session_pack_products` and `faqs` have no `business_id` column at all, so `loadCatalogues` leaves those three reads untenanted — an honest gap, commented in `resolve.ts`, not a missed conversion.
+- **`scripts/verify-funnel-tenancy.ts` is not run by CI**, and it is the only thing in the repo that can catch a live PostgREST fault of the kind that 500'd the leads inbox. Wiring it in is the highest-value follow-up this row leaves behind.
 
 ### G32 · A new tenant gets no sequences · **M**
 - `create_business()` (`00249`) seeds Coaching only. Ship a sequence template set copied on create (the twelve keys, brand-free bodies, all `draft`), plus the two extra boards. Test parses the function and a fixture run proves twelve `draft` rows for a new business.
@@ -708,7 +723,7 @@ option over a staged rollout, on the measured basis that no policies are require
 | 1 — truthful data | G04, G05, G06, G07, G08 | M + 4 S ≈ 3 days |
 | 2 — quoted behaviours | G09, G10, G11, G12, G13, G14, G15, G16, G17, G18 | 5 M + 5 S ≈ 2 weeks |
 | 3 — entry points + pipeline | G20–G29 | 2 M + 7 S + 1 L ≈ 1 week |
-| 4 — white-label edges | ~~G30~~, G31, G32, G33, G35 | L + M + 2 S ≈ 2 weeks (G30 built 2026-09-23) |
+| 4 — white-label edges | ~~G30~~, ~~G31~~, G32, G33, G35 | M + 2 S ≈ 1 week (G30 built 2026-09-23, G31 merged 2026-09-25) |
 
 Phase 0 today. Phases 1 and 2 are what make the quotation's sentences true. Phases 3 and 4 are what make "GoHighLevel replacement" and "white-label ready" true.
 
@@ -770,12 +785,11 @@ either Phase 4 white-label or wording only the owner can write.
 | 3 — entry points + pipeline | G20 G21 G22 G23 G24 G25 G26 G27 G28 G29 | whole phase complete |
 | Security (not a gap) | S01 S02 | migrations `00274`/`00275` live; 0 tables with RLS off |
 
-**NOT FINISHED — 5 rows, none of them started:**
+**NOT FINISHED — 4 rows, none of them started:**
 
 | Row | What | Size | Why it is open |
 |---|---|---|---|
-| G31 | The funnel subsystem has no `business_id` | **L** | The biggest white-label row in the ledger |
-| G32 | A new tenant gets no sequences | **M** | Needs G31's shape first |
+| G32 | A new tenant gets no sequences | **M** | **Unblocked** — G31 landed the shape it needed |
 | G33 | `sms_sender_phone` is saved un-normalised | **S** | Smallest open row in the document |
 | G34 | Settings are owner-only | — | **Deliberately parked.** Decision 11 ruled: record it, write NO code — it belongs in the SaaS direction spec |
 | G35 | Readers with no tenant predicate | **S** | Ordinary cleanup |
@@ -862,9 +876,14 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, re-measured against `main` 2026-09-23: 37 rows · 32 done · 5 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29** **G30** **G30b**.
-Open: G31 G32 G33 G34 G35.
+**Scoreboard, re-measured against `main` 2026-09-25: 37 rows · 33 done · 4 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29** **G30** **G30b** **G31**.
+Open: G32 G33 G34 G35.
+
+**G31 merged 2026-09-25 in TWO pushes** — `2c3a659d` (migration `00278` alone) then `2b4dd3c1`
+(the code), the second only after the first was confirmed applied to production. Its row above
+records the two live defects the two-tenant run caught that no unit test could, and the three
+things left deliberately undone.
 
 **The row count went 36 to 37** because G30b is a new lettered sub-row, the same shape as G19b:
 a defect found while shipping its parent, fixed in the same branch, and given its own row so it is
@@ -902,7 +921,7 @@ production. G18's `ai_chat` follow-up sequence is NOT built and is blocked on th
 "every row is built" was an overclaim; it is counted under Done in the scoreboard because that list
 means FINISHED IN CODE, and G18's outstanding half is in the owner section below. G21 and G28, the two rows that were
 blocked on an owner decision, were ruled on and built the same day. G29, the last Phase 3 row and the one deliberately deferred until Phases 0-2 were done, was
-built, merged and smoke-tested on production on 2026-09-23. G30, the first Phase 4 row, was built, merged and pushed on 2026-09-23. What remains is **Phase 4 (G31-G35)**.
+built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the first two Phase 4 rows, were merged and pushed on 2026-09-23 and 2026-09-25. What remains is **Phase 4 (G32-G35)**.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
@@ -929,7 +948,7 @@ built, merged and smoke-tested on production on 2026-09-23. G30, the first Phase
 
 **Next unblocked, needing nothing from the owner: G35** (name each untenanted reader's seam
 honestly in `platform.ts`, or add the predicate where a column exists) or **G33** (normalise
-`sms_sender_phone` to E.164) — both **S**, neither depends on the other. Then **G31**, the **L**
+`sms_sender_phone` to E.164) — both **S**, neither depends on the other. **G31 is done**, so **G32**
 that has to land before **G32** has a shape to copy. **G34 is not work**: decision 11 ruled record
 it, write no code.
 
