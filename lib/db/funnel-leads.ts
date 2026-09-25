@@ -19,13 +19,32 @@
 // TENANCY (G31 / migration 00278): every reader here takes `businessId` as its
 // first argument and every `funnel_submissions` query is scoped through
 // `applyFilters`, which stamps the predicate once, unconditionally, so no
-// combination of LeadFilters can omit it. THE EMBED STRING BELOW MUST NOT
-// CHANGE SHAPE: 00278 replaced (not added alongside) the FKs from
-// funnel_submissions to funnels/funnel_steps with composite ones carrying
-// business_id, specifically so PostgREST keeps resolving exactly one
-// relationship per table pair. A second FK, or a select widened to "*", would
-// make PostgREST answer PGRST201 ("more than one relationship was found") and
-// the inbox would render every row with a blank page column and no error.
+// combination of LeadFilters can omit it. THE EMBED MUST RESOLVE EXACTLY ONE
+// relationship per table pair: 00278 replaced (not added alongside) the FKs
+// from funnel_submissions to funnels/funnel_steps with composite ones carrying
+// business_id. A select widened to "*" (dropping the embed) or a second FK
+// reintroduced alongside the composite one would make PostgREST answer
+// PGRST201 ("more than one relationship was found") and the inbox would
+// render every row with a blank page column and no error.
+//
+// THE EMBED HAS NO `:column` HINT, AND THAT IS DELIBERATE — proven wrong once
+// already. Before 00278 this read `funnels:funnel_id (name, slug),
+// funnel_steps:step_id (name)`: a SIMPLE (single-column) FK lets PostgREST
+// resolve a bare column name as an embedding hint. 00278 replaced each simple
+// FK with a COMPOSITE one on (funnel_id, business_id) / (step_id,
+// business_id), and a composite FK's own column names are no longer valid
+// embedding hints on their own — verified live against the dev clone
+// (`anjvztjiokcgiyhobknq`) post-migration, where that exact string 400s with
+// PGRST200 ("Could not find a relationship between 'funnel_submissions' and
+// 'funnel_id'"), not the PGRST201 this file used to warn about. Unhandled,
+// that throw took the WHOLE leads inbox down (500), for every tenant, not
+// only a new one — Task 10's real-second-tenant verification
+// (scripts/verify-funnel-tenancy.ts) is what caught it; every prior test here
+// ran against a mock and could not have. Since 00278 REPLACED rather than
+// added the FK, there is exactly ONE relationship between each table pair
+// now, so no hint is needed at all — `funnels(name, slug)` and
+// `funnel_steps(name)` resolve unambiguously and embed under the same
+// `funnels` / `funnel_steps` keys `flatten()` already reads.
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { FunnelLeadStatus, FunnelSubmission } from "@/types/database"
@@ -56,7 +75,7 @@ export interface LeadFilters {
 /** PostgREST's cap. Reads that could exceed it page rather than truncate. */
 const PAGE = 1000
 
-const SELECT_WITH_PAGE = "*, funnels:funnel_id (name, slug), funnel_steps:step_id (name)"
+const SELECT_WITH_PAGE = "*, funnels(name, slug), funnel_steps(name)"
 
 interface JoinedRow extends FunnelSubmission {
   funnels: { name: string | null; slug: string | null } | null

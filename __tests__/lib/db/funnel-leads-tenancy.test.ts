@@ -8,6 +8,14 @@
 // caller "simplified" the select to "*", PostgREST answers PGRST201 and the
 // inbox renders blank with no error -- so the embed shape itself is pinned as
 // a test here, not only the tenant scoping.
+//
+// THE EMBED HAS NO `:column` HINT. It used to (`funnels:funnel_id (name,
+// slug)`), which worked against the pre-00278 SIMPLE FK but 400s with PGRST200
+// against the post-00278 COMPOSITE one -- a real regression this mock-only
+// suite could not see, caught only by Task 10's live-database, real-second-
+// tenant run (scripts/verify-funnel-tenancy.ts). Since the FK was REPLACED,
+// not added alongside, there is exactly one relationship per table pair now,
+// so no hint is needed at all.
 
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -147,9 +155,17 @@ describe("funnel-leads DAL is tenant-scoped", () => {
     // every row with a blank page column and no error -- the exact silent
     // degradation PGRST201 would cause if the migration had added FKs
     // alongside instead of replacing them.
+    //
+    // NO `:column` HINT -- proven wrong once already. A hint naming the FK's
+    // own column (e.g. "funnels:funnel_id") only resolves against a SIMPLE
+    // FK; 00278's composite FK made that exact string 400 with PGRST200
+    // against the live database (verified against the dev clone,
+    // scripts/verify-funnel-tenancy.ts). This mock cannot catch that class of
+    // bug -- it proves the shape a real PostgREST call needs, not that
+    // PostgREST accepts it.
     await listLeads(A)
-    expect(capturedSelect).toContain("funnels:funnel_id (name, slug)")
-    expect(capturedSelect).toContain("funnel_steps:step_id (name)")
+    expect(capturedSelect).toContain("funnels(name, slug)")
+    expect(capturedSelect).toContain("funnel_steps(name)")
   })
 
   it("scopes leads to one tenant", async () => {
