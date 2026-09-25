@@ -4,6 +4,7 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { createFunnelSchema } from "@/lib/validators/funnel"
 import { listFunnels, createFunnel } from "@/lib/db/funnels"
+import { SlugTakenError } from "@/lib/db/businesses"
 import { createQuizFrom, deleteQuiz, getQuizDefinition, assertQuizInBusiness, QuizNotInBusinessError } from "@/lib/db/quizzes"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { buildQuizFunnelDoc } from "@/lib/funnels/quiz-funnel-doc"
@@ -200,8 +201,14 @@ export const POST = withAudit(
           console.error("[POST /api/admin/funnels] orphaned quiz", createdQuizId, cleanupError),
         )
       }
-      const message = error instanceof Error ? error.message : "Unknown error"
-      if (message.includes("duplicate") || message.includes("unique")) {
+      // BY TYPE, NOT BY MESSAGE SUBSTRING. `SlugTakenError`'s wording
+      // ("The web address ... is already taken") was changed under this
+      // route without updating a `message.includes("duplicate" | "unique")`
+      // check that used to catch it — so every duplicate slug fell through
+      // to the generic 500 below instead of the field error the create
+      // dialog renders. Catching the TYPE cannot be broken by a wording
+      // change on either side again.
+      if (error instanceof SlugTakenError) {
         return NextResponse.json({ error: "That slug is already in use." }, { status: 409 })
       }
       console.error("[POST /api/admin/funnels]", error)

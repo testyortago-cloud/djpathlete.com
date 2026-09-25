@@ -26,6 +26,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   resolvePublicTenant: vi.fn(async () => "tenant-a"),
   getPublishedStep: vi.fn(async (..._a: unknown[]) => null as unknown),
+  isBusinessMember: vi.fn(async (..._a: unknown[]) => false),
 }))
 
 // The ONE Host boundary. A page that reads the Host itself, or that falls
@@ -33,6 +34,7 @@ const mocks = vi.hoisted(() => ({
 // cannot pass the assertions below.
 vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: mocks.resolvePublicTenant }))
 vi.mock("@/lib/db/funnels", () => ({ getPublishedStep: mocks.getPublishedStep }))
+vi.mock("@/lib/db/business-members", () => ({ isBusinessMember: mocks.isBusinessMember }))
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 // __tests__/setup.tsx mocks next/navigation globally with a `notFound`-less
 // stub (router hooks only), so the real notFound() this page calls needs its
@@ -44,6 +46,9 @@ vi.mock("next/navigation", async (importOriginal) => {
 })
 
 import Page, { generateMetadata } from "@/app/(funnel)/go/[slug]/[[...step]]/page"
+import { auth } from "@/lib/auth"
+
+const mockAuth = auth as unknown as ReturnType<typeof vi.fn>
 
 const PUBLISHED = {
   funnel: { id: "f1", name: "Free Guide", slug: "free-guide" },
@@ -71,6 +76,8 @@ function paramsFor(slug: string, step: string[] = []) {
 beforeEach(() => {
   mocks.resolvePublicTenant.mockReset().mockResolvedValue("tenant-a")
   mocks.getPublishedStep.mockReset()
+  mocks.isBusinessMember.mockReset().mockResolvedValue(false)
+  mockAuth.mockReset().mockResolvedValue(null)
 })
 
 describe("/go/<slug> resolves the requesting Host's own tenant", () => {
@@ -138,6 +145,105 @@ describe("/go/<slug> resolves the requesting Host's own tenant", () => {
     await Page({ params: paramsFor("free-guide", ["thank-you"]), searchParams: noSearchParams })
 
     expect(mocks.getPublishedStep).toHaveBeenCalledWith("tenant-a", "free-guide", "thank-you", {
+      includeUnpublished: false,
+    })
+  })
+})
+
+// Whole-branch review item 2: `?preview=1` used to gate on the session's
+// GLOBAL role alone. A staff member of tenant B could open tenant A's host
+// with `?preview=1` and read A's unpublished funnel, because nothing checked
+// which tenant they actually belong to. The fix requires MEMBERSHIP of the
+// tenant being previewed (the Host's tenant), not merely the role.
+//
+// `getPublishedStep` here is host/tenant-aware only through `includeUnpublished`
+// in this fake — it stands in for "the draft escalation actually fired",
+// mirroring how the real DAL only returns unpublished rows when that flag is
+// set.
+describe("?preview=1 requires membership of the tenant being previewed", () => {
+  beforeEach(() => {
+    mocks.getPublishedStep.mockImplementation(async (..._args: unknown[]) => {
+      const opts = _args[3] as { includeUnpublished?: boolean } | undefined
+      return opts?.includeUnpublished ? PUBLISHED : null
+    })
+  })
+
+  it("404s a staff member of tenant B previewing tenant A's unpublished funnel on tenant A's host", async () => {
+    mocks.resolvePublicTenant.mockResolvedValue("tenant-a")
+    mockAuth.mockResolvedValue({ user: { id: "staff-b", role: "staff" } })
+    // NOT a member of tenant-a — the disclosure this fix closes.
+    mocks.isBusinessMember.mockResolvedValue(false)
+
+    await expect(
+      Page({ params: paramsFor("free-guide"), searchParams: Promise.resolve({ preview: "1" }) }),
+    ).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404")
+
+    // MUTANT: checking `role` alone and never calling the membership check.
+    expect(mocks.isBusinessMember).toHaveBeenCalledWith("tenant-a", "staff-b")
+    expect(mocks.getPublishedStep).toHaveBeenCalledWith("tenant-a", "free-guide", undefined, {
+      includeUnpublished: false,
+    })
+  })
+
+  it("PERMISSIVE CONTROL: a staff member of tenant A still sees A's own unpublished draft", async () => {
+    // Without this control, a broken gate that denies EVERY staff preview
+    // would still pass the refusal test above.
+    mocks.resolvePublicTenant.mockResolvedValue("tenant-a")
+    mockAuth.mockResolvedValue({ user: { id: "staff-a", role: "staff" } })
+    mocks.isBusinessMember.mockResolvedValue(true)
+
+    const result = await Page({
+      params: paramsFor("free-guide"),
+      searchParams: Promise.resolve({ preview: "1" }),
+    })
+
+    expect(result).not.toBeNull()
+    expect(mocks.isBusinessMember).toHaveBeenCalledWith("tenant-a", "staff-a")
+    expect(mocks.getPublishedStep).toHaveBeenCalledWith("tenant-a", "free-guide", undefined, {
+      includeUnpublished: true,
+    })
+  })
+
+  it("an admin (operator) previews any tenant without a membership check", async () => {
+    mocks.resolvePublicTenant.mockResolvedValue("tenant-a")
+    mockAuth.mockResolvedValue({ user: { id: "admin-1", role: "admin" } })
+
+    const result = await Page({
+      params: paramsFor("free-guide"),
+      searchParams: Promise.resolve({ preview: "1" }),
+    })
+
+    expect(result).not.toBeNull()
+    expect(mocks.isBusinessMember).not.toHaveBeenCalled()
+    expect(mocks.getPublishedStep).toHaveBeenCalledWith("tenant-a", "free-guide", undefined, {
+      includeUnpublished: true,
+    })
+  })
+
+  it("a client session never escalates, even with preview=1", async () => {
+    mocks.resolvePublicTenant.mockResolvedValue("tenant-a")
+    mockAuth.mockResolvedValue({ user: { id: "client-1", role: "client" } })
+
+    await expect(
+      Page({ params: paramsFor("free-guide"), searchParams: Promise.resolve({ preview: "1" }) }),
+    ).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404")
+
+    expect(mocks.isBusinessMember).not.toHaveBeenCalled()
+    expect(mocks.getPublishedStep).toHaveBeenCalledWith("tenant-a", "free-guide", undefined, {
+      includeUnpublished: false,
+    })
+  })
+
+  it("a failed membership read fails closed — denies the escalation rather than throwing", async () => {
+    mocks.resolvePublicTenant.mockResolvedValue("tenant-a")
+    mockAuth.mockResolvedValue({ user: { id: "staff-a", role: "staff" } })
+    mocks.isBusinessMember.mockRejectedValue(new Error("db unavailable"))
+
+    await expect(
+      Page({ params: paramsFor("free-guide"), searchParams: Promise.resolve({ preview: "1" }) }),
+    ).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404")
+
+    expect(mocks.getPublishedStep).toHaveBeenCalledWith("tenant-a", "free-guide", undefined, {
       includeUnpublished: false,
     })
   })

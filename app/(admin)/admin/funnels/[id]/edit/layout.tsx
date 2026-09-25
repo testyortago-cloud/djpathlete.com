@@ -26,7 +26,7 @@
 
 import { notFound } from "next/navigation"
 import { getFunnelById, listSteps } from "@/lib/db/funnels"
-import { resolveAdminTenant } from "@/lib/tenancy/resolve"
+import { NoAccessibleBusinessError, resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { StepWithDoc } from "@/lib/funnels/connections"
 import {
@@ -51,7 +51,17 @@ export async function FunnelBuilderShell({
   id: string
   children: React.ReactNode
 }) {
-  const { businessId } = await resolveAdminTenant()
+  // Same fail-closed shape the two preview routes already use (fix wave item
+  // 4): a caller whose membership was revoked mid-session gets a 404, not an
+  // uncaught NoAccessibleBusinessError rendering the framework's 500 page.
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenant())
+  } catch (error) {
+    if (error instanceof NoAccessibleBusinessError) notFound()
+    throw error
+  }
+
   const funnel = await getFunnelById(businessId, id).catch(() => null)
   if (!funnel) {
     // Not `notFound()` — the child decides that, and it has more information

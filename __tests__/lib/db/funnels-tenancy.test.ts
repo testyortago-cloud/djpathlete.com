@@ -157,7 +157,67 @@ function makeInsertCapturingClient() {
   }
 }
 
-type MockMode = "rows" | "slugCollision" | "tableAware" | "insertCapture"
+// Asymmetric, id-colliding fixture for updateFunnel's business_id predicate
+// (fix wave item 3). Two tenants, one SHARED id across them — "shared-id"
+// names a DIFFERENT row per tenant, the same way a coincidence (or a UUID
+// collision, however unlikely) would if the predicate were the only thing
+// telling the two apart. A dropped or mistyped `.eq("business_id", ...)`
+// leaves only `.eq("id", "shared-id")` to filter on, which — since
+// `Array.prototype.find` returns the FIRST match — resolves to tenant A's
+// row regardless of which tenant asked, exactly the "coach B renames coach
+// A's funnel by id" failure this test exists to catch.
+function makeUpdateRows(): Record<string, unknown>[] {
+  return [
+    { id: "shared-id", slug: "a-one", name: "A One", business_id: A },
+    { id: "a-two", slug: "a-two", name: "A Two", business_id: A },
+    { id: "shared-id", slug: "b-one", name: "B One", business_id: B },
+  ]
+}
+let updateRows: Record<string, unknown>[] = makeUpdateRows()
+
+/**
+ * A real `.update(patch).eq(...).eq(...).select("*").single()` chain: only a
+ * row matching EVERY captured `.eq()` filter is mutated and returned. Unlike
+ * `makeSlugCollisionClient` (which always fails), this actually applies the
+ * patch, so it can tell a correctly-scoped update apart from one that landed
+ * on the wrong tenant's row.
+ */
+function makeUpdateRowsClient() {
+  return {
+    from: (table: string) => {
+      if (table !== "funnels") {
+        throw new Error(`update-rows fake only stubs "funnels", got "${table}"`)
+      }
+      return {
+        // hasIntakeColumns' probe (`.select(col).limit(n)`), answered
+        // "present" so the write below runs exactly as it would once
+        // migration 00210 has landed.
+        select: () => ({ limit: async () => ({ error: null }) }),
+        update: (patch: Record<string, unknown>) => {
+          const filters: { col: string; val: unknown }[] = []
+          const chain = {
+            eq: (col: string, val: unknown) => {
+              filters.push({ col, val })
+              captured.push({ col, val })
+              return chain
+            },
+            select: () => ({
+              single: async () => {
+                const match = updateRows.find((r) => filters.every((f) => r[f.col] === f.val))
+                if (!match) return { data: null, error: { code: "PGRST116", message: "no rows matched the filter" } }
+                Object.assign(match, patch)
+                return { data: { ...match }, error: null }
+              },
+            }),
+          }
+          return chain
+        },
+      }
+    },
+  }
+}
+
+type MockMode = "rows" | "slugCollision" | "tableAware" | "insertCapture" | "updateRows"
 let mode: MockMode = "rows"
 
 vi.mock("@/lib/supabase", () => ({
@@ -165,6 +225,7 @@ vi.mock("@/lib/supabase", () => ({
     if (mode === "slugCollision") return makeSlugCollisionClient()
     if (mode === "tableAware") return makeTableAwareClient()
     if (mode === "insertCapture") return makeInsertCapturingClient()
+    if (mode === "updateRows") return makeUpdateRowsClient()
     return { from: () => makeQuery(ROWS) }
   },
 }))
@@ -185,6 +246,7 @@ beforeEach(() => {
   captured = []
   capturedInserts = []
   mode = "rows"
+  updateRows = makeUpdateRows()
   __resetIntakeColumnCache()
 })
 
@@ -230,6 +292,65 @@ describe("updateFunnel surfaces the same slug collision on a rename (fix round 1
   it("throws SlugTakenError, not a bare 500, when the update hits 23505", async () => {
     mode = "slugCollision"
     await expect(updateFunnel(A, "f1", { slug: "free-guide" })).rejects.toBeInstanceOf(SlugTakenError)
+  })
+})
+
+// `Funnel` (types/database.ts) does not expose `business_id` in its public
+// shape — `updateFunnel`'s return type is `Funnel`, cast from the raw row —
+// so the tests below read it off the row through this narrow escape hatch
+// rather than widening the real type just for a test assertion.
+function businessIdOf(funnel: { id: string }): unknown {
+  return (funnel as unknown as { business_id: unknown }).business_id
+}
+
+describe("updateFunnel's business_id predicate is a real tenant guard (fix wave item 3)", () => {
+  // Whole-branch review: this predicate is the SOLE tenant guard on
+  // PATCH /api/admin/funnels/[id] for any body that is not
+  // `status:"published"` — that route never calls getFunnelById first, it
+  // goes straight to updateFunnel(businessId, id, ...). Drop or mistype the
+  // `.eq("business_id", ...)` and coach B renames coach A's funnel by id.
+  //
+  // The fixture's two rows share the literal id "shared-id" across tenants —
+  // see makeUpdateRows() above — so a value-correctness check has something
+  // to fail against; a fixture with no id overlap would pass even with the
+  // predicate silently dropped, because `.eq("id", id)` alone would still
+  // happen to pick the right row.
+
+  it("updates tenant A's row when called with A's businessId, not tenant B's same-id row", async () => {
+    mode = "updateRows"
+    const updated = await updateFunnel(A, "shared-id", { name: "A One Renamed" })
+    expect(updated.name).toBe("A One Renamed")
+    expect(businessIdOf(updated)).toBe(A)
+  })
+
+  it("PERMISSIVE CONTROL: updates tenant B's row with the SAME id when called with B's businessId", async () => {
+    // Without this, a predicate hard-coded to A (or one that always resolves
+    // to A's row first) would pass the test above and every test in this repo
+    // that never calls updateFunnel as tenant B.
+    mode = "updateRows"
+    const updated = await updateFunnel(B, "shared-id", { name: "B One Renamed" })
+    expect(updated.name).toBe("B One Renamed")
+    expect(businessIdOf(updated)).toBe(B)
+  })
+
+  it("filters the update on the exact business_id VALUE it was given, not merely a present value", async () => {
+    // MUTANT: `.eq("business_id", A)` hard-coded, or the predicate reordered
+    // to `.eq("id", businessId).eq("business_id", id)` (swapped columns).
+    // Asserting only that `.eq` was called some number of times would survive
+    // both; this pins the actual value passed for the business_id column.
+    mode = "updateRows"
+    await updateFunnel(B, "shared-id", { name: "B One Renamed" })
+    const businessIdCalls = captured.filter((c) => c.col === "business_id")
+    expect(businessIdCalls.length).toBeGreaterThanOrEqual(1)
+    for (const call of businessIdCalls) expect(call.val).toBe(B)
+  })
+
+  it("does not touch tenant A's row when renaming tenant B's row of the same id", async () => {
+    // A second angle on the same guard: prove the OTHER tenant's row was left
+    // alone, not just that the right one came back.
+    mode = "updateRows"
+    await updateFunnel(B, "shared-id", { name: "B One Renamed" })
+    expect(updateRows.find((r) => r.business_id === A && r.id === "shared-id")?.name).toBe("A One")
   })
 })
 

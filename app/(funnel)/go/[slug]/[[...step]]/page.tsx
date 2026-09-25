@@ -12,6 +12,7 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { getPublishedStep } from "@/lib/db/funnels"
+import { isBusinessMember } from "@/lib/db/business-members"
 import { NodeRenderer } from "@/components/funnels/NodeRenderer"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile/css-scope"
 import { resolveFunnelStepSeo } from "@/lib/funnels/seo"
@@ -24,12 +25,36 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
-/** Only an admin or staff member may look at an unpublished funnel. */
-async function resolvePreview(searchParams: Record<string, string | string[] | undefined>): Promise<boolean> {
+/**
+ * Only an admin (the operator, implicit owner of every business) or a staff
+ * member of the TENANT BEING PREVIEWED may look at an unpublished funnel.
+ *
+ * `businessId` here is resolved from the request's HOST (see the caller),
+ * never from the viewer's session cookie — that is the one thing that makes
+ * this route different from every admin screen, and the one thing that made
+ * the global-role-only check wrong. A `staff` session is a member of
+ * whichever business(es) their invite put them on; that membership is what
+ * has to be checked against THIS host's tenant, not the session's `role`
+ * alone, or a staff member of tenant B could read tenant A's draft simply by
+ * typing tenant A's host with `?preview=1` — `/preview/<slug>`, the route
+ * actually meant for drafts, already refuses exactly that.
+ */
+async function resolvePreview(
+  searchParams: Record<string, string | string[] | undefined>,
+  businessId: string,
+): Promise<boolean> {
   if (searchParams.preview !== "1") return false
   const session = await auth()
   const role = session?.user?.role
-  return role === "admin" || role === "staff"
+  if (role === "admin") return true
+  if (role !== "staff" || !session?.user?.id) return false
+  // A failed membership read must not escalate to "may preview" — fail
+  // closed, the same direction every other tenant gate in this subsystem
+  // fails, and let the caller fall back to the published-only view.
+  return isBusinessMember(businessId, session.user.id).catch((error) => {
+    console.error("[go] preview membership check failed — denying the unpublished escalation", error)
+    return false
+  })
 }
 
 /**
@@ -110,17 +135,20 @@ export default async function FunnelPage({ params, searchParams }: PageProps) {
   // More than one path segment past the funnel slug is not a page we have.
   if (step && step.length > 1) notFound()
 
-  const isPreview = await resolvePreview(await searchParams)
-
-  // PUBLIC ROUTE, NO SESSION. The tenant is the request's Host — resolved
-  // through the one Host boundary (lib/tenancy/public.ts), which falls back
-  // to the platform business for every unclaimed Host (dev, preview deploys,
-  // every *.vercel.app URL). A slug that belongs to a DIFFERENT tenant than
-  // this one comes back null from getPublishedStep and 404s through the exact
-  // same branch below as an unknown slug — there is no separate "wrong
-  // tenant" page, because telling an anonymous visitor a page exists but
-  // belongs to someone else is a disclosure, not a courtesy.
+  // PUBLIC ROUTE, NO SESSION REQUIRED. The tenant is the request's Host —
+  // resolved through the one Host boundary (lib/tenancy/public.ts), which
+  // falls back to the platform business for every unclaimed Host (dev,
+  // preview deploys, every *.vercel.app URL). A slug that belongs to a
+  // DIFFERENT tenant than this one comes back null from getPublishedStep and
+  // 404s through the exact same branch below as an unknown slug — there is
+  // no separate "wrong tenant" page, because telling an anonymous visitor a
+  // page exists but belongs to someone else is a disclosure, not a courtesy.
+  //
+  // Resolved BEFORE the preview check: `resolvePreview` gates the unpublished
+  // escalation on membership of THIS tenant, not merely a global role, so it
+  // needs the Host's business id, not the other way around.
   const businessId = await resolvePublicTenant()
+  const isPreview = await resolvePreview(await searchParams, businessId)
   const published = await getPublishedStep(businessId, slug, stepSlug, { includeUnpublished: isPreview })
   if (!published) notFound()
 

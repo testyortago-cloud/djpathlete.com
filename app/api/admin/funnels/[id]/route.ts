@@ -4,6 +4,7 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { updateFunnelSchema } from "@/lib/validators/funnel"
 import { getFunnelById, updateFunnel, deleteFunnel, listSteps, listStepDocuments } from "@/lib/db/funnels"
+import { SlugTakenError } from "@/lib/db/businesses"
 import { deleteQuiz } from "@/lib/db/quizzes"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { quizUsesInSteps } from "@/lib/funnels/quiz-refs"
@@ -191,8 +192,11 @@ export const PATCH = withAudit(
 
       return NextResponse.json({ funnel: await updateFunnel(businessId, id, parsed.data) })
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error"
-      if (message.includes("duplicate") || message.includes("unique")) {
+      // BY TYPE, NOT BY MESSAGE SUBSTRING — same fix as the POST route above.
+      // `SlugTakenError`'s message no longer contains "duplicate" or "unique",
+      // so a `message.includes(...)` check silently stopped catching it and a
+      // renamed-to-a-taken-slug PATCH 500'd instead of 409ing.
+      if (error instanceof SlugTakenError) {
         return NextResponse.json({ error: "That slug is already in use." }, { status: 409 })
       }
       console.error("[PATCH /api/admin/funnels/:id]", error)

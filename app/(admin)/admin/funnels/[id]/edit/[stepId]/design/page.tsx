@@ -31,7 +31,7 @@ import { notFound } from "next/navigation"
 import { getFunnelById, getStep } from "@/lib/db/funnels"
 import { getPageTree } from "@/lib/db/funnel-page-tree"
 import { getDraft } from "@/lib/db/funnel-builder"
-import { resolveAdminTenant } from "@/lib/tenancy/resolve"
+import { NoAccessibleBusinessError, resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { emptyPageTree } from "@/lib/funnels/tree/schema"
 import { DESIGNER_PARKED } from "@/lib/funnels/tree/parked"
 import { DesignEditor } from "@/components/admin/funnels/design/DesignEditor"
@@ -44,7 +44,17 @@ interface PageProps {
 
 export default async function DesignPage({ params }: PageProps) {
   const { id, stepId } = await params
-  const { businessId } = await resolveAdminTenant()
+
+  // Same fail-closed shape the two preview routes already use (fix wave item
+  // 4): a caller whose membership was revoked mid-session gets a 404, not an
+  // uncaught NoAccessibleBusinessError rendering the framework's 500 page.
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenant())
+  } catch (error) {
+    if (error instanceof NoAccessibleBusinessError) notFound()
+    throw error
+  }
 
   const [funnel, step] = await Promise.all([getFunnelById(businessId, id), getStep(businessId, stepId)])
   if (!funnel || !step || step.funnel_id !== funnel.id) notFound()
