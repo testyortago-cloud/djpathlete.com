@@ -14,6 +14,10 @@ import type { QuizDefinition } from "@/lib/quizzes/types"
 const QUIZ_ID = "f15ef258-3f0a-494b-a8c9-deb2de7b2aa9"
 const ATTEMPT_ID = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"
 const FUNNEL_ID = "bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb"
+// G31: quiz_attempts.business_id is NOT NULL (migration 00228), and the route
+// inherits it as the tenant for every DAL call it makes, including the two
+// funnel-link reads this file exercises.
+const BUSINESS_ID = "eeeeeeee-1111-4111-8111-eeeeeeeeeeee"
 const STEP_ID = "dddddddd-1111-4111-8111-dddddddddddd"
 const CONTACT_ID = "cccccccc-1111-4111-8111-cccccccccccc"
 const Q_ROUTER = "11111111-1111-4111-8111-111111111111"
@@ -130,7 +134,14 @@ async function post(extra: Record<string, unknown> = {}, ip = freshIp()) {
 beforeEach(() => {
   vi.resetAllMocks()
   getQuizDefinition.mockResolvedValue(definition())
-  getAttempt.mockResolvedValue({ id: ATTEMPT_ID, quizId: QUIZ_ID, branchId: null, status: "in_progress", answers: [] })
+  getAttempt.mockResolvedValue({
+    id: ATTEMPT_ID,
+    quizId: QUIZ_ID,
+    branchId: null,
+    status: "in_progress",
+    answers: [],
+    businessId: BUSINESS_ID,
+  })
   completeAttempt.mockResolvedValue(undefined)
   recordContactEvent.mockResolvedValue({ contactId: CONTACT_ID, created: true, merged: false })
   recordConsent.mockResolvedValue(undefined)
@@ -148,6 +159,7 @@ describe("POST /api/quiz/submit -- the funnel lead", () => {
   it("files the completion against the funnel and step it was taken on", async () => {
     await post()
     expect(createSubmission).toHaveBeenCalledWith(
+      BUSINESS_ID,
       expect.objectContaining({ funnel_id: FUNNEL_ID, step_id: STEP_ID, kind: "quiz", quiz_attempt_id: ATTEMPT_ID }),
     )
   })
@@ -155,25 +167,26 @@ describe("POST /api/quiz/submit -- the funnel lead", () => {
   it("carries the person, so the inbox can call them", async () => {
     await post()
     expect(createSubmission).toHaveBeenCalledWith(
+      BUSINESS_ID,
       expect.objectContaining({ name: "Sam Athlete", email: "sam@example.com", phone: "0400 000 000" }),
     )
   })
 
   it("carries what they were asked and what they picked, not the score", async () => {
     await post()
-    const arg = createSubmission.mock.calls[0][0] as { payload: Record<string, string> }
+    const arg = createSubmission.mock.calls[0][1] as { payload: Record<string, string> }
     expect(arg.payload).toEqual({ "Which describes you?": "Nearly there", "How is training going?": "Great" })
     expect(JSON.stringify(arg.payload)).not.toContain("score")
   })
 
   it("names the quiz in form_key, so the inbox can say which quiz it was", async () => {
     await post()
-    expect(createSubmission).toHaveBeenCalledWith(expect.objectContaining({ form_key: "rpi_athlete_quiz" }))
+    expect(createSubmission).toHaveBeenCalledWith(BUSINESS_ID, expect.objectContaining({ form_key: "rpi_athlete_quiz" }))
   })
 
   it("leaves lead_user_id null -- the quiz feeds the contact spine, not a second identity", async () => {
     await post()
-    expect(createSubmission.mock.calls[0][0]).not.toHaveProperty("lead_user_id", expect.anything())
+    expect(createSubmission.mock.calls[0][1]).not.toHaveProperty("lead_user_id", expect.anything())
   })
 
   it("writes NO submission when the quiz was not taken on a funnel", async () => {
@@ -225,6 +238,7 @@ describe("POST /api/quiz/submit -- the funnel lead", () => {
   it("carries the attribution session from the cookie, joining the lead to first touch", async () => {
     await post()
     expect(createSubmission).toHaveBeenCalledWith(
+      BUSINESS_ID,
       expect.objectContaining({ attribution_session_id: "sessabc123" }),
     )
   })
@@ -353,6 +367,7 @@ describe("POST /api/quiz/submit -- the page this quiz claims to be on", () => {
 
     expect(res.status).toBe(200)
     expect(createSubmission).toHaveBeenCalledWith(
+      BUSINESS_ID,
       expect.objectContaining({ funnel_id: FUNNEL_ID, step_id: STEP_ID }),
     )
     expect(recordContactEvent).toHaveBeenCalled()
@@ -365,7 +380,7 @@ describe("POST /api/quiz/submit -- the page this quiz claims to be on", () => {
     // cross-check has already proven they agree -- asserting it pins the order
     // (cross-check BEFORE the funnel read) rather than the values.
     await post()
-    expect(getFunnelById).toHaveBeenCalledWith(FUNNEL_ID)
+    expect(getFunnelById).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID)
   })
 
   it("does not even ASK about the funnel once the cross-check has failed", async () => {

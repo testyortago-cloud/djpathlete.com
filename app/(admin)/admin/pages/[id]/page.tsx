@@ -12,13 +12,15 @@
 
 import { redirect } from "next/navigation"
 import { getFunnelById } from "@/lib/db/funnels"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { FunnelDetailScreen } from "@/app/(admin)/admin/funnels/[id]/page"
 
 export const metadata = { title: "Landing page" }
 
 export default async function LandingPageDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const funnel = await getFunnelById(id)
+  const { businessId } = await resolveAdminTenant()
+  const funnel = await getFunnelById(businessId, id)
 
   // A LANDING PAGE HAS NO DETAIL SCREEN. The shared screen is a step list, and
   // a landing page is one step by definition, so this URL rendered a single

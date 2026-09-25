@@ -24,17 +24,24 @@ vi.mock("@/lib/db/funnels", () => ({
   deleteFunnel: vi.fn(),
   listSteps: vi.fn(),
 }))
+class NoAccessibleBusinessError extends Error {}
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: vi.fn(),
+  NoAccessibleBusinessError,
+}))
 
 import { PATCH } from "@/app/api/admin/funnels/[id]/route"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { getFunnelById, updateFunnel } from "@/lib/db/funnels"
+import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import { recordAudit } from "@/lib/audit/record"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
 
 const FUNNEL_ID = "ffffffff-1111-4222-8333-444444444444"
 const ADMIN_ID = "aaaaaaaa-1111-4222-8333-444444444444"
+const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 
 const FUNNEL_ROW = { id: FUNNEL_ID, slug: "free-trial-week", name: "Free Trial Week", kind: "funnel", status: "draft" }
 const PAGE_ROW = { id: FUNNEL_ID, slug: "coaching", name: "Coaching", kind: "page", status: "draft" }
@@ -53,8 +60,13 @@ beforeEach(() => {
   vi.clearAllMocks()
   mock(auth).mockResolvedValue({ user: { id: ADMIN_ID, role: "admin" } })
   mock(canAccessAdminPath).mockResolvedValue(true)
+  mock(resolveAdminTenantForRequest).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "Test Co", slug: "test-co" }],
+    isOperator: true,
+  })
   mock(getFunnelById).mockResolvedValue(FUNNEL_ROW)
-  mock(updateFunnel).mockImplementation(async (id: string, data: Record<string, unknown>) => ({
+  mock(updateFunnel).mockImplementation(async (_businessId: string, id: string, data: Record<string, unknown>) => ({
     ...FUNNEL_ROW,
     ...data,
   }))
@@ -81,7 +93,7 @@ describe("PATCH /api/admin/funnels/[id]", () => {
     // MUTANT: refusing every `status:"published"` regardless of `kind`, which
     // would break the landing-page path this route still legitimately serves.
     expect(response.status).toBe(200)
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { status: "published" })
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID,{ status: "published" })
   })
 
   it("still unpublishes (drafts) a funnel through this route", async () => {
@@ -92,14 +104,14 @@ describe("PATCH /api/admin/funnels/[id]", () => {
     // MUTANT: refusing every status change on a funnel-kind row, not just
     // `"published"`. Taking something off the air has nothing to gate.
     expect(response.status).toBe(200)
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { status: "draft" })
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID,{ status: "draft" })
   })
 
   it("still archives a funnel through this route", async () => {
     const response = await PATCH(patch({ status: "archived" }) as never, ctx as never)
 
     expect(response.status).toBe(200)
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { status: "archived" })
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID,{ status: "archived" })
   })
 
   it("still renames a funnel with no status field, without reading the row", async () => {
@@ -111,7 +123,7 @@ describe("PATCH /api/admin/funnels/[id]", () => {
     // a route that fetches anyway would 404 a funnel someone renamed in the
     // same request a lookup failed for no reason tied to the write it made.
     expect(mock(getFunnelById)).not.toHaveBeenCalled()
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { name: "New name" })
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID,{ name: "New name" })
   })
 
   it("404s publishing a funnel id that no longer exists, and writes nothing", async () => {
@@ -182,7 +194,7 @@ describe("PATCH /api/admin/funnels/[id]", () => {
     const response = await PATCH(patch({ description: "Updated" }) as never, ctx as never)
 
     expect(response.status).toBe(200)
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { description: "Updated" })
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID,{ description: "Updated" })
   })
 
   // -------------------------------------------------------------------------

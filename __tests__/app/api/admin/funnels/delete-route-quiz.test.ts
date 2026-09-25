@@ -204,7 +204,7 @@ describe("DELETE /api/admin/funnels/[id] and the quiz its pages ran", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {})
     const res = await DELETE(request(), ctx)
     expect(res.status).toBe(200)
-    expect(deleteFunnel).toHaveBeenCalledWith(FUNNEL_ID)
+    expect(deleteFunnel).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID)
     expect(deleteQuiz).not.toHaveBeenCalled()
     error.mockRestore()
   })

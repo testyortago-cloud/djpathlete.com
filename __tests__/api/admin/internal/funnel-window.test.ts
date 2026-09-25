@@ -15,15 +15,20 @@ import type { Funnel } from "@/types/database"
 const isCronSkipped = vi.fn()
 const listFunnels = vi.fn()
 const updateFunnel = vi.fn()
+const listBusinesses = vi.fn()
 const recordAudit = vi.fn()
 const logCronStart = vi.fn()
 const logCronEnd = vi.fn()
 
 vi.mock("@/lib/db/system-settings", () => ({ isCronSkipped }))
 vi.mock("@/lib/db/funnels", () => ({ listFunnels, updateFunnel }))
+vi.mock("@/lib/db/businesses", () => ({ listBusinesses }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit }))
 vi.mock("@/lib/db/cron-runs", () => ({ logCronStart, logCronEnd }))
 vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => ({}) }))
+
+/** One business — everything except the multi-tenancy suite runs against exactly one. */
+const BIZ = "biz-1"
 
 // Same fixture helper as __tests__/lib/automation/funnel-window-closer.test.ts
 // — a funnel one field away from qualifying still has to look like a real row
@@ -55,12 +60,14 @@ beforeEach(() => {
   isCronSkipped.mockReset()
   listFunnels.mockReset()
   updateFunnel.mockReset()
+  listBusinesses.mockReset()
   recordAudit.mockReset()
   logCronStart.mockReset()
   logCronEnd.mockReset()
   logCronStart.mockResolvedValue("run-1")
   logCronEnd.mockResolvedValue(undefined)
   recordAudit.mockResolvedValue(undefined)
+  listBusinesses.mockResolvedValue([{ id: BIZ, name: "Biz", slug: "biz" }])
   listFunnels.mockResolvedValue([])
   process.env.INTERNAL_CRON_TOKEN = "shared-secret"
 })
@@ -136,8 +143,9 @@ describe("POST /api/admin/internal/funnel-window", () => {
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true, considered: 2, closed: ["camp-1"], failed: [] })
-    expect(updateFunnel).toHaveBeenCalledWith("camp-1", { status: "draft" })
-    expect(updateFunnel).not.toHaveBeenCalledWith("camp-2", expect.anything())
+    expect(listFunnels).toHaveBeenCalledWith(BIZ)
+    expect(updateFunnel).toHaveBeenCalledWith(BIZ, "camp-1", { status: "draft" })
+    expect(updateFunnel).not.toHaveBeenCalledWith(BIZ, "camp-2", expect.anything())
     expect(recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "funnel.auto_offline",
@@ -181,9 +189,34 @@ describe("POST /api/admin/internal/funnel-window", () => {
     })
   })
 
-  it("logs a failed cron run and returns 500 when listFunnels itself throws", async () => {
+  it("isolates a listFunnels failure to its own business rather than failing the whole run", async () => {
+    // G31: this cron now iterates every business (see the route header), the
+    // same shape lib/automation/pipeline-reconcile.ts already uses — one
+    // business's read failing must not strand every OTHER business's expired
+    // funnels unclosed. Filed under the business id in `failed`, since no
+    // funnel was ever read to file it under.
     isCronSkipped.mockResolvedValueOnce({ skipped: false })
     listFunnels.mockRejectedValueOnce(new Error("db down"))
+
+    const res = await call()
+
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({
+      ok: false,
+      considered: 0,
+      closed: [],
+      failed: [{ id: BIZ, error: "db down" }],
+    })
+    expect(logCronEnd).toHaveBeenCalledWith(expect.anything(), "run-1", "failed", {
+      considered: 0,
+      closed: [],
+      failed: [{ id: BIZ, error: "db down" }],
+    })
+  })
+
+  it("logs a failed cron run and returns 500 when listBusinesses itself throws", async () => {
+    isCronSkipped.mockResolvedValueOnce({ skipped: false })
+    listBusinesses.mockRejectedValueOnce(new Error("db down"))
 
     const res = await call()
 

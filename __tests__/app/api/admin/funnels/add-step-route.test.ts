@@ -29,16 +29,23 @@ vi.mock("@/lib/db/funnels", () => ({
   getFunnelById: vi.fn(),
   createStep: vi.fn(),
 }))
+class NoAccessibleBusinessError extends Error {}
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: vi.fn(),
+  NoAccessibleBusinessError,
+}))
 
 import { POST } from "@/app/api/admin/funnels/steps/route"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { getFunnelById, createStep } from "@/lib/db/funnels"
+import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
 
 const FUNNEL_ID = "ffffffff-1111-4222-8333-444444444444"
 const ADMIN_ID = "aaaaaaaa-1111-4222-8333-444444444444"
+const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 
 const FUNNEL_ROW = { id: FUNNEL_ID, slug: "free-trial-week", name: "Free Trial Week", kind: "funnel", status: "draft" }
 const PAGE_ROW = { id: FUNNEL_ID, slug: "coaching", name: "Coaching", kind: "page", status: "draft" }
@@ -57,8 +64,16 @@ beforeEach(() => {
   vi.resetAllMocks()
   mock(auth).mockResolvedValue({ user: { id: ADMIN_ID, role: "admin" } })
   mock(canAccessAdminPath).mockResolvedValue(true)
+  mock(resolveAdminTenantForRequest).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "Test Co", slug: "test-co" }],
+    isOperator: true,
+  })
   mock(getFunnelById).mockResolvedValue(FUNNEL_ROW)
-  mock(createStep).mockImplementation(async (data: Record<string, unknown>) => ({ id: "new-step", ...data }))
+  mock(createStep).mockImplementation(async (_businessId: string, data: Record<string, unknown>) => ({
+    id: "new-step",
+    ...data,
+  }))
 })
 
 describe("POST /api/admin/funnels/steps", () => {
@@ -68,7 +83,7 @@ describe("POST /api/admin/funnels/steps", () => {
     // THE PRESENCE CONTROL for the refusal below. Without it a guard that
     // rejected every request would pass the next test and look correct.
     expect(response.status).toBe(201)
-    expect(mock(createStep)).toHaveBeenCalledWith(VALID)
+    expect(mock(createStep)).toHaveBeenCalledWith(BUSINESS_ID, VALID)
   })
 
   it("REFUSES to add a page to a landing page, and writes NOTHING", async () => {

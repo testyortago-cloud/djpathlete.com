@@ -24,6 +24,14 @@ const db = vi.hoisted(() => ({
 }))
 vi.mock("@/lib/db/funnels", () => db)
 
+// G31: the shell resolves its own tenant (no request object in a server
+// component) and threads it into both reads above. Fixed to one business —
+// this file's own claim is about which steps get queued, not about tenancy.
+const BUSINESS_ID = "biz-1"
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenant: vi.fn(async () => ({ businessId: BUSINESS_ID, choices: [], isOperator: false })),
+}))
+
 import { FunnelBuilderShell } from "@/app/(admin)/admin/funnels/[id]/edit/layout"
 
 const FUNNEL: Funnel = {

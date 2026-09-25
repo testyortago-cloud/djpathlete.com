@@ -4,6 +4,7 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { createStepSchema } from "@/lib/validators/funnel"
 import { getFunnelById, createStep } from "@/lib/db/funnels"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 /**
  * Adds a page to a funnel. Without this the funnel/step split was pointless —
@@ -15,6 +16,16 @@ export const POST = withAudit(
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
     }
 
     const body = await request.json().catch(() => null)
@@ -30,7 +41,7 @@ export const POST = withAudit(
     }
 
     try {
-      const funnel = await getFunnelById(parsed.data.funnel_id)
+      const funnel = await getFunnelById(businessId, parsed.data.funnel_id)
       if (!funnel) return NextResponse.json({ error: "Funnel not found" }, { status: 404 })
 
       // ---------------------------------------------------------------------
@@ -68,7 +79,7 @@ export const POST = withAudit(
         )
       }
 
-      const step = await createStep(parsed.data)
+      const step = await createStep(businessId, parsed.data)
       return NextResponse.json({ step }, { status: 201 })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error"

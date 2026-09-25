@@ -4,6 +4,7 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { updateStepSchema } from "@/lib/validators/funnel"
 import { getStep, updateStep, deleteStep } from "@/lib/db/funnels"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 /** Saves the editor draft and step settings. Never changes the live page. */
 export const PATCH = withAudit(
@@ -13,6 +14,17 @@ export const PATCH = withAudit(
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
+
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
+    }
+
     const { stepId } = await ctx.params
 
     const body = await request.json().catch(() => null)
@@ -22,9 +34,9 @@ export const PATCH = withAudit(
     }
 
     try {
-      const step = await getStep(stepId)
+      const step = await getStep(businessId, stepId)
       if (!step) return NextResponse.json({ error: "Not found" }, { status: 404 })
-      return NextResponse.json({ step: await updateStep(stepId, parsed.data) })
+      return NextResponse.json({ step: await updateStep(businessId, stepId, parsed.data) })
     } catch (error) {
       console.error("[PATCH /api/admin/funnels/steps/:stepId]", error)
       return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -34,15 +46,26 @@ export const PATCH = withAudit(
 
 export const DELETE = withAudit(
   { action: "funnel.deleted", category: "admin_write" },
-  async (_request, ctx) => {
+  async (request, ctx) => {
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
+
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
+    }
+
     const { stepId } = await ctx.params
 
     try {
-      const step = await getStep(stepId)
+      const step = await getStep(businessId, stepId)
       if (!step) return NextResponse.json({ error: "Not found" }, { status: 404 })
       if (step.is_entry) {
         return NextResponse.json(
@@ -50,7 +73,7 @@ export const DELETE = withAudit(
           { status: 409 },
         )
       }
-      await deleteStep(stepId)
+      await deleteStep(businessId, stepId)
       return NextResponse.json({ ok: true })
     } catch (error) {
       console.error("[DELETE /api/admin/funnels/steps/:stepId]", error)

@@ -5,6 +5,7 @@ import { withAudit } from "@/lib/audit/with-audit"
 import { publishStepSchema } from "@/lib/validators/funnel"
 import { getFunnelById, getStep, listSteps, publishStep, updateFunnel } from "@/lib/db/funnels"
 import { getDraft } from "@/lib/db/funnel-builder"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
 
@@ -84,9 +85,9 @@ type GateVerdict = { ok: true } | { ok: false; problems: string[] }
  * The raw value is returned rather than the Zod-parsed clone so the document
  * that is GATED is object-for-object the document that is STORED.
  */
-async function docUnderPublish(stepId: string, projectData: unknown): Promise<SectionDoc | null> {
+async function docUnderPublish(businessId: string, stepId: string, projectData: unknown): Promise<SectionDoc | null> {
   if (sectionDocSchema.safeParse(projectData).success) return projectData as SectionDoc
-  const draft = await getDraft(stepId)
+  const draft = await getDraft(businessId, stepId)
   return draft?.doc ?? null
 }
 
@@ -124,9 +125,9 @@ async function docUnderPublish(stepId: string, projectData: unknown): Promise<Se
  * Reported through the existing 422 `problems` contract so the message lands in
  * the UI the owner is already looking at, rather than as an unexplained 500.
  */
-async function gateSectionDoc(stepId: string, projectData: unknown): Promise<GateVerdict> {
+async function gateSectionDoc(businessId: string, stepId: string, projectData: unknown): Promise<GateVerdict> {
   try {
-    const doc = await docUnderPublish(stepId, projectData)
+    const doc = await docUnderPublish(businessId, stepId, projectData)
     if (!doc) return { ok: true }
 
     // THE PAGE LIST IS READ HERE, NOT PASSED AS `null`. `resolveDoc` treats
@@ -136,10 +137,10 @@ async function gateSectionDoc(stepId: string, projectData: unknown): Promise<Gat
     // catch and refuses. `getStep` is re-read rather than threaded in because
     // `gateSectionDoc` derives everything it gates on from `stepId` alone;
     // accepting a funnel id from the caller would be a way to opt out.
-    const step = await getStep(stepId)
+    const step = await getStep(businessId, stepId)
     if (!step) return { ok: false, problems: ["This page no longer exists."] }
 
-    const [catalogues, steps] = await Promise.all([loadCatalogues(), listSteps(step.funnel_id)])
+    const [catalogues, steps] = await Promise.all([loadCatalogues(), listSteps(businessId, step.funnel_id)])
     const pages = steps.map((row) => ({ slug: row.slug, name: row.name }))
 
     const gate = publishGate(resolveDoc(doc, catalogues, pages))
@@ -168,6 +169,17 @@ export const POST = withAudit(
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
+
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
+    }
+
     const { stepId } = await ctx.params
 
     const body = await request.json().catch(() => null)
@@ -177,12 +189,12 @@ export const POST = withAudit(
     }
 
     try {
-      const step = await getStep(stepId)
+      const step = await getStep(businessId, stepId)
       if (!step) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
       // BEFORE `publishStep`, which both compiles and writes. A gate that ran
       // after it would be a report on a page that is already live.
-      const gate = await gateSectionDoc(stepId, parsed.data.project_data)
+      const gate = await gateSectionDoc(businessId, stepId, parsed.data.project_data)
       if (!gate.ok) {
         return NextResponse.json(
           { error: "This page could not be published.", problems: gate.problems },
@@ -190,7 +202,7 @@ export const POST = withAudit(
         )
       }
 
-      const result = await publishStep({
+      const result = await publishStep(businessId, {
         stepId,
         html: parsed.data.html,
         css: parsed.data.css,
@@ -232,9 +244,9 @@ export const POST = withAudit(
       // reporting a failed publish for a publish that succeeded would be worse.
       let wentLive = false
       try {
-        const funnel = await getFunnelById(step.funnel_id)
+        const funnel = await getFunnelById(businessId, step.funnel_id)
         if (funnel && funnel.kind === "page" && funnel.status !== "published") {
-          await updateFunnel(funnel.id, { status: "published" })
+          await updateFunnel(businessId, funnel.id, { status: "published" })
           wentLive = true
         }
       } catch (error) {

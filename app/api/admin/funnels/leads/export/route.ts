@@ -14,6 +14,7 @@ import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { recordAudit } from "@/lib/audit/record"
 import { listLeadsForExport, type LeadFilters } from "@/lib/db/funnel-leads"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { leadsCsvFilename, leadsToCsv } from "@/lib/funnels/leads-csv"
 import { FUNNEL_LEAD_STATUSES, type FunnelLeadStatus } from "@/types/database"
 
@@ -21,6 +22,16 @@ export async function GET(request: Request) {
   const session = await auth()
   if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    throw err
   }
 
   const params = new URL(request.url).searchParams
@@ -42,7 +53,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const leads = await listLeadsForExport(filters)
+    const leads = await listLeadsForExport(businessId, filters)
 
     recordAudit({
       action: "funnel.leads_exported",

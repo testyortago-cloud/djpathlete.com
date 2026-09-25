@@ -17,6 +17,7 @@ import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { recordAudit } from "@/lib/audit/record"
 import { getLead, setLeadNotes, setLeadStatus } from "@/lib/db/funnel-leads"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { FUNNEL_LEAD_STATUSES } from "@/types/database"
 
 /**
@@ -41,6 +42,17 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
+
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    throw err
+  }
+
   const { id } = await ctx.params
 
   const parsed = patchSchema.safeParse(await request.json().catch(() => null))
@@ -49,13 +61,13 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   }
 
   try {
-    const before = await getLead(id)
+    const before = await getLead(businessId, id)
     if (!before) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     let lead = before
 
     if (parsed.data.status !== undefined) {
-      lead = await setLeadStatus(id, parsed.data.status as typeof before.status)
+      lead = await setLeadStatus(businessId, id, parsed.data.status as typeof before.status)
       recordAudit({
         action: "funnel.lead_status_changed",
         category: "admin_write",
@@ -66,7 +78,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     }
 
     if (parsed.data.notes !== undefined) {
-      lead = await setLeadNotes(id, parsed.data.notes)
+      lead = await setLeadNotes(businessId, id, parsed.data.notes)
       recordAudit({
         action: "funnel.lead_note_written",
         category: "admin_write",

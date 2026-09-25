@@ -11,13 +11,24 @@ import { getTemplate } from "@/lib/funnels/templates"
 import { isBuiltinQuizSource } from "@/lib/quizzes/sources"
 import { RPI_ATHLETE_QUIZ, toDefinition } from "@/lib/quizzes/seed/rpi-athlete-quiz"
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await auth()
   if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
+
+  let businessId: string
   try {
-    return NextResponse.json({ funnels: await listFunnels() })
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    throw err
+  }
+
+  try {
+    return NextResponse.json({ funnels: await listFunnels(businessId) })
   } catch (error) {
     console.error("[GET /api/admin/funnels]", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -168,7 +179,7 @@ export const POST = withAudit(
       // validator does not need a second edit here. `offer` stays nested and is
       // split into its two columns by the DAL, which is where the paired CHECK
       // is honoured.
-      const { entryStepId, ...funnel } = await createFunnel({
+      const { entryStepId, ...funnel } = await createFunnel(businessId, {
         ...funnelIntake,
         steps: plannedSteps,
         created_by: session.user.id,

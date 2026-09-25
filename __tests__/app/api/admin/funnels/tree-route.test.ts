@@ -14,11 +14,19 @@ vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/permissions/guard", () => ({ canAccessAdminPath: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 vi.mock("@/lib/db/funnel-page-tree", () => ({ savePageTree: vi.fn() }))
+class NoAccessibleBusinessError extends Error {}
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: vi.fn(),
+  NoAccessibleBusinessError,
+}))
 
 import { PUT } from "@/app/api/admin/funnels/steps/[stepId]/tree/route"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { savePageTree } from "@/lib/db/funnel-page-tree"
+import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
+
+const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 
 const validTree = {
   v: 1,
@@ -41,6 +49,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(auth).mockResolvedValue({ user: { id: "u1", role: "admin" } } as never)
   vi.mocked(canAccessAdminPath).mockResolvedValue(true)
+  vi.mocked(resolveAdminTenantForRequest).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "Test Co", slug: "test-co" }],
+    isOperator: true,
+  } as never)
 })
 
 describe("PUT /api/admin/funnels/steps/:id/tree", () => {
@@ -51,7 +64,7 @@ describe("PUT /api/admin/funnels/steps/:id/tree", () => {
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ revision: 5 })
-    expect(savePageTree).toHaveBeenCalledWith("s1", expect.objectContaining({ engine: "tree" }), 4)
+    expect(savePageTree).toHaveBeenCalledWith(BUSINESS_ID, "s1", expect.objectContaining({ engine: "tree" }), 4)
   })
 
   it("409s on a stale revision instead of overwriting", async () => {

@@ -29,6 +29,7 @@ import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { getDraft, appendTurn } from "@/lib/db/funnel-builder"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { applyOps, type DiffReceipt } from "@/lib/funnels/sections/apply"
 
 /**
@@ -78,6 +79,16 @@ export const PUT = withAudit(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
+    }
+
     const { stepId } = await ctx.params
     const body = await request.json().catch(() => null)
     const parsed = bodySchema.safeParse(body)
@@ -95,7 +106,7 @@ export const PUT = withAudit(
     }
 
     try {
-      const draft = await getDraft(stepId)
+      const draft = await getDraft(businessId, stepId)
       if (!draft) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
       // `docInvalid` and `doc: null` are refused SEPARATELY from each other in
@@ -140,7 +151,7 @@ export const PUT = withAudit(
 
       const summary = summarise(applied.receipt)
 
-      const written = await appendTurn({
+      const written = await appendTurn(businessId, {
         stepId,
         expectedRevision: parsed.data.revision,
         role: "user",

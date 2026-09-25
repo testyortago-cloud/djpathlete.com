@@ -29,17 +29,24 @@ vi.mock("@/lib/db/funnels", () => ({
   updateFunnel: vi.fn(),
   listSteps: vi.fn(),
 }))
+class NoAccessibleBusinessError extends Error {}
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: vi.fn(),
+  NoAccessibleBusinessError,
+}))
 
 import { POST } from "@/app/api/admin/funnels/[id]/convert/route"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { recordAudit } from "@/lib/audit/record"
 import { getFunnelById, updateFunnel, listSteps } from "@/lib/db/funnels"
+import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
 
 const FUNNEL_ID = "ffffffff-1111-4222-8333-444444444444"
 const ADMIN_ID = "aaaaaaaa-1111-4222-8333-444444444444"
+const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 
 const FUNNEL_ROW = { id: FUNNEL_ID, slug: "free-trial-week", name: "Free Trial Week", kind: "funnel", status: "draft" }
 const PAGE_ROW = { id: FUNNEL_ID, slug: "coaching", name: "Coaching", kind: "page", status: "draft" }
@@ -62,9 +69,14 @@ beforeEach(() => {
   vi.resetAllMocks()
   mock(auth).mockResolvedValue({ user: { id: ADMIN_ID, role: "admin" } })
   mock(canAccessAdminPath).mockResolvedValue(true)
+  mock(resolveAdminTenantForRequest).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "Test Co", slug: "test-co" }],
+    isOperator: true,
+  })
   mock(getFunnelById).mockResolvedValue(FUNNEL_ROW)
   mock(listSteps).mockResolvedValue([step(0)])
-  mock(updateFunnel).mockImplementation(async (id: string, data: Record<string, unknown>) => ({
+  mock(updateFunnel).mockImplementation(async (_businessId: string, id: string, data: Record<string, unknown>) => ({
     ...FUNNEL_ROW,
     ...data,
   }))
@@ -91,7 +103,7 @@ describe("POST /api/admin/funnels/[id]/convert", () => {
     // MUTANT: writing `{kind: "funnel"}` — the value it already had. Asserting
     // only that updateFunnel was called is green for the wrong destination, so
     // the VALUE is what is pinned. (assert-which-value, not that one came back)
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { kind: "page" })
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID, { kind: "page" })
     expect((await response.json()).funnel.kind).toBe("page")
   })
 
@@ -139,7 +151,7 @@ describe("POST /api/admin/funnels/[id]/convert", () => {
 
   it("converts a landing page into a funnel", async () => {
     mock(getFunnelById).mockResolvedValue(PAGE_ROW)
-    mock(updateFunnel).mockImplementation(async (id: string, data: Record<string, unknown>) => ({
+    mock(updateFunnel).mockImplementation(async (_businessId: string, id: string, data: Record<string, unknown>) => ({
       ...PAGE_ROW,
       ...data,
     }))
@@ -147,7 +159,7 @@ describe("POST /api/admin/funnels/[id]/convert", () => {
     const response = await POST(convert({ to: "funnel" }) as never, ctx as never)
 
     expect(response.status).toBe(200)
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { kind: "funnel" })
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID, { kind: "funnel" })
   })
 
   it("does not count steps when promoting — one page is a legal funnel", async () => {
@@ -160,7 +172,7 @@ describe("POST /api/admin/funnels/[id]/convert", () => {
     // ONE direction rather than every conversion. Without it, a guard that
     // refused everything would still pass all three refusal tests.
     expect(response.status).toBe(200)
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { kind: "funnel" })
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID, { kind: "funnel" })
   })
 
   // -------------------------------------------------------------------------

@@ -140,6 +140,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not found." }, { status: 404 })
   }
 
+  // THE TENANT IS THE ATTEMPT'S. `quiz_attempts.business_id` was stamped when
+  // /api/quiz/progress created the attempt, so every write below — the step
+  // and funnel reads just below, the contact, the pipeline card, the settings
+  // read, the consent row — lands on the business the attempt belongs to, by
+  // construction rather than by several defaults happening to agree. A public
+  // route, but NOT a caller of platformBusinessId(): it has a row to inherit
+  // from. Resolved here, ahead of the funnel-link check below, rather than
+  // where it used to sit (just before `handoff`) — that check reads
+  // `lib/db/funnels` too and needs the same value.
+  const businessId = attempt.businessId
+
   // THE PAGE THIS QUIZ CLAIMS TO BE ON HAS TO BE REAL, AND LIVE —
   // BUT THE VISITOR IS NOT THE ONE WHO PAYS FOR IT NOT BEING.
   //
@@ -193,7 +204,7 @@ export async function POST(request: Request) {
   if (body.funnelId && body.stepId) {
     let step: Awaited<ReturnType<typeof getStep>>
     try {
-      step = await getStep(body.stepId)
+      step = await getStep(businessId, body.stepId)
     } catch (error) {
       logFailure("step read", error, { attemptId: body.attemptId, quizId: body.quizId })
       return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
@@ -207,7 +218,7 @@ export async function POST(request: Request) {
       // says whether the page is live.
       let funnel: Awaited<ReturnType<typeof getFunnelById>>
       try {
-        funnel = await getFunnelById(step.funnel_id)
+        funnel = await getFunnelById(businessId, step.funnel_id)
       } catch (error) {
         logFailure("funnel read", error, { attemptId: body.attemptId, quizId: body.quizId })
         return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
@@ -217,14 +228,6 @@ export async function POST(request: Request) {
       }
     }
   }
-
-  // THE TENANT IS THE ATTEMPT'S. `quiz_attempts.business_id` was stamped when
-  // /api/quiz/progress created the attempt, so every write below — the
-  // contact, the pipeline card, the settings read, the consent row — lands on
-  // the business the attempt belongs to, by construction rather than by four
-  // defaults happening to agree. A public route, but NOT a caller of
-  // platformBusinessId(): it has a row to inherit from.
-  const businessId = attempt.businessId
 
   // 1. SCORE. Pure, no I/O, and the only source of the numbers below.
   const answers = sanitiseAnswers(definition, body.answers)
@@ -335,7 +338,7 @@ async function handoff(input: {
   // second path is a merge problem, not a feature.
   if (body.funnelId && body.stepId) {
     try {
-      await createSubmission({
+      await createSubmission(businessId, {
         funnel_id: body.funnelId,
         step_id: body.stepId,
         // WHICH quiz, in the column that answers "which form". As far as the

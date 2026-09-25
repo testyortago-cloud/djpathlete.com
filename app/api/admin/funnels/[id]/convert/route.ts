@@ -64,11 +64,11 @@
 // filing it on a different board, which is not what the owner asked for and
 // would be discovered as an outage.
 //
-// TENANCY: `funnels` has no `business_id` column, so there is no predicate to
-// apply here — this route is exactly as tenant-scoped as every other funnel
-// admin route, which is to say by `canAccessAdminPath` alone. That is a known
-// gap belonging to the tenancy work, not something this route can fix; it is
-// named rather than silently inherited.
+// TENANCY: since migration 00278 `funnels` carries `business_id`, and every
+// read/write below is scoped through `resolveAdminTenantForRequest` like the
+// rest of this route family. (This comment used to say the opposite — that
+// there was no predicate to apply — which is now stale and would mislead the
+// next reader into thinking the gap is still open.)
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
@@ -76,6 +76,7 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { convertFunnelSchema } from "@/lib/validators/funnel"
 import { getFunnelById, updateFunnel, listSteps } from "@/lib/db/funnels"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 export const POST = withAudit(
   {
@@ -87,12 +88,15 @@ export const POST = withAudit(
     // it on an action this rare: without a label the log reads
     // "funnel 69418ea3-…", and "where did my landing page go" is the exact
     // question this slug exists to answer.
-    target: async (_request, context) => {
+    target: async (request, context) => {
       const { id } = await (context as { params: Promise<{ id: string }> }).params
-      // The id is the part that must survive. A failed name lookup degrades to
-      // an unlabelled row rather than throwing — `withAudit` catches a throw
-      // here into `target = undefined`, which would lose the id as well.
-      const funnel = await getFunnelById(id).catch(() => null)
+      // The id is the part that must survive. A failed name lookup — including
+      // a tenant that cannot be resolved — degrades to an unlabelled row rather
+      // than throwing: `resolveTarget` in with-audit.ts catches a throw here
+      // into `target = undefined`, which would lose the id as well.
+      const funnel = await resolveAdminTenantForRequest(request)
+        .then(({ businessId }) => getFunnelById(businessId, id))
+        .catch(() => null)
       return funnel ? { type: "funnel", id, label: funnel.name } : { type: "funnel", id }
     },
     // READ OFF THE RESPONSE, not the request body. The request says what was
@@ -112,6 +116,16 @@ export const POST = withAudit(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
+    }
+
     const { id } = await ctx.params
     const parsed = convertFunnelSchema.safeParse(await request.json().catch(() => null))
     if (!parsed.success) {
@@ -120,7 +134,7 @@ export const POST = withAudit(
     const to = parsed.data.to
 
     try {
-      const funnel = await getFunnelById(id)
+      const funnel = await getFunnelById(businessId, id)
       if (!funnel) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
       // ALREADY THERE. Answered 200 rather than 400 because nothing is wrong:
@@ -134,7 +148,7 @@ export const POST = withAudit(
       // ONLY ON THE WAY DOWN, and the steps are not read on the way up. See the
       // header: promotion has nothing to count.
       if (to === "page") {
-        const steps = await listSteps(id)
+        const steps = await listSteps(businessId, id)
         if (steps.length !== 1) {
           return NextResponse.json(
             {
@@ -149,7 +163,7 @@ export const POST = withAudit(
         }
       }
 
-      const updated = await updateFunnel(id, { kind: to })
+      const updated = await updateFunnel(businessId, id, { kind: to })
       return NextResponse.json({ funnel: updated, converted: { from: funnel.kind, to } })
     } catch (error) {
       console.error("[POST /api/admin/funnels/:id/convert]", error)

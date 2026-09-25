@@ -87,12 +87,12 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Invalid submission." }, { status: 400 })
   const { stepId, formKey, values } = parsed.data
 
-  const step = await getStep(stepId)
+  const step = await getStep(businessId, stepId)
   if (!step) return notFound()
-  const funnel = await getFunnelById(step.funnel_id)
+  const funnel = await getFunnelById(businessId, step.funnel_id)
   if (!funnel) return notFound()
 
-  const draft = await getDraft(stepId)
+  const draft = await getDraft(businessId, stepId)
   // `docInvalid` is NOT the same as "no draft" and must not be collapsed into
   // it: one is a page nobody has written, the other is a legacy blob this
   // builder cannot read, and telling the owner the wrong one sends them to the
@@ -168,16 +168,16 @@ async function outcomeFor(props: Record<string, unknown>, businessId: string): P
   // right answer, and a catalogue that cannot be read is not a reason to refuse
   // the walk.
   const [, , slug, nextSlug] = previewHref.split("/")
-  const target = await getFunnelBySlug(decodeURIComponent(slug ?? "")).catch(() => null)
+  const target = await getFunnelBySlug(businessId, decodeURIComponent(slug ?? "")).catch(() => null)
   if (!target) return { kind: "redirect", href: previewHref }
 
-  const steps = await listSteps(target.id).catch(() => [])
+  const steps = await listSteps(businessId, target.id).catch(() => [])
   const next = nextSlug
     ? steps.find((s) => s.slug === decodeURIComponent(nextSlug))
     : steps.find((s) => s.is_entry)
   if (!next) return { kind: "redirect", href: previewHref }
 
-  const nextDraft = await getDraft(next.id).catch(() => null)
+  const nextDraft = await getDraft(businessId, next.id).catch(() => null)
   if (!nextDraft?.doc) return { kind: "no-draft", stepName: next.name }
 
   return { kind: "redirect", href: previewHref }

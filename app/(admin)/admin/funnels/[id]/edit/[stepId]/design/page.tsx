@@ -31,6 +31,7 @@ import { notFound } from "next/navigation"
 import { getFunnelById, getStep } from "@/lib/db/funnels"
 import { getPageTree } from "@/lib/db/funnel-page-tree"
 import { getDraft } from "@/lib/db/funnel-builder"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { emptyPageTree } from "@/lib/funnels/tree/schema"
 import { DESIGNER_PARKED } from "@/lib/funnels/tree/parked"
 import { DesignEditor } from "@/components/admin/funnels/design/DesignEditor"
@@ -43,17 +44,18 @@ interface PageProps {
 
 export default async function DesignPage({ params }: PageProps) {
   const { id, stepId } = await params
+  const { businessId } = await resolveAdminTenant()
 
-  const [funnel, step] = await Promise.all([getFunnelById(id), getStep(stepId)])
+  const [funnel, step] = await Promise.all([getFunnelById(businessId, id), getStep(businessId, stepId)])
   if (!funnel || !step || step.funnel_id !== funnel.id) notFound()
 
-  const draftTree = await getPageTree(stepId)
+  const draftTree = await getPageTree(businessId, stepId)
   if (!draftTree) notFound()
 
   // A tree that parses is editable whether or not the OTHER column can be read
   // at all, so this read is never allowed to take the designer down. It only
   // decides what to say about a step that has no tree.
-  const draft = await getDraft(stepId).catch((error) => {
+  const draft = await getDraft(businessId, stepId).catch((error) => {
     console.error("[funnels/design] draft read failed — deciding on the tree alone:", error)
     return null
   })

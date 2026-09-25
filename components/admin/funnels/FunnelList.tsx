@@ -64,9 +64,20 @@ interface FunnelListProps {
    * board into a pages board in silence.
    */
   kind?: FunnelKind
+  /**
+   * The resolved tenant's name, for the EMPTY state only (spec D7).
+   *
+   * A selection cookie defaulting somewhere other than the platform business
+   * is a known trap in this repo — see lib/tenancy/resolve.ts's `select()` —
+   * and "no funnels" must not be readable as "they vanished" when it can
+   * equally mean "you are looking at a different business". Optional: every
+   * existing test that mounts this component directly, with no server
+   * resolution behind it, keeps working with no empty-state attribution.
+   */
+  businessName?: string
 }
 
-export function FunnelList({ funnels, leadCounts, quizByStepId = {}, kind = "funnel" }: FunnelListProps) {
+export function FunnelList({ funnels, leadCounts, quizByStepId = {}, kind = "funnel", businessName }: FunnelListProps) {
   const router = useRouter()
   const [query, setQuery] = useState("")
 
@@ -169,7 +180,7 @@ export function FunnelList({ funnels, leadCounts, quizByStepId = {}, kind = "fun
         // explanation was a silent regression. A no-MATCHES result is a
         // different thing and keeps its one line.
         funnels.length === 0 ? (
-          <BoardEmptyState kind={kind} />
+          <BoardEmptyState kind={kind} businessName={businessName} />
         ) : (
           <div className="rounded-xl border border-dashed border-border bg-surface/30 px-4 py-16 text-center text-muted-foreground">
             Nothing matches that search.

@@ -9,10 +9,18 @@
 // this feature does, so it is the last place to lose an explanation.
 //
 // Presentational only: no hooks, no state, no client directive needed.
+//
+// `businessName` (spec D7, G31 funnel tenancy): named here, not assumed away,
+// because a selection cookie defaulting to something other than the platform
+// business is a known trap in this repo — see lib/tenancy/resolve.ts. Without
+// it "no funnels yet" reads identically whether this business genuinely has
+// none or whether the screen is quietly showing a different tenant than the
+// owner expects. Optional so every caller that predates G31 (and every test
+// that mounts this directly) keeps rendering unchanged.
 
 import type { FunnelKind } from "@/types/database"
 
-export function BoardEmptyState({ kind }: { kind: FunnelKind }) {
+export function BoardEmptyState({ kind, businessName }: { kind: FunnelKind; businessName?: string }) {
   const copy =
     kind === "page"
       ? {
@@ -40,6 +48,11 @@ export function BoardEmptyState({ kind }: { kind: FunnelKind }) {
   return (
     <div className="rounded-xl border border-dashed border-border bg-surface/30 px-6 py-14 text-center">
       <h2 className="font-heading text-lg text-primary">{copy.title}</h2>
+      {businessName ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Showing {businessName} — this is a genuinely empty list for this business, not a loading or access problem.
+        </p>
+      ) : null}
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{copy.body}</p>
       <ol className="mx-auto mt-5 max-w-xs space-y-2 text-left text-sm text-muted-foreground">
         {copy.steps.map((entry, index) => (
