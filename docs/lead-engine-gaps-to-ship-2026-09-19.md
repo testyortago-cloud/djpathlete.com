@@ -488,6 +488,18 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
     identical; build exit 0; **18 mutants, 17 killed and one declared EQUIVALENT** (the anchor's
     opportunity-read tenant predicate is masked by the pipelines read that follows it — defence in
     depth, not an independent guard, and the sweep script says so rather than hiding it).
+  - **REGRESSION, found 2026-09-25 and fixed on `worktree-postgrest-select-contract` (`46bd6baf`).**
+    The determinism fix above (`resolveChargeAmendedPipelineKey`) selected and ordered
+    `opportunity_stage_events` by `created_at`. That table has only `occurred_at` (00219), so every
+    call answered 42703. It runs before both fallbacks for any refund that carries a charge id,
+    which the webhook always passes. The webhook catches the throw and logs "refund pipeline hook
+    failed", so **from the deploy of this row until the fix lands, no refund amends any card**: not
+    the G25 choice, and not the older "most recent Won" either. The 17 killed mutants could not see
+    it because the in-memory fake stamps `created_at` on every row of every table. It was found by
+    the live select contract (`npm run test:integration:selects`), the first check in the repo that
+    sends each select to a real PostgREST. **Whether any real refund was lost is unverified:** the
+    production read was not permitted in that session. Look for "refund pipeline hook failed" in
+    the Stripe webhook's logs since 2026-09-21.
 
 ### G26 · The pipeline repair cron must stay off · **M** (after G22)
 - `lib/automation/pipeline-reconcile.ts` reconciles every board, routes bookings by the persisted `service_type`, and handles `event_signup` payments instead of counting them failed. Then the owner sets `cron_pipeline_reconcile_enabled` true (outward action). Test: an assessment booking already carded on Assessment is not duplicated on Coaching.
@@ -627,6 +639,7 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 - **Verified:** `tsc --noEmit` 238 errors / 54 files with a per-file set byte-identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`, re-run on the MERGED tree because `main` had moved; `npm run build` exit 0 on the merged tree; `SINGLETON_BUSINESS_ID` unchanged at 5; all four `__tests__/lib/tenancy/` suites green including both inventory reverse-checks; **19/19 checks driven over real HTTP against a second tenant in the dev clone**, cleanup verified on all four runs.
 - **Deliberately not done, and each is recorded rather than implied:** `resolvePublicTenant` is not wrapped in react `cache()`, so `/go` does two `business_domains` lookups per render and a transient failure on exactly one can render one tenant's metadata over another's body — the fix touches all ~27 callers and was not worth taking unreviewed. Seed and capture **scripts** still omit `business_id` and look parents up by slug with no predicate; they must be fixed **before the column DEFAULT can be dropped**. `programs`, `session_pack_products` and `faqs` have no `business_id` column at all, so `loadCatalogues` leaves those three reads untenanted — an honest gap, commented in `resolve.ts`, not a missed conversion.
 - **`scripts/verify-funnel-tenancy.ts` is not run by CI**, and it is the only thing in the repo that can catch a live PostgREST fault of the kind that 500'd the leads inbox. Wiring it in is the highest-value follow-up this row leaves behind.
+  - **Answered 2026-09-25, differently from how it was asked.** The script itself cannot usefully run in CI: it needs `next dev` (the dev-login bypass 404s under `NODE_ENV=production`), it writes fixtures into the shared dev clone, and branches reach GitHub only when merged, so a GitHub job could only report the fault after it deployed. What catches the fault class instead is `npm run test:integration:selects`: every `.from().select()` in the deployed code (626 distinct selects) sent to the dev clone with `limit=0`, read-only, in about ten seconds. Its controls prove that G31's exact hint still answers PGRST200, and restoring that hint fails the run at all four call sites. It is the pre-merge gate (CLAUDE.md), with a post-merge backstop workflow. **Its first run found five live faults no mocked suite had seen** — see G25's regression note, and `KNOWN_REFUSED` in the test for the three left for the owner.
 
 ### G32 · A new tenant gets no sequences · **M**
 - `create_business()` (`00249`) seeds Coaching only. Ship a sequence template set copied on create (the twelve keys, brand-free bodies, all `draft`), plus the two extra boards. Test parses the function and a fixture run proves twelve `draft` rows for a new business.
