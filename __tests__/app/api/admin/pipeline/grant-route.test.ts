@@ -51,9 +51,10 @@ vi.mock("@/lib/tenancy/resolve", () => {
 // The route imports these three lazily, inside the handler. Mocking the modules
 // still works because the dynamic import resolves through the same registry.
 const listGrantableProgramsMock = vi.fn()
+const readContactIdentityMock = vi.fn()
 vi.mock("@/lib/db/pipeline", () => ({
   readOpportunityForGrant: (...a: unknown[]) => readOpportunityForGrantMock(...a),
-  readContactIdentity: vi.fn(),
+  readContactIdentity: (...a: unknown[]) => readContactIdentityMock(...a),
   listGrantablePrograms: (...a: unknown[]) => listGrantableProgramsMock(...a),
 }))
 vi.mock("@/lib/funnels/checkout/deps", () => ({ buildManualGrantDeps: vi.fn() }))
@@ -179,6 +180,22 @@ describe("which tenant's card gets granted", () => {
     const [, passed] = readOpportunityForGrantMock.mock.calls[0]
     expect(passed).not.toBe(SINGLETON)
     expect(passed).not.toBeUndefined()
+  })
+
+  it("reads the athlete's identity in the CALLER'S business too (G35)", async () => {
+    // MUTANT: `getContactIdentity: readContactIdentity`, the direct port wiring
+    // this route had before G35. With the business now first, that hands the
+    // contact id in AS the business. It is a tsc error, but vitest does not
+    // run tsc.
+    authMock.mockResolvedValue(COACH_SESSION)
+    await POST(req(validBody) as never, NO_PARAMS)
+
+    const deps = grantWonOpportunityMock.mock.calls[0][1] as {
+      getContactIdentity: (id: string) => Promise<unknown>
+    }
+    await deps.getContactIdentity("contact-1")
+
+    expect(readContactIdentityMock).toHaveBeenCalledWith(BUSINESS_ID, "contact-1")
   })
 
   it("403s when the caller resolves to no business at all", async () => {

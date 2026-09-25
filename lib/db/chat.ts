@@ -38,9 +38,9 @@ export interface CreateConversationInput {
    * the one place the tenant genuinely ENTERS the chat feature (see the file
    * header) -- every later turn reads it back off the conversation row rather
    * than deciding it again, so a default here would be a default for the
-   * whole feature. The public route has no session and no Host resolution yet
-   * (phase 4), so it passes `platformBusinessId()` (lib/tenancy/platform.ts)
-   * rather than deciding a tenant it cannot actually resolve.
+   * whole feature. The public route resolves it from the request's Host
+   * (lib/tenancy/public.ts), and reads an EXISTING conversation under the same
+   * answer. See `getConversation`.
    */
   businessId: string
   /** sha256(ip + salt). Never a raw address — see the file header. */
@@ -68,36 +68,37 @@ export async function createConversation(input: CreateConversationInput): Promis
 }
 
 /**
- * `null` means the row is not there. A failed READ throws, because "the
- * database was unreachable" and "no such conversation" are different answers
- * and a caller that conflates them turns an outage into a silent new session.
+ * One conversation by id, IN ONE BUSINESS. `null` means the row is not there,
+ * or is another business's. That is the same answer on purpose: telling a
+ * caller the id exists elsewhere is a disclosure.
+ *
+ * A failed READ throws, because "the database was unreachable" and "no such
+ * conversation" are different answers, and a caller that conflates them turns
+ * an outage into a silent new session.
+ *
+ * `businessId` is REQUIRED and ALWAYS applied (G35). It used to be optional,
+ * behind `if (businessId)`, because the public callers had no tenant to give:
+ * the row was what CARRIED the answer. That predated the Host boundary
+ * (lib/tenancy/public.ts, phase 4), and every caller has one now:
+ *   - app/api/ask/route.ts and app/api/ask/capture/route.ts resolve the
+ *     request's Host first and read under it, so a conversation id from
+ *     another business's site reads as unknown.
+ *   - lib/lead-engine/chat/escalate.ts is handed `conversation.business_id` by
+ *     its one caller.
+ *   - app/(admin)/admin/chat/[id]/page.tsx passes the admin tenant. It has done
+ *     so since 2026-09-04, when a UUID from the URL bar reached this with no
+ *     predicate at all, safe only because the proxy default-denied staff.
+ * An optional tenant is how a public caller came to pass none. A blank tenant
+ * is not "any tenant" either: an empty string is filtered like any other value
+ * and matches nothing.
  */
-/**
- * One conversation by id.
- *
- * `businessId` is OPTIONAL and omitting it means "any tenant", which is correct
- * for exactly three callers and wrong for every future one:
- *   - app/api/ask/route.ts and app/api/ask/capture/route.ts are PUBLIC. A
- *     website visitor resolves their own conversation by the id in their
- *     session before anyone knows which business it belongs to -- the row is
- *     what CARRIES that answer, so requiring it as an argument is circular.
- *   - lib/lead-engine/chat/escalate.ts already holds a conversation the caller
- *     located by other means.
- *
- * EVERY ADMIN CALLER MUST PASS IT. Until 2026-09-04 this function had no
- * business predicate at all and app/(admin)/admin/chat/[id]/page.tsx called it
- * with a UUID straight from the URL bar. That was safe only because
- * `/admin/chat` was unmapped in PATH_PERMISSIONS and the proxy default-denied
- * staff; the moment that page became reachable it would have been one coach
- * reading another coach's website-visitor conversations by guessing an id.
- *
- * Optional rather than required for the same reason `getBusinessSettings` keeps
- * its default: the public callers legitimately have no tenant to give.
- */
-export async function getConversation(id: string, businessId?: string): Promise<ChatConversation | null> {
-  let query = getClient().from("chat_conversations").select("*").eq("id", id)
-  if (businessId) query = query.eq("business_id", businessId)
-  const { data, error } = await query.maybeSingle()
+export async function getConversation(id: string, businessId: string): Promise<ChatConversation | null> {
+  const { data, error } = await getClient()
+    .from("chat_conversations")
+    .select("*")
+    .eq("id", id)
+    .eq("business_id", businessId)
+    .maybeSingle()
 
   if (error) throw error
   return (data as ChatConversation | null) ?? null

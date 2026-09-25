@@ -100,7 +100,16 @@ export interface RunEscalationInput {
    * STORED: see the header. Nothing downstream of here may put it in a row.
    */
   summary: string
-  businessId?: string
+  /**
+   * The business the conversation belongs to. REQUIRED since G35, and the
+   * conversation is READ under it, so an id alone is never enough to hand a
+   * conversation to a person. The one caller (app/api/ask/route.ts) passes
+   * `conversation.business_id` off the row it read under the request's Host.
+   *
+   * It used to be optional, falling back to the row's own column after an
+   * id-only read. That is how the caller came to pass nothing at all.
+   */
+  businessId: string
 }
 
 /**
@@ -168,13 +177,14 @@ async function writeTimelineEvent(args: {
  * into a silently dropped escalation.
  */
 export async function runEscalation(input: RunEscalationInput): Promise<EscalationOutcome> {
-  const { conversationId, summary } = input
+  const { businessId, conversationId, summary } = input
 
-  const conversation = await getConversation(conversationId)
+  // Another business's conversation is `conversation_not_found`, the same
+  // answer as one that does not exist (G35).
+  const conversation = await getConversation(conversationId, businessId)
   if (!conversation) return { ok: false, reason: "conversation_not_found" }
   if (conversation.escalated_at !== null) return { ok: false, reason: "already_escalated" }
 
-  const businessId = input.businessId ?? conversation.business_id
   const contactId = conversation.contact_id
 
   // THE DURABLE RECORD. Uncaught on purpose — see the file header.

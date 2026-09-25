@@ -78,16 +78,25 @@ import { recordAudit } from "@/lib/audit/record"
  *   The two places a row's tenant is DECIDED, after which the row carries it:
  *     app/api/quiz/progress/route.ts   (createAttempt; quiz/submit inherits)
  *     app/api/ask/route.ts             (createConversation; the rest of that
- *                                       route threads conversation.business_id)
+ *                                       route threads conversation.business_id.
+ *                                       Since G35 it resolves BEFORE reading
+ *                                       an existing conversation too, and
+ *                                       reads it under the Host, so another
+ *                                       business's conversation id is unknown)
+ *   One route that resolves only to FENCE a read, never to decide a tenant
+ *   (G35). It reads the visitor's conversation under the Host, so a
+ *   conversation id from another business's site answers the same 404 as an
+ *   unknown one. It then files under conversation.business_id, which that
+ *   fenced read makes the Host's tenant by construction:
+ *     app/api/ask/capture/route.ts
  *   The pages and server components that render the consent wording those
  *   routes file, which must name the SAME business the route files under.
  *   For camps/clinics and the two form/quiz islands that holds because both
- *   sides read the Host directly. app/(marketing)/ask/page.tsx is the one
- *   exception: it resolves the Host's business itself, but POST
- *   /api/ask/capture never reads the Host — it inherits
- *   conversation.business_id, set once when POST /api/ask created the
- *   conversation from the same origin. The two still agree, TRANSITIVELY
- *   through that shared origin, not because they share one resolution:
+ *   sides read the Host directly. Since G35 app/(marketing)/ask/page.tsx holds
+ *   for the same reason: POST /api/ask/capture now reads the Host too (above).
+ *   Before G35 it did not, and the page and the route agreed only
+ *   TRANSITIVELY, through the origin POST /api/ask created the conversation
+ *   from:
  *     app/(marketing)/ask/page.tsx
  *     app/(marketing)/camps/[slug]/page.tsx
  *     app/(marketing)/clinics/[slug]/page.tsx

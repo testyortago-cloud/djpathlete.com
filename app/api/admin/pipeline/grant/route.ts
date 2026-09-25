@@ -116,7 +116,10 @@ export const POST = withAudit(
       { opportunityId: body.opportunityId, programId: body.programId },
       {
         getOpportunity: (opportunityId: string) => readOpportunityForGrant(opportunityId, businessId),
-        getContactIdentity: readContactIdentity,
+        // Fenced to the same tenant as the opportunity it came off (G35).
+        // Passing the DAL function straight through no longer type-checks,
+        // because it takes the business first.
+        getContactIdentity: (contactId: string) => readContactIdentity(businessId, contactId),
         runGrant: (purchase) =>
           grantFunnelPurchase(
             purchase,

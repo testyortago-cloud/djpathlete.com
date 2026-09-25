@@ -73,6 +73,9 @@ const SETTINGS: BusinessSettings = {
   accent_color: null,
 }
 
+/** The business every call below is handed: the fixture conversation's own, so the default read finds it. */
+const BUSINESS = SETTINGS.business_id
+
 function conversation(over: Partial<ChatConversation> = {}): ChatConversation {
   return {
     id: "c1",
@@ -135,7 +138,7 @@ beforeEach(() => {
 
 describe("runEscalation", () => {
   it("emails business_settings.reply_to with the transcript", async () => {
-    const out = await runEscalation({ conversationId: "c1", summary: "Asked about goalkeeper coaching" })
+    const out = await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "Asked about goalkeeper coaching" })
 
     expect(h.sendChatEscalationEmail).toHaveBeenCalledTimes(1)
     const arg = h.sendChatEscalationEmail.mock.calls[0][0]
@@ -154,7 +157,7 @@ describe("runEscalation", () => {
   })
 
   it("marks the conversation escalated BEFORE it tries to tell anyone", async () => {
-    await runEscalation({ conversationId: "c1", summary: "s" })
+    await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "s" })
 
     // The durable record has to be in place before any best-effort step runs,
     // or a send that hangs leaves a visitor promised a reply nobody can see.
@@ -166,7 +169,7 @@ describe("runEscalation", () => {
   it("writes a contact timeline event when a contact is known", async () => {
     h.getConversation.mockResolvedValue(conversation({ contact_id: "contact-7" }))
 
-    const out = await runEscalation({ conversationId: "c1", summary: "Wants a call" })
+    const out = await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "Wants a call" })
 
     const timeline = h.inserts.filter((i) => i.table === "contact_timeline_events")
     expect(timeline).toHaveLength(1)
@@ -181,7 +184,7 @@ describe("runEscalation", () => {
   it("writes no timeline event when no contact was captured", async () => {
     // contact_id is NOT NULL on contact_timeline_events, so an anonymous
     // escalation has nothing to hang a row on. It is still escalated.
-    const out = await runEscalation({ conversationId: "c1", summary: "s" })
+    const out = await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "s" })
 
     expect(h.inserts.filter((i) => i.table === "contact_timeline_events")).toHaveLength(0)
     expect(h.markEscalated).toHaveBeenCalledWith("c1")
@@ -191,7 +194,7 @@ describe("runEscalation", () => {
   it("is capped at one escalation per conversation", async () => {
     h.getConversation.mockResolvedValue(conversation({ escalated_at: "2026-08-23T10:05:00.000Z" }))
 
-    const out = await runEscalation({ conversationId: "c1", summary: "s" })
+    const out = await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "s" })
 
     expect(out).toEqual({ ok: false, reason: "already_escalated" })
     expect(h.markEscalated).not.toHaveBeenCalled()
@@ -202,7 +205,7 @@ describe("runEscalation", () => {
   it("still marks the conversation escalated when the email send fails", async () => {
     h.sendChatEscalationEmail.mockRejectedValue(new Error("resend down"))
 
-    const out = await runEscalation({ conversationId: "c1", summary: "s" })
+    const out = await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "s" })
 
     expect(h.markEscalated).toHaveBeenCalledWith("c1")
     expect(out).toMatchObject({ ok: true, notice: "failed" })
@@ -216,7 +219,7 @@ describe("runEscalation", () => {
     // tell is still a recorded escalation, and it is NOT reported as sent.
     h.sendChatEscalationEmail.mockResolvedValue({ delivered: false })
 
-    const out = await runEscalation({ conversationId: "c1", summary: "s" })
+    const out = await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "s" })
 
     expect(h.markEscalated).toHaveBeenCalledWith("c1")
     expect(out).toMatchObject({ ok: true, notice: "not_configured" })
@@ -229,7 +232,7 @@ describe("runEscalation", () => {
     // `not_configured` where nobody would look for it.
     h.sendChatEscalationEmail.mockRejectedValue(new Error("supabase down"))
 
-    const out = await runEscalation({ conversationId: "c1", summary: "s" })
+    const out = await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "s" })
 
     expect(h.markEscalated).toHaveBeenCalledWith("c1")
     expect(out).toMatchObject({ ok: true, notice: "failed" })
@@ -241,7 +244,7 @@ describe("runEscalation", () => {
     // a delivery that never left the process.
     h.sendChatEscalationEmail.mockResolvedValue({ delivered: false })
 
-    const out = await runEscalation({ conversationId: "c1", summary: "s" })
+    const out = await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "s" })
 
     expect(out).toMatchObject({ ok: true, notice: "not_configured" })
   })
@@ -250,7 +253,7 @@ describe("runEscalation", () => {
     h.getConversation.mockResolvedValue(conversation({ contact_id: "contact-7" }))
     h.insertError = { message: "timeline exploded" }
 
-    const out = await runEscalation({ conversationId: "c1", summary: "s" })
+    const out = await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "s" })
 
     expect(h.markEscalated).toHaveBeenCalledWith("c1")
     expect(out).toMatchObject({ ok: true, timelineEvent: false, notice: "sent" })
@@ -259,7 +262,7 @@ describe("runEscalation", () => {
   it("records what actually happened in the audit trail", async () => {
     h.sendChatEscalationEmail.mockResolvedValue({ delivered: false })
 
-    await runEscalation({ conversationId: "c1", summary: "Wants a call" })
+    await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "Wants a call" })
 
     expect(h.recordAudit).toHaveBeenCalledTimes(1)
     const arg = h.recordAudit.mock.calls[0][0]
@@ -274,7 +277,7 @@ describe("runEscalation", () => {
   it("refuses a conversation that is not there rather than inventing one", async () => {
     h.getConversation.mockResolvedValue(null)
 
-    const out = await runEscalation({ conversationId: "nope", summary: "s" })
+    const out = await runEscalation({ conversationId: "nope", businessId: BUSINESS, summary: "s" })
 
     expect(out).toEqual({ ok: false, reason: "conversation_not_found" })
     expect(h.markEscalated).not.toHaveBeenCalled()
@@ -285,13 +288,13 @@ describe("runEscalation", () => {
     // the second as the first would silently drop an escalation.
     h.getConversation.mockRejectedValue(new Error("supabase down"))
 
-    await expect(runEscalation({ conversationId: "c1", summary: "s" })).rejects.toThrow("supabase down")
+    await expect(runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "s" })).rejects.toThrow("supabase down")
   })
 
   it("hands the operator the whole summary by email, however long it is", async () => {
     h.getConversation.mockResolvedValue(conversation({ contact_id: "contact-7" }))
 
-    const out = await runEscalation({ conversationId: "c1", summary: "x".repeat(5_000) })
+    const out = await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "x".repeat(5_000) })
 
     expect(out).toMatchObject({ ok: true })
     // The email is a notification to one operator that is read and deleted.
@@ -334,7 +337,7 @@ describe("runEscalation — the visitor's words stay in the 90-day table", () =>
   it("keeps the visitor's words out of audit_logs, and carries the ids instead", async () => {
     h.getConversation.mockResolvedValue(conversation({ contact_id: "contact-7" }))
 
-    await runEscalation({ conversationId: "c1", summary: SUMMARY })
+    await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: SUMMARY })
 
     expect(JSON.stringify(h.recordAudit.mock.calls)).not.toContain(VISITOR_WORDS)
 
@@ -356,7 +359,7 @@ describe("runEscalation — the visitor's words stay in the 90-day table", () =>
   it("keeps the visitor's words out of contact_timeline_events, and carries the conversation id instead", async () => {
     h.getConversation.mockResolvedValue(conversation({ contact_id: "contact-7" }))
 
-    await runEscalation({ conversationId: "c1", summary: SUMMARY })
+    await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: SUMMARY })
 
     const row = h.inserts.find((i) => i.table === "contact_timeline_events")!.row
     expect(JSON.stringify(row)).not.toContain(VISITOR_WORDS)
@@ -377,7 +380,7 @@ describe("runEscalation — the visitor's words stay in the 90-day table", () =>
       hint: "Check the metadata column.",
     }
 
-    const out = await runEscalation({ conversationId: "c1", summary: SUMMARY })
+    const out = await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: SUMMARY })
 
     expect(out).toMatchObject({ ok: true, timelineEvent: false })
     const logged = JSON.stringify(vi.mocked(console.error).mock.calls)
@@ -387,5 +390,45 @@ describe("runEscalation — the visitor's words stay in the 90-day table", () =>
     // the two fields that identify which constraint refused it.
     expect(logged).toContain("23514")
     expect(logged).toContain("new row violates check constraint")
+  })
+})
+
+describe("runEscalation — the conversation is read in the caller's business (G35)", () => {
+  const OTHER = "55555555-5555-4555-8555-555555555555"
+
+  /** A row answers only under its own business; `undefined` is the pre-G35 "any tenant" read. */
+  function storedUnder(row: ChatConversation) {
+    return async (id: string, businessId?: string) =>
+      id === row.id && (businessId === undefined || businessId === row.business_id) ? row : null
+  }
+
+  it("reads the conversation under the business it was handed", async () => {
+    // MUTANT: `getConversation(conversationId)`, the id-only read this
+    // function shipped with. It fell back to the row's own business after.
+    await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "s" })
+
+    expect(h.getConversation).toHaveBeenCalledWith("c1", BUSINESS)
+  })
+
+  it("does not hand over another business's conversation: not found, nothing written, nobody emailed", async () => {
+    h.getConversation.mockImplementation(storedUnder(conversation({ business_id: OTHER, contact_id: "contact-7" })))
+
+    const out = await runEscalation({ conversationId: "c1", businessId: BUSINESS, summary: "s" })
+
+    expect(out).toEqual({ ok: false, reason: "conversation_not_found" })
+    expect(h.markEscalated).not.toHaveBeenCalled()
+    expect(h.sendChatEscalationEmail).not.toHaveBeenCalled()
+    expect(h.inserts).toHaveLength(0)
+    expect(h.recordAudit).not.toHaveBeenCalled()
+  })
+
+  it("hands it over when it IS the caller's — the presence control, filed under that business", async () => {
+    h.getConversation.mockImplementation(storedUnder(conversation({ business_id: OTHER, contact_id: "contact-7" })))
+
+    const out = await runEscalation({ conversationId: "c1", businessId: OTHER, summary: "s" })
+
+    expect(out).toMatchObject({ ok: true })
+    expect(h.sendChatEscalationEmail.mock.calls[0][0].businessId).toBe(OTHER)
+    expect(h.inserts.find((i) => i.table === "contact_timeline_events")!.row.business_id).toBe(OTHER)
   })
 })

@@ -34,6 +34,8 @@ import type { ChatConversation } from "@/types/database"
 
 const h = vi.hoisted(() => ({
   getSetting: vi.fn(),
+  // G35: the route resolves the Host before it reads the conversation.
+  resolvePublicTenant: vi.fn(),
   getConversation: vi.fn(),
   countRecentConversationsByIp: vi.fn(),
   markCaptured: vi.fn(),
@@ -54,6 +56,9 @@ vi.mock("@/lib/lead-engine/capture", () => ({ captureLead: h.captureLead }))
 vi.mock("@/lib/db/contact-consents", () => ({ recordConsent: h.recordConsent, isSuppressed: h.isSuppressed }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: h.getBusinessSettings }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: h.recordAudit }))
+// The ONE Host boundary. Required since G35: the real one calls `headers()`,
+// which throws outside a request scope.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: h.resolvePublicTenant }))
 
 import { createHash } from "crypto"
 
@@ -160,6 +165,7 @@ beforeEach(() => {
   h.isSuppressed.mockResolvedValue(false)
   h.getBusinessSettings.mockResolvedValue(SETTINGS)
   h.recordAudit.mockResolvedValue(undefined)
+  h.resolvePublicTenant.mockResolvedValue("host-biz")
 })
 
 describe("POST /api/ask/capture — the only contact-write path", () => {
@@ -723,5 +729,67 @@ describe("POST /api/ask/capture — the two gates the review round added (G18)",
     await POST(req(submission({ smsConsent: true })))
 
     expect(smsRows()[0]).toEqual(expect.objectContaining({ businessId: OTHER_BUSINESS_ID, source: "ai_chat" }))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G35: the conversation is read under the Host's tenant.
+//
+// Before G35 this route read the conversation by id alone. A conversation id
+// from ANOTHER business's site therefore filed a contact, and consent rows,
+// under that business from this one's host, and the only thing in the way was
+// that the id is an unguessable UUID.
+// ---------------------------------------------------------------------------
+describe("POST /api/ask/capture — the conversation is read under the Host's tenant (G35)", () => {
+  const HOST = "host-biz"
+  const OTHER = "33333333-3333-4333-8333-333333333333"
+
+  /** A row answers only under its own business; `undefined` is the pre-G35 "any tenant" read. */
+  function storedUnder(row: ChatConversation) {
+    return async (id: string, businessId?: string) =>
+      id === row.id && (businessId === undefined || businessId === row.business_id) ? row : null
+  }
+
+  it("reads the conversation under the tenant the Host resolves to", async () => {
+    // MUTANT: `getConversation(conversationId)`, the id-only read.
+    await POST(req(submission()))
+
+    expect(h.resolvePublicTenant).toHaveBeenCalledTimes(1)
+    expect(h.getConversation).toHaveBeenCalledWith(CONVERSATION_ID, HOST)
+  })
+
+  it("answers another business's conversation id with the same 404 as an unknown one, and writes nothing", async () => {
+    h.getConversation.mockImplementation(storedUnder(conversation({ business_id: OTHER })))
+
+    const res = await POST(req(submission({ marketingConsent: true, smsConsent: true })))
+
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({
+      error: "That conversation has expired. Start a new one and I'll pick it up from there.",
+    })
+    expect(h.captureLead).not.toHaveBeenCalled()
+    expect(h.markCaptured).not.toHaveBeenCalled()
+    expect(h.recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("captures the same conversation when it IS the Host's — the presence control, filed under that business", async () => {
+    h.getConversation.mockImplementation(storedUnder(conversation({ business_id: HOST })))
+
+    const res = await POST(req(submission()))
+
+    expect(res.status).toBe(200)
+    expect(h.captureLead).toHaveBeenCalledWith(expect.objectContaining({ businessId: HOST }))
+  })
+
+  it("does not resolve the Host for a request the limiter already refused", async () => {
+    // MUTANT: resolving at the top of the handler. The pre-filter and the
+    // count exist so a flood costs no database read, and the Host lookup IS
+    // one (business_domains).
+    h.countRecentConversationsByIp.mockResolvedValue(MAX_CONVERSATIONS_PER_IP_PER_HOUR)
+
+    const res = await POST(req(submission()))
+
+    expect(res.status).toBe(429)
+    expect(h.resolvePublicTenant).not.toHaveBeenCalled()
   })
 })

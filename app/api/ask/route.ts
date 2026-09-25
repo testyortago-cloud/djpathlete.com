@@ -250,10 +250,19 @@ function factSetFor(outcome: ToolOutcome, grounded: string[]): Record<string, un
  * "Someone will be in touch" on the back of a send that could not happen is
  * the single lie this whole feature exists to make impossible.
  */
-async function handOver(conversationId: string, summary: string | undefined, message: string): Promise<string | null> {
+async function handOver(
+  businessId: string,
+  conversationId: string,
+  summary: string | undefined,
+  message: string,
+): Promise<string | null> {
   const written = summary?.trim()
   try {
     const result = await runEscalation({
+      // `conversation.business_id`, threaded rather than re-resolved: the row
+      // was read under the Host, and `runEscalation` reads it again under
+      // this, so an id alone never hands a conversation to a person (G35).
+      businessId,
       conversationId,
       // `escalateSummary` is optional — the model can ask for a person without
       // writing a sentence — and `runEscalation` requires one. The fallback
@@ -317,16 +326,32 @@ export async function POST(request: Request) {
   const sinceIso = new Date(Date.now() - HOUR_MS).toISOString()
 
   let conversation: ChatConversation | null = null
+  // THE HOST'S TENANT, RESOLVED ONCE, BEFORE ANY CONVERSATION IS READ (G35).
+  // It used to be resolved only when a conversation was CREATED, and an
+  // existing one was read by its id alone. A conversation id from another
+  // business's site therefore continued that business's conversation from this
+  // host, under that business's settings and facts. Now the read is fenced to
+  // this Host, and a new conversation is stamped with the same answer. It runs
+  // after the per-origin message count, so a request that count refuses costs
+  // no lookup.
+  let hostBusinessId: string
   try {
     if ((await countRecentMessagesByIp(ipHash, sinceIso)) >= MAX_MESSAGES_PER_IP_PER_HOUR) {
       return NextResponse.json({ error: COPY.tooFast }, { status: 429 })
     }
 
+    hostBusinessId = await resolvePublicTenant()
+
     if (requestedId) {
       // A failed READ is not an absent row: `getConversation` throws on error
       // and returns null only for "no such row". Telling a visitor their
       // conversation expired during an outage sends them straight back into it.
-      conversation = await getConversation(requestedId)
+      //
+      // Another business's conversation is ALSO null, and gets the same "that
+      // conversation has expired": saying it exists elsewhere would be a
+      // disclosure. It is not silently swapped for a new conversation either.
+      // The visitor starts one.
+      conversation = await getConversation(requestedId, hostBusinessId)
       if (!conversation) {
         return NextResponse.json({ error: COPY.unknownConversation }, { status: 404 })
       }
@@ -372,12 +397,13 @@ export async function POST(request: Request) {
     // limiter that its own rejections feed is a limiter that tightens itself.
     if (!conversation) {
       // PUBLIC ROUTE, NO SESSION. This is the one place a conversation's
-      // tenant is DECIDED; it is resolved from the request's Host by
-      // lib/tenancy/public.ts (business_domains). Once the row exists, every
-      // later call in this route threads `conversation.business_id` instead.
-      const businessId = await resolvePublicTenant()
+      // tenant is DECIDED: the Host's, resolved above through
+      // lib/tenancy/public.ts (business_domains) and NOT resolved a second
+      // time here, because two lookups in one request are two answers that
+      // could disagree. Once the row exists, every later call in this route
+      // threads `conversation.business_id` instead.
       conversation = await createConversation({
-        businessId,
+        businessId: hostBusinessId,
         ipHash,
         userAgent: request.headers.get("user-agent"),
         landingPath: landingPathFrom(request),
@@ -571,7 +597,7 @@ export async function POST(request: Request) {
   // conversation missing the line that prompted it.
   let reply = text
   if (outcome.wantsEscalate) {
-    const note = await handOver(conversationId, outcome.escalateSummary, message)
+    const note = await handOver(conversation.business_id, conversationId, outcome.escalateSummary, message)
     if (note) reply = `${reply}\n\n${note}`
   }
 
@@ -646,7 +672,9 @@ async function executorContextFor(
   let visitor: ExecutorContext["visitor"] = null
   if (conversation.contact_id) {
     try {
-      visitor = await readContactIdentity(conversation.contact_id)
+      // Under the conversation's business (G35). The contact id came off that
+      // row, and this read is fenced to it too.
+      visitor = await readContactIdentity(conversation.business_id, conversation.contact_id)
     } catch (err) {
       console.error(`[ask] could not read contact ${conversation.contact_id} for prefill`, (err as Error).message)
     }
