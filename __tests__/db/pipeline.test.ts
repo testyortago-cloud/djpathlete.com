@@ -273,7 +273,13 @@ vi.mock("@/lib/supabase", () => ({
           // activity" for a row it had just accepted — which makes the test
           // below green whichever `kind` the writer chose, the one thing it
           // exists to tell apart.
-          ...(table === "contact_timeline_events" && p.occurred_at == null
+          // `opportunity_stage_events.occurred_at` has the same default
+          // (00219) and its writer never supplies it either. That table has NO
+          // `created_at` — the `created_at` this harness stamps on every row
+          // above is what let the refund path select and order by a column
+          // production does not have (42703, caught only by
+          // __tests__/integration/postgrest-select-contract.test.ts).
+          ...((table === "contact_timeline_events" || table === "opportunity_stage_events") && p.occurred_at == null
             ? { occurred_at: new Date().toISOString() }
             : {}),
           _seq: rows.length,
