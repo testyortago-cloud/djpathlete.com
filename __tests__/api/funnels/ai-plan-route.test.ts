@@ -78,6 +78,7 @@ beforeEach(() => {
     offer: { program: [], session_pack: [], event: [{ id: "e1", name: "Summer Camp 2026" }] },
     recognition: { program: [], session_pack: [], event: [] },
     faqPageKeys: [],
+    liveFeedsAvailable: false,
   })
 })
 

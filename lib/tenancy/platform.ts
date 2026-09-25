@@ -189,6 +189,24 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     previewing a coach's page would see the platform's rows while the live
  *     page on the coach's host showed none -- preview and live disagreeing
  *     about one document, which is this subsystem's worst failure.
+ *   - the funnel builder's catalogue and publish gate
+ *     (lib/funnels/sections/resolve.ts, in `loadCatalogues`), since G35 --
+ *     the gate's half of the island entry directly above. It already has the
+ *     admin's tenant, and consults this only to decide whether that tenant
+ *     may use the platform's live FAQ and testimonial feeds. Any other
+ *     business gets no FAQ page keys (the table is not even read) and
+ *     `liveFeedsAvailable: false`, so `resolveDoc` reports a live FAQ or live
+ *     testimonial section as a blocker the owner can act on. The island is
+ *     what guarantees no visitor sees the platform's rows; this is what stops
+ *     a new page publishing with a band the island will leave empty.
+ *   - the AI page builder's prompt
+ *     (app/api/admin/funnels/steps/[stepId]/build/route.ts, in
+ *     `loadPageContext`), since G35. It reads the FAQ page keys a SECOND time,
+ *     independently of the catalogue, for Block B of the prompt, so it applies
+ *     the same rule itself -- a second reader without it would offer a coach's
+ *     builder keys the gate then refuses. For any other business it reads no
+ *     keys and Block B says the live feeds are unavailable. Block A cannot say
+ *     it: Block A is one cached prefix shared by every business.
  *   - the Stripe webhook's purchase capture (app/api/stripe/webhook/route.ts).
  *     One Stripe account serves every business, so the webhook has no
  *     tenant of its own. It resolves the payer's contact row first — the

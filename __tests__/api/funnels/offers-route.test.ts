@@ -48,6 +48,9 @@ const CATALOGUE = {
     event: [],
   },
   faqPageKeys: [],
+  // "biz-1" is not the platform (G35), so this is what loadCatalogues would
+  // answer for it. The offers route reads only `offer`.
+  liveFeedsAvailable: false,
 }
 
 beforeEach(() => {

@@ -37,6 +37,7 @@ import {
   type BuilderCatalogueInput,
   type BuilderTurnInput,
   NOT_OFFERED_TO_THE_BUILDER,
+  LIVE_FEEDS_UNAVAILABLE,
 } from "@/lib/funnels/sections/prompt"
 import {
   SECTION_BUILDER_HISTORY_TURNS,
@@ -113,6 +114,8 @@ function catalogueInput(): BuilderCatalogueInput {
       event: [{ id: UUID_EVENT, name: "Winter Velocity Camp" }],
     },
     faqPageKeys: ["programs"],
+    // The platform's own builder: every assertion in this file predates G35.
+    liveFeedsAvailable: true,
     stepSlugs: ["thank-you"],
     nextStepSlug: "thank-you",
     // DELIBERATELY NOT slugify("Off-season speed camp"). A slug that happened
@@ -282,6 +285,7 @@ describe("Block A is built once, at module load", () => {
     const pageTwo = buildSystemPrompt({
       catalogue: { program: [], session_pack: [], event: [{ id: UUID_EVENT, name: "Spring Camp" }] },
       faqPageKeys: [],
+      liveFeedsAvailable: true,
       stepSlugs: [],
       nextStepSlug: null,
       funnelSlug: "spring-camp-7",
@@ -873,6 +877,7 @@ describe("Block B carries names and never ids", () => {
     const block = buildCatalogueBlock({
       catalogue: { program: [], session_pack: [], event: [] },
       faqPageKeys: [],
+      liveFeedsAvailable: true,
       stepSlugs: [],
       nextStepSlug: null,
       funnelSlug: "empty-funnel",
@@ -890,11 +895,51 @@ describe("Block B carries names and never ids", () => {
         event: [],
       },
       faqPageKeys: [],
+      liveFeedsAvailable: true,
       stepSlugs: [],
       nextStepSlug: null,
       funnelSlug: "phase-2",
     })
     expect(block).toContain('"Comeback Code: Phase 2, Rebuilt"')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Block B on a business that cannot use the platform's live feeds (G35)
+//
+// Block A tells every builder to PREFER live testimonials and live FAQs, and it
+// is one frozen, cached prefix for every business, so it cannot carry an
+// exception. Block B is where the business is known.
+// ---------------------------------------------------------------------------
+describe("Block B on a business that cannot use the platform's live feeds (G35)", () => {
+  it("tells the model the live feeds are unavailable and what to write instead", () => {
+    // MUTANT: the flag ignored. The model follows Block A's "prefer live",
+    // writes a live FAQ section, and the owner meets a publish blocker on a
+    // page the builder just told them was done.
+    const block = buildCatalogueBlock({ ...catalogueInput(), faqPageKeys: [], liveFeedsAvailable: false })
+
+    expect(block).toContain(LIVE_FEEDS_UNAVAILABLE)
+    // The line itself, not only its presence: an emptied constant would
+    // satisfy `toContain` above.
+    expect(LIVE_FEEDS_UNAVAILABLE).toMatch(/inline FAQs/)
+    expect(LIVE_FEEDS_UNAVAILABLE).toMatch(/quoted testimonials/)
+    // Ruling R4: no platform brand literal in coach-facing copy.
+    expect(LIVE_FEEDS_UNAVAILABLE).not.toContain("DJP")
+  })
+
+  it("(control) says nothing of the kind to the platform's own builder", () => {
+    // MUTANT: the line printed unconditionally, contradicting Block A's
+    // "prefer live" on the one business whose rows the feeds hold.
+    expect(buildCatalogueBlock(catalogueInput())).not.toContain(LIVE_FEEDS_UNAVAILABLE)
+  })
+
+  it("lives in Block B only — Block A stays the same cached prefix for every business", () => {
+    // MUTANT: the exception written into Block A, which would either apply it
+    // to the platform too or make Block A differ per business and lose the cache.
+    const prompt = buildSystemPrompt({ ...catalogueInput(), faqPageKeys: [], liveFeedsAvailable: false })
+
+    expect(prompt.startsWith(SECTION_BUILDER_BLOCK_A)).toBe(true)
+    expect(SECTION_BUILDER_BLOCK_A).not.toContain(LIVE_FEEDS_UNAVAILABLE)
   })
 })
 
@@ -1044,6 +1089,7 @@ describe("the next page", () => {
     buildCatalogueBlock({
       catalogue: { program: [], session_pack: [], event: [] },
       faqPageKeys: [],
+      liveFeedsAvailable: true,
       stepSlugs: ["thank-you"],
       nextStepSlug,
       funnelSlug: "camp",

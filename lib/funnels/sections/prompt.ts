@@ -978,6 +978,17 @@ export interface BuilderCatalogueInput {
   catalogue: Catalogue
   /** `page_key` values the faqs table actually has rows for. */
   faqPageKeys: string[]
+  /**
+   * Whether this business may use the platform's live FAQ list and live
+   * testimonial feed (G35) — `Catalogues.liveFeedsAvailable`'s question, asked
+   * by the build route for the prompt. `false` adds `LIVE_FEEDS_UNAVAILABLE`
+   * to Block B.
+   *
+   * Required, following the reasoning above: a forgotten argument must be a
+   * compile error, not a coach's builder told to prefer a feed the gate will
+   * refuse.
+   */
+  liveFeedsAvailable: boolean
   /** Slugs of the other steps in this funnel, for `{kind:"step"}` CTAs. */
   stepSlugs: string[]
   /**
@@ -1007,6 +1018,29 @@ export interface BuilderCatalogueInput {
   funnelSlug: string | null
 }
 
+/**
+ * Block B's line for a business that is not the platform (G35).
+ *
+ * Block A tells EVERY builder to prefer `source: "live"` for testimonials and
+ * FAQs, and it cannot be told otherwise per business: it is frozen and cached
+ * as one prefix for every page of every business. So the exception lives
+ * here, in the per-page block, where the business is known.
+ *
+ * `faqs` and `testimonials` have no `business_id` column — every row belongs
+ * to the platform, not to this business — so on any other business's page the
+ * live islands show nothing and the publish gate refuses the section. Saying
+ * so up front is what keeps the model from building a section the owner then
+ * cannot publish.
+ *
+ * Written to Controller ruling R4: no platform brand literal in coach-facing
+ * copy, including this prompt text the model reads.
+ *
+ * Exported so the tests assert the exact line rather than a paraphrase of it.
+ */
+export const LIVE_FEEDS_UNAVAILABLE =
+  "Live FAQs and live testimonials are NOT available on this business's pages. Use inline FAQs and quoted " +
+  "testimonials written for this business instead."
+
 function nameList(names: string[]): string {
   if (names.length === 0) return "  (none)"
   // Deliberately one per line, quoted: `ref` matching is exact-normalised-name
@@ -1021,7 +1055,7 @@ function nameList(names: string[]): string {
  * turn, no ordering that depends on anything but the source rows.
  */
 export function buildCatalogueBlock(input: BuilderCatalogueInput): string {
-  const { catalogue, faqPageKeys, stepSlugs, nextStepSlug, funnelSlug } = input
+  const { catalogue, faqPageKeys, liveFeedsAvailable, stepSlugs, nextStepSlug, funnelSlug } = input
   return `
 ## The catalogue — the only names a CTA may reference
 
@@ -1037,7 +1071,12 @@ Events ({ kind: "event", ref }):
 ${nameList(catalogue.event.map((row) => row.name))}
 
 FAQ page keys (faq section, source "live", \`pageKey\`):
-${nameList(faqPageKeys)}
+${nameList(faqPageKeys)}${
+    // ONLY for a business that is not the platform, and absent (not "(none)",
+    // not a "yes") for the platform, so the platform's Block B is exactly what
+    // it was before G35.
+    liveFeedsAvailable ? "" : `\n\n${LIVE_FEEDS_UNAVAILABLE}`
+  }
 
 Other steps in this funnel ({ kind: "step", stepSlug }):
 ${nameList(stepSlugs)}
