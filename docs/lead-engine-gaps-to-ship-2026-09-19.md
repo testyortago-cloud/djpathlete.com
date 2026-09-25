@@ -265,7 +265,7 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 > `assessment` arm and an `event_signup` PAYMENT arm but **no camp/clinic ENQUIRY arm**, so those
 > fall to the Coaching default (G24 correct); both `recordContactEvent` mentions in the assessment
 > route are comments saying why it is not called (G21 correct); `sms_sender_phone` is
-> `z.string().trim().max(32)` with no E.164 normalisation (G33 correct); and all seven funnel tables
+> `z.string().trim().max(32)` with no E.164 normalisation (G33 correct; normalised since, by G33 itself, 2026-09-25); and all seven funnel tables
 > plus `faqs`, `programs`, `testimonials` and `marketing_attribution` genuinely have no
 > `business_id` (G31 and G35 correct). **Re-verify anyway before building — this note ages.**
 
@@ -644,14 +644,25 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 ### G32 · A new tenant gets no sequences · **M**
 - `create_business()` (`00249`) seeds Coaching only. Ship a sequence template set copied on create (the twelve keys, brand-free bodies, all `draft`), plus the two extra boards. Test parses the function and a fixture run proves twelve `draft` rows for a new business.
 
-### G33 · `sms_sender_phone` is saved un-normalised · **S**
+### G33 · `sms_sender_phone` is saved un-normalised · **S** · **BUILT 2026-09-25**
 - Normalise to E.164 in `lib/validators/business.ts:76-81` and the form; inbound match is verbatim (`lib/db/businesses.ts:200-205`). Retire the stale "dormant" comment. Test: national format rejected or normalised.
+- **BUILT 2026-09-25.** No migration. `businessSettingsPatchSchema.sms_sender_phone` is now a transform: `''` stays `''` (not configured), a number that starts with `+` and that `normalisePhone` (`lib/lead-engine/identity.ts`) calls valid is saved as E.164, and anything else is refused beside the field. The form (`BusinessSettingsForm`) validates with the same schema through `zodResolver`, which submits the TRANSFORMED value, and the route parses the body again, so the transform is idempotent on E.164 and a test pins both passes.
+- **National format is REFUSED, not guessed** (the decision taken before building). Read with a default country of US, Mexico City's `55 1234 5678` is a VALID US number, `+15512345678` (checked against libphonenumber, not assumed), so a default would work for a US coach and silently file anyone else's number under +1. The message tells the coach to start with `+` and the country code "exactly as Twilio shows the number". *The first draft of this comment used a UK number as the example; the probe showed it reads as an INVALID US number, so it would have been refused, not mis-filed. The example was wrong, not the rule.*
+- **The characters are checked before libphonenumber sees the value**: digits, spaces, `( ) . -`, and one `+` at the start. libphonenumber reads a number out of surrounding text and drops an extension silently, so `+1 202 555 0123 ext. 5`, `... abc`, `tel:+1...` and `+12025550123+` all parse as `+12025550123` without it. "Digits" means the four sets libphonenumber reads (ASCII, fullwidth, Arabic-Indic, Persian), so a coach on a Japanese or Arabic keyboard is not told a correct number is "not a phone number"; the saved value is ASCII E.164 either way. **The fullwidth PLUS (U+FF0B) stays refused on purpose:** libphonenumber lists it as a plus but does not treat it as "international", so it falls back to the US default and `＋65 8123 4567` (Singapore) would save as `+16581234567`, a valid Jamaican number. The review's first suggestion was to accept it; its own verifier found this.
+- **The row's own pointers were stale, and this change moved one of them.** The field was at `business.ts:69-74`, not `:76-81`. The inbound match is `getBusinessBySmsNumber` in `lib/db/businesses.ts`; this change added 20 lines above it, so the `:200-205` range above now lands in its doc comment (go by the function name). The "dormant, no admin route writes this field yet" comment was already false: `BusinessSettingsForm` had a free-text input for it. Comment replaced; the input now has a placeholder (`+1 202 555 0123`) and a hint it is described by.
+- **One addition the row did not ask for: a taken number answers 409, not 500.** `00247`'s partial unique index lets one business per number. Normalising makes that index see clashes it used to miss (`+1 202 555 0123` and `+12025550123` were two strings to it), and before this a clash was a raw PostgREST error, a 500, and a form saying "try again". `updateBusinessSettings` now maps a 23505 that names `sms_sender_phone` (index name in `message`, column in `details`) to `SmsSenderPhoneTakenError`, and the route answers 409 without naming the other business, which is another tenant. Any other unique violation is rethrown as it came (a control test pins that). The message says **"The settings were not saved"**, not "nothing was saved": the route writes a body's `business` half first, with no transaction around the two, so a request carrying both has already changed the business row. The form sends `settings` only, so only a direct API caller sees that case.
+- **Stored values are NOT re-normalised.** It cannot be done in SQL (libphonenumber is not in Postgres). The dev clone's 8 rows are all `''` (measured 2026-09-25). Production was not readable from this session; `lib/db/businesses.ts`'s own doc comment says every live row has it empty. **What an old value does on the next save depends on the value.** One that starts with `+` and is valid is normalised. Any other one (a national number, or an E.164-shaped number libphonenumber calls invalid) makes EVERY save of the settings form fail, whichever field was changed, until the phone field is corrected or cleared, because the form submits every field and validates the whole patch. The error shows beside the phone field, so the cause is visible, and such a value never matched an inbound text anyway. The only other writer, `scripts/configure-lead-engine-sms.mjs`, checks the E.164 SHAPE only (`/^\+[1-9][0-9]{6,14}$/`), not validity, so it can write a value the form then refuses; its own usage example, `+15551234567`, is one.
+- **Limits, stated so nobody assumes otherwise:** validity comes from libphonenumber-js's bundled metadata (1.13.11), the same check lead capture uses, so a number range newer than that metadata would be refused until the package is bumped. Short codes and alphanumeric sender IDs are not accepted here (the free-text field used to take them); those senders go through the Messaging Service SID field, which inbound resolution tries first.
+- **Reviewed by a five-lens workflow** (validator, downstream readers, form, error mapping, tests and claims), each lens followed by a verifier told to refute it. 10 findings came back, all minor and all confirmed, 9 of them distinct; every one is fixed above or in the tests. The readers lens settled the one real worry: the chat assistant's number check grounds replies on the stored sender number, so an E.164 value would refuse a reply that writes it as "(202) 555-0123". But the model is never shown that number (`buildSystemPrompt` lists display name, postal address and timezone only), so no honest reply can contain it.
+- **Verified:** new `__tests__/lib/validators/business.test.ts` (41), plus new cases in the form suite, the route suite and `__tests__/lib/db/businesses.test.ts` (80 across the four); every suite that imports the validator, the business DAL, the settings route or either business form, 41 files / 824 tests, green (the live-model lane `chat-live` excluded). Mutation-checked, each failing where it should: validate without transforming (11 failures across validator, route and form); drop the `+` rule (7, measured on the first version of the suite); the `+` rule answering with the WRONG message (12: every national case, the route's 400 and the form, which only fail since the assertions name the exact message); accept any characters (6); allow `+` anywhere (1, and only after adding `+12025550123+`, because libphonenumber already refused the first mid-`+` fixture on its own); ASCII-only digits (the three scripts plus fullwidth national); map every 23505 regardless of column (the control); `zodResolver(..., { raw: true })` (the form's E.164 case); a form that never renders the field error (the form case, which the hint used to satisfy); a 409 that says "Nothing was saved" or echoes the error (the two 409 cases). tsc 238 / 54, per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`. `test:integration:selects` 12/12. `npm run build` exit 0 (the settings form is a client component, and it now carries libphonenumber-js). `SINGLETON_BUSINESS_ID` still 5. Lint not run (broken repo-wide).
+- **Driven in the real app**, signed in on the dev clone, on `/admin/businesses/<Primary>`: `screenshots/g33-sms-sender-phone/` shows the empty field with its hint, a national number refused, and an extension refused, captured by `scripts/capture-g33-sms-sender-phone-screenshots.mjs`, which throws if the form sends a PATCH (it sent none). The 409 was not captured: it needs two businesses on the shared clone to claim one number, so the tests carry it.
 
 ### G34 · Settings are owner-only · **decision, scoping**
 - `/admin/businesses` is in `OWNER_ONLY_PREFIXES`. Letting a tenant coach edit their own branding touches the "do not elaborate permissions" invariant in `CLAUDE.md`; it belongs in the SaaS direction spec, not here. Record the decision; no code until then.
 
 ### G35 · Readers with no tenant predicate · **S**
 - Chat facts read `faqs`, `programs`, `testimonials` with no `business_id` (those tables have none — a seam to name in `platform.ts`); `hasConsent` is keyed on contact UUID only; campaign-revenue reads `marketing_attribution` without one (no column). Name each seam honestly in `lib/tenancy/platform.ts` or add the predicate where a column exists.
+- **Carries one owner question (added 2026-09-25).** The PostgREST select contract found that `functions/src/seo/execute.ts` and `functions/src/social-agent.ts` read a `profiles` table that does not exist, so the SEO and social agents' admin alerts have never sent (pinned in `KNOWN_REFUSED`). The obvious fix, "the first user where role = 'admin'", makes an UNTENANTED reader live, which is this row's subject. Whether that is acceptable, or the alert should go to a tenant's `reply_to` the way G30 routed lead mail, is the owner's call, not this row's to decide silently.
 
 ---
 
@@ -736,7 +747,7 @@ option over a staged rollout, on the measured basis that no policies are require
 | 1 — truthful data | G04, G05, G06, G07, G08 | M + 4 S ≈ 3 days |
 | 2 — quoted behaviours | G09, G10, G11, G12, G13, G14, G15, G16, G17, G18 | 5 M + 5 S ≈ 2 weeks |
 | 3 — entry points + pipeline | G20–G29 | 2 M + 7 S + 1 L ≈ 1 week |
-| 4 — white-label edges | ~~G30~~, ~~G31~~, G32, G33, G35 | M + 2 S ≈ 1 week (G30 built 2026-09-23, G31 merged 2026-09-25) |
+| 4 — white-label edges | ~~G30~~, ~~G31~~, G32, ~~G33~~, G35 | M + S (G30 built 2026-09-23, G31 merged 2026-09-25, G33 built 2026-09-25) |
 
 Phase 0 today. Phases 1 and 2 are what make the quotation's sentences true. Phases 3 and 4 are what make "GoHighLevel replacement" and "white-label ready" true.
 
@@ -785,8 +796,9 @@ nothing — read production back; every new column needs a named reader.
 
 ### Finished vs not — the one-screen answer
 
-**30 of 36 rows are finished, merged, pushed and deployed. 6 are not.** Everything not finished is
-either Phase 4 white-label or wording only the owner can write.
+**34 of 37 rows are finished, merged, pushed and deployed. 3 are not.** Everything not finished is
+either Phase 4 white-label or wording only the owner can write. *(Corrected 2026-09-25. This line
+said "30 of 36 … 6 are not" through G30b, G31 and G33, while the scoreboard below moved on.)*
 
 **FINISHED — built, reviewed, merged, pushed, live on production:**
 
@@ -798,14 +810,13 @@ either Phase 4 white-label or wording only the owner can write.
 | 3 — entry points + pipeline | G20 G21 G22 G23 G24 G25 G26 G27 G28 G29 | whole phase complete |
 | Security (not a gap) | S01 S02 | migrations `00274`/`00275` live; 0 tables with RLS off |
 
-**NOT FINISHED — 4 rows, none of them started:**
+**NOT FINISHED — 3 rows, none of them started:**
 
 | Row | What | Size | Why it is open |
 |---|---|---|---|
 | G32 | A new tenant gets no sequences | **M** | **Unblocked** — G31 landed the shape it needed |
-| G33 | `sms_sender_phone` is saved un-normalised | **S** | Smallest open row in the document |
 | G34 | Settings are owner-only | — | **Deliberately parked.** Decision 11 ruled: record it, write NO code — it belongs in the SaaS direction spec |
-| G35 | Readers with no tenant predicate | **S** | Ordinary cleanup |
+| G35 | Readers with no tenant predicate | **S** | Ordinary cleanup, plus one owner question (the agents' admin alert; see the row) |
 
 **FINISHED IN CODE, NOT FINISHED IN WORDS — these need the owner, not a developer:**
 - **G18's `ai_chat` sequence** — the consent half is live; the follow-up sequence a chat lead enters
@@ -889,9 +900,9 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, re-measured against `main` 2026-09-25: 37 rows · 33 done · 4 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29** **G30** **G30b** **G31**.
-Open: G32 G33 G34 G35.
+**Scoreboard, re-measured 2026-09-25 on `worktree-g33-sms-sender-e164`: 37 rows · 34 done · 3 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29** **G30** **G30b** **G31** **G33**.
+Open: G32 G34 G35.
 
 **G31 merged 2026-09-25 in TWO pushes** — `2c3a659d` (migration `00278` alone) then `2b4dd3c1`
 (the code), the second only after the first was confirmed applied to production. Its row above
@@ -934,7 +945,7 @@ production. G18's `ai_chat` follow-up sequence is NOT built and is blocked on th
 "every row is built" was an overclaim; it is counted under Done in the scoreboard because that list
 means FINISHED IN CODE, and G18's outstanding half is in the owner section below. G21 and G28, the two rows that were
 blocked on an owner decision, were ruled on and built the same day. G29, the last Phase 3 row and the one deliberately deferred until Phases 0-2 were done, was
-built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the first two Phase 4 rows, were merged and pushed on 2026-09-23 and 2026-09-25. What remains is **Phase 4 (G32-G35)**.
+built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the first two Phase 4 rows, were merged and pushed on 2026-09-23 and 2026-09-25. G33 was built on 2026-09-25. What remains is **Phase 4's G32 and G35** (and G34, which is a decision, not work).
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
@@ -957,13 +968,19 @@ built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the fir
 - **G30 made `sales@darrenjpaul.com` go quiet** — new-inquiry alerts now go to
   `business_settings.reply_to` (`darren@`) alone, per decision 9. If `sales@` should still receive
   them, the fix is a recipient list, not a revert.
+- **The SEO and social agents' admin alert (G35's question)** — both read a `profiles` table that
+  does not exist, so the alert has never sent. Pointing it at "the first admin user" works today and
+  makes an untenanted reader live; pointing it at the tenant's `reply_to` is the G30 shape. Which
+  one is the owner's call.
 - **The decisions in §Decisions** that Phase 3 rows still name (G21, G28, G34).
 
-**Next unblocked, needing nothing from the owner: G35** (name each untenanted reader's seam
-honestly in `platform.ts`, or add the predicate where a column exists) or **G33** (normalise
-`sms_sender_phone` to E.164) — both **S**, neither depends on the other. **G31 is done**, so **G32**
-that has to land before **G32** has a shape to copy. **G34 is not work**: decision 11 ruled record
-it, write no code.
+**Next unblocked: G35** (**S**: name each untenanted reader's seam honestly in `platform.ts`, or
+add the predicate where a column exists; its one owner question is in the row and in the owner list
+above), then **G32** (**M**), which G31 unblocked. **G33 is done.** **G34 is not work**: decision 11
+ruled record it, write no code.
+
+*(Corrected 2026-09-25. This paragraph ended in a half-sentence, "so **G32** that has to land
+before **G32** has a shape to copy", left from an edit that removed its middle.)*
 
 *(Corrected 2026-09-23. This line used to read "G20, then G22-G27" — every row it named is in the
 Done list above. It was written when those were the next rows and never moved again, which is the

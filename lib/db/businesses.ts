@@ -68,8 +68,28 @@ export async function updateBusinessSettings(
     .eq("business_id", businessId)
     .select()
     .single()
-  if (error) throw error
+  if (error) {
+    // 00247's partial unique index. Matched on the column as well as the code:
+    // Postgres names the index in `message` and the column in `details`, and a
+    // unique violation on anything else must not read as a taken number.
+    if (error.code === "23505" && `${error.message} ${error.details ?? ""}`.includes("sms_sender_phone")) {
+      throw new SmsSenderPhoneTakenError()
+    }
+    throw error
+  }
   return data as BusinessSettings
+}
+
+/**
+ * Another business already sends from this number. Thrown so the settings
+ * route can answer a field error instead of a 500. Carries no business id:
+ * the other business is another tenant.
+ */
+export class SmsSenderPhoneTakenError extends Error {
+  constructor() {
+    super("sms_sender_phone is already another business's sender number")
+    this.name = "SmsSenderPhoneTakenError"
+  }
 }
 
 export type Business = {

@@ -6,6 +6,7 @@ import {
   getBusinessSettings,
   updateBusinessSettings,
   BusinessSettingsMissingError,
+  SmsSenderPhoneTakenError,
 } from "@/lib/db/businesses"
 import { businessPatchSchema, businessSettingsPatchSchema } from "@/lib/validators/business"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
@@ -125,7 +126,25 @@ export async function PATCH(request: Request, ctx: { params: Promise<Record<stri
     // Field names only -- sender_email and sms_messaging_service_sid are
     // identity configuration, and the metadata scrubber does not cover them
     // by name. The values themselves never go into the audit row.
-    settings = await updateBusinessSettings(parsed.data.settings, id)
+    try {
+      settings = await updateBusinessSettings(parsed.data.settings, id)
+    } catch (err) {
+      // Reachable more often since G33 saves E.164: "+1 202 555 0123" and
+      // "+12025550123" used to be two different strings to 00247's index.
+      //
+      // "The settings were not saved", NOT "nothing was saved": a body that
+      // also carries `business` has already had that half written above.
+      if (err instanceof SmsSenderPhoneTakenError) {
+        return NextResponse.json(
+          {
+            error:
+              "That sender phone number is already used by another business. Each business needs its own number. The settings were not saved.",
+          },
+          { status: 409 },
+        )
+      }
+      throw err
+    }
     await recordAudit({
       action: "business.settings_updated",
       category: "admin_write",

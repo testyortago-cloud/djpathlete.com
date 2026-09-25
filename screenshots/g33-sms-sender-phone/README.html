@@ -1,0 +1,80 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>G33 sender phone — review sheet</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 40px; background: #f6f6f4; color: #16323c;
+         font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: #5b7280; margin: 0 0 32px; }
+  figure { margin: 0 0 44px; background: #fff; border: 1px solid #e2e5e3;
+           border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { padding: 18px 22px 22px; border-top: 1px solid #e2e5e3; }
+  figcaption h2 { font-size: 18px; margin: 0 0 6px; }
+  figcaption p { margin: 0 0 8px; color: #40525c; }
+  .route { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+           font-size: 13px; color: #7a6a52; background: #fdf6ec;
+           border: 1px solid #f0e2cc; border-radius: 6px; padding: 2px 7px; display: inline-block; }
+  .note { background: #fff; border: 1px solid #e2e5e3; border-left: 4px solid #c8873f;
+          border-radius: 8px; padding: 18px 22px; margin: 0 0 36px; }
+  .note h2 { font-size: 17px; margin: 0 0 8px; }
+  .note ul { margin: 8px 0 0; padding-left: 20px; }
+  .note li { margin-bottom: 6px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+         background: #eef0ee; border-radius: 4px; padding: 1px 5px; }
+</style>
+<div class="wrap">
+
+<h1>G33 — the sender phone number is saved the way Twilio sends it</h1>
+<p class="sub">
+  Three states of the "Text messages" section on <span class="route">/admin/businesses/&lt;id&gt;</span>,
+  captured in the real running app on the real route, signed in on the dev clone, business "Primary".
+  Annotations are burned into each PNG. Captured 2026-09-25 by
+  <code>scripts/capture-g33-sms-sender-phone-screenshots.mjs</code>.
+</p>
+
+<div class="note">
+  <h2>What these shots are, and are not</h2>
+  <ul>
+    <li><strong>Nothing was saved to take them.</strong> All three are refusals the form makes before it
+      sends anything. The script listens for the save request and fails if one goes out. None did.</li>
+    <li><strong>Light only.</strong> The admin screens have no working dark mode, so there is no dark shot.</li>
+    <li><strong>The window is short (1440 × 500) on purpose.</strong> The field directly above this one,
+      "Messaging service ID", holds the dev clone's placeholder value, which does not belong in a
+      screenshot. A short window lets the phone field sit under the header with that row out of view.</li>
+    <li><strong>Not captured: "that number is already used by another business".</strong> Reaching it needs two
+      businesses on the shared dev database to claim one number. The route and database tests cover it instead.</li>
+  </ul>
+</div>
+
+<figure>
+  <img src="01-empty-field.png" alt="The empty sender phone field with its example and hint">
+  <figcaption>
+    <h2>1 · The empty field shows its shape</h2>
+    <p>A grey example inside the box, and a line underneath saying to start with + and the country code,
+      exactly as Twilio shows it. It also says the number is saved without spaces.</p>
+  </figcaption>
+</figure>
+
+<figure>
+  <img src="02-no-country-code.png" alt="A number typed without a country code, refused beside the field">
+  <figcaption>
+    <h2>2 · A number with no country code is not saved</h2>
+    <p>"(202) 555-0123" is refused beside the field. Saved like that, a text coming in to the number
+      would never be matched to this business. The app does not guess the country: guessing "US" would
+      file a Mexico City number such as 55 1234 5678 under +1.</p>
+  </figcaption>
+</figure>
+
+<figure>
+  <img src="03-not-a-phone-number.png" alt="A number with an extension, refused as not a phone number">
+  <figcaption>
+    <h2>3 · Extra words are refused, not quietly dropped</h2>
+    <p>"+1 202 555 0123 ext. 5" is refused. Without the check, the phone-number library would drop the
+      "ext. 5" silently and save a shorter number than the one typed.</p>
+  </figcaption>
+</figure>
+
+</div>

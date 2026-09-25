@@ -13,6 +13,7 @@ import userEvent from "@testing-library/user-event"
 import { toast } from "sonner"
 import { BusinessSettingsForm } from "@/components/admin/businesses/BusinessSettingsForm"
 import type { BusinessSettings } from "@/lib/db/businesses"
+import { SMS_SENDER_PHONE_NEEDS_COUNTRY_CODE } from "@/lib/validators/business"
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
@@ -76,5 +77,52 @@ describe("BusinessSettingsForm -- a refused save", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
     expect(toast.error).not.toHaveBeenCalled()
     expect(screen.queryByRole("alert")).toBeNull()
+  })
+})
+
+// G33. The sender number is compared verbatim with the E.164 `To` Twilio posts
+// on every inbound text, so it has to leave this form in E.164.
+describe("BusinessSettingsForm -- the sender phone number", () => {
+  function sentSettings(): Record<string, unknown> {
+    const calls = vi.mocked(fetch).mock.calls
+    expect(calls).toHaveLength(1)
+    return JSON.parse(String((calls[0][1] as RequestInit).body)).settings
+  }
+
+  it("SENDS E.164: a number typed with spaces and brackets reaches the server as +12025550123 -- MUTANT: zodResolver({ raw: true }), or a schema that validates without transforming, sends it as typed", async () => {
+    respondWith(200, { settings: SETTINGS })
+    render(<BusinessSettingsForm businessId="bbb" settings={SETTINGS} />)
+
+    await userEvent.type(screen.getByLabelText("Sender phone number"), "+1 (202) 555-0123")
+    await userEvent.click(screen.getByRole("button", { name: /save/i }))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(sentSettings().sms_sender_phone).toBe("+12025550123")
+  })
+
+  it("REFUSES a number with no country code, says why beside the field, and sends nothing", async () => {
+    respondWith(200, { settings: SETTINGS })
+    render(<BusinessSettingsForm businessId="bbb" settings={SETTINGS} />)
+
+    const field = screen.getByLabelText("Sender phone number")
+    await userEvent.type(field, "(202) 555-0123")
+    await userEvent.click(screen.getByRole("button", { name: /save/i }))
+
+    // The error's OWN text. The hint under the field also says "country code",
+    // so a looser match was satisfied by the hint on a form that showed no
+    // error at all.
+    expect(await screen.findByText(SMS_SENDER_PHONE_NEEDS_COUNTRY_CODE)).toBeInTheDocument()
+    expect(field).toHaveAttribute("aria-invalid", "true")
+    expect(document.getElementById("sms-sender-phone-hint")).toBeNull()
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it("tells the coach the expected shape before they type -- a placeholder and a hint the field is described by", () => {
+    render(<BusinessSettingsForm businessId="bbb" settings={SETTINGS} />)
+
+    const field = screen.getByLabelText("Sender phone number")
+    expect(field).toHaveAttribute("placeholder", "+1 202 555 0123")
+    expect(field).toHaveAccessibleDescription(/country code/i)
   })
 })

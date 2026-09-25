@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const state = {
   selectResult: { data: null as unknown, error: null as null | { code: string; message: string } },
-  updateResult: { data: null as unknown, error: null as null | { code: string; message: string } },
+  updateResult: { data: null as unknown, error: null as null | { code: string; message: string; details?: string } },
   calls: [] as Array<[string, unknown]>,
   updatePayloads: [] as Array<Record<string, unknown>>,
 }
@@ -43,7 +43,12 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-import { getBusinessSettings, updateBusinessSettings, BusinessSettingsMissingError } from "@/lib/db/businesses"
+import {
+  getBusinessSettings,
+  updateBusinessSettings,
+  BusinessSettingsMissingError,
+  SmsSenderPhoneTakenError,
+} from "@/lib/db/businesses"
 
 const baseRow = {
   business_id: "biz-1",
@@ -127,5 +132,31 @@ describe("updateBusinessSettings", () => {
     state.updateResult = { data: { ...baseRow, brand_color: null, accent_color: null }, error: null }
     await updateBusinessSettings({ brand_color: null, accent_color: null }, "biz-1")
     expect(state.updatePayloads[0]).toMatchObject({ brand_color: null, accent_color: null })
+  })
+
+  // G33. 00247's partial unique index lets only one business send from a
+  // number. The error shape is Postgres's own, passed through by PostgREST:
+  // the INDEX name in `message`, the COLUMN in `details`.
+  it("names a clash on 00247's unique sender-number index as SmsSenderPhoneTakenError", async () => {
+    state.updateResult = {
+      data: null,
+      error: {
+        code: "23505",
+        message: 'duplicate key value violates unique constraint "business_settings_sms_sender_phone_unique"',
+        details: "Key (sms_sender_phone)=(+12025550123) already exists.",
+      },
+    }
+    await expect(updateBusinessSettings({ sms_sender_phone: "+12025550123" }, "biz-1")).rejects.toBeInstanceOf(
+      SmsSenderPhoneTakenError,
+    )
+  })
+
+  it("CONTROL: a unique violation that is NOT about the sender number is rethrown as it came", async () => {
+    // No such index exists on business_settings today (the only other unique
+    // index is the primary key, which an update keyed on business_id cannot
+    // hit), but a future one must not be reported as a taken phone number.
+    const other = { code: "23505", message: 'duplicate key value violates unique constraint "some_future_key"' }
+    state.updateResult = { data: null, error: other }
+    await expect(updateBusinessSettings({ display_name: "X" }, "biz-1")).rejects.toBe(other)
   })
 })
