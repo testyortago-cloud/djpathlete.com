@@ -15,15 +15,11 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
-import {
-  draftFunnelPlan,
-  draftPagePlan,
-  BRIEF_MAX_LENGTH,
-  MAX_QUESTIONS,
-} from "@/lib/ai/funnel-interview"
+import { draftFunnelPlan, draftPagePlan, BRIEF_MAX_LENGTH, MAX_QUESTIONS } from "@/lib/ai/funnel-interview"
 import { sanitiseFunnelPlan, sanitisePagePlan } from "@/lib/funnels/ai-plan"
 import { getTemplate } from "@/lib/funnels/templates"
 import { loadCatalogues } from "@/lib/funnels/sections/resolve"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
@@ -39,9 +35,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  const body = (await request.json().catch(() => null)) as
-    | { brief?: unknown; answers?: unknown; kind?: unknown }
-    | null
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    throw err
+  }
+
+  const body = (await request.json().catch(() => null)) as { brief?: unknown; answers?: unknown; kind?: unknown } | null
   const brief = typeof body?.brief === "string" ? body.brief.trim() : ""
   if (brief.length < 3) {
     return NextResponse.json({ error: "Tell me what you want to build first." }, { status: 400 })
@@ -90,7 +94,7 @@ export async function POST(request: Request) {
   const offerKind = getTemplate(typeof raw?.template === "string" ? raw.template : null)?.offerKind
   if (offerKind) {
     try {
-      const catalogues = await loadCatalogues()
+      const catalogues = await loadCatalogues(businessId)
       allowedOfferNames = catalogues.offer[offerKind].map((entry) => entry.name)
     } catch (error) {
       console.error("[funnels/ai/plan] catalogue unreadable — plan will carry no offer", error)

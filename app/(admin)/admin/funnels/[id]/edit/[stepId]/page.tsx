@@ -83,6 +83,7 @@ interface InitialState {
  * `compileDoc` from the route and calling it from both sides.
  */
 async function resolveAndCompile(
+  businessId: string,
   doc: SectionDoc,
   funnelBasePath: string,
   // `null` means the page list could not be read, which `resolveDoc` treats as
@@ -102,7 +103,7 @@ async function resolveAndCompile(
   let resolutionError: string | null = null
 
   try {
-    const catalogues = await loadCatalogues()
+    const catalogues = await loadCatalogues(businessId)
     // `resolveDoc` THROWS rather than reporting a clean empty list over a
     // corrupt document, precisely so a caller cannot accidentally unblock
     // publish. Catching it and saying "not checked" honours that; swallowing
@@ -210,7 +211,7 @@ export async function FunnelBuilderScreen({
   if (!draft) notFound()
 
   const initial: InitialState = draft.doc
-    ? await resolveAndCompile(draft.doc, funnelBasePath, pages, brandKit)
+    ? await resolveAndCompile(businessId, draft.doc, funnelBasePath, pages, brandKit)
     : { doc: null, unresolved: [], danglingAnchors: [], compile: null, resolutionError: null }
 
   // WHICH TURNS CAN BE GONE BACK TO: the ones whose stored document still

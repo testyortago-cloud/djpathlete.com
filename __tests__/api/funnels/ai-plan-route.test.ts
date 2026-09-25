@@ -12,15 +12,16 @@ const canAccessMock = vi.fn()
 const questionsMock = vi.fn()
 const draftMock = vi.fn()
 const loadCataloguesMock = vi.fn()
+const resolveAdminTenantForRequestMock = vi.fn()
+
+const BUSINESS_ID = "biz-1"
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/permissions/guard", () => ({
   canAccessAdminPath: (...args: unknown[]) => canAccessMock(...args),
 }))
 vi.mock("@/lib/ai/funnel-interview", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/ai/funnel-interview")>(
-    "@/lib/ai/funnel-interview",
-  )
+  const actual = await vi.importActual<typeof import("@/lib/ai/funnel-interview")>("@/lib/ai/funnel-interview")
   return {
     ...actual,
     interviewQuestions: (...a: unknown[]) => questionsMock(...a),
@@ -28,7 +29,16 @@ vi.mock("@/lib/ai/funnel-interview", async () => {
   }
 })
 vi.mock("@/lib/funnels/sections/resolve", () => ({
-  loadCatalogues: () => loadCataloguesMock(),
+  loadCatalogues: (businessId: string) => loadCataloguesMock(businessId),
+}))
+const { NoAccessibleBusinessError } = vi.hoisted(() => ({
+  NoAccessibleBusinessError: class NoAccessibleBusinessError extends Error {},
+}))
+// `/ai/interview` never calls this seam; only `/ai/plan` does, so this mock is
+// inert for the interview describe block below.
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: () => resolveAdminTenantForRequestMock(),
+  NoAccessibleBusinessError,
 }))
 
 function post(url: string, body: unknown) {
@@ -57,6 +67,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   authMock.mockResolvedValue({ user: { id: "u1", role: "admin" } })
   canAccessMock.mockResolvedValue(true)
+  resolveAdminTenantForRequestMock.mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "Test Co", slug: "test-co" }],
+    isOperator: true,
+  })
   questionsMock.mockResolvedValue([{ id: "q1", question: "What ages?", hint: null, placeholder: null }])
   draftMock.mockResolvedValue(EVENT_PLAN)
   loadCataloguesMock.mockResolvedValue({
@@ -115,6 +130,20 @@ describe("POST /api/admin/funnels/ai/plan", () => {
     const { POST } = await import("@/app/api/admin/funnels/ai/plan/route")
     const body = await (await POST(post("http://x/p", { brief: "camp", answers: [] }))).json()
     expect(body.plan.offer).toEqual({ kind: "event", ref: "Summer Camp 2026" })
+  })
+
+  it("threads the resolved admin tenant into loadCatalogues, not a bare no-arg call", async () => {
+    // Task 8: this route used to call `loadCatalogues()` with no tenant at
+    // all. It must now ask for THIS admin's resolved tenant specifically.
+    const { POST } = await import("@/app/api/admin/funnels/ai/plan/route")
+    await POST(post("http://x/p", { brief: "camp", answers: [] }))
+    expect(loadCataloguesMock).toHaveBeenCalledWith(BUSINESS_ID)
+  })
+
+  it("refuses a caller with no accessible business", async () => {
+    resolveAdminTenantForRequestMock.mockRejectedValue(new NoAccessibleBusinessError())
+    const { POST } = await import("@/app/api/admin/funnels/ai/plan/route")
+    expect((await POST(post("http://x/p", { brief: "camp", answers: [] }))).status).toBe(403)
   })
 
   it("drops an offer the catalogue does not contain", async () => {

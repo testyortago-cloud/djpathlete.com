@@ -5,7 +5,7 @@
 // A LEAF, ON PURPOSE. It imports one TYPE and nothing else.
 // ---------------------------------------------------------------------------
 // The gate arrives as a parameter rather than being imported, because the real
-// one (`publishGate(resolveDoc(doc, await loadCatalogues(), pages))`) needs
+// one (`publishGate(resolveDoc(doc, await loadCatalogues(businessId), pages))`) needs
 // three database reads. Injecting it keeps every decision below testable with
 // no mocks at all, and keeps this module out of any bundle that would drag the
 // DAL along behind it.

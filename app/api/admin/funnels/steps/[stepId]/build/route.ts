@@ -343,9 +343,11 @@ function compileStatus(compile: CompileSummary): "ok" | "warnings" | "failed" {
  * proceeds without a catalogue: Block B advertises nothing, resolution is
  * skipped, and the reason is reported back verbatim.
  */
-async function loadCataloguesSafely(): Promise<{ catalogues: Catalogues | null; error: string | null }> {
+async function loadCataloguesSafely(
+  businessId: string,
+): Promise<{ catalogues: Catalogues | null; error: string | null }> {
   try {
-    return { catalogues: await loadCatalogues(), error: null }
+    return { catalogues: await loadCatalogues(businessId), error: null }
   } catch (error) {
     console.error("[funnels/build] catalogue load failed — continuing without it:", error)
     return { catalogues: null, error: (error as Error).message }
@@ -731,7 +733,7 @@ async function handleReset(
   // catalogue AS IT WAS then — its own comment calls that out and says the
   // route must re-resolve. A program deleted since would otherwise have the
   // chat tell the owner a page is publishable when it is not.
-  const { catalogues, error: catalogueError } = await loadCataloguesSafely()
+  const { catalogues, error: catalogueError } = await loadCataloguesSafely(businessId)
   const resolution = resolveSafely(restored, catalogues, catalogueError, context.allPages)
   const compile = compileDoc(resolution.doc, context.funnelBasePath, context.brandKit)
 
@@ -825,7 +827,7 @@ async function handleApplyPolish(args: ApplyPolishArgs): Promise<Response> {
   }
 
   const context = await loadPageContext(businessId, funnelId, stepSlug)
-  const { catalogues, error: catalogueError } = await loadCataloguesSafely()
+  const { catalogues, error: catalogueError } = await loadCataloguesSafely(businessId)
   const resolution = resolveSafely(applied.doc, catalogues, catalogueError, context.allPages)
   const compile = compileDoc(resolution.doc, context.funnelBasePath, context.brandKit)
 
@@ -1131,7 +1133,7 @@ async function handlePolish(args: PolishArgs): Promise<Response> {
 
   const [context, catalogueLoad] = await Promise.all([
     loadPageContext(businessId, funnelId, stepSlug),
-    loadCataloguesSafely(),
+    loadCataloguesSafely(businessId),
   ])
   const { catalogues, error: catalogueError } = catalogueLoad
   const doc = draft.doc
@@ -1211,7 +1213,7 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
   const [context, history, catalogueLoad] = await Promise.all([
     loadPageContext(businessId, funnelId, stepSlug),
     loadHistorySafely(businessId, stepId),
-    loadCataloguesSafely(),
+    loadCataloguesSafely(businessId),
   ])
   const { catalogues, error: catalogueError } = catalogueLoad
 

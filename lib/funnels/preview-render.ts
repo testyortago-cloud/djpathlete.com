@@ -109,7 +109,7 @@ export async function renderDraftPreview({
   let gateBlockers: string[] = []
   try {
     const [catalogues, pages] = await Promise.all([
-      loadCatalogues(),
+      loadCatalogues(businessId),
       listSteps(businessId, funnelId).then((rows) => rows.map((row) => ({ slug: row.slug, name: row.name }))),
     ])
     const resolution = resolveDoc(draft.doc, catalogues, pages)

@@ -28,6 +28,7 @@ vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.f
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
+vi.mock("@/lib/db/quizzes", () => ({ listQuizzes: vi.fn(), getQuizDefinition: vi.fn() }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
 vi.mock("@/lib/tenancy/resolve", () => ({
   resolveAdminTenantForRequest: vi.fn(),
@@ -44,9 +45,9 @@ import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
+import { listQuizzes } from "@/lib/db/quizzes"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
-import { platformBusinessId } from "@/lib/tenancy/platform"
 import { ensureEventPriced } from "@/lib/events/ensure-priced"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
@@ -276,6 +277,7 @@ beforeEach(() => {
   mock(getEvents).mockResolvedValue([])
   mock(getPublishedEvents).mockResolvedValue([])
   mock(getFaqCountsByPage).mockResolvedValue({})
+  mock(listQuizzes).mockResolvedValue([])
   mock(ensureEventPriced).mockResolvedValue({ ok: true, changed: false })
   // No brand chosen by default — every pre-existing test below publishes with
   // no `--primary` override, exactly as it did before Task 9.
@@ -296,15 +298,13 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     // count — a route that writes one page twice would pass a count check.
     expect(mock(publishStep).mock.calls.map((call) => call[1].stepId)).toEqual(["s1", "s2"])
     expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID, { status: "published" })
-    // `loadCatalogues` reads events under `platformBusinessId()`, the
-    // DELIBERATELY FROZEN seam (lib/tenancy/platform.ts) — NOT the resolved
-    // admin tenant. That seam is what ensureEventPriced (below) is exempt
-    // from: this route resolves a real tenant for its own write, but the
-    // whole builder-catalogue subsystem behind loadCatalogues is out of
-    // this phase's conversion.
-    // MUTANT: the catalogue reading under no tenant, or under `BUSINESS_ID`.
-    expect(mock(getEvents)).toHaveBeenCalledWith(platformBusinessId(), {})
-    expect(mock(getPublishedEvents)).toHaveBeenCalledWith(platformBusinessId())
+    // Task 8 unfroze `loadCatalogues()` (lib/tenancy/platform.ts no longer
+    // lists it): the catalogue read is now scoped to the SAME resolved admin
+    // tenant as every other read and write on this request, not the platform
+    // seam. MUTANT: the catalogue reading under no tenant, or under a
+    // different one than the rest of the publish.
+    expect(mock(getEvents)).toHaveBeenCalledWith(BUSINESS_ID, {})
+    expect(mock(getPublishedEvents)).toHaveBeenCalledWith(BUSINESS_ID)
   })
 
   it("refuses a caller with no accessible business, before touching any funnel data", async () => {

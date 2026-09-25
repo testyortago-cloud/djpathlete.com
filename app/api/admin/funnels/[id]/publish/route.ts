@@ -164,7 +164,7 @@ export const POST = withAudit(
       // READ ONCE FOR THE WHOLE FUNNEL. A funnel-wide fact, and re-reading it per
       // page would not only cost N times the work but could gate page 1 and page 4
       // against different catalogues.
-      const catalogues = await loadCatalogues()
+      const catalogues = await loadCatalogues(businessId)
       // `[]` is correct here and `null` would be wrong: these ARE the funnel's
       // pages, freshly read. `null` means "could not be checked", and a failed
       // read has already thrown into the catch below.

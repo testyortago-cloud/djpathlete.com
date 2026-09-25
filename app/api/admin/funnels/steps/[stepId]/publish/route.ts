@@ -140,7 +140,7 @@ async function gateSectionDoc(businessId: string, stepId: string, projectData: u
     const step = await getStep(businessId, stepId)
     if (!step) return { ok: false, problems: ["This page no longer exists."] }
 
-    const [catalogues, steps] = await Promise.all([loadCatalogues(), listSteps(businessId, step.funnel_id)])
+    const [catalogues, steps] = await Promise.all([loadCatalogues(businessId), listSteps(businessId, step.funnel_id)])
     const pages = steps.map((row) => ({ slug: row.slug, name: row.name }))
 
     const gate = publishGate(resolveDoc(doc, catalogues, pages))
@@ -155,112 +155,104 @@ async function gateSectionDoc(businessId: string, stepId: string, projectData: u
     console.error("[funnels/publish] could not check this page's links:", error)
     return {
       ok: false,
-      problems: [
-        `This page's links could not be checked, so it was not published: ${(error as Error).message}`,
-      ],
+      problems: [`This page's links could not be checked, so it was not published: ${(error as Error).message}`],
     }
   }
 }
 
-export const POST = withAudit(
-  { action: "funnel.published", category: "admin_write" },
-  async (request, ctx) => {
-    const session = await auth()
-    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
+export const POST = withAudit({ action: "funnel.published", category: "admin_write" }, async (request, ctx) => {
+  const session = await auth()
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
+    throw err
+  }
 
-    let businessId: string
-    try {
-      ;({ businessId } = await resolveAdminTenantForRequest(request))
-    } catch (err) {
-      if (err instanceof NoAccessibleBusinessError) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-      }
-      throw err
+  const { stepId } = await ctx.params
+
+  const body = await request.json().catch(() => null)
+  const parsed = publishStepSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 })
+  }
+
+  try {
+    const step = await getStep(businessId, stepId)
+    if (!step) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+    // BEFORE `publishStep`, which both compiles and writes. A gate that ran
+    // after it would be a report on a page that is already live.
+    const gate = await gateSectionDoc(businessId, stepId, parsed.data.project_data)
+    if (!gate.ok) {
+      return NextResponse.json({ error: "This page could not be published.", problems: gate.problems }, { status: 422 })
     }
 
-    const { stepId } = await ctx.params
+    const result = await publishStep(businessId, {
+      stepId,
+      html: parsed.data.html,
+      css: parsed.data.css,
+      projectData: parsed.data.project_data,
+      publishedBy: session.user.id,
+    })
 
-    const body = await request.json().catch(() => null)
-    const parsed = publishStepSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid request" }, { status: 400 })
+    if (!result.ok) {
+      return NextResponse.json(
+        {
+          error: "This page could not be published.",
+          problems: result.errors.map((e) => e.message),
+        },
+        { status: 422 },
+      )
     }
 
+    // ---------------------------------------------------------------------
+    // A LANDING PAGE HAS ONE PUBLISH, NOT TWO.
+    // ---------------------------------------------------------------------
+    // Publishing a STEP writes a version row; the public `/go/<slug>` route
+    // additionally requires the FUNNEL ROW to be `published`. For a funnel
+    // that separation is real — several steps, and the owner decides when the
+    // whole thing goes live. For a LANDING PAGE it is an artefact of the two
+    // sharing a table: a page IS the thing being published, and there is
+    // nothing else it could be waiting for.
+    //
+    // Without this the owner publishes, is told it worked, and finds a second
+    // "Publish landing page" button on the next screen and a 404 at the
+    // public URL until he presses it. He hit exactly that twice: "i published
+    // it but there are is still another publish button, I DONT WANT THAT".
+    //
+    // Funnels are deliberately UNCHANGED: publishing step 1 of a five-step
+    // funnel must not put the whole funnel live.
+    //
+    // Failure here does NOT fail the publish. The version row is written and
+    // the page is genuinely published; not flipping the row leaves it
+    // unreachable, which is the state the owner can still fix by hand, and
+    // reporting a failed publish for a publish that succeeded would be worse.
+    let wentLive = false
     try {
-      const step = await getStep(businessId, stepId)
-      if (!step) return NextResponse.json({ error: "Not found" }, { status: 404 })
-
-      // BEFORE `publishStep`, which both compiles and writes. A gate that ran
-      // after it would be a report on a page that is already live.
-      const gate = await gateSectionDoc(businessId, stepId, parsed.data.project_data)
-      if (!gate.ok) {
-        return NextResponse.json(
-          { error: "This page could not be published.", problems: gate.problems },
-          { status: 422 },
-        )
+      const funnel = await getFunnelById(businessId, step.funnel_id)
+      if (funnel && funnel.kind === "page" && funnel.status !== "published") {
+        await updateFunnel(businessId, funnel.id, { status: "published" })
+        wentLive = true
       }
-
-      const result = await publishStep(businessId, {
-        stepId,
-        html: parsed.data.html,
-        css: parsed.data.css,
-        projectData: parsed.data.project_data,
-        publishedBy: session.user.id,
-      })
-
-      if (!result.ok) {
-        return NextResponse.json(
-          {
-            error: "This page could not be published.",
-            problems: result.errors.map((e) => e.message),
-          },
-          { status: 422 },
-        )
-      }
-
-      // ---------------------------------------------------------------------
-      // A LANDING PAGE HAS ONE PUBLISH, NOT TWO.
-      // ---------------------------------------------------------------------
-      // Publishing a STEP writes a version row; the public `/go/<slug>` route
-      // additionally requires the FUNNEL ROW to be `published`. For a funnel
-      // that separation is real — several steps, and the owner decides when the
-      // whole thing goes live. For a LANDING PAGE it is an artefact of the two
-      // sharing a table: a page IS the thing being published, and there is
-      // nothing else it could be waiting for.
-      //
-      // Without this the owner publishes, is told it worked, and finds a second
-      // "Publish landing page" button on the next screen and a 404 at the
-      // public URL until he presses it. He hit exactly that twice: "i published
-      // it but there are is still another publish button, I DONT WANT THAT".
-      //
-      // Funnels are deliberately UNCHANGED: publishing step 1 of a five-step
-      // funnel must not put the whole funnel live.
-      //
-      // Failure here does NOT fail the publish. The version row is written and
-      // the page is genuinely published; not flipping the row leaves it
-      // unreachable, which is the state the owner can still fix by hand, and
-      // reporting a failed publish for a publish that succeeded would be worse.
-      let wentLive = false
-      try {
-        const funnel = await getFunnelById(businessId, step.funnel_id)
-        if (funnel && funnel.kind === "page" && funnel.status !== "published") {
-          await updateFunnel(businessId, funnel.id, { status: "published" })
-          wentLive = true
-        }
-      } catch (error) {
-        console.error("[publish] could not take the landing page live:", error)
-      }
-
-      return NextResponse.json({
-        version: result.version.version,
-        warnings: result.warnings.map((w) => w.message),
-        wentLive,
-      })
     } catch (error) {
-      console.error("[POST /api/admin/funnels/steps/:stepId/publish]", error)
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+      console.error("[publish] could not take the landing page live:", error)
     }
-  },
-)
+
+    return NextResponse.json({
+      version: result.version.version,
+      warnings: result.warnings.map((w) => w.message),
+      wentLive,
+    })
+  } catch (error) {
+    console.error("[POST /api/admin/funnels/steps/:stepId/publish]", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+})

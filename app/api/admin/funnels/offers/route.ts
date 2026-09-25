@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { loadCatalogues } from "@/lib/funnels/sections/resolve"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import type { OfferKind } from "@/types/database"
 
 const OFFER_KINDS: readonly OfferKind[] = ["program", "session_pack", "event"]
@@ -36,14 +37,21 @@ export async function GET(request: NextRequest) {
     // `leads` and `booking` are real FunnelGoals but sell nothing, so they are
     // not OfferKinds. Saying so beats returning an empty list, which reads as
     // "you have no programs".
-    return NextResponse.json(
-      { error: `kind must be one of ${OFFER_KINDS.join(", ")}` },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: `kind must be one of ${OFFER_KINDS.join(", ")}` }, { status: 400 })
+  }
+
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    throw err
   }
 
   try {
-    const catalogues = await loadCatalogues()
+    const catalogues = await loadCatalogues(businessId)
     return NextResponse.json({ offers: catalogues.offer[kind] })
   } catch (error) {
     // `loadCatalogues` THROWS on a truncated read and its own comment requires

@@ -478,7 +478,7 @@ export async function revertToRevision(businessId: string, input: RevertInput): 
     // else re-derives the verdict from the live document at publish time —
     // `gateSectionDoc` in
     // `app/api/admin/funnels/steps/[stepId]/publish/route.ts`, which runs
-    // `publishGate(resolveDoc(doc, await loadCatalogues()))` before it writes
+    // `publishGate(resolveDoc(doc, await loadCatalogues(businessId)))` before it writes
     // anything and never reads this column.
     //
     // WHEN THIS COMMENT WAS FIRST WRITTEN THAT WAS NOT TRUE. It said the same

@@ -179,26 +179,6 @@ import { createServiceRoleClient } from "@/lib/supabase"
  * real tenant (it has an authenticated admin session), but converting it
  * would mean re-scoping a large, unrelated subsystem as a side effect of a
  * smaller task:
- *   - `loadCatalogues()` (lib/funnels/sections/resolve.ts), the AI funnel
- *     builder's catalogue loader. Its call graph spans the build/publish/plan
- *     routes, the ~1900-line build orchestrator, the funnel editor page, and
- *     the shared draft-preview renderer -- none of which any task has claimed
- *     for tenancy conversion. Freezing it here keeps today's behaviour
- *     byte-identical (that call site never hard-coded anything -- it passed
- *     NO argument, i.e. read every business's rows; it is byte-identical only
- *     because migration 00252's DEFAULT put all existing rows on the
- *     platform) while making the compromise greppable instead of silent.
- *
- *     THAT IS NO LONGER THE WHOLE STORY as of the events-per-tenant phase.
- *     The funnel's live event rendering and its submission handling both
- *     now resolve a real per-host tenant while this loader stays
- *     platform-only, so the builder and the publish gate validate an
- *     event CTA against a catalogue the live page no longer agrees with.
- *     Pre-phase both sides were unscoped and agreed; the day a second
- *     tenant publishes a funnel with an event CTA, the builder and the
- *     gate pass and the live render is silent absence. Recorded, not
- *     fixed here — see that phase's design doc §8; resolving it is phase
- *     5b's (funnels), not this seam's.
  *   - the Google Ads OAuth callback (app/api/integrations/google-ads/callback/route.ts)
  *     and the rediscover-accounts route (app/api/admin/ads/rediscover-accounts/route.ts),
  *     the two callers of `upsertGoogleAdsAccount`. Both routes DO have an

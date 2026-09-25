@@ -45,7 +45,7 @@
 // legacy client, a future caller — still reaches
 // `app/api/admin/funnels/steps/[stepId]/publish/route.ts` directly. That route
 // gates itself as of `9d17612e`: `gateSectionDoc` runs
-// `publishGate(resolveDoc(doc, await loadCatalogues()))` before `publishStep`,
+// `publishGate(resolveDoc(doc, await loadCatalogues(businessId)))` before `publishStep`,
 // derives the verdict from the `SectionDoc` (never from the compile result,
 // which cannot see an unresolved CTA at all), takes the document from the
 // stored draft when the body omits `project_data` so omission is not an opt-out,
@@ -125,7 +125,7 @@ export async function renderDocForPublish(stepId: string, doc: SectionDoc): Prom
   let resolvedDoc = doc
   let gateWarnings: string[] = []
   try {
-    const catalogues = await loadCatalogues()
+    const catalogues = await loadCatalogues(businessId)
     // FAILS CLOSED, like the catalogue read beside it and like the route.
     // This is a publish path, so `null` ("step links not checked") would be
     // the wrong answer here even though it is the right one on the editor

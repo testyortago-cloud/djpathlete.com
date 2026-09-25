@@ -39,12 +39,7 @@
 // functions, not `vi.fn()` spies. See the comment on that block for why an
 // untestable async wrapper was worth this much.
 import { describe, it, expect, vi, afterEach } from "vitest"
-import {
-  ctaWithLabelSchema,
-  type CtaWithLabel,
-  type Section,
-  type SectionDoc,
-} from "@/lib/funnels/sections/registry"
+import { ctaWithLabelSchema, type CtaWithLabel, type Section, type SectionDoc } from "@/lib/funnels/sections/registry"
 import {
   resolveDoc as resolveDocWithPages,
   publishGate,
@@ -72,8 +67,7 @@ import {
  * shadow can never produce a broken link, so a test that used it would pass
  * for the wrong reason.
  */
-const resolveDoc = (doc: SectionDoc, catalogues: Catalogues) =>
-  resolveDocWithPages(doc, catalogues, null)
+const resolveDoc = (doc: SectionDoc, catalogues: Catalogues) => resolveDocWithPages(doc, catalogues, null)
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -256,15 +250,7 @@ describe("resolveDoc — every CTA site in the registry", () => {
     )
     // CONTRACTUAL, and asserted as a sequence: sections come in document
     // order...
-    expect(paths.map((p) => p.split(".")[0])).toEqual([
-      "hero1",
-      "hero1",
-      "price1",
-      "price1",
-      "cta1",
-      "foot1",
-      "foot1",
-    ])
+    expect(paths.map((p) => p.split(".")[0])).toEqual(["hero1", "hero1", "price1", "price1", "cta1", "foot1", "foot1"])
     // ...and array slots in ascending index order within their section.
     expect(paths.filter((p) => p.startsWith("price1."))).toEqual(["price1.plans[1].cta", "price1.plans[2].cta"])
     expect(paths.filter((p) => p.startsWith("foot1."))).toEqual(["foot1.links[0]", "foot1.links[1]"])
@@ -397,7 +383,7 @@ describe("resolveDoc — name matching", () => {
     expect(refAt(result.doc, "cta1", "cta")).toBe(PACK_TEN)
   })
 
-  it("does NOT resolve a short catalogue name that merely appears as a coincidental substring of a long ref (\"PT\" / \"Optimal Power\")", () => {
+  it('does NOT resolve a short catalogue name that merely appears as a coincidental substring of a long ref ("PT" / "Optimal Power")', () => {
     // "optimal power" contains "pt" as a pure coincidence (o-P-T-imal…), so
     // an unguarded bidirectional substring match would resolve this WITH
     // FULL CONFIDENCE to a completely unrelated product — a live buy button
@@ -920,7 +906,13 @@ describe("resolveDoc — reference identity", () => {
       engine: "sections",
       theme: { tone: "light", accent: "accent", radius: "soft" },
       sections: [
-        { id: "hero1", kind: "hero", variant: "centered", style: {}, props: { primaryCta: programCta("Comeback Code") } },
+        {
+          id: "hero1",
+          kind: "hero",
+          variant: "centered",
+          style: {},
+          props: { primaryCta: programCta("Comeback Code") },
+        },
       ],
     }
 
@@ -1220,17 +1212,27 @@ describe("toCatalogue carries what a checkout gate needs", () => {
   })
 
   it("marks an event with no stripe price as unpriced", () => {
-    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ stripe_price_id: null })] }).event[0].priced).toBe(false)
-    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ stripe_price_id: "" })] }).event[0].priced).toBe(false)
+    expect(
+      toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ stripe_price_id: null })] }).event[0].priced,
+    ).toBe(false)
+    expect(
+      toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ stripe_price_id: "" })] }).event[0].priced,
+    ).toBe(false)
   })
 
   it("marks a full event sold out, at capacity and over it", () => {
     // MUTANT: `>` instead of `>=`. The 12th signup of a 12-place camp fills it;
     // a strict comparison would sell a 13th place and leave the webhook to
     // refund a parent who thought they had a spot.
-    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ signup_count: 12 })] }).event[0].soldOut).toBe(true)
-    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ signup_count: 13 })] }).event[0].soldOut).toBe(true)
-    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ signup_count: 11 })] }).event[0].soldOut).toBe(false)
+    expect(
+      toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ signup_count: 12 })] }).event[0].soldOut,
+    ).toBe(true)
+    expect(
+      toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ signup_count: 13 })] }).event[0].soldOut,
+    ).toBe(true)
+    expect(
+      toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ signup_count: 11 })] }).event[0].soldOut,
+    ).toBe(false)
   })
 
   it("leaves programs and packs without the event-only keys", () => {
@@ -1347,11 +1349,14 @@ const DEFAULT_DAL_ROWS: DalRows = {
   quizDefinitionMissing: false,
 }
 
+/** Every test in this block reads as this tenant unless it says otherwise. */
+const STUB_BUSINESS_ID = "biz-under-test"
+
 async function stubDal(overrides: Partial<DalRows> = {}) {
   const rows: DalRows = { ...DEFAULT_DAL_ROWS, ...overrides }
-  const getEventsCalls: (EventFilters | undefined)[] = []
+  const getEventsCalls: { businessId: string; filters?: EventFilters }[] = []
   const quizDefinitionCalls: string[] = []
-  const publishedEventsCalls: (EventFilters | undefined)[] = []
+  const publishedEventsCalls: { businessId: string; filters?: EventFilters }[] = []
 
   vi.resetModules()
   vi.doMock("@/lib/db/programs", () => ({
@@ -1362,13 +1367,17 @@ async function stubDal(overrides: Partial<DalRows> = {}) {
     listActiveProducts: async () => rows.offerPacks,
     listAllProducts: async () => rows.allPacks,
   }))
+  // Both fetchers take (businessId, filters), matching lib/db/events.ts's real
+  // signature -- the businessId is recorded alongside the filters so a caller
+  // can assert loadCatalogues threaded the ASKING tenant through, not merely
+  // that a call happened.
   vi.doMock("@/lib/db/events", () => ({
-    getEvents: async (filters?: EventFilters) => {
-      getEventsCalls.push(filters)
+    getEvents: async (businessId: string, filters?: EventFilters) => {
+      getEventsCalls.push({ businessId, filters })
       return rows.allEvents
     },
-    getPublishedEvents: async (filters?: EventFilters) => {
-      publishedEventsCalls.push(filters)
+    getPublishedEvents: async (businessId: string, filters?: EventFilters) => {
+      publishedEventsCalls.push({ businessId, filters })
       return rows.offerEvents
     },
   }))
@@ -1393,7 +1402,12 @@ async function stubDal(overrides: Partial<DalRows> = {}) {
 
 async function loadCataloguesWithStubbedDal(overrides: Partial<DalRows> = {}) {
   const { loadCatalogues, getEventsCalls, publishedEventsCalls, quizDefinitionCalls } = await stubDal(overrides)
-  return { catalogues: await loadCatalogues(), getEventsCalls, publishedEventsCalls, quizDefinitionCalls }
+  return {
+    catalogues: await loadCatalogues(STUB_BUSINESS_ID),
+    getEventsCalls,
+    publishedEventsCalls,
+    quizDefinitionCalls,
+  }
 }
 
 describe("loadCatalogues", () => {
@@ -1435,8 +1449,12 @@ describe("loadCatalogues", () => {
     // and would re-introduce three quarters of the bug while the id list above
     // still looked plausible against a less careful stub.
     expect(getEventsCalls).toHaveLength(1)
-    expect(getEventsCalls[0]?.status).toBeUndefined()
-    expect(getEventsCalls[0]?.type).toBeUndefined()
+    expect(getEventsCalls[0]?.filters?.status).toBeUndefined()
+    expect(getEventsCalls[0]?.filters?.type).toBeUndefined()
+    // The asking tenant, not the platform's -- this is the whole seam Task 8
+    // closes: an unconverted call site would still be `platformBusinessId()`
+    // here regardless of which business asked.
+    expect(getEventsCalls[0]?.businessId).toBe(STUB_BUSINESS_ID)
   })
 
   it("builds the OFFER event list from getPublishedEvents() with NO `from` override — the picker must not offer last year's camp", async () => {
@@ -1452,7 +1470,8 @@ describe("loadCatalogues", () => {
     expect(publishedEventsCalls).toHaveLength(1)
     // No argument at all: `getPublishedEvents`'s own `from = new Date()`
     // default IS the offer bound. Passing an epoch here is the mutant.
-    expect(publishedEventsCalls[0]?.from).toBeUndefined()
+    expect(publishedEventsCalls[0]?.filters?.from).toBeUndefined()
+    expect(publishedEventsCalls[0]?.businessId).toBe(STUB_BUSINESS_ID)
   })
 
   it("builds the RECOGNITION pack list from listAllProducts — deactivating a pack must not break the page selling it", async () => {
@@ -1562,7 +1581,7 @@ describe("loadCatalogues", () => {
     }))
     const { loadCatalogues } = await stubDal({ allEvents: thousandEvents })
 
-    await expect(loadCatalogues()).rejects.toThrow(/truncated/i)
+    await expect(loadCatalogues(STUB_BUSINESS_ID)).rejects.toThrow(/truncated/i)
   })
 
   it("does NOT throw for a recognition read one row under the cap", async () => {
@@ -1692,14 +1711,8 @@ describe("step links against the funnel's real pages", () => {
   })
 
   it("a step CTA naming a page that does not exist is reported, with the slug", () => {
-    const result = resolveDocWithPages(
-      docOf([hero({ primaryCta: pageCta("offer-page") })]),
-      catalogue(),
-      PAGES,
-    )
-    expect(result.brokenStepLinks).toEqual([
-      { sectionId: "hero1", field: "primaryCta", stepSlug: "offer-page" },
-    ])
+    const result = resolveDocWithPages(docOf([hero({ primaryCta: pageCta("offer-page") })]), catalogue(), PAGES)
+    expect(result.brokenStepLinks).toEqual([{ sectionId: "hero1", field: "primaryCta", stepSlug: "offer-page" }])
   })
 
   it("a broken step link BLOCKS publishing, and the message names the page", () => {
@@ -1714,9 +1727,7 @@ describe("step links against the funnel's real pages", () => {
     // A dead #anchor scrolls nowhere; a dead step link is a 404 on a page the
     // owner is paying to send traffic to. Publishing must treat them
     // differently, and this pins the split rather than assuming it.
-    const gate = publishGate(
-      resolveDocWithPages(docOf([hero({ primaryCta: anchorCta("nope") })]), catalogue(), PAGES),
-    )
+    const gate = publishGate(resolveDocWithPages(docOf([hero({ primaryCta: anchorCta("nope") })]), catalogue(), PAGES))
     expect(gate.ok).toBe(true)
     expect(gate.warnings).toHaveLength(1)
   })
@@ -1726,11 +1737,7 @@ describe("step links against the funnel's real pages", () => {
     // route already degrades a failed read, so conflating the two would turn
     // one Supabase blip into "every link in this document is broken" and block
     // a publish that is perfectly fine.
-    const result = resolveDocWithPages(
-      docOf([hero({ primaryCta: pageCta("offer-page") })]),
-      catalogue(),
-      null,
-    )
+    const result = resolveDocWithPages(docOf([hero({ primaryCta: pageCta("offer-page") })]), catalogue(), null)
     expect(result.brokenStepLinks).toEqual([])
     expect(publishGate(result).ok).toBe(true)
   })
@@ -1751,19 +1758,13 @@ describe("step links against the funnel's real pages", () => {
   it("finds a broken step link nested inside a repeater, not just at the top level", () => {
     // The CTA walk is `transformRecord`, which recurses. A check bolted onto
     // top-level props only would miss a pricing card's button.
-    const result = resolveDocWithPages(
-      docOf([pricing([plan("Starter", pageCta("gone"))])]),
-      catalogue(),
-      PAGES,
-    )
+    const result = resolveDocWithPages(docOf([pricing([plan("Starter", pageCta("gone"))])]), catalogue(), PAGES)
     // `plans[0].cta`, BRACKETS — this module's own reporting format (see the
     // format note above `ResolvedCta`). NOT `plans.0.cta`, which is the
     // dotted form `patchForPath` takes. The two formats are for two different
     // jobs (telling a human where the problem is vs. addressing a value to
     // write) and anything converting between them must do so explicitly.
-    expect(result.brokenStepLinks).toEqual([
-      { sectionId: "price1", field: "plans[0].cta", stepSlug: "gone" },
-    ])
+    expect(result.brokenStepLinks).toEqual([{ sectionId: "price1", field: "plans[0].cta", stepSlug: "gone" }])
   })
 
   it("a broken step link leaves the document itself untouched", () => {
@@ -1818,13 +1819,17 @@ function checkoutFormSection(eventId: string | null = EVENT_CAMP): Section {
 }
 
 /** A catalogue whose one event carries the payment facts a gate reads. */
-function eventCatalogue(entry: Partial<CatalogueEntry> | null, opts: { knownButNotOffered?: boolean } = {}): Catalogues {
+function eventCatalogue(
+  entry: Partial<CatalogueEntry> | null,
+  opts: { knownButNotOffered?: boolean } = {},
+): Catalogues {
   const row = entry === null ? null : { id: EVENT_CAMP, name: "Summer Camp", priced: true, soldOut: false, ...entry }
   const offer = lists({ event: row === null ? [] : [row] })
   // Recognition sees the row even when the offer set does not — that asymmetry
   // is what tells "never existed" apart from "not open right now".
   const recognition = lists({
-    event: row === null && opts.knownButNotOffered ? [{ id: EVENT_CAMP, name: "Summer Camp" }] : row === null ? [] : [row],
+    event:
+      row === null && opts.knownButNotOffered ? [{ id: EVENT_CAMP, name: "Summer Camp" }] : row === null ? [] : [row],
   })
   return { recognition, offer, faqPageKeys: FAQ_KEYS, quizzes: [] }
 }
