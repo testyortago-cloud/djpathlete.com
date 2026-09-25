@@ -2108,6 +2108,14 @@ export async function readContactIdentity(
  * The real hazard is therefore picking the WRONG athlete's plan out of
  * eighteen similar names, which is a case for search in the picker rather than
  * for a narrower query here. Noted, not built.
+ *
+ * UNTENANTED BY SCHEMA (G37), and it is where "a named plan in this list is
+ * correct, not a leak" stops being true. `programs` has no `business_id`
+ * column, so once a second business exists this is EVERY business's priced
+ * plans, offered on that business's own pipeline board to anyone holding
+ * `contacts` (the Coach preset) — and a grant hands one of them out. There is
+ * no predicate to add without the column. See the shelf in
+ * lib/tenancy/platform.ts.
  */
 export async function listGrantablePrograms(): Promise<
   Array<{ id: string; name: string; price_cents: number | null }>

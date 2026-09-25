@@ -128,22 +128,30 @@ export async function claimAttribution(
 /**
  * Attribution for a contact, keyed on the contact's OWN user_id.
  *
- * marketing_attribution has no business_id and cannot get one in this phase:
- * captureAttribution runs in proxy.ts, where the tenant is not resolved until
- * phase 4, and a column with no correct writer is a labelling gap rather than
- * a feature. So the tenant safety here comes from HOW the userId was obtained
- * -- the caller resolved it from a contact of its own business.
+ * UNTENANTED BY SCHEMA (G42; the shelf in lib/tenancy/platform.ts).
+ * `marketing_attribution` has no `business_id` column, so this read cannot be
+ * scoped to a business, and HOW the caller obtained `userId` does not make it
+ * so. This comment used to give two reasons it was safe. Both have expired:
+ *   - "the tenant is not resolved until phase 4". The row is written by the
+ *     same-origin track route that proxy.ts posts to
+ *     (app/api/public/attribution/track/route.ts), and since phase 4 a
+ *     public route can resolve its Host's business (`resolvePublicTenant`).
+ *     A column would now have a correct writer, and `landing_url` carries the
+ *     host on 509 of 512 dev-clone rows (2026-09-25), so it could be
+ *     backfilled. Whether to is G42.
+ *   - "user_id is never shared across businesses". A `users` row is ONE login
+ *     for every business, and G04's `linkContactsToUser` links it into every
+ *     business's contact with that email. So once one person is a contact of
+ *     two businesses, a click id captured on one business's page attaches to
+ *     the other's purchase or booking — through the Stripe webhook and the
+ *     booking ingest, both of which call this.
  *
  * The old `users!inner(email)` join is gone, and nothing is lost by it:
  * marketing_attribution.user_id is nullable with a partial index
  * (00101:7,25), so that join only ever matched rows already CLAIMED by a
- * registered user. A contact with no user_id had no match then either -- and
- * an EMAIL match besides was a cross-tenant path once two coaches can share a
- * lead: a click id captured on coach A's funnel would attach to coach B's
- * contact the moment that shared lead typed the same address into both.
- * user_id is unique to one account, never shared across businesses the way an
- * email string can be, so keying on it removes that path with no schema
- * change.
+ * registered user. Keying on user_id rather than an email string still
+ * narrows the cross-business path to people who made an account. It does not
+ * close it.
  *
  * The 30-day default window is unchanged -- it is a settled decision.
  */

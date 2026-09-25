@@ -316,6 +316,14 @@ export async function readCampaignRevenue(input: {
   // One read for every source's sessions, not one per source: the same session
   // is commonly all three (somebody landed, asked and bought). Chunked because
   // the id list travels in the query string — see IN_CHUNK.
+  //
+  // NOT on the UNTENANTED BY SCHEMA shelf (lib/tenancy/platform.ts), and
+  // correct by construction. `marketing_attribution` has no `business_id`
+  // column, but every session id read here came from the three reads above,
+  // each filtered on `business_id`, and a session id is one visitor's own
+  // cookie — so this returns this business's visitors' rows and no one
+  // else's. A new session source that is NOT tenant-filtered would break
+  // that; the shelf's preamble names this file for exactly that reason.
   const attributionBySession = new Map<string, Row>()
   for (let i = 0; i < sessionIds.length; i += IN_CHUNK) {
     const chunk = sessionIds.slice(i, i + IN_CHUNK)

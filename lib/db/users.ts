@@ -58,6 +58,12 @@ export async function deleteUser(id: string) {
 
 export async function getClients() {
   const supabase = getClient()
+  // UNTENANTED BY SCHEMA (G37). `users` has no `business_id` column, so this
+  // roster is every business's clients, and the assign picker on
+  // /admin/programs/[id] offers all of them to anyone holding `programs`. It
+  // also skips `resolveClientScope`, which only the /admin/clients pages
+  // apply. Looking ONE user up by id or email is identity, not this; see the
+  // shelf in lib/tenancy/platform.ts.
   const { data, error } = await supabase
     .from("users")
     .select("*")

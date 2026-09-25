@@ -76,9 +76,13 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   // has to read correctly.
   const activeBoardName = activeBoard?.name ?? "coaching"
 
-  // `listGrantablePrograms()` takes no businessId: `programs` has no
-  // business_id column at all (it is the shared program catalog, not a
-  // per-tenant table) -- this is not a scoping gap, there is nothing to scope.
+  // MIXED SCOPE, and a gap rather than a design. The board and the settings
+  // are this tenant's own, but `listGrantablePrograms()` takes no businessId
+  // because `programs` has no `business_id` column: the grant picker offers
+  // EVERY business's priced programmes, most of them plans named after one
+  // athlete, and a grant hands one out. There is no predicate to add without
+  // the column. Ledger row G37 owns the decision; the read is on the
+  // UNTENANTED BY SCHEMA shelf in lib/tenancy/platform.ts.
   const [columns, business, grantablePrograms] = await Promise.all([
     readBoard(activeKey, businessId),
     getBusinessSettings(businessId),

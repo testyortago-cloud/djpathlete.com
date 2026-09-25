@@ -45,6 +45,7 @@ import { callersOf } from "../../helpers/seam-callers"
 import {
   UNTENANTED_BY_SCHEMA,
   functionBody,
+  hasInPlaceNote,
   migrationsAddingBusinessId,
   staleReasons,
   statementsAddingBusinessId,
@@ -268,6 +269,16 @@ describe("lib/tenancy/platform.ts — the UNTENANTED BY SCHEMA shelf", () => {
     expect(SHELF_CARVE_OUTS.filter((p) => !existsSync(join(ROOT, p)))).toEqual([])
   })
 
+  // §D3. The shelf is one place to look; the read is where someone about to
+  // "just add a predicate" will be standing. Every entry's function says, in
+  // place, that its table has no `business_id` and which row owns that.
+  it("has an in-place note at every read: its table has no business_id, and the ledger row that owns it", () => {
+    const missing = UNTENANTED_BY_SCHEMA.filter((e) => !hasInPlaceNote(e)).map(
+      (e) => `${e.file} · ${e.fn} · ${e.table} (${e.row})`,
+    )
+    expect(missing).toEqual([])
+  })
+
   // (e) The checks above CAN fail. Each fixture goes through the same
   // `staleReasons` the real list does.
   describe("controls", () => {
@@ -304,6 +315,17 @@ describe("lib/tenancy/platform.ts — the UNTENANTED BY SCHEMA shelf", () => {
         "",
       ].join("\n")
       expect(functionBody(src, "getPrograms")).toBe("export async function getPrograms() {\n  return 2\n}")
+    })
+
+    // createProgram sits directly under getProgramById, whose note is the
+    // nearest one above it. It must not borrow it.
+    it("does not credit a function with the note on the function above it (MUTANT: the region reaches back past the previous block)", () => {
+      expect(hasInPlaceNote({ file: "lib/db/programs.ts", fn: "getProgramById", table: "programs", row: "G37" })).toBe(
+        true,
+      )
+      expect(hasInPlaceNote({ file: "lib/db/programs.ts", fn: "createProgram", table: "programs", row: "G37" })).toBe(
+        false,
+      )
     })
 
     // findAttributionForContact is shaped exactly like this, and the first
@@ -372,5 +394,45 @@ describe("lib/tenancy/platform.ts — the UNTENANTED BY SCHEMA shelf", () => {
         expect(migrationsAddingBusinessId("event")).toEqual([])
       })
     })
+  })
+})
+
+// G35 §D3. Four comments described a world that no longer exists, each in a
+// way that would talk a reader out of the shelf above. Each test pins the
+// false sentence gone AND the code it sat on still there, so deleting the
+// read (or the file) cannot pass for correcting the comment.
+describe("comments the UNTENANTED BY SCHEMA shelf contradicted are corrected", () => {
+  const source = (path: string) => readFileSync(join(ROOT, path), "utf8")
+
+  it("the pipeline page no longer calls its programme list 'nothing to scope'", () => {
+    const page = source("app/(admin)/admin/pipeline/page.tsx")
+    expect(page).toContain("listGrantablePrograms()")
+    expect(page).not.toContain("there is nothing to scope")
+    expect(page).toContain("G37")
+  })
+
+  // The corrected docstring QUOTES both old claims in order to retire them,
+  // so the needles are the claims as they were asserted, not the quotes.
+  it("findAttributionForContact no longer argues from phase 4 or from user_id being per-business", () => {
+    const dal = source("lib/db/marketing-attribution.ts")
+    expect(dal).toContain("export async function findAttributionForContact(")
+    expect(dal).not.toContain("where the tenant is not resolved until")
+    expect(dal).not.toContain("never shared across businesses the way")
+    expect(dal).toContain("linkContactsToUser")
+  })
+
+  it("the booking ingest no longer says nothing writes contacts.user_id", () => {
+    const ingest = source("lib/bookings/ingest.ts")
+    expect(ingest).toContain("findAttributionForContact({ userId })")
+    expect(ingest).not.toContain("WHICH NOTHING WRITES FOR A BOOKING")
+    expect(ingest).toContain("linkContactsToUser")
+  })
+
+  // The shelf's preamble names this file as NOT an entry; the read says why
+  // where it happens, so the next reader does not "fix" a correct read.
+  it("campaign revenue's attribution read says in place why it is not on the shelf", () => {
+    const revenue = source("lib/automation/campaign-revenue.ts")
+    expect(revenue).toContain('.in("session_id", chunk)')
+    expect(revenue).toContain("NOT on the UNTENANTED BY SCHEMA shelf")
   })
 })

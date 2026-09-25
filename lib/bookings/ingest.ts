@@ -557,17 +557,25 @@ async function writeRow(
   // no linked user_id (most leads) has nothing to key on, so the lookup is
   // skipped rather than falling back to anything looser.
   //
-  // THIS HOP DEPENDS ON contacts.user_id, WHICH NOTHING WRITES FOR A BOOKING.
-  // The only writer in the schema is merge_contacts (SQL, carries a loser's
-  // user_id onto the survivor) — no registration or claim flow ever sets it
-  // directly. So this path resolves for a contact that happened to arrive
-  // here via a merge with an already-claimed contact, and for nobody else,
-  // until a real writer exists. Review round 1: TWO owner items, not one —
-  // (1) claim-at-registration actually firing (marketing_attribution.user_id
-  // itself, which the Stripe half of this fallback already depends on via
-  // tryResolveUserIdFromEmail), and separately (2) something writing
-  // contacts.user_id at registration/claim time, which is phase-2 scope and
-  // is not attempted here.
+  // THIS HOP DEPENDS ON contacts.user_id, WHICH G04 GAVE WRITERS. This used
+  // to say nothing wrote it but merge_contacts. Since G04 (2026-09-20),
+  // `upsertContactIdentity` links a capture to the account with the same
+  // email, `linkContactsToUser` fills every unlinked contact with that email
+  // when someone registers, is added from /admin/clients or claims an invite,
+  // and migration 00264 backfilled the rest (43 of 170 on production). So
+  // this fallback now resolves for anyone with an account.
+  //
+  // Which is also how it crosses businesses. `linkContactsToUser` is
+  // deliberately unscoped (one login serves every business), so one person's
+  // contacts in two businesses share one user_id, and
+  // `findAttributionForContact` — keyed on that user_id, over a table with no
+  // `business_id` — can hand one business's click id to the other's booking.
+  // Ledger row G42; see that function's docstring.
+  //
+  // Still separate, from review round 1: whether marketing_attribution.user_id
+  // itself gets claimed (the register, inquiry and newsletter paths are its
+  // only writers), which the Stripe half of this fallback also depends on via
+  // tryResolveUserIdFromEmail.
   if (!gclid) {
     const userId = contactId ? await getContactUserId(contactId, input.businessId).catch(() => null) : null
     const attr = userId ? await findAttributionForContact({ userId }).catch(() => null) : null

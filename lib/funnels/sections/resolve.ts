@@ -518,7 +518,8 @@ export async function loadCatalogues(businessId: string): Promise<Catalogues> {
   const [allPrograms, offerPrograms, allPacks, offerPacks, allEvents, offerEvents, faqCounts] = await Promise.all([
     // `programs` has no `business_id` column at all -- unconverted, not
     // frozen. There is no per-tenant predicate to add without inventing a
-    // column this table does not have.
+    // column this table does not have. UNTENANTED BY SCHEMA (G31), with the
+    // packs pair below: on the shelf in lib/tenancy/platform.ts.
     listAllPrograms(),
     listActivePrograms(),
     // `session_pack_products` has no `business_id` column either, for the

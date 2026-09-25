@@ -22,6 +22,12 @@ export async function GET(request: Request) {
 
     const supabase = createServiceRoleClient()
 
+    // UNTENANTED BY SCHEMA (G37). `programs`, `program_assignments` and `users`
+    // have no `business_id` column, so every business's active programmes come
+    // back WITH their assignees' full names, to anyone holding `programs` (the
+    // Coach preset) — the guard above checks that permission and nothing
+    // else. There is no predicate to add without the columns. See the shelf
+    // in lib/tenancy/platform.ts.
     const [programsRes, assignmentsRes] = await Promise.all([
       supabase
         .from("programs")

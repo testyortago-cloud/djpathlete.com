@@ -88,6 +88,12 @@ export async function POST(request: Request) {
   // refusing it.
   if (funnel.status !== "published") return reject(404, "Not found")
 
+  // UNTENANTED BY SCHEMA (G40). `programs` has no `business_id` column, and
+  // this reads whatever product id the request body names, checked above only
+  // for being a UUID and below only for having a price: not for being one of
+  // this page's offers, active, public, or this business's. The sale is then
+  // filed under the Host's business either way. G40 binds the id to the
+  // published version's offers; see the shelf in lib/tenancy/platform.ts.
   let program
   try {
     program = await getProgramById(body.productId)

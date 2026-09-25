@@ -7,6 +7,12 @@ function getClient() {
 
 export async function getActiveDocument(type: LegalDocumentType) {
   const supabase = getClient()
+  // UNTENANTED BY SCHEMA (G43). `legal_documents` has no `business_id`
+  // column, so this is the PLATFORM's document of `type`, and the camp,
+  // clinic, event and funnel-form surfaces that resolved another business's
+  // Host show it, and record acceptance of it, all the same. Whose waiver a
+  // coach's customers should sign is an owner and legal decision, not a
+  // predicate to add here. See the shelf in lib/tenancy/platform.ts.
   const { data, error } = await supabase
     .from("legal_documents")
     .select("*")

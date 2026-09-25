@@ -187,6 +187,39 @@ export function functionBody(source: string, fn: string): string | null {
 }
 
 /**
+ * `functionBody` plus everything since the previous line that is nothing but
+ * `}` -- the close of the top-level block before it. That is where the
+ * function's doc comment sits, so a note may be written there or at the read
+ * inside the body, and either counts. It stops at the previous block on
+ * purpose: a note on the function ABOVE must not count for this one.
+ */
+export function functionRegion(source: string, fn: string): string | null {
+  const body = functionBody(source, fn)
+  if (body === null) return null
+  const start = source.indexOf(body)
+  const closes = [...source.slice(0, start).matchAll(/^\}[ \t]*$/gm)]
+  const from = closes.length > 0 ? (closes[closes.length - 1].index ?? 0) + 1 : 0
+  return source.slice(from, start + body.length)
+}
+
+/**
+ * Whether `entry`'s function says IN PLACE that its table has no
+ * `business_id`, and which ledger row owns that: "`<table>` … no
+ * `business_id`" inside one sentence, plus the row id, anywhere in
+ * `functionRegion`. Comment markers and line breaks are flattened first, so a
+ * note wrapped across lines still matches.
+ */
+export function hasInPlaceNote(entry: UntenantedRead, root: string = process.cwd()): boolean {
+  const region = functionRegion(readFileSync(join(root, entry.file), "utf8"), entry.fn)
+  if (region === null) return false
+  const prose = region.replace(/\n[ \t]*(?:\/\/|\*)?[ \t]*/g, " ")
+  return (
+    new RegExp("`" + entry.table + "`[^.]*?\\bno `business_id`", "i").test(prose) &&
+    new RegExp(`\\b${entry.row}\\b`).test(prose)
+  )
+}
+
+/**
  * The statements in one migration's SQL that give `table` a `business_id`
  * column. Comments are stripped and the text split on `;` FIRST, so a
  * `business_id` in a comment, or in the next statement about another table,
