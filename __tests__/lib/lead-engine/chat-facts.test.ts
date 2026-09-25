@@ -15,6 +15,12 @@
 // the one bug this file exists to catch.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import type { BusinessSettings } from "@/lib/db/businesses"
+import { platformBusinessId } from "@/lib/tenancy/platform"
+
+// Since G35 the FAQ, programme and testimonial readers answer only the
+// platform business (that gate is pinned in chat-facts-tenancy.test.ts). Every
+// test here is about a DIFFERENT column, so each asks as the platform.
+const PLATFORM = platformBusinessId()
 
 const applied: Array<Record<string, unknown>> = []
 let rows: Record<string, unknown>[] = []
@@ -97,7 +103,7 @@ describe("chat facts never leak a private programme", () => {
         payment_type: "one_time",
       },
     ]
-    const facts = await listPublicProgrammes()
+    const facts = await listPublicProgrammes(PLATFORM)
     expect(facts.map((f) => (f as { name: string }).name)).toEqual(["Rotational Reboot"])
     expect(applied[0]).toMatchObject({ is_active: true, is_public: true })
   })
@@ -124,7 +130,7 @@ describe("chat facts never leak a private programme", () => {
         payment_type: "one_time",
       },
     ]
-    const grounded = groundedValuesFor(await listPublicProgrammes(), SETTINGS)
+    const grounded = groundedValuesFor(await listPublicProgrammes(PLATFORM), SETTINGS)
     expect(grounded).toContain("79")
     expect(grounded).not.toContain("312")
     expect(grounded).not.toContain("31200")
@@ -135,7 +141,7 @@ describe("chat facts respect every other visibility column", () => {
   it("only published FAQs", async () => {
     const { searchPublicFaqs } = await import("@/lib/lead-engine/chat/facts")
     rows = [{ question: "How much?", answer: "It depends", status: "published", page_key: "faq" }]
-    await searchPublicFaqs("how much")
+    await searchPublicFaqs(PLATFORM, "how much")
     expect(applied[0]).toMatchObject({ status: "published" })
   })
 
@@ -168,7 +174,7 @@ describe("chat facts respect every other visibility column", () => {
       { quote: "Best coaching around.", name: "Sam R.", is_active: true, display_order: 0 },
       { quote: "Never published this one.", name: "Pat Q.", is_active: false, display_order: 1 },
     ]
-    const facts = (await listPublicTestimonials()) as Array<{ author: string }>
+    const facts = (await listPublicTestimonials(PLATFORM)) as Array<{ author: string }>
     expect(facts.map((f) => f.author)).toEqual(["Sam R."])
     expect(applied[0]).toMatchObject({ is_active: true })
   })
@@ -225,7 +231,7 @@ describe("groundedValues cannot be tricked by a unit confusion", () => {
         payment_type: "one_time",
       },
     ]
-    const grounded = groundedValuesFor(await listPublicProgrammes(), SETTINGS)
+    const grounded = groundedValuesFor(await listPublicProgrammes(PLATFORM), SETTINGS)
     expect(grounded).toContain("79")
     expect(grounded).toContain("79.00")
     expect(grounded).not.toContain("7900")
@@ -329,7 +335,7 @@ describe("a price that is not a whole number of dollars", () => {
         payment_type: "one_time",
       },
     ]
-    const grounded = groundedValuesFor(await listPublicProgrammes(), SETTINGS)
+    const grounded = groundedValuesFor(await listPublicProgrammes(PLATFORM), SETTINGS)
     // `normalise()` strips the dollar sign on BOTH sides of the comparison, so
     // the grounded list holds "80", never "$80" — asserting the absence of
     // "$80" would be trivially true and would prove nothing.
@@ -352,7 +358,7 @@ describe("a price that is not a whole number of dollars", () => {
         payment_type: "one_time",
       },
     ]
-    const grounded = groundedValuesFor(await listPublicProgrammes(), SETTINGS)
+    const grounded = groundedValuesFor(await listPublicProgrammes(PLATFORM), SETTINGS)
     expect(grounded).toContain("79")
     expect(grounded).toContain("79.00")
   })
@@ -378,7 +384,7 @@ describe("an FAQ is public only on a page the public can open", () => {
         page_key: "event/8f1c2d3e-0000-4000-8000-000000000001",
       },
     ]
-    const facts = (await searchPublicFaqs("camp pricing")) as Array<{ question: string }>
+    const facts = (await searchPublicFaqs(PLATFORM, "camp pricing")) as Array<{ question: string }>
     expect(facts.map((f) => f.question)).toEqual(["How much is the camp?"])
   })
 
@@ -392,7 +398,7 @@ describe("an FAQ is public only on a page the public can open", () => {
         page_key: "event/8f1c2d3e-0000-4000-8000-000000000001",
       },
     ]
-    const facts = await searchPublicFaqs("camp pricing", "event/8f1c2d3e-0000-4000-8000-000000000001")
+    const facts = await searchPublicFaqs(PLATFORM, "camp pricing", "event/8f1c2d3e-0000-4000-8000-000000000001")
     expect(facts).toEqual([])
     // `applied` is the proof that the SHORT CIRCUIT fired and not merely the
     // row filter downstream of it: narrowing a request must never widen the
@@ -403,7 +409,7 @@ describe("an FAQ is public only on a page the public can open", () => {
   it("still returns the published FAQs on a page the public CAN open", async () => {
     const { searchPublicFaqs } = await import("@/lib/lead-engine/chat/facts")
     rows = [{ question: "How much is the camp?", answer: "Camp pricing", status: "published", page_key: "faq" }]
-    const facts = (await searchPublicFaqs("camp pricing", "faq")) as Array<{ question: string }>
+    const facts = (await searchPublicFaqs(PLATFORM, "camp pricing", "faq")) as Array<{ question: string }>
     expect(facts.map((f) => f.question)).toEqual(["How much is the camp?"])
   })
 })

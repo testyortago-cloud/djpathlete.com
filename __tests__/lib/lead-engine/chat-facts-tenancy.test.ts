@@ -16,11 +16,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
 const applied: Array<Record<string, unknown>> = []
+// Every table a reader opened a client on — the proof, for the G35 tests
+// below, that another business's lookup never reached the database at all.
+const opened: string[] = []
 let rows: Record<string, unknown>[] = []
 
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({
     from(table: string) {
+      opened.push(table)
       const filters: Record<string, unknown> = { __table: table }
       const chain: Record<string, unknown> = {
         select: () => chain,
@@ -47,6 +51,11 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
+// The seam, mocked to a sentinel that is NOT the singleton's literal, so a
+// reader comparing against a hard-coded id instead of asking the seam fails the
+// platform controls below. listPublicEvents never consults it.
+vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
+
 const HOST_BIZ = "host-biz"
 const OTHER_BIZ = "other-biz"
 
@@ -64,6 +73,7 @@ const CAMP = {
 
 beforeEach(() => {
   applied.length = 0
+  opened.length = 0
   rows = []
 })
 
@@ -92,5 +102,79 @@ describe("listPublicEvents tenancy", () => {
     await listPublicEvents(HOST_BIZ)
     expect(applied[0].business_id).toBe(HOST_BIZ)
     expect(applied[0].business_id).not.toBe("00000000-0000-0000-0000-000000000001")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G35. `faqs`, `programs` and `testimonials` have NO business_id column, so no
+// predicate can scope them: every row is the platform business's own. The
+// owner's ruling is that another business's conversation gets NOTHING from
+// them, never the platform's rows under that coach's name, and gets it before
+// any query is made.
+// ---------------------------------------------------------------------------
+
+const PLATFORM_BIZ = "platform-biz"
+const COACH_BIZ = "coach-biz"
+
+const FAQ = { question: "How much is the camp?", answer: "Camp pricing", status: "published", page_key: "faq" }
+const PROGRAMME = {
+  name: "Rotational Reboot",
+  is_active: true,
+  is_public: true,
+  price_cents: 7900,
+  duration_weeks: 6,
+  sessions_per_week: 3,
+  payment_type: "one_time",
+}
+const TESTIMONIAL = { quote: "Best coaching around.", name: "Sam R.", is_active: true, display_order: 0 }
+
+// Each "nothing" test kills two mutants: the gate deleted (the platform's row
+// comes back), and the gate moved AFTER the read, filtering what came back
+// (`opened` is no longer empty). Each control beside it proves the reader
+// still answers the platform business, so the "nothing" is not a broken reader.
+describe("the platform's own FAQs, programmes and testimonials (G35)", () => {
+  it("gives another business's conversation no FAQs, and opens no client", async () => {
+    const { searchPublicFaqs } = await import("@/lib/lead-engine/chat/facts")
+    rows = [FAQ]
+    expect(await searchPublicFaqs(COACH_BIZ, "camp pricing")).toEqual([])
+    expect(opened).toEqual([])
+  })
+
+  it("still answers the platform business's conversation from its FAQs (control)", async () => {
+    const { searchPublicFaqs } = await import("@/lib/lead-engine/chat/facts")
+    rows = [FAQ]
+    const facts = (await searchPublicFaqs(PLATFORM_BIZ, "camp pricing")) as Array<{ question: string }>
+    expect(facts.map((f) => f.question)).toEqual(["How much is the camp?"])
+    expect(opened).toEqual(["faqs"])
+  })
+
+  it("gives another business's conversation no programmes, and opens no client", async () => {
+    const { listPublicProgrammes } = await import("@/lib/lead-engine/chat/facts")
+    rows = [PROGRAMME]
+    expect(await listPublicProgrammes(COACH_BIZ)).toEqual([])
+    expect(opened).toEqual([])
+  })
+
+  it("still lists the platform business's public programmes (control)", async () => {
+    const { listPublicProgrammes } = await import("@/lib/lead-engine/chat/facts")
+    rows = [PROGRAMME]
+    const facts = (await listPublicProgrammes(PLATFORM_BIZ)) as Array<{ name: string }>
+    expect(facts.map((f) => f.name)).toEqual(["Rotational Reboot"])
+    expect(opened).toEqual(["programs"])
+  })
+
+  it("gives another business's conversation no testimonials, and opens no client", async () => {
+    const { listPublicTestimonials } = await import("@/lib/lead-engine/chat/facts")
+    rows = [TESTIMONIAL]
+    expect(await listPublicTestimonials(COACH_BIZ)).toEqual([])
+    expect(opened).toEqual([])
+  })
+
+  it("still reads the platform business's testimonials (control)", async () => {
+    const { listPublicTestimonials } = await import("@/lib/lead-engine/chat/facts")
+    rows = [TESTIMONIAL]
+    const facts = (await listPublicTestimonials(PLATFORM_BIZ)) as Array<{ author: string }>
+    expect(facts.map((f) => f.author)).toEqual(["Sam R."])
+    expect(opened).toEqual(["testimonials"])
   })
 })

@@ -213,10 +213,12 @@ export type ToolOutcome = {
  * whoever a prompt injection named. `tracking` is the visitor's attribution
  * (click ids) so the booking can fire the ads conversion. `timezone` is the
  * business's, the same one the system prompt tells the model to speak in.
- * `businessId` is the conversation's own tenant, threaded into
- * `list_camps_and_clinics` so events never cross a tenant boundary — see
- * `listPublicEvents` in `facts.ts`. `availability` and `now` are injection
- * points for tests.
+ * `businessId` is the conversation's own tenant, threaded into all four
+ * retrieval tools: `list_camps_and_clinics` filters events on it, and
+ * `search_faqs`, `list_programmes` and `list_testimonials` hand it to readers
+ * whose tables have no tenant column, so they answer only the platform
+ * business — see `listPublicEvents` and `servesPlatformRows` in `facts.ts`.
+ * `availability` and `now` are injection points for tests.
  */
 export type ExecutorContext = {
   timezone?: string | null
@@ -441,6 +443,21 @@ export function createToolExecutor(ctx: ExecutorContext = {}): ToolExecutor {
   const executorBusinessId = ctx.businessId
 
   /**
+   * The conversation's tenant, for a lookup that must not run without one.
+   *
+   * Thrown, not silently substituted with the platform's own tenant: a turn
+   * with no resolved businessId is a wiring bug in the caller, and answering
+   * with someone else's camps, FAQs, programmes or testimonials would be the
+   * exact leak this parameter exists to close. `book_consult` is the one tool
+   * that degrades instead, because it has a safe answer to fall back to: the
+   * plain consult page.
+   */
+  function tenantFor(tool: string): string {
+    if (!executorBusinessId) throw new Error(`[chat-tools] ${tool} called without ctx.businessId`)
+    return executorBusinessId
+  }
+
+  /**
    * WHOSE CALENDAR THIS TURN OFFERS. Resolved from the conversation's own
    * tenant, ONCE per turn — a second `book_consult` call must land on the same
    * link the first one did, and two lookups for one person can disagree.
@@ -583,22 +600,17 @@ export function createToolExecutor(ctx: ExecutorContext = {}): ToolExecutor {
       case "search_faqs": {
         const query = optionalString(input.query) ?? ""
         const pageKey = optionalString(input.page_key)
-        const facts = absorb(await searchPublicFaqs(query, pageKey ?? undefined))
+        const facts = absorb(await searchPublicFaqs(tenantFor(name), query, pageKey ?? undefined))
         return facts.length === 0 ? NO_FAQ_MATCH : results(facts)
       }
 
       case "list_programmes": {
-        const facts = absorb(await listPublicProgrammes())
+        const facts = absorb(await listPublicProgrammes(tenantFor(name)))
         return facts.length === 0 ? NO_PROGRAMMES_LISTED : results(facts)
       }
 
       case "list_camps_and_clinics": {
-        // Thrown, not silently substituted with the platform's own tenant: a
-        // turn with no resolved businessId is a wiring bug in the caller, and
-        // answering with someone else's camps would be the exact leak this
-        // parameter exists to close.
-        if (!executorBusinessId) throw new Error("[chat-tools] list_camps_and_clinics called without ctx.businessId")
-        const facts = absorb(await listPublicEvents(executorBusinessId))
+        const facts = absorb(await listPublicEvents(tenantFor(name)))
         // Zero published events is the COMMON path in this corpus, not an edge
         // case, so the empty answer is designed copy rather than an empty array
         // the model has to interpret.
@@ -606,7 +618,7 @@ export function createToolExecutor(ctx: ExecutorContext = {}): ToolExecutor {
       }
 
       case "list_testimonials": {
-        const facts = absorb(await listPublicTestimonials())
+        const facts = absorb(await listPublicTestimonials(tenantFor(name)))
         return facts.length === 0 ? NO_TESTIMONIALS : results(facts)
       }
 

@@ -26,10 +26,19 @@
 // `faqs.status = 'published'`, `events.status = 'published'` (and not yet
 // ended), `testimonials.is_active = true`.
 //
+// And "whose" is a third question. `events` carries `business_id` and is
+// filtered on it. `faqs`, `programs` and `testimonials` carry no such column,
+// so their readers answer only the platform business's conversations, and
+// nothing for any other — see `servesPlatformRows`.
+//
 // NO BRAND NAMES. This directory is swept by
 // `__tests__/lib/lead-engine/no-brand-literals.test.ts`, comments included, so
 // business identity arrives as a `BusinessSettings` parameter.
 import { createServiceRoleClient } from "@/lib/supabase"
+
+// The tenancy seam, consulted for ONE question only: is this conversation's
+// business the one the untenanted tables describe? See `servesPlatformRows`.
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 // The page registry, NOT a data-access layer: a pure list of the marketing
 // routes that exist, with no I/O of its own. It is imported because an FAQ's
@@ -399,6 +408,36 @@ export function visitorNumerals(messages: string[]): string[] {
 }
 
 /**
+ * WHOSE ROWS THESE ARE. `faqs`, `programs` and `testimonials` have no
+ * `business_id` column: every row in them is the platform business's own,
+ * written through its own admin screens. A coach's `/ask` chat that read them
+ * would quote the platform's prices as that coach's, and read the platform's
+ * clients' testimonials out under that coach's name.
+ *
+ * So each of those three readers takes the conversation's tenant
+ * (`chat_conversations.business_id`, stamped from the request's Host when the
+ * conversation was created) and answers NOTHING, before any query, when it is
+ * not the platform business. Nothing is the honest answer: the tool results
+ * then say nothing is published, and the assistant says it does not know
+ * instead of presenting someone else's facts as this coach's. It never falls
+ * back to the platform's rows. That is the owner's ruling (G35), and the rule
+ * the chat's booking offer already follows for the platform's calendar.
+ *
+ * BEFORE THE READ, NOT AFTER IT. Dropping rows that came back would still pull
+ * the platform's rows into a turn that must never see them, one careless log
+ * line away from a leak. `chat-facts-tenancy.test.ts` asserts that another
+ * business's lookup does not even open a client.
+ *
+ * The seam is consulted for this comparison and nothing else, which puts this
+ * file on the NARROWER VARIANT shelf of lib/tenancy/platform.ts. When these
+ * tables gain a tenant column, this becomes an `.eq("business_id", …)` like
+ * `listPublicEvents`, and leaves that shelf.
+ */
+function servesPlatformRows(businessId: string): boolean {
+  return businessId === platformBusinessId()
+}
+
+/**
  * Published FAQs only, ranked in JS by plain term overlap and capped.
  *
  * LEXICAL ON PURPOSE. 126 rows do not need a vector store, and a similarity
@@ -410,8 +449,14 @@ export function visitorNumerals(messages: string[]): string[] {
  * `pageKey` narrows to one page's set. "Services" in the brief is not a table
  * in this app — it is FAQ content under the `services/*` and `athletes/*` page
  * keys, which is why retrieval is page-key aware at all.
+ *
+ * `businessId` is the conversation's own tenant. `faqs` has no `business_id`
+ * column, so another business's conversation gets nothing — see
+ * `servesPlatformRows`.
  */
-export async function searchPublicFaqs(query: string, pageKey?: string): Promise<Fact[]> {
+export async function searchPublicFaqs(businessId: string, query: string, pageKey?: string): Promise<Fact[]> {
+  if (!servesPlatformRows(businessId)) return []
+
   // A caller naming a key the public cannot open gets nothing, rather than the
   // whole published set — narrowing a request must never widen the answer.
   if (pageKey && !PUBLIC_FAQ_PAGE_KEY_SET.has(pageKey)) return []
@@ -466,8 +511,15 @@ export async function searchPublicFaqs(query: string, pageKey?: string): Promise
  *
  * BOTH FILTERS OR NEITHER. See this file's header — `is_active` alone returns
  * 39 named clients' personal plans and their prices.
+ *
+ * `businessId` is the conversation's own tenant. `programs` has no
+ * `business_id` column, so another business's conversation gets nothing —
+ * never the platform's programmes and prices as if they were that coach's.
+ * See `servesPlatformRows`.
  */
-export async function listPublicProgrammes(): Promise<Fact[]> {
+export async function listPublicProgrammes(businessId: string): Promise<Fact[]> {
+  if (!servesPlatformRows(businessId)) return []
+
   const supabase = getClient()
   const { data, error } = await supabase
     .from("programs")
@@ -549,8 +601,17 @@ export async function listPublicEvents(businessId: string): Promise<Fact[]> {
   })
 }
 
-/** Active testimonials only — the same gate the public site renders behind. */
-export async function listPublicTestimonials(): Promise<Fact[]> {
+/**
+ * Active testimonials only — the same gate the public site renders behind.
+ *
+ * `businessId` is the conversation's own tenant. `testimonials` has no
+ * `business_id` column, so another business's conversation gets nothing: the
+ * platform's clients' words must never be read out under another coach's
+ * name. See `servesPlatformRows`.
+ */
+export async function listPublicTestimonials(businessId: string): Promise<Fact[]> {
+  if (!servesPlatformRows(businessId)) return []
+
   const supabase = getClient()
   const { data, error } = await supabase
     .from("testimonials")

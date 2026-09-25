@@ -150,6 +150,19 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     like the inbound ramp. Until G19b (2026-09-20) the chat did not call
  *     this at all: it read the three variables directly and had no tenant in
  *     the question.
+ *   - the chat assistant's FAQs, programmes and testimonials
+ *     (lib/lead-engine/chat/facts.ts, G35). `faqs`, `programs` and
+ *     `testimonials` have no `business_id` column, so every row in them is the
+ *     platform business's own. The reader already HAS a real tenant -- the
+ *     conversation's, stamped from the Host when it was created -- and
+ *     consults this ONLY to decide whether that tenant is the business those
+ *     rows describe: the same question lib/calendly/config-for-business.ts
+ *     asks of its environment-configured calendar. Another business gets
+ *     NOTHING, before any query -- never the platform's prices, or its
+ *     clients' words, presented as that coach's. That is the owner's ruling,
+ *     not a placeholder, and nothing is ever filed under this id here. When
+ *     those tables gain a tenant column the gate becomes a predicate and this
+ *     entry goes.
  *   - the Calendly webhook's tenant resolver (lib/bookings/calendly-tenant.ts)
  *     matches the delivery's event type against `coach_calendar_connections`
  *     first, and reaches this pair only for the single event type named by
