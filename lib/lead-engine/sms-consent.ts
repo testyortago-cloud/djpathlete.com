@@ -186,7 +186,10 @@ export async function readSmsConsentState(token: string): Promise<SmsConsentStat
     return { state: "email_suppressed", contactId, businessId }
   }
 
-  if (await hasConsent(contactId, "sms")) {
+  // Under the token's business (G35), the one the token was signed for and
+  // the one `confirmSmsConsent` files the grant under. Another business's
+  // grant for the same contact id is not an answer to this business's ask.
+  if (await hasConsent(contactId, "sms", businessId)) {
     return { state: "already_consented", contactId, businessId }
   }
 

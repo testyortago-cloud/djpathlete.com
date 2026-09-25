@@ -837,6 +837,60 @@ describe("loadRunContext", () => {
     expect(ctx.activeSiblings.map((s) => s.id)).toEqual(["run-2"])
   })
 
+  // G35. The consent read is scoped to the run's business, like every other
+  // read in loadRunContext. Every other fixture in this file is filed under
+  // the platform id, so only a run in a business that is NOT the platform's
+  // can tell "passed the tenant" from "ignored it" or "hard-coded it".
+  // MUTANT: loadRunContext calls hasConsent without `businessId`.
+  it("reads consent under the run's business, not another business's (G35)", async () => {
+    const RUN_BUSINESS = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    const OTHER_BUSINESS = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    seedBusinessSettings({ business_id: RUN_BUSINESS })
+    seedContact("c-1", { business_id: RUN_BUSINESS, email: "lead@example.com" })
+    seedSequence("seq-1", { business_id: RUN_BUSINESS })
+    const run = seedRun("run-1", "c-1", "seq-1", { business_id: RUN_BUSINESS }) as SequenceRunRow
+    // Another business's GRANTS for the same contact id, on both channels.
+    store.contact_consents.push(
+      {
+        id: "k-other-email",
+        business_id: OTHER_BUSINESS,
+        contact_id: "c-1",
+        channel: "email",
+        granted: true,
+        occurred_at: "2026-08-18T00:00:00Z",
+        created_at: "2026-08-18T00:00:00Z",
+      },
+      {
+        id: "k-other-sms",
+        business_id: OTHER_BUSINESS,
+        contact_id: "c-1",
+        channel: "sms",
+        granted: true,
+        occurred_at: "2026-08-18T00:00:00Z",
+        created_at: "2026-08-18T00:00:00Z",
+      },
+    )
+
+    const ctx = await loadRunContext(run, now, RUN_BUSINESS)
+    expect(ctx.hasEmailConsent).toBe(false)
+    expect(ctx.hasSmsConsent).toBe(false)
+
+    // Presence control: the same grant, filed under the run's own business,
+    // counts — and only on its own channel.
+    store.contact_consents.push({
+      id: "k-own-sms",
+      business_id: RUN_BUSINESS,
+      contact_id: "c-1",
+      channel: "sms",
+      granted: true,
+      occurred_at: "2026-08-18T00:00:00Z",
+      created_at: "2026-08-18T00:00:00Z",
+    })
+    const withOwn = await loadRunContext(run, now, RUN_BUSINESS)
+    expect(withOwn.hasSmsConsent).toBe(true)
+    expect(withOwn.hasEmailConsent).toBe(false)
+  })
+
   it("does NOT swallow a hasConsent read failure", async () => {
     seedBusinessSettings()
     seedContact("c-1")

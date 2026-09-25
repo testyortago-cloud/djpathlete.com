@@ -102,6 +102,9 @@ import { recordConsent, hasConsent, isSuppressed, suppress } from "@/lib/db/cont
 // fall back on — so each call below names the business it is writing to or
 // reading from, and the writes and reads share this one id on purpose.
 const BUSINESS_ID = "biz-1"
+// A second tenant, for the G35 cases that file a row under one business and
+// read under the other. Neither id is the platform constant, deliberately.
+const OTHER_BUSINESS_ID = "biz-2"
 
 beforeEach(() => {
   store.consents = []
@@ -147,11 +150,11 @@ describe("consent", () => {
       wordingShown: "w",
       businessId: BUSINESS_ID,
     })
-    expect(await hasConsent("c1", "email")).toBe(false)
+    expect(await hasConsent("c1", "email", BUSINESS_ID)).toBe(false)
   })
 
   it("returns false when there is no consent record at all", async () => {
-    expect(await hasConsent("c-unknown", "sms")).toBe(false)
+    expect(await hasConsent("c-unknown", "sms", BUSINESS_ID)).toBe(false)
   })
 
   it("finds a matching record and does not leak another contact's answer", async () => {
@@ -175,8 +178,8 @@ describe("consent", () => {
       wordingShown: "w",
       businessId: BUSINESS_ID,
     })
-    expect(await hasConsent("c1", "email")).toBe(true)
-    expect(await hasConsent("c2", "email")).toBe(false)
+    expect(await hasConsent("c1", "email", BUSINESS_ID)).toBe(true)
+    expect(await hasConsent("c2", "email", BUSINESS_ID)).toBe(false)
   })
 
   it("breaks an occurred_at tie by created_at, newest wins", async () => {
@@ -191,9 +194,15 @@ describe("consent", () => {
     // insertion order, it would pick the grant (wrong answer, true) instead
     // of the revoke — so this only passes when created_at is genuinely
     // consulted, not by insertion-order coincidence.
+    //
+    // G35: both rows carry `business_id`. Before `hasConsent` took a tenant
+    // these fixtures had none, and once the read filters on it a row with no
+    // business matches nothing — so `false` would come back because the read
+    // found NO row, and this test would pass whatever the tiebreak did.
     const tiedOccurredAt = "2026-01-01T00:00:00.000Z"
     store.consents.push(
       {
+        business_id: BUSINESS_ID,
         contact_id: "c1",
         channel: "email",
         granted: false,
@@ -202,6 +211,7 @@ describe("consent", () => {
         _seq: 0,
       },
       {
+        business_id: BUSINESS_ID,
         contact_id: "c1",
         channel: "email",
         granted: true,
@@ -211,7 +221,64 @@ describe("consent", () => {
       },
     )
 
-    expect(await hasConsent("c1", "email")).toBe(false)
+    expect(await hasConsent("c1", "email", BUSINESS_ID)).toBe(false)
+
+    // Presence control: with the revoke gone, the grant alone reads true. So
+    // the `false` above was the revoke winning the tiebreak, not a predicate
+    // that matched neither row.
+    store.consents.splice(0, 1)
+    expect(await hasConsent("c1", "email", BUSINESS_ID)).toBe(true)
+  })
+
+  // G35. `contact_consents` has two SEPARATE foreign keys (business_id ->
+  // businesses, contact_id -> contacts), no composite, and business_id
+  // defaults to the platform's id: nothing in the schema makes a consent
+  // row's business equal its contact's. The read has to ask.
+  it("does NOT honour a grant filed under another business (MUTANT: drop the business_id .eq)", async () => {
+    await recordConsent({
+      contactId: "c1",
+      channel: "sms",
+      granted: true,
+      source: "form",
+      wordingShown: "w",
+      businessId: OTHER_BUSINESS_ID,
+    })
+
+    expect(await hasConsent("c1", "sms", BUSINESS_ID)).toBe(false)
+    // Presence control on the SAME row: asked under the business it was filed
+    // under, it is honoured. So the `false` above is the predicate, not a
+    // store that finds nothing.
+    expect(await hasConsent("c1", "sms", OTHER_BUSINESS_ID)).toBe(true)
+  })
+
+  it("does NOT let another business's NEWER revoke cancel this business's grant (MUTANT: compare business_id after .limit(1))", async () => {
+    // "The most recent record" is the most recent in THIS business. An
+    // implementation that read the newest row for the contact and only then
+    // compared its business_id would pick the other business's revoke, see a
+    // mismatch, and answer false. The predicate has to be in the query.
+    store.consents.push(
+      {
+        business_id: BUSINESS_ID,
+        contact_id: "c1",
+        channel: "email",
+        granted: true,
+        occurred_at: "2026-01-01T00:00:00.000Z",
+        created_at: "2026-01-01T00:00:00.000Z",
+        _seq: 0,
+      },
+      {
+        business_id: OTHER_BUSINESS_ID,
+        contact_id: "c1",
+        channel: "email",
+        granted: false,
+        occurred_at: "2026-02-01T00:00:00.000Z",
+        created_at: "2026-02-01T00:00:00.000Z",
+        _seq: 1,
+      },
+    )
+
+    // A positive answer, so it cannot pass on a store that finds nothing.
+    expect(await hasConsent("c1", "email", BUSINESS_ID)).toBe(true)
   })
 
   it("throws on a read failure instead of reporting no consent", async () => {
@@ -228,7 +295,7 @@ describe("consent", () => {
       businessId: BUSINESS_ID,
     })
     forceErrorOnTable = "contact_consents"
-    await expect(hasConsent("c1", "email")).rejects.toThrow()
+    await expect(hasConsent("c1", "email", BUSINESS_ID)).rejects.toThrow()
   })
 })
 
