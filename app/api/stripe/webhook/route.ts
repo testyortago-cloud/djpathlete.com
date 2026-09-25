@@ -500,7 +500,25 @@ export async function POST(request: Request) {
         // checkout" — it would record a record-keeping payment and grant
         // nothing at all, silently, on a page that had just taken money.
         if (session.metadata?.type === "funnel_purchase") {
-          await handleFunnelPurchaseCheckout(session, payerBusinessId)
+          // THE FUNNEL'S TENANT, NOT THE PAYER'S. `payerBusinessId` above is
+          // right for the sequence/pipeline hooks (a repeat buyer's capture
+          // belongs on THEIR coach's business) but wrong here: a funnel is one
+          // coach's page, and a buyer who already happens to be a DIFFERENT
+          // coach's contact must not have this purchase — and the account,
+          // program assignment and welcome email it produces — filed under
+          // that other coach's business. `createFunnelProgramCheckoutSession`
+          // stamps the funnel's own `businessId` into session metadata for
+          // exactly this read.
+          //
+          // TOLERATE THE OLD SESSION SHAPE FOR ONE DEPLOY, applied to an
+          // in-flight Stripe session rather than to a schema: a checkout
+          // session created before this metadata key existed has none, and
+          // Stripe Checkout sessions can still complete up to 24h after
+          // creation — so falling back to `payerBusinessId` (today's
+          // behaviour) is not optional. Safe to delete this fallback, and
+          // require the metadata, once this has been deployed for 24h+.
+          const funnelBusinessId = session.metadata?.businessId || payerBusinessId
+          await handleFunnelPurchaseCheckout(session, funnelBusinessId)
           await tryEnqueueAdsValueAdjustment(session)
           break
         }

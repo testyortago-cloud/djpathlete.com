@@ -765,10 +765,19 @@ describe("POST .../build — the tenant brand kit", () => {
   // "you don't have permission" to someone who does. The route's own
   // `err instanceof NoAccessibleBusinessError` check `throw err`s anything
   // else, which is a real failure of the whole turn, not a graceful 200.
-  it("lets a non-NoAccessibleBusinessError resolution failure propagate, rather than degrading to no brand kit", async () => {
+  it("answers this route's own JSON 500, rather than degrading to no brand kit or an opaque crash", async () => {
+    // Fix round: `throw err` here used to let `withAudit` rethrow past this
+    // handler into Next's own opaque 500 with no JSON body — on a streaming
+    // builder route, that is indistinguishable from a hang. Refusing is
+    // right; the response must be this route's own `NextResponse.json`, same
+    // shape as every other pre-flight failure in this file.
     mock(resolveAdminTenantForRequest).mockRejectedValue(new Error("no accessible business"))
 
-    await expect(runTurn({ message: "hi", revision: 4 })).rejects.toThrow("no accessible business")
+    const res = await runTurn({ message: "hi", revision: 4 })
+
+    expect(res.status).toBe(500)
+    expect(res.headers.get("content-type")).toContain("application/json")
+    expect(await res.json()).toMatchObject({ error: "Internal server error" })
     expect(getDraft).not.toHaveBeenCalled()
   })
 

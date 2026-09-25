@@ -130,6 +130,7 @@ export async function POST(request: Request) {
       funnelId: funnel.id,
       stepId: step.id,
       leadId,
+      businessId,
       successUrl: `${base}/go/${funnel.slug}/${step.slug}?purchase=success&session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${pageUrl}?purchase=cancelled`,
       tracking,

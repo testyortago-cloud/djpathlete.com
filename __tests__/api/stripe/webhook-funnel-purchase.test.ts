@@ -36,9 +36,30 @@ vi.mock("@/lib/stripe", () => ({
 vi.mock("@/lib/funnels/checkout/grant", () => ({
   grantFunnelPurchase: (...a: unknown[]) => grantMock(...a),
 }))
+const buildGrantDepsMock = vi.fn((..._a: unknown[]) => ({ marker: "deps" }))
 vi.mock("@/lib/funnels/checkout/deps", () => ({
-  buildGrantDeps: vi.fn(() => ({ marker: "deps" })),
+  buildGrantDeps: (...a: unknown[]) => buildGrantDepsMock(...a),
 }))
+// The three mocks below control WHICH BUSINESS the payer's own contact
+// resolves to — see "the funnel's own tenant, not the payer's" describe block
+// at the bottom of this file. Defaulted to "no contact row" so the six
+// pre-existing tests above (which do not care about tenant resolution) see
+// today's behaviour: a first-time payer falls to `platformBusinessId()`.
+const findContactMock = vi.fn(async (..._a: unknown[]) => null as { id: string; businessId: string } | null)
+vi.mock("@/lib/db/contacts", () => ({
+  findContactWithBusinessByIdentifiers: (...a: unknown[]) => findContactMock(...a),
+  hasPurchaseSince: vi.fn(async () => false),
+  // Not under test here (the capture-tenant suite owns it) — stubbed only so
+  // `captureLead`'s real implementation, reached via the unmocked
+  // `tryCaptureLeadFromCheckout`, degrades quietly instead of logging a
+  // "no export defined on the mock" warning on every test in this file.
+  recordContactEvent: vi.fn(async () => ({ contactId: "contact-stub", created: false })),
+}))
+vi.mock("@/lib/db/sequences", () => ({ exitRunsForContact: vi.fn(async () => undefined) }))
+vi.mock("@/lib/db/pipeline", () => ({
+  applyPipelineEvent: vi.fn(async () => ({ decision: { kind: "noop", reason: "test" }, opportunityId: null })),
+}))
+vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
 vi.mock("@/lib/db/system-settings", () => ({ getSetting: (...a: unknown[]) => getSettingMock(...a) }))
 vi.mock("@/lib/db/payments", () => ({
   createPayment: (row: unknown) => createPaymentMock(row),
@@ -232,5 +253,71 @@ describe("when the grant fails after the card succeeded", () => {
     const { POST } = await import("@/app/api/stripe/webhook/route")
     await POST(fire(session()))
     expect(createPaymentMock).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// THE FUNNEL'S OWN TENANT, NOT THE PAYER'S.
+//
+// `handleFunnelPurchaseCheckout` used to be filed under `payerBusinessId` —
+// the buyer's OWN contact's business, resolved a few lines above the
+// `funnel_purchase` dispatch and reused for the sequence/pipeline hooks. Right
+// for those; wrong here. A funnel is one coach's page, so a buyer who happens
+// to already be a DIFFERENT coach's contact (they bought from coach A last
+// month, and are now buying coach B's program from coach B's funnel) must not
+// have this purchase — and the account, program assignment and welcome email
+// it produces — filed under coach A's business.
+//
+// `createFunnelProgramCheckoutSession` now stamps the funnel's OWN
+// `businessId` into the session's metadata; the webhook prefers it and falls
+// back to `payerBusinessId` only when it is absent (a session created before
+// this metadata key existed, which can still complete up to 24h later).
+// ---------------------------------------------------------------------------
+describe("the funnel's own tenant, not the payer's", () => {
+  const FUNNEL_BUSINESS_ID = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa"
+  const PAYER_BUSINESS_ID = "bbbbbbbb-0000-4000-8000-bbbbbbbbbbbb"
+
+  it("uses the funnel's metadata businessId, not the platform fallback, for a first-time payer", async () => {
+    // No contact row for this buyer -- `payerBusinessId` would resolve to
+    // `platformBusinessId()`. The funnel's own tenant must win regardless.
+    findContactMock.mockResolvedValue(null)
+    const s = session()
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(fire({ ...s, metadata: { ...s.metadata, businessId: FUNNEL_BUSINESS_ID } }))
+
+    expect(res.status).toBe(200)
+    expect(buildGrantDepsMock).toHaveBeenCalledWith(expect.objectContaining({ businessId: FUNNEL_BUSINESS_ID }))
+  })
+
+  it("falls back to exactly today's payerBusinessId behaviour when the session predates the metadata key", async () => {
+    // A session created before this field existed has no `metadata.businessId`
+    // at all -- not merely an empty string. The fallback is not optional: that
+    // session can still complete hours or days after this ships.
+    findContactMock.mockResolvedValue({ id: "contact-1", businessId: PAYER_BUSINESS_ID })
+    const s = session()
+    const metadata = { ...s.metadata } as Record<string, unknown>
+    delete metadata.businessId
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(fire({ ...s, metadata }))
+
+    expect(res.status).toBe(200)
+    expect(buildGrantDepsMock).toHaveBeenCalledWith(expect.objectContaining({ businessId: PAYER_BUSINESS_ID }))
+  })
+
+  it("THE MISFILING CASE — does not file a cross-tenant sale under the buyer's OTHER business", async () => {
+    // The sharpest case: the buyer is ALREADY a known contact of a DIFFERENT
+    // business (they bought from that coach before) and is now buying THIS
+    // funnel's coach's program. Without this fix, `payerBusinessId` would win
+    // and coach B's sale would be recorded — grant, account, welcome email —
+    // under coach A's business.
+    findContactMock.mockResolvedValue({ id: "contact-1", businessId: PAYER_BUSINESS_ID })
+    const s = session()
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(fire({ ...s, metadata: { ...s.metadata, businessId: FUNNEL_BUSINESS_ID } }))
+
+    expect(res.status).toBe(200)
+    const deps = buildGrantDepsMock.mock.calls[0][0] as { businessId: string }
+    expect(deps.businessId).toBe(FUNNEL_BUSINESS_ID)
+    expect(deps.businessId).not.toBe(PAYER_BUSINESS_ID)
   })
 })

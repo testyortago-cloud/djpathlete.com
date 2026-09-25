@@ -769,6 +769,15 @@ export async function createFunnelProgramCheckoutSession(opts: {
   funnelId: string
   stepId: string
   leadId: string | null
+  /**
+   * The FUNNEL's own tenant — read back by the webhook (`metadata.businessId`)
+   * so `handleFunnelPurchaseCheckout` files the grant under the funnel's
+   * business rather than the payer's. See that webhook branch's comment for
+   * why the two can differ and why the webhook still falls back to the payer's
+   * business when this key is absent (a session created before this field
+   * existed).
+   */
+  businessId: string
   successUrl: string
   cancelUrl: string
   tracking?: CheckoutTrackingParams
@@ -798,6 +807,7 @@ export async function createFunnelProgramCheckoutSession(opts: {
       productId: opts.program.id,
       funnelId: opts.funnelId,
       stepId: opts.stepId,
+      businessId: opts.businessId,
       // Stripe metadata values must be strings; an absent lead is "" rather
       // than the string "null", which would later read as a real id.
       leadId: opts.leadId ?? "",
