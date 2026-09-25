@@ -76,7 +76,11 @@ import { recordAudit } from "@/lib/audit/record"
  *     app/api/funnels/submit/route.ts
  *     app/api/ask/config/route.ts
  *   The two places a row's tenant is DECIDED, after which the row carries it:
- *     app/api/quiz/progress/route.ts   (createAttempt; quiz/submit inherits)
+ *     app/api/quiz/progress/route.ts   (createAttempt; quiz/submit inherits.
+ *                                       Since G35 it resolves FIRST, on every
+ *                                       request: the quiz is read under the
+ *                                       Host, and an existing attempt stamped
+ *                                       with another business is refused)
  *     app/api/ask/route.ts             (createConversation; the rest of that
  *                                       route threads conversation.business_id.
  *                                       Since G35 it resolves BEFORE reading

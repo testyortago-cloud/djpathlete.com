@@ -205,7 +205,7 @@ function rebuildFromInserts(): QuizDefinition {
 
 describe("createQuizFrom", () => {
   it("remaps every routed option onto the CLONE's branches, never the source's", async () => {
-    const source = await getQuizDefinition("q1")
+    const source = await getQuizDefinition(BUSINESS_ID, "q1")
     const { id } = await createQuizFrom(BUSINESS_ID, { source: source!, name: "Rotational Reboot" })
 
     const cloneBranchIds = new Set(inserted("quiz_branches").map((r) => String(r.id)))
@@ -221,7 +221,7 @@ describe("createQuizFrom", () => {
   })
 
   it("remaps profile votes onto the clone's own profiles", async () => {
-    const source = await getQuizDefinition("q1")
+    const source = await getQuizDefinition(BUSINESS_ID, "q1")
     await createQuizFrom(BUSINESS_ID, { source: source!, name: "Rotational Reboot" })
 
     const cloneProfileIds = new Set(inserted("quiz_profiles").map((r) => String(r.id)))
@@ -234,7 +234,7 @@ describe("createQuizFrom", () => {
   })
 
   it("remaps each question onto the clone's own branch", async () => {
-    const source = await getQuizDefinition("q1")
+    const source = await getQuizDefinition(BUSINESS_ID, "q1")
     await createQuizFrom(BUSINESS_ID, { source: source!, name: "Rotational Reboot" })
 
     const cloneBranchIds = new Set(inserted("quiz_branches").map((r) => String(r.id)))
@@ -245,7 +245,7 @@ describe("createQuizFrom", () => {
   })
 
   it("hangs every child off the new quiz, not the one it copied", async () => {
-    const source = await getQuizDefinition("q1")
+    const source = await getQuizDefinition(BUSINESS_ID, "q1")
     const { id } = await createQuizFrom(BUSINESS_ID, { source: source!, name: "Rotational Reboot" })
     for (const table of ["quiz_branches", "quiz_profiles", "quiz_questions", "quiz_tiers"]) {
       expect(inserted(table).every((r) => r.quiz_id === id)).toBe(true)
@@ -254,7 +254,7 @@ describe("createQuizFrom", () => {
   })
 
   it("suffixes the key until it does not collide", async () => {
-    const source = await getQuizDefinition("q1")
+    const source = await getQuizDefinition(BUSINESS_ID, "q1")
     // TABLES.quizzes already holds key "rpi-athlete-quiz".
     // MUTANT: return slugify(name) unsuffixed — a unique-violation 500 at the
     // exact moment the owner clicks Create.
@@ -263,13 +263,13 @@ describe("createQuizFrom", () => {
   })
 
   it("falls back to a usable key when the name slugifies to nothing", async () => {
-    const source = await getQuizDefinition("q1")
+    const source = await getQuizDefinition(BUSINESS_ID, "q1")
     const { key } = await createQuizFrom(BUSINESS_ID, { source: source!, name: "!!!" })
     expect(key).toBe("quiz")
   })
 
   it("carries the seed marker rather than laundering a guess into a decision", async () => {
-    const source = await getQuizDefinition("q1")
+    const source = await getQuizDefinition(BUSINESS_ID, "q1")
     await createQuizFrom(BUSINESS_ID, { source: source!, name: "Copy" })
     // MUTANT: write null. The clone inherits invented weights with no banner
     // saying they were invented.
@@ -277,7 +277,7 @@ describe("createQuizFrom", () => {
   })
 
   it("is a draft even when its source is active", async () => {
-    const source = await getQuizDefinition("q1")
+    const source = await getQuizDefinition(BUSINESS_ID, "q1")
     expect(source!.status).toBe("active")
     // MUTANT: copy the source's status. A copy of a live quiz goes live the
     // instant it is made, with its placeholder name on it.
@@ -286,7 +286,7 @@ describe("createQuizFrom", () => {
   })
 
   it("takes its name from the caller, not from the source", async () => {
-    const source = await getQuizDefinition("q1")
+    const source = await getQuizDefinition(BUSINESS_ID, "q1")
     await createQuizFrom(BUSINESS_ID, { source: source!, name: "Rotational Reboot" })
     expect(inserted("quizzes")[0].name).toBe("Rotational Reboot")
   })
@@ -311,7 +311,7 @@ describe("createQuizFrom", () => {
   // is the one test in the describe block that cannot: it names a DIFFERENT
   // tenant and checks the actual value written, not just that some value was.
   it("writes the caller's businessId, not a different tenant's", async () => {
-    const source = await getQuizDefinition("q1")
+    const source = await getQuizDefinition(BUSINESS_ID, "q1")
     await createQuizFrom(OTHER_BUSINESS_ID, { source: source!, name: "Copy for another business" })
 
     expect(inserted("quizzes")[0].business_id).toBe(OTHER_BUSINESS_ID)
@@ -325,7 +325,7 @@ describe("createQuizFrom", () => {
   // argument, this would come back suffixed "-2" exactly like the sibling
   // test above that deliberately DOES collide.
   it("does not suffix a key that only collides in a different business", async () => {
-    const source = await getQuizDefinition("q1")
+    const source = await getQuizDefinition(BUSINESS_ID, "q1")
     const { key } = await createQuizFrom(OTHER_BUSINESS_ID, { source: source!, name: "RPI Athlete Quiz" })
     expect(key).toBe("rpi-athlete-quiz")
   })
@@ -335,7 +335,7 @@ describe("getQuizDefinitionForEditor", () => {
   it("includes a question the public read filters out", async () => {
     // The pair is the test. Asserting only the second half passes with the two
     // functions identical, which is the mistake that makes retirement silent.
-    expect((await getQuizDefinition("q1"))!.questions.map((q) => q.id)).not.toContain("quOff")
+    expect((await getQuizDefinition(BUSINESS_ID, "q1"))!.questions.map((q) => q.id)).not.toContain("quOff")
     expect((await getQuizDefinitionForEditor(BUSINESS_ID, "q1"))!.questions.map((q) => q.id)).toContain("quOff")
   })
 

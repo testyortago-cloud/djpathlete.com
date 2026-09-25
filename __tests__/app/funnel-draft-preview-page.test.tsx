@@ -323,6 +323,13 @@ describe("/funnel-preview/[stepId] — the gate", () => {
     expect(getFunnelById).toHaveBeenCalledWith(BUSINESS_ID, STEP.funnel_id)
   })
 
+  it("hands the islands the ADMIN tenant the page resolved, not the Host's (G35)", async () => {
+    // MUTANT: leaving `businessId` out of the island context. The builder's
+    // canvas is served from the admin's host whichever coach is editing, so an
+    // island reading under the Host would show another business's rows, or none.
+    expect(findContext(await render())).toMatchObject({ businessId: BUSINESS_ID, isPreview: true })
+  })
+
   it("is marked noindex", async () => {
     // MUTANT: omitting the robots directive. A draft that gets indexed
     // competes with the published page it is a draft of.

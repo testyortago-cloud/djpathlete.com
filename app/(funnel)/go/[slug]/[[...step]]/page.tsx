@@ -184,6 +184,9 @@ export default async function FunnelPage({ params, searchParams }: PageProps) {
           stepId: stepRow.id,
           stepSlug: stepRow.slug,
           isPreview,
+          // The Host's tenant, the one `getPublishedStep` above was read
+          // under. Islands read their own rows under it (G35).
+          businessId,
         }}
       />
     </div>

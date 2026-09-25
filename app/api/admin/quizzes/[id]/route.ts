@@ -214,7 +214,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Invalid save." }, { status: 400 })
   }
 
-  const existing = await getQuizDefinition(id)
+  // UNDER THE CALLER'S BUSINESS (G35). Another business's quiz reads as
+  // absent and gets the same 404 as one that does not exist, before anything
+  // is written.
+  const existing = await getQuizDefinition(businessId, id)
   if (!existing) return notFound()
 
   const wantsActive = body.quiz?.status === "active"
@@ -249,15 +252,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (error instanceof QuizAnsweredOptionError) {
       return NextResponse.json({ error: error.message, optionIds: error.optionIds }, { status: 400 })
     }
-    // Same 404-not-a-stranger posture as the rest of this route: `existing`
-    // above is read by id alone (see the sweep note on `getQuizDefinition`),
-    // so a quiz belonging to another business still passes that check. This
-    // is the point that actually refuses it.
+    // Same 404-not-a-stranger posture as the rest of this route. Since G35
+    // `existing` above is read under this business, so a foreign quiz has
+    // already been refused by the time the save runs. This stays because it
+    // is the save's OWN guard: every caller of saveQuizDefinition gets it,
+    // whether or not that caller read the quiz first.
     if (error instanceof QuizNotInBusinessError) return notFound()
     throw error
   }
 
-  const after = await getQuizDefinition(id)
+  const after = await getQuizDefinition(businessId, id)
   if (!after) return notFound()
   const gate = quizGate(after)
 

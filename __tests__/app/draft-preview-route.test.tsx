@@ -60,6 +60,20 @@ const render = (slug: string, step?: string[]) => Page({ params: Promise.resolve
 const html = async (slug: string, step?: string[]) =>
   renderToStaticMarkup((await render(slug, step)) as ReactElement)
 
+/** The context handed to NodeRenderer, found by walking the returned element tree. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findContext(element: any): Record<string, unknown> | null {
+  if (!element || typeof element !== "object") return null
+  if (element.props && element.props.context) return element.props.context as Record<string, unknown>
+  const children = element.props?.children
+  const list = Array.isArray(children) ? children : [children]
+  for (const child of list) {
+    const found = findContext(child)
+    if (found) return found
+  }
+  return null
+}
+
 beforeEach(() => {
   vi.resetAllMocks()
   mock(auth).mockResolvedValue({ user: { role: "admin" } })
@@ -108,6 +122,13 @@ describe("the gate", () => {
     await render("summer-camp")
     expect(getFunnelBySlug).toHaveBeenCalledWith(BUSINESS_ID, "summer-camp")
     expect(listSteps).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL.id)
+  })
+
+  it("hands the islands the ADMIN tenant, not the Host's (G35)", async () => {
+    // MUTANT: leaving `businessId` out of the NodeRenderer context. The quiz
+    // island reads its quiz under it, and this screen is served from the
+    // admin's host whichever coach is looking, so the Host is the wrong one.
+    expect(findContext(await render("summer-camp"))).toMatchObject({ businessId: BUSINESS_ID, testRun: true })
   })
 
   it("404s more than one segment past the slug", async () => {

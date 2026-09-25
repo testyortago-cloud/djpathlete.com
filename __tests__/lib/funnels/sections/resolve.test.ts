@@ -1389,7 +1389,9 @@ async function stubDal(overrides: Partial<DalRows> = {}) {
   // NOT be called for the draft — asserted below.
   vi.doMock("@/lib/db/quizzes", () => ({
     listQuizzes: async () => rows.quizzes,
-    getQuizDefinition: async (id: string) => {
+    // (businessId, quizId) since G35. The tenant is asserted by
+    // load-catalogues-tenancy.test.ts; this block keeps asserting WHICH quiz.
+    getQuizDefinition: async (_businessId: string, id: string) => {
       quizDefinitionCalls.push(id)
       if (rows.quizDefinitionMissing) return null
       return { id, key: "k", name: "n", status: "active", branches: [], questions: [], tiers: [], profiles: [] }

@@ -26,6 +26,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { getQuizDefinition } from "@/lib/db/quizzes"
+import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import { sanitiseAnswers, scoreQuiz } from "@/lib/quizzes/score"
 
 export const runtime = "nodejs"
@@ -45,6 +46,20 @@ export async function POST(request: Request) {
   const role = session?.user?.role
   if (role !== "admin" && role !== "staff") return notFound()
 
+  // THE ADMIN BOUNDARY, NOT THE HOST (G35). This is the same tenant the
+  // preview page this is posted from resolved, and the one the quiz island
+  // read the quiz under to draw it. Another business's quiz reads as absent.
+  // A caller with no reachable business gets 404, the answer that page gives
+  // it, not the 403 of the /api/admin routes: this route answers a stranger
+  // with nothing, and so does the page.
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (error) {
+    if (error instanceof NoAccessibleBusinessError) return notFound()
+    throw error
+  }
+
   let body: z.infer<typeof bodySchema>
   try {
     const parsed = bodySchema.safeParse(await request.json())
@@ -54,8 +69,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid submission." }, { status: 400 })
   }
 
-  // WHATEVER ITS STATUS. A draft is the normal case here.
-  const definition = await getQuizDefinition(body.quizId)
+  // WHATEVER ITS STATUS. A draft is the normal case here. But only this
+  // business's (G35).
+  const definition = await getQuizDefinition(businessId, body.quizId)
   if (!definition) return notFound()
 
   // DELIBERATELY REDUNDANT, and worth saying so: for SCORING this call is a

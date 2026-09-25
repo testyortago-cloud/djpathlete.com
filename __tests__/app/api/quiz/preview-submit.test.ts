@@ -9,10 +9,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/db/quizzes", () => ({ getQuizDefinition: vi.fn() }))
+// Since G35 the route resolves the ADMIN tenant. The class is declared INSIDE
+// the factory: `vi.mock` is hoisted above every top-level statement, and a
+// top-level class referenced from here is still in its temporal dead zone.
+vi.mock("@/lib/tenancy/resolve", () => {
+  class NoAccessibleBusinessError extends Error {}
+  return { resolveAdminTenantForRequest: vi.fn(), NoAccessibleBusinessError }
+})
 
 import { POST } from "@/app/api/quiz/preview-submit/route"
 import { auth } from "@/lib/auth"
 import { getQuizDefinition } from "@/lib/db/quizzes"
+import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import type { QuizDefinition } from "@/lib/quizzes/types"
 
 const QUIZ_ID = "f15ef258-3f0a-494b-a8c9-deb2de7b2aa9"
@@ -21,6 +29,8 @@ const O_TO_A = "11111111-1111-4111-8111-111111111112"
 const Q_A1 = "22222222-2222-4222-8222-222222222221"
 const O_BEST = "22222222-2222-4222-8222-222222222222"
 const BRANCH_A = "44444444-4444-4444-8444-444444444441"
+/** The caller's own business, as the admin boundary resolves it. */
+const BUSINESS_ID = "bbbbbbbb-2222-4333-8444-555555555555"
 
 /** DRAFT on purpose — the live route refuses this, and that is the point. */
 function draftDefinition(): QuizDefinition {
@@ -54,6 +64,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   vi.mocked(auth).mockResolvedValue({ user: { role: "admin" } } as never)
   vi.mocked(getQuizDefinition).mockResolvedValue(draftDefinition())
+  vi.mocked(resolveAdminTenantForRequest).mockResolvedValue({ businessId: BUSINESS_ID, choices: [], isOperator: false })
 })
 
 describe("POST /api/quiz/preview-submit", () => {
@@ -96,6 +107,39 @@ describe("POST /api/quiz/preview-submit", () => {
   it("404s for a quiz that does not exist", async () => {
     vi.mocked(getQuizDefinition).mockResolvedValue(null)
     expect((await post({ quizId: QUIZ_ID, answers: [] })).status).toBe(404)
+  })
+})
+
+/** One argument is the pre-G35 id-only read and answers for anyone; see quiz-progress.test.ts. */
+function ownedBy(owner: string, def: QuizDefinition) {
+  return async (...args: unknown[]) => (args.length < 2 || args[0] === owner ? def : null)
+}
+
+describe("POST /api/quiz/preview-submit — scored under the caller's own business (G35)", () => {
+  it("reads the quiz under the admin tenant", async () => {
+    // MUTANT: `getQuizDefinition(body.quizId)`, the id-only read. It scored
+    // ANY business's draft quiz for any signed-in staff member.
+    await post({ quizId: QUIZ_ID, answers: [] })
+    expect(getQuizDefinition).toHaveBeenCalledWith(BUSINESS_ID, QUIZ_ID)
+  })
+
+  it("404s another business's quiz", async () => {
+    vi.mocked(getQuizDefinition).mockImplementation(ownedBy("another-business", draftDefinition()))
+    expect((await post({ quizId: QUIZ_ID, answers: [] })).status).toBe(404)
+  })
+
+  it("scores the caller's own quiz under the same fake — the presence control", async () => {
+    vi.mocked(getQuizDefinition).mockImplementation(ownedBy(BUSINESS_ID, draftDefinition()))
+    expect((await post({ quizId: QUIZ_ID, answers: [] })).status).toBe(200)
+  })
+
+  it("404s a caller with no reachable business, and reads nothing", async () => {
+    // MUTANT: letting NoAccessibleBusinessError escape as a 500. A coach whose
+    // membership was revoked mid-session gets the same 404 the preview page
+    // they posted from gives them.
+    vi.mocked(resolveAdminTenantForRequest).mockRejectedValue(new NoAccessibleBusinessError())
+    expect((await post({ quizId: QUIZ_ID, answers: [] })).status).toBe(404)
+    expect(getQuizDefinition).not.toHaveBeenCalled()
   })
 })
 

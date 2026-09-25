@@ -25,6 +25,8 @@ const Q_OTHER = "33333333-3333-4333-8333-333333333331"
 const O_OTHER = "33333333-3333-4333-8333-333333333332"
 const BRANCH_A = "44444444-4444-4444-8444-444444444441"
 const BRANCH_B = "44444444-4444-4444-8444-444444444442"
+/** What the Host resolves to. The attempts below are stamped with it unless a test says otherwise. */
+const HOST_BUSINESS = "host-biz"
 
 function definition(status = "active"): QuizDefinition {
   return {
@@ -107,7 +109,9 @@ vi.mock("@/lib/db/quizzes", () => ({
 // The route resolves its tenant from the request's Host through the ONE Host
 // boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
 // platform's, so a route that hard-codes platformBusinessId() cannot pass.
-vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
+// A spy rather than a fixed arrow since G35, so "resolved once" is countable.
+const resolvePublicTenant = vi.fn()
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: (...a: unknown[]) => resolvePublicTenant(...a) }))
 
 async function post(body: unknown, ip = "1.2.3.4") {
   const { POST } = await import("@/app/api/quiz/progress/route")
@@ -127,10 +131,20 @@ beforeEach(() => {
   // resetAllMocks, not clearAllMocks: a queued *Once implementation left by a
   // previous test leaks across boundaries and misattributes the failure.
   vi.resetAllMocks()
+  resolvePublicTenant.mockResolvedValue(HOST_BUSINESS)
   getQuizDefinition.mockResolvedValue(definition())
   createAttempt.mockResolvedValue(ATTEMPT_ID)
   saveAttemptProgress.mockResolvedValue(undefined)
-  getAttempt.mockResolvedValue({ id: ATTEMPT_ID, quizId: QUIZ_ID, branchId: null, status: "in_progress", answers: [] })
+  // Stamped with the Host's business: since G35 the route refuses an attempt
+  // carrying any other (see the G35 block at the end).
+  getAttempt.mockResolvedValue({
+    id: ATTEMPT_ID,
+    quizId: QUIZ_ID,
+    branchId: null,
+    status: "in_progress",
+    answers: [],
+    businessId: HOST_BUSINESS,
+  })
 })
 
 describe("POST /api/quiz/progress", () => {
@@ -167,7 +181,14 @@ describe("POST /api/quiz/progress", () => {
   })
 
   it("5. refuses further progress on a completed attempt", async () => {
-    getAttempt.mockResolvedValue({ id: ATTEMPT_ID, quizId: QUIZ_ID, branchId: null, status: "completed", answers: [] })
+    getAttempt.mockResolvedValue({
+      id: ATTEMPT_ID,
+      quizId: QUIZ_ID,
+      branchId: null,
+      status: "completed",
+      answers: [],
+      businessId: HOST_BUSINESS,
+    })
     const res = await post({ quizId: QUIZ_ID, attemptId: ATTEMPT_ID, answers: [] }, freshIp())
     expect(res.status).toBe(409)
     expect(saveAttemptProgress).not.toHaveBeenCalled()
@@ -231,9 +252,110 @@ describe("POST /api/quiz/progress", () => {
   })
 
   it("refuses an attemptId belonging to a different quiz", async () => {
-    getAttempt.mockResolvedValue({ id: ATTEMPT_ID, quizId: "other", branchId: null, status: "in_progress", answers: [] })
+    // The Host's own business, so the QUIZ mismatch alone is what refuses it.
+    getAttempt.mockResolvedValue({
+      id: ATTEMPT_ID,
+      quizId: "other",
+      branchId: null,
+      status: "in_progress",
+      answers: [],
+      businessId: HOST_BUSINESS,
+    })
     const res = await post({ quizId: QUIZ_ID, attemptId: ATTEMPT_ID, answers: [] }, freshIp())
     expect(res.status).toBe(404)
     expect(saveAttemptProgress).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * The DAL's contract, modelled rather than canned: the quiz answers only under
+ * ITS OWN business. A ONE-argument call is the pre-G35 signature
+ * (`getQuizDefinition(quizId)`, read by id alone) and answers for anyone. A
+ * route that drops the tenant therefore gets the foreign quiz back and goes
+ * red. An argument-blind mock would let it pass.
+ */
+function ownedBy(owner: string, def: QuizDefinition) {
+  return async (...args: unknown[]) => (args.length < 2 || args[0] === owner ? def : null)
+}
+
+describe("POST /api/quiz/progress — the Host's tenant fences the quiz and the attempt (G35)", () => {
+  const OTHER_BUSINESS = "other-biz"
+
+  it("reads the quiz under the Host's tenant", async () => {
+    // MUTANT: `getQuizDefinition(body.quizId)`, the id-only read. Business B's
+    // host could then open an attempt (stamped B) on business A's quiz, and
+    // /api/quiz/submit would file B's contact against A's quiz.
+    await post({ quizId: QUIZ_ID, answers: [] }, freshIp())
+    expect(getQuizDefinition).toHaveBeenCalledWith(HOST_BUSINESS, QUIZ_ID)
+  })
+
+  it("404s another business's quiz, and opens no attempt on it", async () => {
+    getQuizDefinition.mockImplementation(ownedBy(OTHER_BUSINESS, definition()))
+    const res = await post({ quizId: QUIZ_ID, answers: [{ questionId: Q_ROUTER, optionId: O_TO_A }] }, freshIp())
+    expect(res.status).toBe(404)
+    expect(createAttempt).not.toHaveBeenCalled()
+    expect(saveAttemptProgress).not.toHaveBeenCalled()
+  })
+
+  it("opens the attempt when the quiz IS the Host's — the presence control for the test above", async () => {
+    getQuizDefinition.mockImplementation(ownedBy(HOST_BUSINESS, definition()))
+    const res = await post({ quizId: QUIZ_ID, answers: [{ questionId: Q_ROUTER, optionId: O_TO_A }] }, freshIp())
+    expect(res.status).toBe(200)
+    expect(createAttempt).toHaveBeenCalledWith(HOST_BUSINESS, expect.objectContaining({ quizId: QUIZ_ID }))
+  })
+
+  it("refuses to continue an attempt stamped with another business, even on a quiz this Host owns", async () => {
+    // MUTANT: dropping `existing.businessId !== businessId`. The attempt id is
+    // a bearer token (see `getAttempt`). The quiz check alone passes for the
+    // exact row the pre-G35 hole produced: an attempt stamped B on A's quiz.
+    getAttempt.mockResolvedValue({
+      id: ATTEMPT_ID,
+      quizId: QUIZ_ID,
+      branchId: null,
+      status: "in_progress",
+      answers: [],
+      businessId: OTHER_BUSINESS,
+    })
+    const res = await post({ quizId: QUIZ_ID, attemptId: ATTEMPT_ID, answers: [] }, freshIp())
+    expect(res.status).toBe(404)
+    expect(saveAttemptProgress).not.toHaveBeenCalled()
+  })
+
+  it("refuses it with the 404 even when it is finished — a foreign attempt's status is not disclosed", async () => {
+    // MUTANT: checking the status before the business. A 409 "already
+    // completed" for another business's attempt confirms the id is real.
+    getAttempt.mockResolvedValue({
+      id: ATTEMPT_ID,
+      quizId: QUIZ_ID,
+      branchId: null,
+      status: "completed",
+      answers: [],
+      businessId: OTHER_BUSINESS,
+    })
+    const res = await post({ quizId: QUIZ_ID, attemptId: ATTEMPT_ID, answers: [] }, freshIp())
+    expect(res.status).toBe(404)
+  })
+
+  it("continues the Host's own attempt — the presence control for the two tests above", async () => {
+    const res = await post({ quizId: QUIZ_ID, attemptId: ATTEMPT_ID, answers: [] }, freshIp())
+    expect(res.status).toBe(200)
+    expect(saveAttemptProgress).toHaveBeenCalledWith(expect.objectContaining({ attemptId: ATTEMPT_ID }))
+  })
+
+  it("resolves the Host for an EXISTING attempt too — once", async () => {
+    // MUTANT: resolving only on the create branch, as before G35. The quiz
+    // read and the attempt comparison above would then have no tenant.
+    await post({ quizId: QUIZ_ID, attemptId: ATTEMPT_ID, answers: [] }, freshIp())
+    expect(resolvePublicTenant).toHaveBeenCalledTimes(1)
+  })
+
+  it("stamps a new attempt with the SAME answer the quiz was read under — one resolution, not two", async () => {
+    // MUTANT: a second `resolvePublicTenant()` left at the createAttempt site.
+    // Two lookups in one request are two answers that can disagree, and then
+    // the attempt lands on a business whose quiz was never checked.
+    resolvePublicTenant.mockResolvedValueOnce(HOST_BUSINESS).mockResolvedValueOnce("a-second-answer")
+    await post({ quizId: QUIZ_ID, answers: [] }, freshIp())
+    expect(resolvePublicTenant).toHaveBeenCalledTimes(1)
+    expect(createAttempt).toHaveBeenCalledWith(HOST_BUSINESS, expect.anything())
   })
 })

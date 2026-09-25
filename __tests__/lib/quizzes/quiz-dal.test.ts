@@ -191,7 +191,7 @@ beforeEach(() => {
 
 describe("getQuizDefinition", () => {
   it("returns only the named quiz's branches, tiers and profiles", async () => {
-    const def = await getQuizDefinition("q1")
+    const def = await getQuizDefinition("b1", "q1")
     expect(def).not.toBeNull()
     expect(def!.branches.map((b) => b.key)).toEqual(["rebuilder", "ceiling_breaker"])
     expect(def!.tiers.map((t) => t.key)).toEqual(["red"])
@@ -199,7 +199,7 @@ describe("getQuizDefinition", () => {
   })
 
   it("orders questions by position rather than trusting the row order", async () => {
-    const def = await getQuizDefinition("q1")
+    const def = await getQuizDefinition("b1", "q1")
     // MUTANT: drop the sort. The canned rows are deliberately out of order, so
     // this goes red — asserting the exact array, not that "a question came
     // back", because both orders return two questions.
@@ -207,12 +207,12 @@ describe("getQuizDefinition", () => {
   })
 
   it("excludes a question that is not active", async () => {
-    const def = await getQuizDefinition("q1")
+    const def = await getQuizDefinition("b1", "q1")
     expect(def!.questions.map((q) => q.id)).not.toContain("quOff")
   })
 
   it("nests each question's own options, in position order", async () => {
-    const def = await getQuizDefinition("q1")
+    const def = await getQuizDefinition("b1", "q1")
     const router = def!.questions.find((q) => q.id === "qu1")!
     expect(router.options.map((o) => o.id)).toEqual(["o1", "o2"])
     expect(router.options.map((o) => o.routesToBranchId)).toEqual(["br2", "br1"])
@@ -221,7 +221,20 @@ describe("getQuizDefinition", () => {
   })
 
   it("returns null for a quiz that does not exist, not a half-built object", async () => {
-    expect(await getQuizDefinition("nope")).toBeNull()
+    expect(await getQuizDefinition("b1", "nope")).toBeNull()
+  })
+
+  it("answers null for another business's quiz — the id alone is not enough (G35)", async () => {
+    // MUTANT: dropping `.eq("business_id", businessId)`. q1 is b1's. This mock
+    // applies every `.eq` it is given, so under the mutant b2 gets b1's whole
+    // definition back.
+    expect(await getQuizDefinition("b2", "q1")).toBeNull()
+  })
+
+  it("filters on the business it was GIVEN — the presence control for the test above", async () => {
+    const def = await getQuizDefinition("b1", "q1")
+    expect(def?.id).toBe("q1")
+    expect(eqCalls).toContainEqual(["business_id", "b1"])
   })
 })
 

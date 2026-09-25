@@ -70,12 +70,11 @@ export const POST = withAudit(
     const quizId = params.id
     if (!z.string().uuid().safeParse(quizId).success) return notFound()
 
-    // CROSS-TENANT COMPOSITION GUARD. `getQuizDefinition` below is scoped by
-    // id alone (several of its other callers are public, unauthenticated
-    // quiz-taking routes with no tenant to check against yet), so without
-    // this an admin could compose another business's quiz onto their own
-    // funnel page -- same shape as the saveQuizDefinition hole this task
-    // already closed, except this route already holds a real businessId.
+    // CROSS-TENANT COMPOSITION GUARD. Without it an admin could compose
+    // another business's quiz onto their own funnel page. Since G35
+    // `getQuizDefinition` below is scoped by business too, so this is the
+    // first of two checks giving the same answer. It stays first because it
+    // runs before the body is parsed or any other row is read.
     try {
       await assertQuizInBusiness(businessId, quizId)
     } catch (err) {
@@ -95,7 +94,7 @@ export const POST = withAudit(
     // The quiz must EXIST before it goes on a page. The publish gate would
     // catch an invented id later, but "later" means after the owner has
     // published and a visitor has seen it.
-    const quiz = await getQuizDefinition(quizId)
+    const quiz = await getQuizDefinition(businessId, quizId)
     if (!quiz) return notFound()
 
     const draft = await getDraft(businessId, body.stepId)

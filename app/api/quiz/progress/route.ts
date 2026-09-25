@@ -70,9 +70,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many requests." }, { status: 429 })
   }
 
-  const definition = await getQuizDefinition(body.quizId)
+  // THE HOST'S TENANT, RESOLVED FIRST, ON EVERY REQUEST (G35). This route
+  // DECIDES an attempt's business. Until G35 it asked the Host only when
+  // creating one, after reading the quiz by id alone, and nothing compared the
+  // quiz's business with the attempt's. Business B's host could open an
+  // attempt (stamped B) on business A's quiz, and /api/quiz/submit, which
+  // inherits the attempt's business, then filed B's contact, card and consent
+  // row against A's quiz. Now the quiz is read under the Host, and an existing
+  // attempt must carry the same business. This runs after the throttle, so a
+  // flood costs no business_domains read.
+  const businessId = await resolvePublicTenant()
+
+  const definition = await getQuizDefinition(businessId, body.quizId)
   // 404, not 403: a draft quiz is not a permissions problem, it is a quiz that
-  // is not open. Same answer for "no such quiz", so probing tells you nothing.
+  // is not open. It is the same answer for "no such quiz" and for another
+  // business's quiz, so probing tells you nothing.
   if (!definition || definition.status !== "active") {
     return NextResponse.json({ error: "Not found." }, { status: 404 })
   }
@@ -87,8 +99,12 @@ export async function POST(request: Request) {
   if (attemptId) {
     const existing = await getAttempt(attemptId)
     // Silently ignoring a foreign or finished attempt would let one visitor
-    // overwrite another's row, so both are refused outright.
-    if (!existing || existing.quizId !== body.quizId) {
+    // overwrite another's row, so both are refused outright. "Foreign" means
+    // another quiz or, since G35, another business. The attempt id is a bearer
+    // token (see `getAttempt`), and the Host says which business this request
+    // is for. It is checked BEFORE the status, so another business's finished
+    // attempt gets the same 404 rather than a 409 that confirms the id is real.
+    if (!existing || existing.quizId !== body.quizId || existing.businessId !== businessId) {
       return NextResponse.json({ error: "Not found." }, { status: 404 })
     }
     if (existing.status !== "in_progress") {
@@ -96,10 +112,11 @@ export async function POST(request: Request) {
     }
     await saveAttemptProgress({ attemptId, branchId, answers })
   } else {
-    // PUBLIC ROUTE, NO SESSION. The attempt's tenant is DECIDED here, from the
-    // request's Host via lib/tenancy/public.ts; /api/quiz/submit then inherits
-    // it from the attempt row rather than resolving again.
-    const businessId = await resolvePublicTenant()
+    // PUBLIC ROUTE, NO SESSION. The attempt's tenant is DECIDED here: the
+    // Host's, resolved at the top of this handler and already used to read the
+    // quiz. It is NOT resolved a second time, because two lookups are two
+    // answers that could disagree. /api/quiz/submit then inherits it from the
+    // attempt row rather than resolving again.
     attemptId = await createAttempt(businessId, {
       quizId: body.quizId,
       attributionSessionId: body.attributionSessionId ?? null,

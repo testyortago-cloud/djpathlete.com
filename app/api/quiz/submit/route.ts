@@ -130,26 +130,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many submissions. Please try again shortly." }, { status: 429 })
   }
 
-  const definition = await getQuizDefinition(body.quizId)
-  if (!definition || definition.status !== "active") {
-    return NextResponse.json({ error: "Not found." }, { status: 404 })
-  }
-
+  // THE ATTEMPT FIRST, because the quiz is read under its business (G35).
   const attempt = await getAttempt(body.attemptId)
   if (!attempt || attempt.quizId !== body.quizId) {
     return NextResponse.json({ error: "Not found." }, { status: 404 })
   }
 
   // THE TENANT IS THE ATTEMPT'S. `quiz_attempts.business_id` was stamped when
-  // /api/quiz/progress created the attempt, so every write below — the step
-  // and funnel reads just below, the contact, the pipeline card, the settings
-  // read, the consent row — lands on the business the attempt belongs to, by
-  // construction rather than by several defaults happening to agree. A public
-  // route, but NOT a caller of platformBusinessId(): it has a row to inherit
-  // from. Resolved here, ahead of the funnel-link check below, rather than
-  // where it used to sit (just before `handoff`) — that check reads
-  // `lib/db/funnels` too and needs the same value.
+  // /api/quiz/progress created the attempt. So every read and write below
+  // lands on the business the attempt belongs to, by construction rather than
+  // by several defaults happening to agree: the quiz read just below, the step
+  // and funnel reads, the contact, the pipeline card, the settings read and
+  // the consent row. A public route, but NOT a caller of platformBusinessId()
+  // or of resolvePublicTenant(): it has a row to inherit from, and resolving
+  // the Host again here would be a second answer that could disagree with the
+  // one progress stamped. Resolved ahead of the funnel-link check below,
+  // which reads `lib/db/funnels` and needs the same value.
   const businessId = attempt.businessId
+
+  // UNDER THE ATTEMPT'S BUSINESS (G35). Until G35 the quiz was read by id
+  // alone, and nothing compared its business with the attempt's, so an
+  // attempt opened on another business's quiz was scored and filed here. A
+  // quiz that is not this attempt's business's now reads as absent. That is
+  // the same 404 as a quiz that does not exist or is not active.
+  const definition = await getQuizDefinition(businessId, body.quizId)
+  if (!definition || definition.status !== "active") {
+    return NextResponse.json({ error: "Not found." }, { status: 404 })
+  }
 
   // THE PAGE THIS QUIZ CLAIMS TO BE ON HAS TO BE REAL, AND LIVE —
   // BUT THE VISITOR IS NOT THE ONE WHO PAYS FOR IT NOT BEING.

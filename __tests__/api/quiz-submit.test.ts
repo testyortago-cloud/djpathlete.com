@@ -469,3 +469,36 @@ describe("POST /api/quiz/submit", () => {
     expect(completeAttempt).toHaveBeenCalledWith(expect.objectContaining({ answers: [], branchId: null }))
   })
 })
+
+/** One argument is the pre-G35 id-only read and answers for anyone; see quiz-progress.test.ts. */
+function ownedBy(owner: string, def: QuizDefinition) {
+  return async (...args: unknown[]) => (args.length < 2 || args[0] === owner ? def : null)
+}
+
+describe("POST /api/quiz/submit — the quiz is read under the ATTEMPT's business (G35)", () => {
+  it("reads the quiz under the attempt's business", async () => {
+    // MUTANT: `getQuizDefinition(body.quizId)`, the id-only read. An attempt
+    // opened on another business's quiz would be scored here, and its
+    // contact, card and consent row filed against that quiz.
+    await post()
+    expect(getQuizDefinition).toHaveBeenCalledWith(ATTEMPT_BUSINESS_ID, QUIZ_ID)
+  })
+
+  it("404s when the quiz is not the attempt's business's, and completes and files nothing", async () => {
+    getQuizDefinition.mockImplementation(ownedBy("another-business", definition()))
+    const res = await post({ phone: "5551234567", smsConsent: true })
+    expect(res.status).toBe(404)
+    expect(completeAttempt).not.toHaveBeenCalled()
+    expect(recordContactEvent).not.toHaveBeenCalled()
+    expect(recordConsent).not.toHaveBeenCalled()
+    expect(applyPipelineEvent).not.toHaveBeenCalled()
+  })
+
+  it("scores and files normally when the quiz IS the attempt's business's — the presence control", async () => {
+    getQuizDefinition.mockImplementation(ownedBy(ATTEMPT_BUSINESS_ID, definition()))
+    const res = await post({ phone: "5551234567", smsConsent: true })
+    expect(res.status).toBe(200)
+    expect(completeAttempt).toHaveBeenCalled()
+    expect(recordContactEvent).toHaveBeenCalled()
+  })
+})

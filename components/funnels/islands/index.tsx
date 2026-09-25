@@ -16,6 +16,20 @@ import { QuizIsland } from "./QuizIsland"
 
 /** What an island needs to know about the page it is standing on. */
 export interface FunnelRenderContext {
+  /**
+   * The business this page belongs to, as the ROUTE resolved it. On `/go` that
+   * is the Host's tenant (lib/tenancy/public.ts). On `/preview` and
+   * `/funnel-preview` it is the admin tenant (lib/tenancy/resolve.ts).
+   * REQUIRED, so a route that forgets it is a compile error rather than an
+   * island that quietly reads someone else's rows.
+   *
+   * An island reads its OWN rows under this, never under
+   * `resolvePublicTenant()`. On the two preview routes the Host is the admin
+   * screen's (the platform's), not the funnel's, so a Host read would make
+   * preview and `/go` disagree about the same document. Added by G35 for the
+   * quiz island. See QuizIsland.tsx.
+   */
+  businessId: string
   funnelId: string
   funnelSlug: string
   stepId: string

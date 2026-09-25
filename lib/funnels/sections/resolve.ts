@@ -537,7 +537,9 @@ export async function loadCatalogues(businessId: string): Promise<Catalogues> {
   const gated = await Promise.all(
     quizRows.map(async (row): Promise<QuizCatalogueEntry> => {
       if (row.status !== "active") return { id: row.id, status: row.status, gateBlocker: null }
-      const definition = await getQuizDefinition(row.id)
+      // Under the asking tenant (G35). The row came from `listQuizzes`, which
+      // is already scoped, so this agrees by construction.
+      const definition = await getQuizDefinition(businessId, row.id)
       // A row that vanished between the list and this read is reported as a
       // quiz that cannot score, not as one that passes. Failing closed here
       // costs a blocked publish; failing open ships a page that collects
