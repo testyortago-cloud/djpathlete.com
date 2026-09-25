@@ -56,6 +56,12 @@ vi.mock("@/lib/supabase", () => ({
 
 import { listPublishedFunnelSteps } from "@/lib/db/funnels"
 
+// Tenant scoping itself (which business_id value reaches each table) is
+// pinned in __tests__/lib/db/funnels-tenancy.test.ts. This file is about the
+// OTHER predicates -- published/noindex/version -- so every call here uses
+// the same fixed tenant and never varies it.
+const BUSINESS_ID = "biz-1"
+
 const FUNNEL = { id: "f1", name: "Athlete Performance Insight", slug: "athlete-quiz" }
 const STEP = {
   funnel_id: "f1",
@@ -80,7 +86,7 @@ describe("listPublishedFunnelSteps", () => {
   })
 
   it("asks only for published funnels", async () => {
-    await listPublishedFunnelSteps()
+    await listPublishedFunnelSteps(BUSINESS_ID)
     // MUTANT KILLED: `.eq("status", "draft")` and dropping the filter
     // entirely. Pins the VALUE — a test that only counted one `.eq()` would
     // pass for either.
@@ -88,7 +94,7 @@ describe("listPublishedFunnelSteps", () => {
   })
 
   it("asks only for steps that are not noindexed", async () => {
-    await listPublishedFunnelSteps()
+    await listPublishedFunnelSteps(BUSINESS_ID)
     // MUTANT KILLED: `.eq("noindex", true)`, which would put ONLY the hidden
     // pages in the sitemap — the precise inversion that reads as working
     // because rows still come back.
@@ -96,14 +102,14 @@ describe("listPublishedFunnelSteps", () => {
   })
 
   it("asks only for steps that have a live version", async () => {
-    await listPublishedFunnelSteps()
+    await listPublishedFunnelSteps(BUSINESS_ID)
     // A step with no version row 404s even inside a published funnel.
     expect(applied.nots).toContainEqual(["published_version_id", "is", null])
   })
 
   it("scopes the step read to the published funnels it just found", async () => {
     funnelRows = [FUNNEL, { id: "f2", name: "Second", slug: "second" }]
-    await listPublishedFunnelSteps()
+    await listPublishedFunnelSteps(BUSINESS_ID)
     // MUTANT KILLED: dropping the `.in()`, which would read every step in the
     // account and join only the ones whose funnel happened to be published —
     // correct output, but an unbounded read that grows with the drafts.
@@ -111,7 +117,7 @@ describe("listPublishedFunnelSteps", () => {
   })
 
   it("returns the funnel and step fields the sitemap and metadata need", async () => {
-    const rows = await listPublishedFunnelSteps()
+    const rows = await listPublishedFunnelSteps(BUSINESS_ID)
     expect(rows).toHaveLength(1)
     expect(rows[0].funnel.slug).toBe("athlete-quiz")
     expect(rows[0].step.is_entry).toBe(true)
@@ -121,7 +127,7 @@ describe("listPublishedFunnelSteps", () => {
 
   it("skips the step read entirely when nothing is published", async () => {
     funnelRows = []
-    const rows = await listPublishedFunnelSteps()
+    const rows = await listPublishedFunnelSteps(BUSINESS_ID)
     expect(rows).toEqual([])
     // MUTANT KILLED: removing the early return. `.in("funnel_id", [])` is a
     // pointless round trip, and some builders treat an empty `in` as no
@@ -135,7 +141,7 @@ describe("listPublishedFunnelSteps", () => {
     // has already shipped a confident, wrong refusal built on that.
     stepError = { message: 'column "noindex" does not exist' }
     stepRows = null as unknown as unknown[]
-    await expect(listPublishedFunnelSteps()).rejects.toThrow(/noindex/)
+    await expect(listPublishedFunnelSteps(BUSINESS_ID)).rejects.toThrow(/noindex/)
   })
 
   it("throws rather than returning [] when the funnel read errors", async () => {
@@ -145,6 +151,6 @@ describe("listPublishedFunnelSteps", () => {
     // try/catch is what degrades; a DAL that reports "nothing is published"
     // when it could not read would silently empty the funnel section and look
     // like a correct answer.
-    await expect(listPublishedFunnelSteps()).rejects.toThrow(/connection refused/)
+    await expect(listPublishedFunnelSteps(BUSINESS_ID)).rejects.toThrow(/connection refused/)
   })
 })

@@ -45,7 +45,19 @@ vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), 
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
-vi.mock("@/lib/tenancy/resolve", () => ({ resolveAdminTenant: vi.fn() }))
+// `vi.mock` factories are hoisted above every top-level statement in this
+// file, including a plain `class` declaration -- referencing one directly
+// here throws "Cannot access before initialization" (this repo has already
+// shipped that exact bug in six OTHER test files that used a static top-level
+// import beside a bare class). `vi.hoisted` is the escape hatch: it runs
+// before the mock factory needs it, not merely before this line.
+const { NoAccessibleBusinessErrorMock } = vi.hoisted(() => ({
+  NoAccessibleBusinessErrorMock: class NoAccessibleBusinessErrorMock extends Error {},
+}))
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenant: vi.fn(),
+  NoAccessibleBusinessError: NoAccessibleBusinessErrorMock,
+}))
 
 import { renderDocForPublish } from "@/components/admin/funnels/builder/publish-actions"
 import { auth } from "@/lib/auth"
@@ -212,7 +224,9 @@ describe("renderDocForPublish — the markup is built from the RESOLVED document
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.html).toContain(`href="/go/${FUNNEL.slug}/thanks"`)
-    expect(mock(getFunnelById).mock.calls[0][0]).toBe(STEP.funnel_id)
+    // Tenant-scoped as of Task 7: businessId first, funnel_id second.
+    expect(mock(getFunnelById).mock.calls[0][0]).toBe(BUSINESS_ID)
+    expect(mock(getFunnelById).mock.calls[0][1]).toBe(STEP.funnel_id)
   })
 })
 
@@ -373,18 +387,34 @@ describe("renderDocForPublish — the tenant brand kit", () => {
     expect(result.css).toContain("--primary: #6d28d9")
   })
 
-  it("degrades to no brand kit when resolveAdminTenant throws — still publishes", async () => {
-    // MUTANT: joining this to the fail-closed catalogue/resolve try above it,
-    // which would turn a cosmetic read failure into a publish refusal for a
-    // page whose links are perfectly fine.
-    mock(resolveAdminTenant).mockRejectedValue(new Error("no accessible business"))
+  // RETARGETED for Task 7. Before the step/funnel reads were tenant-scoped,
+  // `resolveAdminTenant` was called ONLY for the brand kit, wrapped so a
+  // throw cost nothing but the palette (the mutant this test named). Now
+  // `businessId` is resolved up front and reused for `getStep`/`getFunnelById`
+  // too, so a caller whose tenant cannot be resolved has nothing safe to
+  // publish -- "still publishes" is no longer the correct behaviour for a
+  // `NoAccessibleBusinessError`, and would leak whether a step id belongs to
+  // ANY business to someone who was just proven to have access to none.
+  it("refuses to publish, rather than publishing anyway, when the caller has no accessible business", async () => {
+    mock(resolveAdminTenant).mockRejectedValue(new NoAccessibleBusinessErrorMock())
 
     const result = await renderDocForPublish(STEP_ID, docWithNamedCtas())
 
-    expect(result.ok).toBe(true)
-    if (!result.ok) return
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.blockers).toEqual(["You do not have permission to publish this page."])
+    expect(getStep).not.toHaveBeenCalled()
     expect(getBusinessSettings).not.toHaveBeenCalled()
-    expect(result.css).not.toMatch(/--primary:/)
+  })
+
+  // A resolution failure that is NOT "no accessible business" (a transient DB
+  // error, say) is an infrastructure fault, not a permission verdict -- it
+  // must not be swallowed into the same quiet refusal, or a real outage reads
+  // as "you don't have permission" to someone who does.
+  it("lets a non-NoAccessibleBusinessError resolution failure propagate, rather than reporting it as a refusal", async () => {
+    mock(resolveAdminTenant).mockRejectedValue(new Error("business lookup timed out"))
+
+    await expect(renderDocForPublish(STEP_ID, docWithNamedCtas())).rejects.toThrow("business lookup timed out")
   })
 
   it("degrades to no brand kit when the business_settings read throws — still publishes", async () => {

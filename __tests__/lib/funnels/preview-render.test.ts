@@ -28,6 +28,11 @@ const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
 
 const STEP_ID = "3f1b7c5e-1111-4222-8333-444444444444"
 const FUNNEL_ID = "ffffffff-1111-4222-8333-444444444444"
+// `businessId` is REQUIRED as of Task 7 (renderDraftPreview is a library, not
+// a route -- it takes the tenant from its two real callers rather than
+// resolving one itself), so every call below carries one even when a test's
+// own concern is unrelated to the brand kit.
+const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 
 /**
  * A doc with a STEP cta — the only section whose html depends on the base.
@@ -64,6 +69,10 @@ function armCatalogues() {
     { id: STEP_ID, slug: "start", name: "Start" },
     { id: "other", slug: "apply", name: "Apply" },
   ])
+  // No brand colour by default -- the tests in the first `describe` below are
+  // not about the brand kit, so this keeps `resolveBrandKit` from throwing on
+  // an unconfigured mock now that every call must pass a real businessId.
+  mock(getBusinessSettings).mockResolvedValue({ brand_color: null, accent_color: null })
 }
 
 beforeEach(() => {
@@ -80,6 +89,7 @@ describe("renderDraftPreview", () => {
       stepId: STEP_ID,
       funnelId: FUNNEL_ID,
       funnelBasePath: "/preview/summer-camp",
+      businessId: BUSINESS_ID,
     })
     expect(result.kind).toBe("no-draft")
   })
@@ -92,6 +102,7 @@ describe("renderDraftPreview", () => {
       stepId: STEP_ID,
       funnelId: FUNNEL_ID,
       funnelBasePath: "/preview/summer-camp",
+      businessId: BUSINESS_ID,
     })
     expect(result.kind).toBe("doc-invalid")
   })
@@ -102,6 +113,7 @@ describe("renderDraftPreview", () => {
       stepId: STEP_ID,
       funnelId: FUNNEL_ID,
       funnelBasePath: "/preview/summer-camp",
+      businessId: BUSINESS_ID,
     })
     expect(result.kind).toBe("ok")
     if (result.kind !== "ok") throw new Error("unreachable")
@@ -119,6 +131,7 @@ describe("renderDraftPreview", () => {
       stepId: STEP_ID,
       funnelId: FUNNEL_ID,
       funnelBasePath: "/preview/summer-camp",
+      businessId: BUSINESS_ID,
     })
     expect(result.kind).toBe("ok")
     if (result.kind !== "ok") throw new Error("unreachable")
@@ -135,12 +148,14 @@ describe("renderDraftPreview", () => {
       stepId: STEP_ID,
       funnelId: FUNNEL_ID,
       funnelBasePath: "/go/summer-camp",
+      businessId: BUSINESS_ID,
     })
     mock(getDraft).mockResolvedValue({ doc: DOC, docInvalid: false, revision: 3 })
     const preview = await renderDraftPreview({
       stepId: STEP_ID,
       funnelId: FUNNEL_ID,
       funnelBasePath: "/preview/summer-camp",
+      businessId: BUSINESS_ID,
     })
 
     if (live.kind !== "ok" || preview.kind !== "ok") throw new Error("both should render")
@@ -162,8 +177,6 @@ describe("renderDraftPreview", () => {
 // which is exactly what both `/funnel-preview` and `/preview` depend on.
 // ---------------------------------------------------------------------------
 
-const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
-
 describe("renderDraftPreview — the tenant brand kit", () => {
   it("passes the tenant's brand colour into the rendered css", async () => {
     mock(getDraft).mockResolvedValue({ doc: DOC, docInvalid: false, revision: 3 })
@@ -181,18 +194,25 @@ describe("renderDraftPreview — the tenant brand kit", () => {
     expect(result.css).toContain("--primary: #6d28d9")
   })
 
-  it("skips the read entirely when no businessId is given (the default)", async () => {
-    // MUTANT: calling `getBusinessSettings` with a falsy id instead of
-    // short-circuiting. Existing callers of this function predate the brand
-    // kit and pass no `businessId` at all — this is what keeps them rendering
-    // exactly as they did before Task 9.
+  // RETARGETED for Task 7: `businessId` used to be optional, defaulting to
+  // `null`, for callers that predated the brand kit — this test pinned that
+  // `getBusinessSettings` was never called for one of them. Task 7 made
+  // `businessId` REQUIRED (the draft read and the step-list read it also
+  // feeds are now tenant-scoped, not just the brand kit), and the only two
+  // real callers already resolve a real tenant before calling this, so "no
+  // businessId at all" is no longer a reachable call shape — TypeScript
+  // refuses it. What is still worth pinning: a tenant with no brand colour
+  // configured renders with no `--primary` override, same as before.
+  it("adds no --primary override when the business has no brand colour configured", async () => {
     mock(getDraft).mockResolvedValue({ doc: DOC, docInvalid: false, revision: 3 })
+    mock(getBusinessSettings).mockResolvedValue({ brand_color: null, accent_color: null })
     const result = await renderDraftPreview({
       stepId: STEP_ID,
       funnelId: FUNNEL_ID,
       funnelBasePath: "/preview/summer-camp",
+      businessId: BUSINESS_ID,
     })
-    expect(getBusinessSettings).not.toHaveBeenCalled()
+    expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
     if (result.kind !== "ok") throw new Error("expected the draft to render")
     expect(result.css).not.toMatch(/--primary:/)
   })

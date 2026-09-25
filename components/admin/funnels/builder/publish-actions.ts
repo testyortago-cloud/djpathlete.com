@@ -64,7 +64,7 @@ import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import type { BrandKit } from "@/lib/funnels/sections/render"
 import { resolveBrandKit } from "@/lib/funnels/brand-kit"
-import { resolveAdminTenant } from "@/lib/tenancy/resolve"
+import { NoAccessibleBusinessError, resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { sectionDocSchema } from "@/lib/funnels/sections/registry"
 import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
 import type { RenderForPublishResult, SectionDoc } from "./types"
@@ -84,6 +84,20 @@ export async function renderDocForPublish(stepId: string, doc: SectionDoc): Prom
     return { ok: false, blockers: ["You do not have permission to publish this page."], warnings: [] }
   }
 
+  // Resolved once, up front, and reused for every tenant-scoped read below
+  // (including the brand kit) -- a server action is a public POST endpoint,
+  // so a caller whose membership was revoked mid-session must be refused
+  // here rather than reaching a step or funnel at all.
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenant())
+  } catch (error) {
+    if (error instanceof NoAccessibleBusinessError) {
+      return { ok: false, blockers: ["You do not have permission to publish this page."], warnings: [] }
+    }
+    throw error
+  }
+
   // Parsed, not cast. The document arrives over the wire from a client that
   // has been mutating it turn by turn; `resolveDoc` and `reassemble` both
   // throw on a bad one, and a thrown server action is an unexplained failure
@@ -97,9 +111,9 @@ export async function renderDocForPublish(stepId: string, doc: SectionDoc): Prom
     }
   }
 
-  const step = await getStep(stepId)
+  const step = await getStep(businessId, stepId)
   if (!step) return { ok: false, blockers: ["This page no longer exists."], warnings: [] }
-  const funnel = await getFunnelById(step.funnel_id)
+  const funnel = await getFunnelById(businessId, step.funnel_id)
   // `funnelBasePath` is derived here, never accepted from the client: it is
   // what `render.ts` builds every `{kind:"step"}` CTA's href from, so a
   // client-supplied value would be an open redirect factory on a live page.
@@ -116,7 +130,7 @@ export async function renderDocForPublish(stepId: string, doc: SectionDoc): Prom
     // This is a publish path, so `null` ("step links not checked") would be
     // the wrong answer here even though it is the right one on the editor
     // screen — a throw belongs in the catch below, which refuses.
-    const pages = (await listSteps(step.funnel_id)).map((row) => ({
+    const pages = (await listSteps(businessId, step.funnel_id)).map((row) => ({
       slug: row.slug,
       name: row.name,
     }))
@@ -138,10 +152,10 @@ export async function renderDocForPublish(stepId: string, doc: SectionDoc): Prom
   // wiring as the build route, the funnel-wide publish route and both draft
   // previews, so a page previewed with a tenant's colours publishes with the
   // same ones. Wrapped: a failed read must cost only the palette default,
-  // never this publish.
+  // never this publish. Reuses the `businessId` already resolved above --
+  // both this read and `getStep`/`getFunnelById` need the same tenant.
   let brandKit: BrandKit | null = null
   try {
-    const { businessId } = await resolveAdminTenant()
     brandKit = await resolveBrandKit(businessId)
   } catch (error) {
     console.error("[funnels/publish-actions] brand kit read failed — continuing without it:", error)

@@ -500,7 +500,7 @@ export async function POST(request: Request) {
         // checkout" — it would record a record-keeping payment and grant
         // nothing at all, silently, on a page that had just taken money.
         if (session.metadata?.type === "funnel_purchase") {
-          await handleFunnelPurchaseCheckout(session)
+          await handleFunnelPurchaseCheckout(session, payerBusinessId)
           await tryEnqueueAdsValueAdjustment(session)
           break
         }
@@ -1814,7 +1814,7 @@ async function handleEventSignupRefund(paymentIntentId: string) {
 // days) after it has been turned off, and the answer then is to do nothing
 // rather than to half-run a path the owner has switched off.
 
-async function handleFunnelPurchaseCheckout(session: Stripe.Checkout.Session) {
+async function handleFunnelPurchaseCheckout(session: Stripe.Checkout.Session, businessId: string) {
   if (!(await getSetting<boolean>(FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT))) {
     console.warn("[funnel-checkout] session received while the flag is off; ignoring", session.id)
     return
@@ -1867,6 +1867,7 @@ async function handleFunnelPurchaseCheckout(session: Stripe.Checkout.Session) {
       funnelId: session.metadata?.funnelId ?? null,
       stepId: session.metadata?.stepId ?? null,
       leadId,
+      businessId,
     }),
   )
 

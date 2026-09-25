@@ -19,6 +19,18 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/db/funnel-builder", () => ({ getDraft: vi.fn() }))
 vi.mock("@/lib/db/funnels", () => ({ getStep: vi.fn(), getFunnelById: vi.fn(), listSteps: vi.fn() }))
+// `vi.mock` factories are hoisted above every top-level statement, including a
+// bare `class` declaration -- referencing one directly here throws "Cannot
+// access before initialization" (this repo has already shipped that exact bug
+// in six other test files that pair a static top-level `import` with a bare
+// class). `vi.hoisted` is the escape hatch.
+const { NoAccessibleBusinessErrorMock } = vi.hoisted(() => ({
+  NoAccessibleBusinessErrorMock: class NoAccessibleBusinessErrorMock extends Error {},
+}))
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenant: vi.fn(),
+  NoAccessibleBusinessError: NoAccessibleBusinessErrorMock,
+}))
 // The catalogue reads, so the REAL `loadCatalogues` / `resolveDoc` /
 // `publishGate` run over them — the point of this page is that it runs the
 // same resolution publish does, and a mocked resolver would assert only that
@@ -27,16 +39,25 @@ vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.f
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
+// `resolveBrandKit` is now called UNCONDITIONALLY inside `renderDraftPreview`
+// (Task 7 made `businessId` required, not an optional cosmetic extra), so an
+// unmocked `getBusinessSettings` here would make a REAL Supabase call every
+// run -- it happened to "pass" only because a fake business id legitimately
+// reads back as "no row" rather than a network failure. Mocked like every
+// other DAL read in this file, not left to reach the dev database.
+vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
 
 import Page from "@/app/(funnel)/funnel-preview/[stepId]/page"
 import { metadata } from "@/app/(funnel)/funnel-preview/[stepId]/page"
 import { auth } from "@/lib/auth"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
+import { getBusinessSettings } from "@/lib/db/businesses"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 import type { FunnelNode } from "@/lib/funnels/compile/types"
@@ -46,6 +67,7 @@ const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
 const STEP_ID = "3f1b7c5e-1111-4222-8333-444444444444"
 const STEP = { id: STEP_ID, funnel_id: "ffffffff-1111-4222-8333-444444444444", slug: "apply", name: "Apply" }
 const FUNNEL = { id: STEP.funnel_id, slug: "summer-camp", name: "Summer camp", status: "draft" }
+const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 
 const HEADLINE = "Eight weeks. Measurable rotational power."
 
@@ -225,6 +247,11 @@ function allElements(nodes: FunnelNode[]): Extract<FunnelNode, { t: "el" }>[] {
 beforeEach(() => {
   vi.clearAllMocks()
   mock(auth).mockResolvedValue({ user: { id: "u1", role: "admin" } })
+  mock(resolveAdminTenant).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "DJP Athlete", slug: "djp-athlete" }],
+    isOperator: true,
+  })
   mock(getDraft).mockResolvedValue({ doc: doc(), docInvalid: false, revision: 4 })
   mock(getStep).mockResolvedValue(STEP)
   mock(getFunnelById).mockResolvedValue(FUNNEL)
@@ -244,6 +271,7 @@ beforeEach(() => {
   mock(getEvents).mockResolvedValue([])
   mock(getPublishedEvents).mockResolvedValue([])
   mock(getFaqCountsByPage).mockResolvedValue({ camps: 2 })
+  mock(getBusinessSettings).mockResolvedValue({ brand_color: null, accent_color: null })
 })
 
 describe("/funnel-preview/[stepId] — the gate", () => {
@@ -276,6 +304,23 @@ describe("/funnel-preview/[stepId] — the gate", () => {
     mock(getDraft).mockResolvedValue(null)
     mock(getStep).mockResolvedValue(null)
     await expect(render()).rejects.toThrow("NEXT_NOT_FOUND")
+  })
+
+  it("404s an admin whose tenant cannot be resolved, rather than 500ing", async () => {
+    // MUTANT: letting resolveAdminTenant's NoAccessibleBusinessError escape as
+    // an uncaught throw (a 500 for a coach whose membership was just revoked)
+    // instead of the same 404 every other admin-gated screen answers with.
+    mock(resolveAdminTenant).mockRejectedValue(new NoAccessibleBusinessErrorMock())
+    await expect(render()).rejects.toThrow("NEXT_NOT_FOUND")
+    expect(getStep).not.toHaveBeenCalled()
+  })
+
+  it("resolves the tenant through the ADMIN boundary, and scopes getStep/getFunnelById to it", async () => {
+    // This is the draft-preview surface, not the public /go route -- it
+    // resolves through resolveAdminTenant() (admin/staff), never the Host.
+    await render()
+    expect(getStep).toHaveBeenCalledWith(BUSINESS_ID, STEP_ID)
+    expect(getFunnelById).toHaveBeenCalledWith(BUSINESS_ID, STEP.funnel_id)
   })
 
   it("is marked noindex", async () => {

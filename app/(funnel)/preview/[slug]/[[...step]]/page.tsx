@@ -31,7 +31,7 @@
 
 import { notFound } from "next/navigation"
 import { auth } from "@/lib/auth"
-import { resolveAdminTenant } from "@/lib/tenancy/resolve"
+import { NoAccessibleBusinessError, resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { NodeRenderer } from "@/components/funnels/NodeRenderer"
 import { PreviewPill } from "@/components/funnels/PreviewPill"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile"
@@ -98,38 +98,40 @@ export default async function DraftPreviewPage({ params }: PageProps) {
   const role = session?.user?.role
   if (role !== "admin" && role !== "staff") notFound()
 
+  // THE ADMIN BOUNDARY, NOT THE HOST. This is a staff/admin screen for looking
+  // at a DRAFT, resolved the same way the builder's own iframe preview
+  // resolves it, and failing the same way: a caller whose membership was
+  // revoked mid-session gets a 404, not someone else's business.
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenant())
+  } catch (error) {
+    if (error instanceof NoAccessibleBusinessError) notFound()
+    throw error
+  }
+
   const { slug, step } = await params
 
   // More than one path segment past the funnel slug is not a page we have —
   // the same check /go makes, for the same reason.
   if (step && step.length > 1) notFound()
 
-  const funnel = await getFunnelBySlug(slug)
+  const funnel = await getFunnelBySlug(businessId, slug)
   if (!funnel) notFound()
 
-  const steps = await listSteps(funnel.id)
+  const steps = await listSteps(businessId, funnel.id)
   const stepSlug = step?.[0]
   const target = stepSlug ? steps.find((s) => s.slug === stepSlug) : steps.find((s) => s.is_entry)
   if (!target) notFound()
 
-  // The tenant's brand kit, so this preview agrees with publish about the same
-  // document -- see `renderDraftPreview`'s own comment on why a failed read
-  // degrades to `null` rather than costing the preview anything.
-  let businessId: string | null = null
-  try {
-    ;({ businessId } = await resolveAdminTenant())
-  } catch (error) {
-    console.error("[preview] tenant resolution for brand kit failed — continuing without it:", error)
-  }
-
   const result = await renderDraftPreview({
+    businessId,
     stepId: target.id,
     funnelId: funnel.id,
     // THE ONE LINE THAT MAKES THE FUNNEL WALKABLE IN DRAFT.
     funnelBasePath: previewBasePath(funnel.slug),
     // NEVER from the URL — see the header.
     editable: false,
-    businessId,
   })
 
   // Rendered in every branch, including the ones that are not a page: an owner

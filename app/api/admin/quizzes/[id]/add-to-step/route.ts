@@ -98,7 +98,7 @@ export const POST = withAudit(
     const quiz = await getQuizDefinition(quizId)
     if (!quiz) return notFound()
 
-    const draft = await getDraft(body.stepId)
+    const draft = await getDraft(businessId, body.stepId)
     if (!draft || !draft.doc) {
       return NextResponse.json(
         { error: "That page has no content yet.", problems: ["Describe the page in the chat first, then add the quiz."] },
@@ -129,7 +129,7 @@ export const POST = withAudit(
       return NextResponse.json({ error: "The quiz could not be added.", problems: applied.errors }, { status: 422 })
     }
 
-    const written = await appendTurn({
+    const written = await appendTurn(businessId, {
       stepId: body.stepId,
       expectedRevision: draft.revision,
       role: "user",
