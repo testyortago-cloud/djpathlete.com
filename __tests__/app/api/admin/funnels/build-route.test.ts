@@ -97,7 +97,7 @@ import { appendTurn, getDraft, listTurns, revertToRevision } from "@/lib/db/funn
 import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
 import { getBusinessSettings } from "@/lib/db/businesses"
-import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
@@ -403,7 +403,7 @@ beforeEach(() => {
 
   // Revisions advance 4 -> 5 (user turn) -> 6 (assistant turn).
   let next = 4
-  mock(appendTurn).mockImplementation(async (input: { expectedRevision: number }) => {
+  mock(appendTurn).mockImplementation(async (_businessId: string, input: { expectedRevision: number }) => {
     next = input.expectedRevision + 1
     return { ok: true, turn: { revision: next, doc: null, message: "" }, revision: next }
   })
@@ -652,7 +652,7 @@ describe("POST .../build — the one-shot retry", () => {
     expect(body.doc.sections[0].props.headline).toBe("Rotational power in eight weeks")
 
     const assistantWrite = mock(appendTurn)
-      .mock.calls.map((c) => c[0])
+      .mock.calls.map((c) => c[1])
       .filter((i) => i.role === "assistant")
     expect(assistantWrite).toHaveLength(1)
     expect(assistantWrite[0].status).toBe("failed")
@@ -742,19 +742,34 @@ describe("POST .../build — the tenant brand kit", () => {
     }
   })
 
-  it("degrades to no brand kit when the tenant cannot be resolved — never a 500", async () => {
-    // A second, independent failure mode: the business-id resolution itself
-    // throws (e.g. `NoAccessibleBusinessError` for a staff account whose
-    // membership was revoked mid-session). Same contract: degrade, do not 500.
-    mock(resolveAdminTenantForRequest).mockRejectedValue(new Error("no accessible business"))
+  // RETARGETED for Task 7's fix round. Before this route's own `businessId`
+  // resolution was moved from a soft-catch used only for the brand kit to a
+  // hard gate run before ANY DAL read (`getDraft`/`getStep` need it too), a
+  // resolution failure here cost only the palette default and the turn still
+  // built the page. It cannot any more: `getDraft`/`getStep` cannot run
+  // without a resolved `businessId`, so "degrades to no brand kit — still
+  // builds" is no longer a reachable outcome for either failure shape below.
+  it("refuses the turn, rather than building anyway, when the caller has no accessible business", async () => {
+    mock(resolveAdminTenantForRequest).mockRejectedValue(new NoAccessibleBusinessError())
 
     const res = await runTurn({ message: "hi", revision: 4 })
-    expect(res.status).toBe(200)
-    expect(getBusinessSettings).not.toHaveBeenCalled()
 
-    for (const [, ctx] of mock(reassemble).mock.calls) {
-      expect(ctx?.brandKit ?? null).toBeNull()
-    }
+    expect(res.status).toBe(403)
+    expect(getDraft).not.toHaveBeenCalled()
+    expect(getBusinessSettings).not.toHaveBeenCalled()
+  })
+
+  // A resolution failure that is NOT "no accessible business" (a transient DB
+  // error, say) is an infrastructure fault, not a permission verdict — it must
+  // not be swallowed into the same quiet refusal, or a real outage reads as
+  // "you don't have permission" to someone who does. The route's own
+  // `err instanceof NoAccessibleBusinessError` check `throw err`s anything
+  // else, which is a real failure of the whole turn, not a graceful 200.
+  it("lets a non-NoAccessibleBusinessError resolution failure propagate, rather than degrading to no brand kit", async () => {
+    mock(resolveAdminTenantForRequest).mockRejectedValue(new Error("no accessible business"))
+
+    await expect(runTurn({ message: "hi", revision: 4 })).rejects.toThrow("no accessible business")
+    expect(getDraft).not.toHaveBeenCalled()
   })
 
   it("renders no palette override when the tenant has not chosen a brand", async () => {
@@ -787,7 +802,7 @@ describe("POST .../build — resolve, compile, store", () => {
     expect(res.status).toBe(200)
 
     const stored = mock(appendTurn)
-      .mock.calls.map((c) => c[0])
+      .mock.calls.map((c) => c[1])
       .find((i) => i.doc)
     expect(stored).toBeDefined()
     expect(stored.doc.sections[0].props.primaryCta.target.ref).toBe(PROGRAM_ID)
@@ -880,7 +895,7 @@ describe("POST .../build — resolve, compile, store", () => {
 
     // ... and it was saved anyway, with the verdict recorded next to it.
     const stored = mock(appendTurn)
-      .mock.calls.map((c) => c[0])
+      .mock.calls.map((c) => c[1])
       .find((i) => i.doc)
     expect(stored).toBeDefined()
     expect(stored.doc.sections).toHaveLength(8)
@@ -900,7 +915,7 @@ describe("POST .../build — resolve, compile, store", () => {
 
     await runTurn({ message: "hi", revision: 4 })
     const stored = mock(appendTurn)
-      .mock.calls.map((c) => c[0])
+      .mock.calls.map((c) => c[1])
       .find((i) => i.doc)
     expect(stored).toBeDefined()
     expect(Array.isArray(stored.unresolved)).toBe(false)
@@ -916,7 +931,7 @@ describe("POST .../build — resolve, compile, store", () => {
     mock(getAllPrograms).mockResolvedValue([])
     await runTurn({ message: "hi", revision: 4 })
     const stored = mock(appendTurn)
-      .mock.calls.map((c) => c[0])
+      .mock.calls.map((c) => c[1])
       .find((i) => i.doc)
     expect(Array.isArray(stored.unresolved)).toBe(true)
     expect(stored.unresolved).toHaveLength(1)
@@ -934,7 +949,7 @@ describe("POST .../build — what it writes down", () => {
     // of Block C's history, which alternates "Owner:" and "You:" — drop the
     // user turns and the model sees its own replies with nothing to reply to.
     const order: string[] = []
-    mock(appendTurn).mockImplementation(async (input: { expectedRevision: number; role: string }) => {
+    mock(appendTurn).mockImplementation(async (_businessId: string, input: { expectedRevision: number; role: string }) => {
       order.push(`append:${input.role}`)
       return { ok: true, turn: { revision: input.expectedRevision + 1 }, revision: input.expectedRevision + 1 }
     })
@@ -946,14 +961,14 @@ describe("POST .../build — what it writes down", () => {
     await runTurn({ message: "make it shorter", revision: 4 })
     expect(order).toEqual(["append:user", "streamAgent", "append:assistant"])
 
-    const userTurn = mock(appendTurn).mock.calls[0][0]
+    const userTurn = mock(appendTurn).mock.calls[0][1]
     expect(userTurn.message).toBe("make it shorter")
     expect(userTurn.expectedRevision).toBe(4)
     expect(userTurn.doc).toBeUndefined()
 
     // The assistant turn must chain off the revision the USER turn produced,
     // never off the client's original number — that would collide.
-    expect(mock(appendTurn).mock.calls[1][0].expectedRevision).toBe(5)
+    expect(mock(appendTurn).mock.calls[1][1].expectedRevision).toBe(5)
   })
 
   it("logs spend under input_params.feature and passes NEITHER phantom column", async () => {
@@ -1017,7 +1032,7 @@ describe("POST .../build — blocked", () => {
     expect(body.doc.sections).toHaveLength(1)
 
     const assistant = mock(appendTurn)
-      .mock.calls.map((c) => c[0])
+      .mock.calls.map((c) => c[1])
       .find((i) => i.role === "assistant")
     expect(assistant.blocked).toBe(true)
     expect(assistant.doc).toBeUndefined()
@@ -1111,7 +1126,7 @@ describe("POST .../build — reset to an earlier revision", () => {
     expect(body.revision).toBe(8)
     expect(body.doc.sections[0].props.headline).toBe("restored headline")
     expect(body.compile.ok).toBe(true)
-    expect(revertToRevision).toHaveBeenCalledWith(expect.objectContaining({ stepId: STEP_ID, toRevision: 5 }))
+    expect(revertToRevision).toHaveBeenCalledWith(BUSINESS_ID, expect.objectContaining({ stepId: STEP_ID, toRevision: 5 }))
     expect(streamAgent).not.toHaveBeenCalled()
   })
 
@@ -1399,7 +1414,7 @@ describe("POST .../build — failures that happen after the stream is open", () 
     // the status was decided at the first byte — so a route that "returns" one
     // here actually returns 200 with no terminal event, and the client would
     // hang on a turn that never ends.
-    mock(appendTurn).mockImplementation(async (input: { expectedRevision: number; role: string }) => {
+    mock(appendTurn).mockImplementation(async (_businessId: string, input: { expectedRevision: number; role: string }) => {
       if (input.role === "user") {
         return { ok: true, turn: { revision: 5, doc: null, message: "" }, revision: 5 }
       }
@@ -1585,9 +1600,9 @@ describe("POST .../build — the review stage runs AFTER the page is safe", () =
 
     await readEvents(await POST(req({ message: "build", revision: 4 }), ctx))
 
-    const reviewWrite = mock(appendTurn).mock.calls.find((call) => (call[0] as { source: string }).source === "review")
+    const reviewWrite = mock(appendTurn).mock.calls.find((call) => (call[1] as { source: string }).source === "review")
     expect(reviewWrite).toBeDefined()
-    expect(reviewWrite?.[0]).toMatchObject({
+    expect(reviewWrite?.[1]).toMatchObject({
       role: "assistant",
       source: "review",
       status: "complete",
@@ -1602,7 +1617,7 @@ describe("POST .../build — the review stage runs AFTER the page is safe", () =
 
     await readEvents(await POST(req({ message: "build", revision: 4 }), ctx))
 
-    const calls = mock(appendTurn).mock.calls.map((call) => call[0] as { source: string; expectedRevision: number })
+    const calls = mock(appendTurn).mock.calls.map((call) => call[1] as { source: string; expectedRevision: number })
     // 4 -> 5 (user turn) -> 6 (assistant turn) -> the review must expect 6.
     const review = calls.find((call) => call.source === "review")
     expect(review?.expectedRevision).toBe(6)
@@ -1634,7 +1649,7 @@ describe("POST .../build — the review stage runs AFTER the page is safe", () =
     // "I changed nothing" entry in the owner's transcript.
     await readEvents(await POST(req({ message: "build", revision: 4 }), ctx))
 
-    expect(mock(appendTurn).mock.calls.some((call) => (call[0] as { source: string }).source === "review")).toBe(false)
+    expect(mock(appendTurn).mock.calls.some((call) => (call[1] as { source: string }).source === "review")).toBe(false)
   })
 })
 
@@ -1668,7 +1683,7 @@ describe("POST .../build — a review that goes wrong cannot break the turn", ()
     // while a background improvement ran. The human wins, and they must not be
     // shown an error about it — they already have a correct page.
     installReview(reviewChanged())
-    mock(appendTurn).mockImplementation(async (input: { expectedRevision: number; source: string }) => {
+    mock(appendTurn).mockImplementation(async (_businessId: string, input: { expectedRevision: number; source: string }) => {
       if (input.source === "review") return { ok: false, reason: "stale_revision", currentRevision: 99 }
       return {
         ok: true,
@@ -1765,7 +1780,7 @@ describe("POST .../build — the Polish button PROPOSES, and writes nothing", ()
 
     await readEvents(await POST(req({ action: "polish", revision: 4 }), ctx))
 
-    expect(mock(appendTurn).mock.calls.some((call) => (call[0] as { role: string }).role === "user")).toBe(false)
+    expect(mock(appendTurn).mock.calls.some((call) => (call[1] as { role: string }).role === "user")).toBe(false)
   })
 
   it("refuses when the client is behind, before spending anything", async () => {
@@ -1823,7 +1838,7 @@ describe("POST .../build — accepting a proposed polish", () => {
     // polish. The owner pressing Apply does not make it the builder's work.
     await runTurn({ action: "apply_polish", revision: 4, ops: OPS })
 
-    expect(mock(appendTurn).mock.calls[0][0]).toMatchObject({ source: "review", role: "assistant" })
+    expect(mock(appendTurn).mock.calls[0][1]).toMatchObject({ source: "review", role: "assistant" })
   })
 
   it("applies the ops to the SERVER's document, not to anything the client sent", async () => {
@@ -1839,7 +1854,7 @@ describe("POST .../build — accepting a proposed polish", () => {
 
     await runTurn({ action: "apply_polish", revision: 4, ops: OPS })
 
-    const written = mock(appendTurn).mock.calls[0][0] as { doc: SectionDoc }
+    const written = mock(appendTurn).mock.calls[0][1] as { doc: SectionDoc }
     expect(written.doc.sections[0].props.headline).toBe("Only the server knows this")
     expect(written.doc.sections[0].style).toMatchObject({ tone: "muted" })
   })
@@ -1847,7 +1862,7 @@ describe("POST .../build — accepting a proposed polish", () => {
   it("takes the compare-and-swap on the revision the proposal was computed against", async () => {
     await runTurn({ action: "apply_polish", revision: 4, ops: OPS })
 
-    expect(mock(appendTurn).mock.calls[0][0]).toMatchObject({ expectedRevision: 4 })
+    expect(mock(appendTurn).mock.calls[0][1]).toMatchObject({ expectedRevision: 4 })
   })
 
   it("discards the polish when the owner edited while it waited", async () => {
@@ -1940,9 +1955,9 @@ describe("a pasted reference image (2026-09-14 spec §4)", () => {
     // ...and the control: the owner's own words DO reach it, so the assertion
     // above is not passing because appendTurn was called with nothing useful.
     const userCall = mock(appendTurn).mock.calls.find(
-      (call) => (call[0] as { role?: string }).role === "user",
+      (call) => (call[1] as { role?: string }).role === "user",
     )
-    expect((userCall?.[0] as { message?: string })?.message).toBe("match this look")
+    expect((userCall?.[1] as { message?: string })?.message).toBe("match this look")
   })
 
   it("rejects a media type Anthropic cannot read", async () => {

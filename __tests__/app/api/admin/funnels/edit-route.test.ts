@@ -13,7 +13,9 @@ vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/permissions/guard", () => ({ canAccessAdminPath: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 vi.mock("@/lib/db/funnel-builder", () => ({ getDraft: vi.fn(), appendTurn: vi.fn() }))
-class NoAccessibleBusinessError extends Error {}
+const { NoAccessibleBusinessError } = vi.hoisted(() => ({
+  NoAccessibleBusinessError: class NoAccessibleBusinessError extends Error {},
+}))
 vi.mock("@/lib/tenancy/resolve", () => ({
   resolveAdminTenantForRequest: vi.fn(),
   NoAccessibleBusinessError,

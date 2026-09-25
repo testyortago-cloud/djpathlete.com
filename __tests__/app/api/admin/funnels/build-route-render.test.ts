@@ -301,7 +301,7 @@ beforeEach(() => {
 
   // Revisions advance 4 -> 5 (user turn) -> 6 (assistant turn).
   let next = 4
-  mock(appendTurn).mockImplementation(async (input: { expectedRevision: number }) => {
+  mock(appendTurn).mockImplementation(async (_businessId: string, input: { expectedRevision: number }) => {
     next = input.expectedRevision + 1
     return { ok: true, turn: { revision: next, doc: null, message: "" }, revision: next }
   })
@@ -434,7 +434,7 @@ describe("POST .../build — the review stage renders before it reviews", () => 
     // what happened while `reviewDoc` answered `changed: false` — see the note
     // on the mock in `beforeEach`.
     const written = mock(appendTurn).mock.calls.map((c) => {
-      const input = c[0] as { role: string; source: string }
+      const input = c[1] as { role: string; source: string }
       return `${input.role}/${input.source}`
     })
     expect(written).toEqual(["user/ai", "assistant/ai", "assistant/review"])

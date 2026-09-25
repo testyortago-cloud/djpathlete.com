@@ -262,7 +262,7 @@ beforeEach(() => {
     isOperator: true,
   })
   mock(getFunnelById).mockResolvedValue(FUNNEL)
-  mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => ({
+  mock(publishStep).mockImplementation(async (_businessId: string, { stepId }: { stepId: string }) => ({
     ok: true,
     version: { id: `v-${stepId}`, version: 1 },
     warnings: [],
@@ -294,8 +294,8 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     expect(response.status).toBe(200)
     // MUTANT: publishing only the entry step. The ids are asserted, not the
     // count — a route that writes one page twice would pass a count check.
-    expect(mock(publishStep).mock.calls.map((call) => call[0].stepId)).toEqual(["s1", "s2"])
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { status: "published" })
+    expect(mock(publishStep).mock.calls.map((call) => call[1].stepId)).toEqual(["s1", "s2"])
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID, { status: "published" })
     // `loadCatalogues` reads events under `platformBusinessId()`, the
     // DELIBERATELY FROZEN seam (lib/tenancy/platform.ts) — NOT the resolved
     // admin tenant. That seam is what ensureEventPriced (below) is exempt
@@ -360,7 +360,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     //
     // The STATUS IS 200 EITHER WAY, so only asserting on the stored value can
     // see this. That is the whole point of this test.
-    const stored = mock(publishStep).mock.calls[0][0].projectData as unknown as {
+    const stored = mock(publishStep).mock.calls[0][1].projectData as unknown as {
       sections: { props: { primaryCta: { target: { ref: string } } } }[]
     }
     expect(stored.sections[0].props.primaryCta.target.ref).toBe(PROGRAM_ID)
@@ -373,7 +373,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false }),
     ])
     mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thank-you"), docInvalid: false, revision: 1 })
-    mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => ({
+    mock(publishStep).mockImplementation(async (_businessId: string, { stepId }: { stepId: string }) => ({
       ok: true,
       version: { id: `v-${stepId}`, version: stepId === "s1" ? 3 : 7 },
       warnings: [{ message: `check ${stepId}` }],
@@ -413,7 +413,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow(),
       stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false }),
     ])
-    mock(getDraft).mockImplementation(async (stepId: string) =>
+    mock(getDraft).mockImplementation(async (_businessId: string, stepId: string) =>
       stepId === "s1"
         ? { doc: docWithCta(PROGRAM_NAME, "thank-you"), docInvalid: false, revision: 1 }
         : { doc: null, docInvalid: false, revision: 0 },
@@ -439,7 +439,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow(),
       stepRow({ id: "s2", name: "Offer", slug: "offer", position: 1, is_entry: false }),
     ])
-    mock(getDraft).mockImplementation(async (stepId: string) => ({
+    mock(getDraft).mockImplementation(async (_businessId: string, stepId: string) => ({
       doc: stepId === "s2" ? docWithCta(DEAD_REF) : docWithCta(PROGRAM_NAME, "offer"),
       docInvalid: false,
       revision: 1,
@@ -510,7 +510,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow(),
       stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false }),
     ])
-    mock(getDraft).mockImplementation(async (stepId: string) =>
+    mock(getDraft).mockImplementation(async (_businessId: string, stepId: string) =>
       stepId === "s1"
         ? { doc: docWithFormRedirect("/go/free-trial-week-2/thank-you"), docInvalid: false, revision: 1 }
         : { doc: plainHeroDoc(), docInvalid: false, revision: 1 },
@@ -553,7 +553,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow(),
       stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false }),
     ])
-    mock(getDraft).mockImplementation(async (stepId: string) =>
+    mock(getDraft).mockImplementation(async (_businessId: string, stepId: string) =>
       stepId === "s1"
         ? { doc: docWithFormRedirect(`/go/${FUNNEL.slug}/thank-you`), docInvalid: false, revision: 1 }
         : { doc: plainHeroDoc(), docInvalid: false, revision: 1 },
@@ -561,8 +561,8 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
 
     const response = await POST(request(), ctx)
     expect(response.status).toBe(200)
-    expect(mock(publishStep).mock.calls.map((call) => call[0].stepId)).toEqual(["s1", "s2"])
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { status: "published" })
+    expect(mock(publishStep).mock.calls.map((call) => call[1].stepId)).toEqual(["s1", "s2"])
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID, { status: "published" })
   })
 
   it("does NOT call a single-page funnel a dead end", async () => {
@@ -575,7 +575,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
 
     const response = await POST(request(), ctx)
     expect(response.status).toBe(200)
-    expect(mock(publishStep).mock.calls.map((call) => call[0].stepId)).toEqual(["s1"])
+    expect(mock(publishStep).mock.calls.map((call) => call[1].stepId)).toEqual(["s1"])
   })
 
   it("PUBLISHES a page whose form takes payment — Stripe returns the payer to the last page", async () => {
@@ -593,7 +593,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow(),
       stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false }),
     ])
-    mock(getDraft).mockImplementation(async (stepId: string) =>
+    mock(getDraft).mockImplementation(async (_businessId: string, stepId: string) =>
       stepId === "s1"
         ? { doc: docWithCheckoutForm(), docInvalid: false, revision: 1 }
         : { doc: plainHeroDoc(), docInvalid: false, revision: 1 },
@@ -608,8 +608,8 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
 
     const response = await POST(request(), ctx)
     expect(response.status).toBe(200)
-    expect(mock(publishStep).mock.calls.map((call) => call[0].stepId)).toEqual(["s1", "s2"])
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { status: "published" })
+    expect(mock(publishStep).mock.calls.map((call) => call[1].stepId)).toEqual(["s1", "s2"])
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID, { status: "published" })
   })
 
   it("does not refuse a legacy step that has no document but is already live", async () => {
@@ -617,7 +617,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow(),
       stepRow({ id: "s2", name: "Old page", slug: "old", position: 1, is_entry: false, published_version_id: "v-old" }),
     ])
-    mock(getDraft).mockImplementation(async (stepId: string) =>
+    mock(getDraft).mockImplementation(async (_businessId: string, stepId: string) =>
       stepId === "s1"
         ? { doc: docWithCta(PROGRAM_NAME, "old"), docInvalid: false, revision: 1 }
         : // What `getDraft` reports for legacy GrapesJS state.
@@ -628,8 +628,8 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     expect(response.status).toBe(200)
     // MUTANT: refusing every doc-less step. That freezes out every funnel
     // created before the section editor.
-    expect(mock(publishStep).mock.calls.map((call) => call[0].stepId)).toEqual(["s1"])
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { status: "published" })
+    expect(mock(publishStep).mock.calls.map((call) => call[1].stepId)).toEqual(["s1"])
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL_ID, { status: "published" })
   })
 
   it("refuses a funnel with no pages", async () => {
@@ -657,7 +657,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thanks"), docInvalid: false, revision: 1 })
     // `publishStep` THROWS rather than returning `ok:false` — any Supabase
     // error does — after page 1 already has a version row.
-    mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => {
+    mock(publishStep).mockImplementation(async (_businessId: string, { stepId }: { stepId: string }) => {
       if (stepId === "s2") throw new Error("connection reset")
       return { ok: true, version: { id: "v1", version: 1 }, warnings: [] }
     })
@@ -680,7 +680,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow(),
       stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
     ])
-    mock(getDraft).mockImplementation(async (stepId: string) =>
+    mock(getDraft).mockImplementation(async (_businessId: string, stepId: string) =>
       stepId === "s1"
         ? { doc: docWithCta(PROGRAM_NAME, "thanks"), docInvalid: false, revision: 1 }
         : { doc: overCapDoc(), docInvalid: false, revision: 1 },
@@ -709,7 +709,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow(),
       stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
     ])
-    mock(getDraft).mockImplementation(async (stepId: string) =>
+    mock(getDraft).mockImplementation(async (_businessId: string, stepId: string) =>
       stepId === "s1"
         ? { doc: overCapDoc("thanks"), docInvalid: false, revision: 1 }
         : { doc: overCapDoc(), docInvalid: false, revision: 1 },
@@ -736,7 +736,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
     ])
     mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thanks"), docInvalid: false, revision: 1 })
-    mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => {
+    mock(publishStep).mockImplementation(async (_businessId: string, { stepId }: { stepId: string }) => {
       if (stepId === "s2") throw new Error("connection reset")
       return { ok: true, version: { id: "v1", version: 1 }, warnings: [] }
     })
@@ -767,7 +767,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
     ])
     mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thanks"), docInvalid: false, revision: 1 })
-    mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => {
+    mock(publishStep).mockImplementation(async (_businessId: string, { stepId }: { stepId: string }) => {
       if (stepId === "s2") throw new Error("connection reset")
       return { ok: true, version: { id: "v1", version: 1 }, warnings: [] }
     })
@@ -788,7 +788,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
     ])
     mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thanks"), docInvalid: false, revision: 1 })
-    mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) =>
+    mock(publishStep).mockImplementation(async (_businessId: string, { stepId }: { stepId: string }) =>
       stepId === "s2"
         ? { ok: false, errors: [{ message: "too big" }] }
         : { ok: true, version: { id: "v1", version: 1 }, warnings: [] },
@@ -829,7 +829,7 @@ describe("POST /api/admin/funnels/[id]/publish — the tenant brand kit", () => 
     const response = await POST(request(), ctx)
     expect(response.status).toBe(200)
     expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
-    expect(mock(publishStep).mock.calls[0][0].css).toContain("--primary: #6d28d9")
+    expect(mock(publishStep).mock.calls[0][1].css).toContain("--primary: #6d28d9")
   })
 
   it("degrades to no brand kit when the business_settings read throws — still publishes", async () => {
@@ -842,6 +842,6 @@ describe("POST /api/admin/funnels/[id]/publish — the tenant brand kit", () => 
 
     const response = await POST(request(), ctx)
     expect(response.status).toBe(200)
-    expect(mock(publishStep).mock.calls[0][0].css).not.toMatch(/--primary:/)
+    expect(mock(publishStep).mock.calls[0][1].css).not.toMatch(/--primary:/)
   })
 })

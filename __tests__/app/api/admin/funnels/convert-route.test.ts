@@ -29,7 +29,9 @@ vi.mock("@/lib/db/funnels", () => ({
   updateFunnel: vi.fn(),
   listSteps: vi.fn(),
 }))
-class NoAccessibleBusinessError extends Error {}
+const { NoAccessibleBusinessError } = vi.hoisted(() => ({
+  NoAccessibleBusinessError: class NoAccessibleBusinessError extends Error {},
+}))
 vi.mock("@/lib/tenancy/resolve", () => ({
   resolveAdminTenantForRequest: vi.fn(),
   NoAccessibleBusinessError,

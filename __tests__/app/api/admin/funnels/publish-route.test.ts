@@ -39,7 +39,9 @@ vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.f
 // The FAQ page keys `loadCatalogues` reads for the `faq.pageKey` check — the
 // one model-written string that is not a CtaTarget.
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
-class NoAccessibleBusinessError extends Error {}
+const { NoAccessibleBusinessError } = vi.hoisted(() => ({
+  NoAccessibleBusinessError: class NoAccessibleBusinessError extends Error {},
+}))
 vi.mock("@/lib/tenancy/resolve", () => ({
   resolveAdminTenantForRequest: vi.fn(),
   NoAccessibleBusinessError,
