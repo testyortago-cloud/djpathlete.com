@@ -31,7 +31,10 @@ on:
       - "supabase/migrations/**"
       - "scripts/lib/collect-postgrest-selects.ts"
       - "__tests__/integration/postgrest-select-contract.test.ts"
+      - "__tests__/setup.tsx"
+      - "vitest.config.ts"
       - ".github/workflows/postgrest-select-contract.yml"
+      - "package.json"
       - "package-lock.json"
   workflow_dispatch:
 
@@ -39,18 +42,22 @@ concurrency:
   group: postgrest-select-contract
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   contract:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # Not a secret: the clone's ref is in every clone URL. Pinned here so the
-      # job cannot be pointed anywhere else by a repository variable.
-      NEXT_PUBLIC_SUPABASE_URL: https://anjvztjiokcgiyhobknq.supabase.co
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DEV_CLONE_SERVICE_ROLE_KEY }}
+      # Only WHETHER the key exists lives at job level. The key itself is set
+      # on the one step that needs it, so `npm ci` runs every dependency's
+      # install scripts without it in their environment. (A step's own env is
+      # not visible to its `if:`, which is why this boolean is up here.)
+      HAS_CLONE_KEY: ${{ secrets.DEV_CLONE_SERVICE_ROLE_KEY != '' }}
     steps:
       - name: Refuse to report green without the key
-        if: env.SUPABASE_SERVICE_ROLE_KEY == ''
+        if: env.HAS_CLONE_KEY != 'true'
         run: |
           echo "::error title=Select contract NOT run::The DEV_CLONE_SERVICE_ROLE_KEY repository secret is not set, so no select was checked."
           exit 1
@@ -69,4 +76,9 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Probe every select against the dev clone
+        env:
+          # Not a secret: the clone's ref is in every clone URL. Pinned here so
+          # the job cannot be pointed anywhere else by a repository variable.
+          NEXT_PUBLIC_SUPABASE_URL: https://anjvztjiokcgiyhobknq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DEV_CLONE_SERVICE_ROLE_KEY }}
         run: npm run test:integration:selects

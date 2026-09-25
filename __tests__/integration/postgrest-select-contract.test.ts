@@ -1,7 +1,8 @@
 // INTEGRATION TEST — opt-in: `npm run test:integration:selects`. Excluded from `npm test`.
 //
-// Runs every PostgREST select in the deployed code against the DEV CLONE's live
-// schema, with `limit=0`, and fails on any the server refuses.
+// Runs every PostgREST select in the deployed code — its table, its select
+// string and the `.order()` columns applied to it — against the DEV CLONE's
+// live schema, with `limit=0`, and fails on any the server refuses.
 //
 // WHY THIS EXISTS. Every DAL unit test mocks PostgREST, so none of them can see
 // a select string the real server rejects. G31 shipped one: the leads inbox
@@ -10,54 +11,95 @@
 // PostgREST answered PGRST200 and the inbox 500'd for every tenant, while every
 // mocked suite passed (and one of them pinned the broken string as "unchanged").
 // A `limit=0` GET with the same select reproduces that error without reading a
-// row. So does a missing column (42703). That is the whole mechanism.
+// row. So does a missing column (42703), in the select or in an ORDER BY — G25's
+// refund lookup had it in both, and its fake stamped the missing column on
+// every row.
 //
 // WHAT IT DOES NOT COVER: rpc() calls, filters (.eq/.in on a missing column),
-// and insert/update payload columns. It checks the select string and the table
-// it runs against. The one select the extractor cannot resolve statically is
-// listed in KNOWN_UNRESOLVED below, so a new one fails until someone looks at it.
+// and insert/update payload columns. What it cannot resolve statically is on
+// KNOWN_UNRESOLVED below, so a new one fails until someone looks at it.
 //
 // RUN IT before merging to main, and after applying a migration to the clone.
 // The clone only has the migrations a session applied by hand
 // (apply-migrations.yml targets production), so a branch whose code needs its
 // own migration must apply it to the clone first, or this reports the gap.
 //
-// DEV CLONE ONLY. It refuses production by ref and refuses anything that is not
-// the clone. It writes nothing: every probe is a GET with limit=0.
+// DEV CLONE ONLY. It accepts exactly the clone's host and nothing else. It
+// writes nothing: every probe is a GET with limit=0.
 
 import { describe, it, expect, beforeAll } from "vitest"
 import path from "node:path"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
-import { collectSelects, type CollectedSelects, type SelectCall } from "@/scripts/lib/collect-postgrest-selects"
+import {
+  collectSelects,
+  type CollectedSelects,
+  type OrderColumn,
+  type SelectCall,
+} from "@/scripts/lib/collect-postgrest-selects"
 
-const CLONE_REF = "anjvztjiokcgiyhobknq"
-const PROD_REF = "epzuvzkokzqtzomeyoha"
+const CLONE_HOST = "anjvztjiokcgiyhobknq.supabase.co"
 
 /** Everything that ships: the Next app, the Firebase functions and the render worker. */
 const DEPLOYED_DIRS = ["lib", "app", "components", "functions/src", "render-worker/src"]
 
 /**
- * Selects the extractor cannot resolve without guessing. Matched on file and
- * call text, not line, so unrelated edits above them do not churn this list.
+ * What the extractor cannot resolve without guessing — today, only `.order()`
+ * calls on a builder that went through a helper or a ternary first. Matched on
+ * file, reason and how many times it occurs, never on line, so unrelated edits
+ * do not churn this list and a new site with the same shape still fails.
+ * `checkedAs` is the table and order column(s) a human read off the code, and
+ * the test probes those too, so these orders are still checked live.
  */
-const KNOWN_UNRESOLVED: { file: string; text: string; why: string }[] = [
+const KNOWN_UNRESOLVED: {
+  file: string
+  reason: string
+  count: number
+  checkedAs: { table: string; orders: string[] }
+}[] = [
   {
-    file: "lib/db/shop-variants.ts",
-    text: 'query.select("id")',
-    why: '`let query` is reassigned under a condition; the chain is from("shop_product_variants").update(...). The select is a bare id.',
+    file: "lib/db/bookkeeping.ts",
+    reason: "order receiver is not a from() chain: applyEntryFilters(base as any, p)",
+    count: 1,
+    checkedAs: { table: "bookkeeping_ledger_entries", orders: ["occurred_on"] },
+  },
+  {
+    file: "lib/db/bookkeeping.ts",
+    reason: 'order receiver is not a from() chain: bookId ? base.eq("book_id", bookId) : base',
+    count: 2,
+    checkedAs: { table: "bookkeeping_assets", orders: ["in_service_on", "created_at"] },
+  },
+  {
+    file: "lib/db/chat.ts",
+    reason: "order receiver is not a from() chain: applyChatFilter(base, businessId, show, blockedIds)",
+    count: 1,
+    checkedAs: { table: "chat_conversations", orders: ["last_activity_at"] },
+  },
+  {
+    file: "lib/db/contacts-list.ts",
+    reason: "order receiver is not a from() chain: applyFilters(base, filters)",
+    count: 1,
+    checkedAs: { table: "contacts", orders: ["created_at"] },
+  },
+  {
+    file: "lib/db/funnel-leads.ts",
+    reason: "order receiver is not a from() chain: applyFilters(base, businessId, filters)",
+    count: 1,
+    checkedAs: { table: "funnel_submissions", orders: ["created_at"] },
   },
 ]
 
 /**
  * Selects the live schema refuses TODAY, found by the first run of this test
  * on 2026-09-25 and left unfixed because each fix is a decision, not a typo.
- * Matched on file, table and error code. An entry that stops being refused
- * fails the test until it is removed, so this list cannot outlive its bugs.
+ * Matched on file, table, select string and error code, so a second, different
+ * broken select in the same file cannot hide behind an entry. An entry that
+ * stops being refused fails the test until it is removed.
  */
-const KNOWN_REFUSED: { file: string; table: string; code: string; why: string }[] = [
+const KNOWN_REFUSED: { file: string; table: string; select: string; code: string; why: string }[] = [
   {
     file: "functions/src/ai/admin-tools.ts",
     table: "performance_assessments",
+    select: "exercise_id, metric_type, value, unit, assessed_at, exercises(name)",
     code: "PGRST200",
     why:
       "Selects exercise_id, metric_type, value, unit, assessed_at and exercises(name), filtered on user_id — " +
@@ -68,6 +110,7 @@ const KNOWN_REFUSED: { file: string; table: string; code: string; why: string }[
   {
     file: "functions/src/seo/execute.ts",
     table: "profiles",
+    select: "id",
     code: "PGRST205",
     why:
       "There is no profiles table; users carries role. The SEO agent's flag-for-human action returns this " +
@@ -77,12 +120,14 @@ const KNOWN_REFUSED: { file: string; table: string; code: string; why: string }[
   {
     file: "functions/src/social-agent.ts",
     table: "profiles",
+    select: "id",
     code: "PGRST205",
     why: "Same missing profiles table: the 'no eligible topic' notification to the admin is never sent. See seo/execute.ts.",
   },
   {
     file: "functions/src/social-outcome-tracker.ts",
     table: "social_analytics",
+    select: "social_post_id, likes, comments, shares, impressions, engagement_rate, captured_at",
     code: "42703",
     why:
       "engagement_rate and captured_at do not exist (00089 has engagement and recorded_at). The error is " +
@@ -94,6 +139,10 @@ const KNOWN_REFUSED: { file: string; table: string; code: string; why: string }[
 const CONCURRENCY = 8
 const REPO_ROOT = path.resolve(__dirname, "../..")
 
+/** Codes that mean "the database could not answer", not "the schema says no". Retried, then reported apart. */
+const INFRA_CODES = new Set(["PGRST000", "PGRST001", "PGRST002", "PGRST003", "57014", "53300"])
+const RETRY_DELAYS_MS = [500, 2000]
+
 function requireCloneClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
@@ -103,35 +152,47 @@ function requireCloneClient(): SupabaseClient {
         "This contract has NOT run.",
     )
   }
-  if (url.includes(PROD_REF)) throw new Error(`Refusing to probe production (${PROD_REF}).`)
-  if (!url.includes(CLONE_REF))
-    throw new Error(`Refusing to probe ${url}: only the dev clone (${CLONE_REF}) is allowed.`)
+  const host = new URL(url).hostname
+  if (host !== CLONE_HOST) throw new Error(`Refusing to probe ${host}: only the dev clone (${CLONE_HOST}) is allowed.`)
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
 }
 
-type ProbeError = { code: string; message: string }
+type ProbeResult = null | { kind: "refused" | "infra"; code: string; message: string }
+
+const normalise = (s: string) => s.replace(/\s+/g, "")
 
 async function probe(
   client: SupabaseClient,
   schema: string | null,
   table: string,
   select: string,
-): Promise<ProbeError | null> {
+  orders: OrderColumn[] = [],
+): Promise<ProbeResult> {
   for (let attempt = 0; ; attempt++) {
     const base = schema ? client.schema(schema) : client
-    const { error } = await base.from(table).select(select).limit(0)
+    let query = base.from(table).select(select)
+    for (const o of orders)
+      query = query.order(o.column, o.referencedTable ? { referencedTable: o.referencedTable } : {})
+    const { error } = await query.limit(0)
     if (!error) return null
-    // No code means the request never got a PostgREST answer (network). Retry
-    // once; a PostgREST or Postgres error is the answer and is not retried.
-    if (!error.code && attempt === 0) continue
-    return { code: error.code || "(no code)", message: error.message }
+    // No code: the request never got a PostgREST answer (network, gateway
+    // page). An INFRA code: PostgREST or Postgres could not serve it (pool,
+    // schema cache reloading right after a migration, timeout). Both are
+    // retried with backoff and, if they persist, reported as infrastructure —
+    // never as the schema refusing the select.
+    const infra = !error.code || INFRA_CODES.has(error.code)
+    if (infra && attempt < RETRY_DELAYS_MS.length) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]))
+      continue
+    }
+    return { kind: infra ? "infra" : "refused", code: error.code || "(no code)", message: error.message }
   }
 }
 
-function key(c: Pick<SelectCall, "schema" | "table" | "select">): string {
+function key(c: Pick<SelectCall, "schema" | "table" | "select" | "orders">): string {
   // supabase-js strips whitespace outside quotes before sending, so two
   // selects that differ only in spacing are the same request.
-  return `${c.schema ?? ""}|${c.table}|${c.select.replace(/\s+/g, "")}`
+  return `${c.schema ?? ""}|${c.table}|${normalise(c.select)}|${JSON.stringify(c.orders)}`
 }
 
 async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -156,22 +217,40 @@ describe("PostgREST select contract (dev clone, live)", () => {
     collected = collectSelects(REPO_ROOT, DEPLOYED_DIRS)
   })
 
-  // Positive controls. If PostgREST ever stopped resolving embeds or columns
-  // under limit=0, every probe below would pass and prove nothing; these two
-  // fail first in that case.
-  it("control: the embed hint that took down the leads inbox is still refused (PGRST200)", async () => {
-    const err = await probe(
-      client,
-      null,
-      "funnel_submissions",
-      "*, funnels:funnel_id(name, slug), funnel_steps:step_id(name)",
-    )
-    expect(err?.code).toBe("PGRST200")
-  })
+  // Positive controls. If PostgREST ever stopped checking the schema under
+  // limit=0, every probe below would pass and prove nothing; these fail first.
+  describe("controls: limit=0 still makes PostgREST check the schema", () => {
+    it("the embed hint that took down the leads inbox is refused (PGRST200)", async () => {
+      const r = await probe(
+        client,
+        null,
+        "funnel_submissions",
+        "*, funnels:funnel_id(name, slug), funnel_steps:step_id(name)",
+      )
+      expect(r?.code).toBe("PGRST200")
+    })
 
-  it("control: a column that does not exist is still refused (42703)", async () => {
-    const err = await probe(client, null, "funnel_submissions", "id, column_that_does_not_exist")
-    expect(err?.code).toBe("42703")
+    it("an embed of a relation that does not exist is refused (PGRST200)", async () => {
+      const r = await probe(client, null, "funnel_submissions", "id, not_a_table_control(id)")
+      expect(r?.code).toBe("PGRST200")
+    })
+
+    it("a column that does not exist is refused (42703)", async () => {
+      const r = await probe(client, null, "funnel_submissions", "id, column_that_does_not_exist")
+      expect(r?.code).toBe("42703")
+    })
+
+    it("an order column that does not exist is refused (42703)", async () => {
+      const r = await probe(client, null, "opportunity_stage_events", "id", [
+        { column: "created_at", referencedTable: null },
+      ])
+      expect(r?.code).toBe("42703")
+    })
+
+    it("a table that does not exist is refused (PGRST205)", async () => {
+      const r = await probe(client, null, "not_a_table_control", "id")
+      expect(r?.code).toBe("PGRST205")
+    })
   })
 
   it("collected the leads-inbox select that G31 broke", () => {
@@ -183,64 +262,104 @@ describe("PostgREST select contract (dev clone, live)", () => {
     expect(inbox.length).toBeGreaterThan(0)
   })
 
-  it("collected selects from every deployed directory that has any", () => {
-    const dirsWithCalls = new Set(DEPLOYED_DIRS.filter((d) => collected.calls.some((c) => c.file.startsWith(d + "/"))))
-    expect([...dirsWithCalls].sort()).toEqual(["app", "functions/src", "lib", "render-worker/src"])
+  it("collected the refund lookup's order column that G25 got wrong", () => {
+    const refund = collected.calls.filter(
+      (c) => c.file === "lib/db/pipeline.ts" && c.table === "opportunity_stage_events" && c.orders.length > 0,
+    )
+    expect(refund.length).toBeGreaterThan(0)
   })
 
-  it("every select it could not resolve is on the known list, and the list has no stale entries", () => {
-    const actual = collected.unresolved.map((u) => `${u.file} :: ${u.text}  (${u.reason}, line ${u.line})`)
-    const found = collected.unresolved.map((u) => `${u.file} :: ${u.text}`)
-    const known = KNOWN_UNRESOLVED.map((k) => `${k.file} :: ${k.text}`)
-    expect(
-      found.filter((f) => !known.includes(f)),
-      `New unresolvable selects — make them resolvable or add them to KNOWN_UNRESOLVED:\n${actual.join("\n")}`,
-    ).toEqual([])
-    expect(
-      known.filter((k) => !found.includes(k)),
-      "KNOWN_UNRESOLVED names a select that is gone or now resolves — remove it",
-    ).toEqual([])
+  it("collected selects from every deployed directory known to have them", () => {
+    const dirsWithCalls = DEPLOYED_DIRS.filter((d) => collected.calls.some((c) => c.file.startsWith(d + "/")))
+    expect(dirsWithCalls).toEqual(expect.arrayContaining(["app", "functions/src", "lib", "render-worker/src"]))
+  })
+
+  it("everything it could not resolve is on KNOWN_UNRESOLVED, with no stale entries", () => {
+    const found = new Map<string, number>()
+    for (const u of collected.unresolved) {
+      const k = `${u.file} :: ${u.reason}`
+      found.set(k, (found.get(k) ?? 0) + 1)
+    }
+    const known = new Map(KNOWN_UNRESOLVED.map((k) => [`${k.file} :: ${k.reason}`, k.count]))
+    const mismatched = [...new Set([...found.keys(), ...known.keys()])]
+      .filter((k) => found.get(k) !== known.get(k))
+      .map((k) => `${k}  (found ${found.get(k) ?? 0}, listed ${known.get(k) ?? 0})`)
+    const detail = collected.unresolved.map((u) => `${u.file}:${u.line} ${u.reason} :: ${u.text}`).join("\n")
+    expect(mismatched, `Make these resolvable, or list them with the table a human checked:\n${detail}`).toEqual([])
   })
 
   describe("probing every collected select", () => {
-    type Refusal = ProbeError & { schema: string | null; table: string; select: string; sites: SelectCall[] }
-    let refusals: Refusal[] = []
+    type Probed = { schema: string | null; table: string; select: string; orders: OrderColumn[]; sites: string[] }
+    let refused: (Probed & { code: string; message: string; files: string[] })[] = []
+    let infra: string[] = []
     let probed = 0
 
     beforeAll(async () => {
-      const sites = new Map<string, SelectCall[]>()
-      for (const c of collected.calls) sites.set(key(c), [...(sites.get(key(c)) ?? []), c])
-      const unique = [...sites.values()].map((s) => s[0])
+      const groups = new Map<string, Probed & { files: string[] }>()
+      const add = (p: Omit<Probed, "sites">, site: string, file: string) => {
+        const g = groups.get(key(p)) ?? { ...p, sites: [], files: [] }
+        g.sites.push(site)
+        g.files.push(file)
+        groups.set(key(p), g)
+      }
+      for (const c of collected.calls) add(c, `${c.file}:${c.line}`, c.file)
+      for (const k of KNOWN_UNRESOLVED) {
+        add(
+          {
+            schema: null,
+            table: k.checkedAs.table,
+            select: "*",
+            orders: k.checkedAs.orders.map((column) => ({ column, referencedTable: null })),
+          },
+          `${k.file} (KNOWN_UNRESOLVED, checked by hand)`,
+          k.file,
+        )
+      }
+      const unique = [...groups.values()]
       probed = unique.length
-      const errors = await pool(unique, CONCURRENCY, (c) => probe(client, c.schema, c.table, c.select))
-      refusals = unique.flatMap((c, i) => {
-        const err = errors[i]
-        return err ? [{ ...err, schema: c.schema, table: c.table, select: c.select, sites: sites.get(key(c))! }] : []
+      const results = await pool(unique, CONCURRENCY, (g) => probe(client, g.schema, g.table, g.select, g.orders))
+      unique.forEach((g, i) => {
+        const r = results[i]
+        if (r?.kind === "refused") refused.push({ ...g, code: r.code, message: r.message })
+        if (r?.kind === "infra") infra.push(`${r.code} on ${g.table} (${g.sites[0]}) — ${r.message}`)
       })
-    }, 180_000)
+    }, 300_000)
 
-    const isKnown = (r: Refusal, file: string) =>
-      KNOWN_REFUSED.some((k) => k.file === file && k.table === r.table && k.code === r.code)
+    const isKnown = (r: (typeof refused)[number], file: string) =>
+      KNOWN_REFUSED.some(
+        (k) =>
+          k.file === file && k.table === r.table && k.code === r.code && normalise(k.select) === normalise(r.select),
+      )
+
+    it("no probe failed for infrastructure reasons (the run would prove nothing)", () => {
+      expect(infra).toEqual([])
+    })
 
     it("no select outside KNOWN_REFUSED is refused by the live schema", () => {
-      const unknown = refusals.flatMap((r) =>
+      const unknown = refused.flatMap((r) =>
         r.sites
-          .filter((s) => !isKnown(r, s.file))
-          .map((s) => {
+          .filter((_, i) => !isKnown(r, r.files[i]))
+          .map((site) => {
             const table = r.schema ? `${r.schema}.${r.table}` : r.table
-            return `${r.code} at ${s.file}:${s.line} — ${table} select "${r.select.replace(/\s+/g, " ")}" — ${r.message}`
+            const orders = r.orders.length
+              ? ` order ${r.orders.map((o) => (o.referencedTable ? `${o.referencedTable}.` : "") + o.column).join(", ")}`
+              : ""
+            return `${r.code} at ${site} — ${table} select "${r.select.replace(/\s+/g, " ")}"${orders} — ${r.message}`
           }),
       )
-      expect(
-        unknown,
-        `${unknown.length} select site(s) refused by the dev clone (${probed} distinct selects probed)`,
-      ).toEqual([])
+      expect(unknown, `${unknown.length} site(s) refused by the dev clone (${probed} distinct probes)`).toEqual([])
     })
 
     it("every KNOWN_REFUSED entry is still refused (remove the ones that were fixed)", () => {
       const stale = KNOWN_REFUSED.filter(
         (k) =>
-          !refusals.some((r) => r.table === k.table && r.code === k.code && r.sites.some((s) => s.file === k.file)),
+          !refused.some(
+            (r) =>
+              r.table === k.table &&
+              r.code === k.code &&
+              normalise(r.select) === normalise(k.select) &&
+              r.files.includes(k.file),
+          ),
       ).map((k) => `${k.file} (${k.table}, ${k.code})`)
       expect(stale).toEqual([])
     })
