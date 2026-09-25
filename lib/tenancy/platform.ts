@@ -125,6 +125,23 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     (app/api/public/invite/[token]/claim/route.ts). An invite with no
  *     business_id is a /admin/team invite, which is by definition onto the
  *     platform's own business; the membership row it writes says so.
+ *   - the SEO and social agents' JOB BUSINESS: the `businessId` that three
+ *     enqueue routes stamp into the job input --
+ *     app/api/admin/internal/seo-agent/route.ts (the weekly SEO cron),
+ *     app/api/admin/internal/social-agent-cron/route.ts (the Tue/Thu social
+ *     cron) and app/api/admin/social/agent/run/route.ts (a manual run). The
+ *     Firebase agents read it to decide whose owners get the agent's in-app
+ *     alert (G35). Every table those agents read or write -- `blog_posts`,
+ *     `gsc_query_daily`, `content_calendar`, the SEO and social agents' memo
+ *     tables, `social_posts`, `platform_connections`, `strategy_briefs`,
+ *     `notifications` -- has no `business_id`, and their subject is
+ *     darrenjpaul.com's own search and blog data, so the platform is the
+ *     answer rather than a placeholder. The two crons have no session. The
+ *     manual route HAS one and still must not resolve the admin's selected
+ *     business: an operator with a coach's business selected would stamp
+ *     that coach, whose owners would then be alerted about the platform's
+ *     blog. The functions never default a missing `businessId` (a job
+ *     enqueued before G35); they skip the alert and log why.
  *
  * A NARROWER VARIANT OF THE SAME SEAM -- the caller DOES attempt a real
  * resolution first, and only reaches this as the fallback when that lookup
