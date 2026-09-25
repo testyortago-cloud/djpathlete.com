@@ -36,6 +36,7 @@ import {
   type OrderColumn,
   type SelectCall,
 } from "@/scripts/lib/collect-postgrest-selects"
+import { untenantedTables } from "../helpers/untenanted-by-schema"
 
 const CLONE_HOST = "anjvztjiokcgiyhobknq.supabase.co"
 
@@ -233,6 +234,24 @@ describe("PostgREST select contract (dev clone, live)", () => {
     it("a table that does not exist is refused (PGRST205)", async () => {
       const r = await probe(client, null, "not_a_table_control", "id")
       expect(r?.code).toBe("PGRST205")
+    })
+  })
+
+  // G35 §D2. Every table on the UNTENANTED BY SCHEMA shelf of
+  // lib/tenancy/platform.ts is there because it has NO business_id column.
+  // platform-inventory.test.ts proves no MIGRATION adds one; only the live
+  // schema can say the column arrived some other way — a statement run by
+  // hand, a dashboard edit, dynamic SQL the migration scan cannot read. A
+  // table that stops answering 42703 has grown the column: move its readers
+  // off the shelf and give them a predicate, rather than editing this test.
+  describe("the UNTENANTED BY SCHEMA shelf's tables still have no business_id", () => {
+    it("control: a table that HAS business_id answers the same probe without an error", async () => {
+      expect(await probe(client, null, "events", "business_id")).toBeNull()
+    })
+
+    it.each(untenantedTables())("%s has no business_id column (42703)", async (table) => {
+      const r = await probe(client, null, table, "business_id")
+      expect(r?.code).toBe("42703")
     })
   })
 

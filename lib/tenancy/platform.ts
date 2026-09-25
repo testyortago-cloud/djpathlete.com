@@ -143,9 +143,11 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     blog. The functions never default a missing `businessId` (a job
  *     enqueued before G35); they skip the alert and log why.
  *
- * A NARROWER VARIANT OF THE SAME SEAM -- the caller DOES attempt a real
- * resolution first, and only reaches this as the fallback when that lookup
- * comes back empty:
+ * A NARROWER VARIANT OF THE SAME SEAM -- the caller DOES resolve a real
+ * tenant first, and consults this seam only after that, in one of two ways:
+ * as the FALLBACK when that lookup comes back empty, or as a COMPARISON that
+ * decides whether the tenant it resolved is the platform's own (the one
+ * business that untenanted rows or environment variables describe):
  *   - the Twilio inbound SMS webhook (app/api/webhooks/twilio/inbound/route.ts)
  *     resolves the tenant from the `To` number via `getBusinessBySmsNumber`
  *     first -- the only tenant evidence an inbound SMS carries -- and falls
@@ -298,6 +300,127 @@ import { createServiceRoleClient } from "@/lib/supabase"
  * literals scattered across routes. Calling every one of them a "resolution"
  * would be a lie; naming each honestly, and naming WHICH kind, is the whole
  * value.
+ *
+ * UNTENANTED BY SCHEMA -- NOT callers of this function, and listed here for
+ * exactly that reason. Every shelf above is a call site that lands on the
+ * platform's business. These readers name no business at all, because the
+ * table they read has no `business_id` column to name one with, so "the
+ * rows" means every business's rows. They are listed only where more than
+ * one business can reach them: through a permission an owner can grant to
+ * staff, a public route that resolved a Host tenant, or a job that serves
+ * every business. Production has one business (2026-09-23), so none of them
+ * leaks today; each is a fuse for the white-label destination, and each
+ * names the ledger row that owns the decision.
+ *
+ * Do not "fix" one by adding a business predicate: there is no column to
+ * filter on, and PostgREST answers 42703. Converting a reader means a column,
+ * a writer and a backfill first -- and then it leaves this shelf. The
+ * platform inventory test fails when a listed read is no longer where this
+ * says it is, or when a migration gives its table the column; the live
+ * select contract fails when the column appears any other way.
+ *
+ * NOT entries, named so they do not read as omissions:
+ *   - `users` read by one id or one email (the register route, the contact,
+ *     inquiry and funnel forms, the funnel checkout). That is identity -- one
+ *     login serves every business -- not a business's data. The client
+ *     ROSTER is different, and is an entry below.
+ *   - `marketing_attribution` read by `session_id`
+ *     (`getAttributionBySession`, `getUnclaimedAttribution`): keyed on the
+ *     visitor's own cookie, so it returns that visitor's row and no one
+ *     else's.
+ *   - lib/automation/campaign-revenue.ts. Its `marketing_attribution` read
+ *     is by session ids taken from `opportunities` and `contacts` rows
+ *     already filtered on `business_id`, so it is correct by construction,
+ *     and says so where it reads.
+ *   - the platform's own digests and content pipeline: content attribution
+ *     (lib/db/content-attribution.ts), the weekly report
+ *     (lib/analytics/weekly-report.ts), and the newsletter subscriber deltas
+ *     it and the Daily Brief read. They have the Daily Brief's shape
+ *     (above): one platform recipient, not a surface a second business
+ *     reaches.
+ *   - whole subsystems that are untenanted end to end: the blog, the website
+ *     CMS, money (payments, orders, subscriptions), analytics, the exercise
+ *     library, the client portal, and the social, SEO and AI tables. Each is
+ *     one decision, not a reader at a time, and ledger row G36 names them.
+ *     `system_settings` (platform flags) and `businesses` (the tenant
+ *     registry itself) are not a business's data at all.
+ *
+ * The entries:
+ *   - `getPrograms`, `getAllPrograms` and `getProgramById`
+ *     (lib/db/programs.ts) read `programs`. The programme list and the
+ *     programme page (app/(admin)/admin/programs/page.tsx,
+ *     app/(admin)/admin/programs/[id]/page.tsx) reach them through the
+ *     `programs` permission, which the Coach preset grants, and the
+ *     analytics page (app/(admin)/admin/analytics/page.tsx) through
+ *     `analytics`. A second business's coach sees every business's
+ *     programmes -- most of them private plans named after an athlete -- and
+ *     opens any of them by id. G37.
+ *   - `getAssignments` and `getAssignmentCountsByProgram`
+ *     (lib/db/assignments.ts) read `program_assignments`. The same programme
+ *     list: every business's assignments feed its counts and its completion
+ *     rate. G37.
+ *   - the copy-sources route's GET
+ *     (app/api/admin/programs/copy-sources/route.ts) reads `programs`,
+ *     `program_assignments` and `users`, behind `programs`. It returns every
+ *     active programme with each assignee's full name, so a coach reads
+ *     other businesses' client names. G37.
+ *   - `getClients` (lib/db/users.ts) reads `users`: the client ROSTER, not
+ *     an identity lookup. The assign picker on the programme page reaches
+ *     it (`programs`), and it skips the client scoping only the client pages
+ *     apply, so every business's clients are offered. G37.
+ *   - `listGrantablePrograms` (lib/db/pipeline.ts) reads `programs`. The
+ *     pipeline board (app/(admin)/admin/pipeline/page.tsx) and its grant
+ *     route (app/api/admin/pipeline/grant/route.ts) reach it through
+ *     `contacts`, which the Coach preset grants. MIXED SCOPE: the board is
+ *     the business's own, the programmes it offers are every business's, and
+ *     a grant hands one of them out. G37.
+ *   - `getContactDetail` (lib/db/contact-detail.ts), its payments leg, reads
+ *     `payments` by the contact's `user_id`. The contact record
+ *     (app/(admin)/admin/contacts/[id]/page.tsx) reaches it through
+ *     `contacts`. `linkContactsToUser` links one login into every business's
+ *     contact with that email, so a coach sees another business's payments
+ *     for a shared address. The read says so in place. G04.
+ *   - `loadCatalogues` (lib/funnels/sections/resolve.ts) reads `programs`
+ *     and `session_pack_products` through their DAL readers. The funnel
+ *     builder, both publish routes and both draft previews reach it through
+ *     `funnels`. A second business's builder offers the platform's
+ *     programmes and packs, and a page it publishes can sell them. Its FAQ
+ *     read is not an entry: that one consults this seam, on the NARROWER
+ *     VARIANT shelf. G31.
+ *   - the funnel checkout's POST (app/api/funnels/checkout/route.ts) reads
+ *     `programs` through `getProgramById`. Public; its tenant comes from the
+ *     Host. It checks only that the product id is a UUID with a price -- not
+ *     that it is one of the published page's offers, active, public, or this
+ *     business's -- and files the sale under the Host's business. G40.
+ *   - `findAttributionForContact` (lib/db/marketing-attribution.ts) reads
+ *     `marketing_attribution` by `user_id`. The Stripe webhook
+ *     (app/api/stripe/webhook/route.ts; one Stripe account for every
+ *     business) and the booking ingest (lib/bookings/ingest.ts; every
+ *     business's bookings) reach it. Once `linkContactsToUser` links one
+ *     login to two businesses' contacts, a click id captured on one
+ *     business's page attaches to the other's purchase or booking. G42.
+ *   - `getActiveSubscribers` and `getAllSubscribers` (lib/db/newsletter.ts)
+ *     read `newsletter_subscribers`: one list for every business. The
+ *     newsletter pages (app/(admin)/admin/newsletter/page.tsx,
+ *     app/(admin)/admin/newsletter/subscribers/page.tsx) reach them through
+ *     `blog`, which the Marketing Manager preset grants, and the analytics
+ *     page through `analytics`. The public subscribe route resolves a Host
+ *     tenant and then writes this list anyway, so a visitor who subscribed on
+ *     a coach's host is mailed by the platform's newsletter. G38.
+ *   - `getActiveDocument` (lib/db/legal-documents.ts) reads
+ *     `legal_documents`. Public surfaces that resolved a Host tenant reach
+ *     it: the funnel form (components/funnels/islands/FormIsland.tsx), the
+ *     camp and clinic pages (app/(marketing)/camps/page.tsx,
+ *     app/(marketing)/clinics/page.tsx, and each event's own page) and the
+ *     event signup and checkout. Every business's customers see, and record
+ *     their acceptance of, the platform's waiver. An owner and legal
+ *     decision before it is a code one. G43.
+ *   - `getLeadInquiryById` (lib/db/lead-inquiries.ts) reads `lead_inquiries`
+ *     by id alone. The regenerate-analysis route
+ *     (app/api/admin/leads/[id]/regenerate-analysis/route.ts) reaches it
+ *     through `leads`, which the Front Desk and Marketing Manager presets
+ *     grant, and returns the whole row. Reaching one needs its UUID, and no
+ *     list of these rows sits on a grantable surface. G45.
  */
 export function platformBusinessId(): string {
   return SINGLETON_BUSINESS_ID
