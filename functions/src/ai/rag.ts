@@ -96,7 +96,7 @@ async function doRetrieval(
       let avgRating: number | null = null
       try {
         const { data: feedback } = await supabase
-          .from("ai_feedback")
+          .from("ai_response_feedback")
           .select("accuracy_rating, relevance_rating, helpfulness_rating")
           .eq("conversation_message_id", match.id)
         if (feedback?.length) {
