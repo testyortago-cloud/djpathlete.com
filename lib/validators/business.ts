@@ -40,7 +40,15 @@ export const SMS_SENDER_PHONE_NOT_A_NUMBER =
 // surrounding text and drops an extension without a word, so
 // "+1 202 555 0123 ext. 5" would otherwise save as +12025550123. A "+" is
 // allowed once, at the start.
-const PHONE_CHARACTERS = /^\+?[\d\s().-]+$/
+//
+// The digits are the four sets libphonenumber reads (ASCII, fullwidth,
+// Arabic-Indic, Persian), so a coach on a Japanese or Arabic keyboard is not
+// told a correct number is "not a phone number"; the saved value is ASCII
+// E.164 either way. The FULLWIDTH PLUS (U+FF0B) is refused on purpose:
+// libphonenumber does not read it as "international" and falls back to
+// normalisePhone's US default, so "＋65 8123 4567" (Singapore) would save as
+// +16581234567, a Jamaican number.
+const PHONE_CHARACTERS = /^\+?[0-9０-９٠-٩۰-۹\s().-]+$/
 
 // Saved in E.164 because it is compared VERBATIM with the `To` Twilio posts on
 // every inbound text (getBusinessBySmsNumber in lib/db/businesses.ts), and

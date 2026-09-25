@@ -74,6 +74,7 @@ vi.mock("@/lib/email/sender-domains", async (importOriginal) => {
 })
 
 import { PATCH } from "@/app/api/admin/businesses/[id]/route"
+import { SMS_SENDER_PHONE_NEEDS_COUNTRY_CODE } from "@/lib/validators/business"
 
 function req(body: unknown) {
   return new Request("http://localhost/api/admin/businesses/x", {
@@ -308,7 +309,7 @@ describe("PATCH /api/admin/businesses/[id] -- sms_sender_phone (G33)", () => {
     const res = await patchPhone("(202) 555-0123")
     const body = await res.json()
     expect(res.status).toBe(400)
-    expect(JSON.stringify(body.issues)).toMatch(/country code/i)
+    expect(body.issues.map((i: { message: string }) => i.message)).toEqual([SMS_SENDER_PHONE_NEEDS_COUNTRY_CODE])
     expect(settingsCalls).toHaveLength(0)
   })
 
@@ -325,15 +326,41 @@ describe("PATCH /api/admin/businesses/[id] -- sms_sender_phone (G33)", () => {
     expect((settingsCalls[0].patch as { sms_sender_phone: string }).sms_sender_phone).toBe("")
   })
 
+  // What the clash carries on the wire: Postgres names the other row's key in
+  // `details`. Stamped onto the error here so the route HAS another tenant's
+  // identity it could leak, which is the only way the assertion below can fail.
+  const OTHER_TENANT = "other-tenant-7f3a"
+  function takenError() {
+    return Object.assign(new SmsSenderPhoneTakenError(), {
+      message: `sms_sender_phone +12025550123 is the sender number of business ${OTHER_TENANT}`,
+      details: `Key (sms_sender_phone)=(+12025550123) already exists on business ${OTHER_TENANT}.`,
+    })
+  }
+
   it("answers 409 with a reason, not a 500, when another business already sends from that number -- MUTANT: letting SmsSenderPhoneTakenError escape answers 500, and the form says 'try again', which never helps", async () => {
-    updateSettingsImpl = () => Promise.reject(new SmsSenderPhoneTakenError())
+    updateSettingsImpl = () => Promise.reject(takenError())
     const res = await patchPhone("+1 202 555 0123")
     const body = await res.json()
     expect(res.status).toBe(409)
     expect(body.error).toMatch(/another business/i)
     // Says THAT the number is taken, never WHOSE it is: the other business is
-    // another tenant.
-    expect(body.error).not.toMatch(/bbb|aaa/)
+    // another tenant. MUTANT: answering with err.message or err.details.
+    expect(JSON.stringify(body)).not.toContain(OTHER_TENANT)
+  })
+
+  it("does not claim NOTHING was saved when the business half of the same patch already was", async () => {
+    // The route writes `business` before `settings`, with no transaction
+    // around the two, so this body's status change is committed by the time
+    // the number clashes. MUTANT: the old wording, "Nothing was saved."
+    updateSettingsImpl = () => Promise.reject(takenError())
+    const res = await PATCH(req({ business: { status: "paused" }, settings: { sms_sender_phone: "+1 202 555 0123" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    const body = await res.json()
+    expect(res.status).toBe(409)
+    expect(businessCalls).toEqual([{ id: "bbb", patch: { status: "paused" } }])
+    expect(body.error).toMatch(/the settings were not saved/i)
+    expect(body.error).not.toMatch(/nothing was saved/i)
   })
 
   it("CONTROL: any other write failure still propagates, rather than being dressed up as a taken number", async () => {

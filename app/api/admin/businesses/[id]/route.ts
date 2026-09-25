@@ -131,11 +131,14 @@ export async function PATCH(request: Request, ctx: { params: Promise<Record<stri
     } catch (err) {
       // Reachable more often since G33 saves E.164: "+1 202 555 0123" and
       // "+12025550123" used to be two different strings to 00247's index.
+      //
+      // "The settings were not saved", NOT "nothing was saved": a body that
+      // also carries `business` has already had that half written above.
       if (err instanceof SmsSenderPhoneTakenError) {
         return NextResponse.json(
           {
             error:
-              "That sender phone number is already used by another business. Each business needs its own number. Nothing was saved.",
+              "That sender phone number is already used by another business. Each business needs its own number. The settings were not saved.",
           },
           { status: 409 },
         )

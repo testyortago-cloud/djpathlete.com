@@ -13,6 +13,7 @@ import userEvent from "@testing-library/user-event"
 import { toast } from "sonner"
 import { BusinessSettingsForm } from "@/components/admin/businesses/BusinessSettingsForm"
 import type { BusinessSettings } from "@/lib/db/businesses"
+import { SMS_SENDER_PHONE_NEEDS_COUNTRY_CODE } from "@/lib/validators/business"
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
@@ -103,10 +104,16 @@ describe("BusinessSettingsForm -- the sender phone number", () => {
     respondWith(200, { settings: SETTINGS })
     render(<BusinessSettingsForm businessId="bbb" settings={SETTINGS} />)
 
-    await userEvent.type(screen.getByLabelText("Sender phone number"), "(202) 555-0123")
+    const field = screen.getByLabelText("Sender phone number")
+    await userEvent.type(field, "(202) 555-0123")
     await userEvent.click(screen.getByRole("button", { name: /save/i }))
 
-    expect(await screen.findByText(/country code/i)).toBeInTheDocument()
+    // The error's OWN text. The hint under the field also says "country code",
+    // so a looser match was satisfied by the hint on a form that showed no
+    // error at all.
+    expect(await screen.findByText(SMS_SENDER_PHONE_NEEDS_COUNTRY_CODE)).toBeInTheDocument()
+    expect(field).toHaveAttribute("aria-invalid", "true")
+    expect(document.getElementById("sms-sender-phone-hint")).toBeNull()
     expect(vi.mocked(fetch)).not.toHaveBeenCalled()
     expect(toast.success).not.toHaveBeenCalled()
   })

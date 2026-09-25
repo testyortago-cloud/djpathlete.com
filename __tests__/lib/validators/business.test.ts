@@ -9,7 +9,11 @@
 // was used. Several numbers this repo's fakes use (+15550001111,
 // +15550101234) are NOT valid numbers to it, so they cannot stand in here.
 import { describe, it, expect } from "vitest"
-import { businessSettingsPatchSchema } from "@/lib/validators/business"
+import {
+  businessSettingsPatchSchema,
+  SMS_SENDER_PHONE_NEEDS_COUNTRY_CODE,
+  SMS_SENDER_PHONE_NOT_A_NUMBER,
+} from "@/lib/validators/business"
 
 function parsePhone(raw: string) {
   return businessSettingsPatchSchema.safeParse({ sms_sender_phone: raw })
@@ -45,10 +49,9 @@ describe("businessSettingsPatchSchema -- sms_sender_phone", () => {
       ["020 7946 0958"],
       ["00 44 20 7946 0958"],
     ])("refuses %j", (raw) => {
-      const message = refusalFor(raw)
-      expect(message).toMatch(/country code/i)
-      expect(message).toContain("+")
-      expect(message).toMatch(/Twilio/)
+      // The EXACT message. The not-a-number message also mentions "+", the
+      // country code and Twilio, so a looser match passed with either one.
+      expect(refusalFor(raw)).toBe(SMS_SENDER_PHONE_NEEDS_COUNTRY_CODE)
     })
   })
 
@@ -114,13 +117,45 @@ describe("businessSettingsPatchSchema -- sms_sender_phone", () => {
       ["+1 202 555 0123 ext. 5"],
       ["+1 202 555 0123x5"],
       ["tel:+12025550123"],
-      ["+1 202 555 0123​"],
+      // A trailing ZERO-WIDTH SPACE, written as an escape so it can be seen.
+      [`+1 202 555 0123${String.fromCharCode(0x200b)}`],
       // A "+" is allowed once, at the start. libphonenumber itself accepts a
       // trailing one as +12025550123.
       ["+12025550123+"],
       ["+1 202 +555 0123"],
     ])("refuses %j", (raw) => {
-      expect(refusalFor(raw)).toMatch(/not a phone number/i)
+      expect(refusalFor(raw)).toBe(SMS_SENDER_PHONE_NOT_A_NUMBER)
+    })
+
+    // The FULLWIDTH PLUS (U+FF0B) is refused even though libphonenumber lists
+    // it as a plus sign: it does not treat it as "international" and falls back
+    // to the US default, so this Singapore number would otherwise be saved as
+    // +16581234567, a valid JAMAICAN number (checked against libphonenumber).
+    it("refuses a fullwidth plus rather than filing the number under +1", () => {
+      expect(refusalFor(`${String.fromCharCode(0xff0b)}65 8123 4567`)).toBe(SMS_SENDER_PHONE_NOT_A_NUMBER)
+    })
+  })
+
+  describe("digits typed on a non-Latin keyboard are read, and saved as ASCII E.164", () => {
+    // libphonenumber reads these four digit sets. Refusing them told a coach on
+    // a Japanese (full-width) or Arabic keyboard that a correct number was
+    // "not a phone number". Built from code points so the fixtures are legible.
+    const digits = (zero: number) =>
+      "12025550123"
+        .split("")
+        .map((d) => String.fromCharCode(zero + Number(d)))
+        .join("")
+
+    it.each([
+      ["fullwidth", 0xff10],
+      ["Arabic-Indic", 0x0660],
+      ["Persian", 0x06f0],
+    ])("%s digits after an ASCII +", (_script, zero) => {
+      expect(savedAs(`+${digits(zero)}`)).toBe("+12025550123")
+    })
+
+    it("still requires the ASCII + : a national number in fullwidth digits gets the country-code message", () => {
+      expect(refusalFor(digits(0xff10).slice(1))).toBe(SMS_SENDER_PHONE_NEEDS_COUNTRY_CODE)
     })
   })
 })
