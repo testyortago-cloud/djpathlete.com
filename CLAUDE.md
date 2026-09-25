@@ -15,9 +15,24 @@ npm run test         # Vitest watch mode
 npm run test:run     # Vitest single run
 npm run test:coverage # Coverage report (v8)
 npm run test:e2e     # Playwright e2e (Chromium, Firefox, WebKit)
+npm run test:integration:selects # Every PostgREST select vs the dev clone's LIVE schema (~15s, read-only)
 ```
 
 Test files live in `__tests__/` with setup in `__tests__/setup.tsx`. E2E tests in `__tests__/e2e/`.
+
+**Run `npm run test:integration:selects` before every merge to `main`, and after applying a migration to the
+dev clone.** It is the only check that talks to a real PostgREST. Every DAL unit test mocks it, which is how
+G31 shipped an embed hint (`funnels:funnel_id`) that answered `PGRST200` and 500'd the leads inbox for every
+tenant while all of them passed. It collects every `.from(...).select(...)` in `lib`, `app`, `components`,
+`functions/src` and `render-worker/src`, with the `.order()` columns applied to it
+(`scripts/lib/collect-postgrest-selects.ts`), and runs each with `limit=0`. A fake cannot tell you a column
+is missing: G25's refund lookup ordered by one, and its unit fake stamped it on every row. It refuses any
+database but the dev clone. Two lists in the test file are ratchets, not allowlists: `KNOWN_REFUSED`
+(selects production code sends today that the schema refuses — each is a bug with its impact written down)
+and `KNOWN_UNRESOLVED` (orders it cannot trace through a helper, each with the table a human checked, which
+is probed too). A new entry in either fails the run, and so does an entry that has since been fixed. The
+GitHub workflow of the same name reruns it on push to `main`; that is a backstop, since it runs alongside the
+deploy, and it needs the `DEV_CLONE_SERVICE_ROLE_KEY` repository secret.
 
 ## Architecture
 

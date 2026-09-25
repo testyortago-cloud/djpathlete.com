@@ -349,9 +349,9 @@ async function resolveChargeAmendedPipelineKey(chargeId: string, businessId: str
   const supabase = getClient()
   const { data, error } = await supabase
     .from("opportunity_stage_events")
-    .select("opportunity_id, metadata, created_at")
+    .select("opportunity_id, metadata, occurred_at")
     .eq("business_id", businessId)
-    .order("created_at", { ascending: false })
+    .order("occurred_at", { ascending: false })
   if (error) throw error
 
   const priorOpportunityId = ((data ?? []) as Row[]).find((row) => {
