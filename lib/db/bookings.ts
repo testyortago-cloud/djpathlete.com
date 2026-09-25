@@ -28,28 +28,51 @@ export async function getBookings(businessId: string, status?: BookingStatus) {
   return data as Booking[]
 }
 
-export async function getUpcomingBookings() {
+/**
+ * One booking, IN THIS BUSINESS, or `null` (G35).
+ *
+ * `businessId` is REQUIRED and comes first. This read used to filter on `id`
+ * alone, and its only caller is `PATCH /api/admin/bookings`, which the
+ * grantable `schedule` permission reaches and which answers with the row's
+ * contact name, email and phone. A booking id from another business must
+ * read as absent, the same as an id that does not exist.
+ *
+ * `maybeSingle`, not `single`: "no such booking here" is an answer the route
+ * turns into a 404, not an error. `.single()` reported it as PGRST116, which
+ * the route could only answer with a 500. A real read failure still throws.
+ */
+export async function getBookingById(businessId: string, id: string): Promise<Booking | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("bookings")
     .select("*")
-    .eq("status", "scheduled")
-    .gte("booking_date", new Date().toISOString())
-    .order("booking_date", { ascending: true })
+    .eq("id", id)
+    .eq("business_id", businessId)
+    .maybeSingle()
 
   if (error) throw error
-  return data as Booking[]
+  return (data as Booking | null) ?? null
 }
 
-export async function getBookingById(id: string) {
-  const supabase = getClient()
-  const { data, error } = await supabase.from("bookings").select("*").eq("id", id).single()
-
-  if (error) throw error
-  return data as Booking
-}
-
-export async function updateBookingStatus(id: string, status: BookingStatus, notes?: string) {
+/**
+ * Sets one booking's status (and optionally its notes), IN THIS BUSINESS.
+ * Returns the updated row, or `null` when no booking with this id exists in
+ * this business (G35).
+ *
+ * The predicate is on the UPDATE itself, not only on the read the route makes
+ * before it: a read-then-write where only the read is scoped is a check, and
+ * the write is where the damage happens. `.select().maybeSingle()` because
+ * PostgREST reports no error for an UPDATE that matches zero rows (the same
+ * reasoning as `updatePipelineBoard` in lib/db/pipeline.ts): `data` null with
+ * no `error` is exactly the foreign-or-missing case, and the caller must be
+ * able to tell it from a success.
+ */
+export async function updateBookingStatus(
+  businessId: string,
+  id: string,
+  status: BookingStatus,
+  notes?: string,
+): Promise<Booking | null> {
   const supabase = getClient()
   const updates: Record<string, unknown> = {
     status,
@@ -57,10 +80,16 @@ export async function updateBookingStatus(id: string, status: BookingStatus, not
   }
   if (notes !== undefined) updates.notes = notes
 
-  const { data, error } = await supabase.from("bookings").update(updates).eq("id", id).select().single()
+  const { data, error } = await supabase
+    .from("bookings")
+    .update(updates)
+    .eq("id", id)
+    .eq("business_id", businessId)
+    .select()
+    .maybeSingle()
 
   if (error) throw error
-  return data as Booking
+  return (data as Booking | null) ?? null
 }
 
 /**
@@ -103,11 +132,20 @@ export async function getBookingStats(businessId: string) {
   }
 }
 
-export async function getBookingsInRange(from: Date, to: Date): Promise<Booking[]> {
+/**
+ * Bookings whose `booking_date` falls in `[from, to)`, IN THIS BUSINESS.
+ *
+ * `businessId` is REQUIRED and comes first (G35). This read had no business
+ * predicate, so the Daily Brief's "calls today" listed every business's
+ * calls, by the booker's name, in an email sent to the platform's coach —
+ * while the signup count beside it in the same section was already scoped.
+ */
+export async function getBookingsInRange(businessId: string, from: Date, to: Date): Promise<Booking[]> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("bookings")
     .select("*")
+    .eq("business_id", businessId)
     .gte("booking_date", from.toISOString())
     .lt("booking_date", to.toISOString())
     .order("booking_date", { ascending: true })
