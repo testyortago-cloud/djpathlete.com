@@ -29,8 +29,9 @@
 // working in the caller's favour.
 //
 // ---------------------------------------------------------------------------
-// NOTHING BELOW MAY 500. Six failure paths, each one a real defect found by
-// review in an earlier stage:
+// NOTHING BELOW MAY 500 WITH NO BODY. Six failure paths inside an actual turn,
+// each one a real defect found by review in an earlier stage, degrade rather
+// than failing the turn at all:
 //
 //   (a) `applyOps` SEMANTIC errors feed the auto-retry, not just Zod errors.
 //   (b) `docInvalid` is refused, never overwritten.
@@ -44,6 +45,15 @@
 //       revoked staff membership or a `business_settings` read failure
 //       degrades to `null` (today's host-site-colours behaviour) rather than
 //       failing the turn, same shape as (d).
+//
+// ONE GATE, BEFORE ANY OF THE SIX, IS ALLOWED TO FAIL THE REQUEST: resolving
+// `businessId` (below), because `getDraft`/`getStep` and everything after them
+// cannot run without one. A `NoAccessibleBusinessError` is a real refusal
+// (403); anything else (a transient resolve failure) is this route's own
+// `NextResponse.json(..., { status: 500 })` — the same shape as the catch at
+// the bottom of this function. It must NEVER be a bare `throw`: `withAudit`
+// rethrows whatever it is handed, and on a streaming route an opaque Next 500
+// with no JSON body is indistinguishable from a hang.
 // ---------------------------------------------------------------------------
 //
 // ---------------------------------------------------------------------------
@@ -91,7 +101,7 @@ import { applyOps, type DiffReceipt, type SectionOp } from "@/lib/funnels/sectio
 import { reassemble } from "@/lib/funnels/sections/doc"
 import type { BrandKit } from "@/lib/funnels/sections/render"
 import { resolveBrandKit } from "@/lib/funnels/brand-kit"
-import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import {
   buildResultSchema,
@@ -333,9 +343,11 @@ function compileStatus(compile: CompileSummary): "ok" | "warnings" | "failed" {
  * proceeds without a catalogue: Block B advertises nothing, resolution is
  * skipped, and the reason is reported back verbatim.
  */
-async function loadCataloguesSafely(): Promise<{ catalogues: Catalogues | null; error: string | null }> {
+async function loadCataloguesSafely(
+  businessId: string,
+): Promise<{ catalogues: Catalogues | null; error: string | null }> {
   try {
-    return { catalogues: await loadCatalogues(), error: null }
+    return { catalogues: await loadCatalogues(businessId), error: null }
   } catch (error) {
     console.error("[funnels/build] catalogue load failed — continuing without it:", error)
     return { catalogues: null, error: (error as Error).message }
@@ -344,17 +356,21 @@ async function loadCataloguesSafely(): Promise<{ catalogues: Catalogues | null; 
 
 /**
  * The tenant's brand kit, for `reassemble`'s palette default. Wrapped exactly
- * like `loadCataloguesSafely` above: this is a NEW dependency on a route whose
- * whole contract is that nothing in it may 500, and neither a business-id
- * resolution failure (no accessible business — e.g. a staff account whose
- * membership was revoked mid-session) nor a `business_settings` read failure
- * may take the turn down. `null` degrades to today's behaviour: the page
- * renders with the host site's own colours, which is what happens regardless
- * of whether a tenant or a brand kit could be resolved.
+ * like `loadCataloguesSafely` above: a `business_settings` read failure must
+ * cost only the palette, never the turn.
+ *
+ * Takes the `businessId` the handler already resolved at its own hard gate
+ * (`POST`, above) rather than re-resolving it from the request — the same
+ * reuse `publish-actions.ts` makes for the same reason: both this read and
+ * `getFunnelById`/`listSteps` in `loadPageContext` below need the same
+ * tenant, resolved once. Before that gate existed, this was the ONLY caller
+ * of `resolveAdminTenantForRequest` on this route, so it resolved its own; a
+ * business-id resolution failure now surfaces at the gate (403 or this
+ * route's own 500), and by the time this runs `businessId` is always a real,
+ * already-authorized value.
  */
-async function loadBrandKitSafely(request: Request): Promise<BrandKit | null> {
+async function loadBrandKitSafely(businessId: string): Promise<BrandKit | null> {
   try {
-    const { businessId } = await resolveAdminTenantForRequest(request)
     return await resolveBrandKit(businessId)
   } catch (error) {
     console.error("[funnels/build] brand kit read failed — continuing without it:", error)
@@ -489,8 +505,8 @@ interface PageContext {
   brandKit: BrandKit | null
 }
 
-async function loadPageContext(funnelId: string, thisStepSlug: string, request: Request): Promise<PageContext> {
-  const brandKit = await loadBrandKitSafely(request)
+async function loadPageContext(businessId: string, funnelId: string, thisStepSlug: string): Promise<PageContext> {
+  const brandKit = await loadBrandKitSafely(businessId)
 
   // Degrades rather than throws: none of this is correctness-critical (a
   // missing base path makes a step CTA a disabled placeholder, a missing slug
@@ -498,8 +514,8 @@ async function loadPageContext(funnelId: string, thisStepSlug: string, request: 
   // failed FAQ count would be an absurd way to lose a page edit.
   try {
     const [funnel, steps, faqCounts] = await Promise.all([
-      getFunnelById(funnelId),
-      listSteps(funnelId),
+      getFunnelById(businessId, funnelId),
+      listSteps(businessId, funnelId),
       getFaqCountsByPage(),
     ])
     // BY POSITION, not by the order the rows arrived. `listSteps` already
@@ -550,9 +566,9 @@ function toHistory(turns: Awaited<ReturnType<typeof listTurns>>): BuilderTurn[] 
     .map((turn) => ({ role: turn.role === "user" ? ("owner" as const) : ("builder" as const), text: turn.message }))
 }
 
-async function loadHistorySafely(stepId: string): Promise<BuilderTurn[]> {
+async function loadHistorySafely(businessId: string, stepId: string): Promise<BuilderTurn[]> {
   try {
-    return toHistory(await listTurns(stepId))
+    return toHistory(await listTurns(businessId, stepId))
   } catch (error) {
     console.error("[funnels/build] transcript read failed — continuing without history:", error)
     return []
@@ -593,6 +609,22 @@ export const POST = withAudit(
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
+
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      // A transient resolution failure (a DB blip, not "no access") — refusing
+      // is right, but `throw err` here would let `withAudit` rethrow it past
+      // this handler, past `NextResponse`, into Next's own opaque 500 with no
+      // JSON body. Same shape as the catch at the bottom of this function.
+      console.error("[POST /api/admin/funnels/steps/:stepId/build] tenant resolution failed", err)
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    }
+
     const userId = session.user.id
     const { stepId } = await ctx.params
 
@@ -610,27 +642,28 @@ export const POST = withAudit(
     }
 
     try {
-      const [draft, step] = await Promise.all([getDraft(stepId), getStep(stepId)])
+      const [draft, step] = await Promise.all([getDraft(businessId, stepId), getStep(businessId, stepId)])
       if (!draft || !step) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
       if (parsed.data.action === "reset") {
-        return await handleReset(stepId, step.funnel_id, step.slug, parsed.data.toRevision, userId, request)
+        return await handleReset(businessId, stepId, step.funnel_id, step.slug, parsed.data.toRevision, userId)
       }
 
       if (parsed.data.action === "polish") {
         return await handlePolish({
+          businessId,
           stepId,
           funnelId: step.funnel_id,
           stepSlug: step.slug,
           draft,
           expectedRevision: parsed.data.revision,
           userId,
-          request,
         })
       }
 
       if (parsed.data.action === "apply_polish") {
         return await handleApplyPolish({
+          businessId,
           stepId,
           funnelId: step.funnel_id,
           stepSlug: step.slug,
@@ -638,11 +671,11 @@ export const POST = withAudit(
           expectedRevision: parsed.data.revision,
           ops: parsed.data.ops,
           userId,
-          request,
         })
       }
 
       return await handleBuild({
+        businessId,
         stepId,
         funnelId: step.funnel_id,
         stepSlug: step.slug,
@@ -651,7 +684,6 @@ export const POST = withAudit(
         expectedRevision: parsed.data.revision,
         referenceImage: parsed.data.image,
         userId,
-        request,
       })
     } catch (error) {
       console.error("[POST /api/admin/funnels/steps/:stepId/build]", error)
@@ -665,14 +697,14 @@ export const POST = withAudit(
 // ---------------------------------------------------------------------------
 
 async function handleReset(
+  businessId: string,
   stepId: string,
   funnelId: string,
   stepSlug: string,
   toRevision: number,
   userId: string,
-  request: Request,
 ): Promise<Response> {
-  const result = await revertToRevision({ stepId, toRevision, createdBy: userId })
+  const result = await revertToRevision(businessId, { stepId, toRevision, createdBy: userId })
   if (!result.ok) {
     if (result.reason === "stale_revision") {
       return NextResponse.json(
@@ -694,14 +726,14 @@ async function handleReset(
   }
 
   const restored = result.turn.doc as SectionDoc
-  const context = await loadPageContext(funnelId, stepSlug, request)
+  const context = await loadPageContext(businessId, funnelId, stepSlug)
 
   // RE-RESOLVED, not read off the restored turn row. `revertToRevision` copies
   // that turn's `unresolved` forward as a display cache computed against the
   // catalogue AS IT WAS then — its own comment calls that out and says the
   // route must re-resolve. A program deleted since would otherwise have the
   // chat tell the owner a page is publishable when it is not.
-  const { catalogues, error: catalogueError } = await loadCataloguesSafely()
+  const { catalogues, error: catalogueError } = await loadCataloguesSafely(businessId)
   const resolution = resolveSafely(restored, catalogues, catalogueError, context.allPages)
   const compile = compileDoc(resolution.doc, context.funnelBasePath, context.brandKit)
 
@@ -737,6 +769,7 @@ async function handleReset(
 // ---------------------------------------------------------------------------
 
 interface ApplyPolishArgs {
+  businessId: string
   stepId: string
   funnelId: string
   stepSlug: string
@@ -744,11 +777,10 @@ interface ApplyPolishArgs {
   expectedRevision: number
   ops: SectionOp[]
   userId: string
-  request: Request
 }
 
 async function handleApplyPolish(args: ApplyPolishArgs): Promise<Response> {
-  const { stepId, funnelId, stepSlug, draft, expectedRevision, ops, userId, request } = args
+  const { businessId, stepId, funnelId, stepSlug, draft, expectedRevision, ops, userId } = args
 
   // Same refusal as the build path, for the same reason: a document no op can
   // repair cannot be polished either, and `applyOps` would reject it at its
@@ -794,12 +826,12 @@ async function handleApplyPolish(args: ApplyPolishArgs): Promise<Response> {
     )
   }
 
-  const context = await loadPageContext(funnelId, stepSlug, request)
-  const { catalogues, error: catalogueError } = await loadCataloguesSafely()
+  const context = await loadPageContext(businessId, funnelId, stepSlug)
+  const { catalogues, error: catalogueError } = await loadCataloguesSafely(businessId)
   const resolution = resolveSafely(applied.doc, catalogues, catalogueError, context.allPages)
   const compile = compileDoc(resolution.doc, context.funnelBasePath, context.brandKit)
 
-  const turn = await appendTurn({
+  const turn = await appendTurn(businessId, {
     stepId,
     expectedRevision,
     role: "assistant",
@@ -871,6 +903,7 @@ function applyPolishMessage(opCount: number): string {
 // ---------------------------------------------------------------------------
 
 interface BuildArgs {
+  businessId: string
   stepId: string
   funnelId: string
   stepSlug: string
@@ -878,7 +911,6 @@ interface BuildArgs {
   message: string
   expectedRevision: number
   userId: string
-  request: Request
   /**
    * A pasted reference design, this turn only — see `buildMessageRequestSchema`
    * in `lib/validators/funnel.ts`. Threaded to `streamAgent` and nowhere else:
@@ -893,9 +925,9 @@ interface BuildArgs {
  * holds nothing restorable, which is the honest answer for a step whose only
  * document was always the invalid one.
  */
-async function lastGoodRevision(stepId: string): Promise<number | null> {
+async function lastGoodRevision(businessId: string, stepId: string): Promise<number | null> {
   try {
-    const turns = await listTurns(stepId)
+    const turns = await listTurns(businessId, stepId)
     for (let i = turns.length - 1; i >= 0; i--) {
       const turn = turns[i]
       if (turn.doc === null || turn.doc === undefined) continue
@@ -1039,21 +1071,21 @@ function streamingResponse(run: (emit: (event: BuildStreamEvent) => void) => Pro
 // ---------------------------------------------------------------------------
 
 interface PolishArgs {
+  businessId: string
   stepId: string
   funnelId: string
   stepSlug: string
   draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>
   expectedRevision: number
   userId: string
-  request: Request
 }
 
 async function handlePolish(args: PolishArgs): Promise<Response> {
-  const { stepId, funnelId, stepSlug, draft, expectedRevision, userId, request } = args
+  const { businessId, stepId, funnelId, stepSlug, draft, expectedRevision, userId } = args
   const startTime = Date.now()
 
   if (draft.docInvalid) {
-    const resetToRevision = await lastGoodRevision(stepId)
+    const resetToRevision = await lastGoodRevision(businessId, stepId)
     return NextResponse.json(
       {
         error:
@@ -1100,8 +1132,8 @@ async function handlePolish(args: PolishArgs): Promise<Response> {
   }
 
   const [context, catalogueLoad] = await Promise.all([
-    loadPageContext(funnelId, stepSlug, request),
-    loadCataloguesSafely(),
+    loadPageContext(businessId, funnelId, stepSlug),
+    loadCataloguesSafely(businessId),
   ])
   const { catalogues, error: catalogueError } = catalogueLoad
   const doc = draft.doc
@@ -1112,6 +1144,7 @@ async function handlePolish(args: PolishArgs): Promise<Response> {
   return streamingResponse((emit) =>
     runReviewStage({
       emit,
+      businessId,
       stepId,
       userId,
       doc,
@@ -1129,7 +1162,7 @@ async function handlePolish(args: PolishArgs): Promise<Response> {
 }
 
 async function handleBuild(args: BuildArgs): Promise<Response> {
-  const { stepId, funnelId, stepSlug, draft, message, expectedRevision, userId, request, referenceImage } = args
+  const { businessId, stepId, funnelId, stepSlug, draft, message, expectedRevision, userId, referenceImage } = args
 
   // (b) REFUSE, NEVER OVERWRITE. `project_data` holds something that is not a
   // `SectionDoc`: legacy GrapesJS state, corruption, or a document the
@@ -1143,7 +1176,7 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
   // rejection happens before any op is inspected — arrives here as
   // `docInvalid` too. One branch, one refusal, one way back.
   if (draft.docInvalid) {
-    const resetToRevision = await lastGoodRevision(stepId)
+    const resetToRevision = await lastGoodRevision(businessId, stepId)
     return NextResponse.json(
       {
         error:
@@ -1178,9 +1211,9 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
   const baseDoc = draft.doc ?? seedDoc()
 
   const [context, history, catalogueLoad] = await Promise.all([
-    loadPageContext(funnelId, stepSlug, request),
-    loadHistorySafely(stepId),
-    loadCataloguesSafely(),
+    loadPageContext(businessId, funnelId, stepSlug),
+    loadHistorySafely(businessId, stepId),
+    loadCataloguesSafely(businessId),
   ])
   const { catalogues, error: catalogueError } = catalogueLoad
 
@@ -1188,7 +1221,7 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
   // transcript is honest even about turns that then failed — and so this
   // request's write-side lock check happens before the model call rather than
   // after it. A `stale_revision` here is a 409 and nothing has been spent.
-  const userTurn = await appendTurn({
+  const userTurn = await appendTurn(businessId, {
     stepId,
     expectedRevision,
     role: "user",
@@ -1232,6 +1265,7 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
   return streamingResponse((emit) =>
     runTurn({
       emit,
+      businessId,
       stepId,
       userId,
       draft,
@@ -1376,6 +1410,7 @@ async function streamOneAttempt(opts: {
 
 interface TurnRunArgs {
   emit: (event: BuildStreamEvent) => void
+  businessId: string
   stepId: string
   userId: string
   draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>
@@ -1407,6 +1442,7 @@ interface TurnRunArgs {
 async function runTurn(args: TurnRunArgs): Promise<void> {
   const {
     emit,
+    businessId,
     stepId,
     userId,
     draft,
@@ -1594,7 +1630,7 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
       }).catch(() => {})
     }
 
-    const failedTurn = await appendTurn({
+    const failedTurn = await appendTurn(businessId, {
       stepId,
       expectedRevision: revisionAfterUserTurn,
       role: "assistant",
@@ -1640,7 +1676,7 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
       }).catch(() => {})
     }
 
-    const blockedTurn = await appendTurn({
+    const blockedTurn = await appendTurn(businessId, {
       stepId,
       expectedRevision: revisionAfterUserTurn,
       role: "assistant",
@@ -1703,7 +1739,7 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
   // A page that does not compile is still SAVED. This is a draft, not a
   // publish: the publish route is the gate, and refusing to save would leave
   // the owner with no way to iterate towards a page that does compile.
-  const assistantTurn = await appendTurn({
+  const assistantTurn = await appendTurn(businessId, {
     stepId,
     expectedRevision: revisionAfterUserTurn,
     role: "assistant",
@@ -1759,6 +1795,7 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
 
   await runReviewStage({
     emit,
+    businessId,
     stepId,
     userId,
     doc: resolution.doc,
@@ -1794,6 +1831,7 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
 
 interface ReviewStageArgs {
   emit: (event: BuildStreamEvent) => void
+  businessId: string
   stepId: string
   userId: string
   /** The document as it stands, already resolved and stored. */
@@ -1832,7 +1870,8 @@ interface ReviewStageArgs {
 }
 
 async function runReviewStage(args: ReviewStageArgs): Promise<void> {
-  const { emit, stepId, userId, doc, baseRevision, context, catalogues, catalogueError, startTime, mode } = args
+  const { emit, businessId, stepId, userId, doc, baseRevision, context, catalogues, catalogueError, startTime, mode } =
+    args
 
   const reviewStartedAt = Date.now()
   emit({ type: "phase", phase: "reviewing" })
@@ -1930,7 +1969,7 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
     return
   }
 
-  const reviewTurn = await appendTurn({
+  const reviewTurn = await appendTurn(businessId, {
     stepId,
     expectedRevision: baseRevision,
     role: "assistant",

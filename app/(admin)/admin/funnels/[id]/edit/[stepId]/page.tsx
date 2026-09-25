@@ -83,6 +83,7 @@ interface InitialState {
  * `compileDoc` from the route and calling it from both sides.
  */
 async function resolveAndCompile(
+  businessId: string,
   doc: SectionDoc,
   funnelBasePath: string,
   // `null` means the page list could not be read, which `resolveDoc` treats as
@@ -102,7 +103,7 @@ async function resolveAndCompile(
   let resolutionError: string | null = null
 
   try {
-    const catalogues = await loadCatalogues()
+    const catalogues = await loadCatalogues(businessId)
     // `resolveDoc` THROWS rather than reporting a clean empty list over a
     // corrupt document, precisely so a caller cannot accidentally unblock
     // publish. Catching it and saying "not checked" honours that; swallowing
@@ -160,7 +161,8 @@ export async function FunnelBuilderScreen({
   start?: string | string[]
   base: "pages" | "funnels"
 }) {
-  const [funnel, step] = await Promise.all([getFunnelById(id), getStep(stepId)])
+  const { businessId } = await resolveAdminTenant()
+  const [funnel, step] = await Promise.all([getFunnelById(businessId, id), getStep(businessId, stepId)])
   if (!funnel || !step || step.funnel_id !== funnel.id) notFound()
 
   const correctBase = funnel.kind === "page" ? "pages" : "funnels"
@@ -174,13 +176,13 @@ export async function FunnelBuilderScreen({
   // be listed costs the owner their history, not their page. The same goes for
   // the live version number, which is a label — the editor opens without it.
   const [draft, turns, publishedVersion, pages, brandKit] = await Promise.all([
-    getDraft(stepId),
-    listTurns(stepId).catch((error) => {
+    getDraft(businessId, stepId),
+    listTurns(businessId, stepId).catch((error) => {
       console.error("[funnels/edit] transcript read failed — opening without history:", error)
       return []
     }),
     step.published_version_id
-      ? getVersionNumber(step.published_version_id).catch((error) => {
+      ? getVersionNumber(businessId, step.published_version_id).catch((error) => {
           console.error("[funnels/edit] could not read the live version number:", error)
           return null
         })
@@ -188,7 +190,7 @@ export async function FunnelBuilderScreen({
     // `null` on failure, NOT `[]` — see `resolveDoc`. An empty list would say
     // "this funnel has no pages" and report every step link on the screen as
     // broken; `null` says "not checked", which is what actually happened.
-    listSteps(funnel.id)
+    listSteps(businessId, funnel.id)
       .then((rows) => rows.map((row) => ({ slug: row.slug, name: row.name })))
       .catch((error) => {
         console.error("[funnels/edit] could not read the page list — links unchecked:", error)
@@ -196,20 +198,20 @@ export async function FunnelBuilderScreen({
       }),
     // The tenant's brand kit, for `reassemble`'s palette default -- same
     // wiring as the build route and both draft previews, so this editor's
-    // compile status agrees with what the owner sees elsewhere. A resolution
-    // or `business_settings` failure costs only the palette default, exactly
-    // like every other read in this list.
-    resolveAdminTenant()
-      .then(({ businessId }) => resolveBrandKit(businessId))
-      .catch((error) => {
-        console.error("[funnels/edit] brand kit read failed — continuing without it:", error)
-        return null
-      }),
+    // compile status agrees with what the owner sees elsewhere. Already
+    // resolved above (both this read and `getFunnelById`/`getStep` need the
+    // same tenant), so this is a `business_settings` read only — a failure
+    // costs only the palette default, exactly like every other read in this
+    // list.
+    resolveBrandKit(businessId).catch((error) => {
+      console.error("[funnels/edit] brand kit read failed — continuing without it:", error)
+      return null
+    }),
   ])
   if (!draft) notFound()
 
   const initial: InitialState = draft.doc
-    ? await resolveAndCompile(draft.doc, funnelBasePath, pages, brandKit)
+    ? await resolveAndCompile(businessId, draft.doc, funnelBasePath, pages, brandKit)
     : { doc: null, unresolved: [], danglingAnchors: [], compile: null, resolutionError: null }
 
   // WHICH TURNS CAN BE GONE BACK TO: the ones whose stored document still
@@ -300,7 +302,7 @@ export async function FunnelBuilderScreen({
     ? creationPrompt(
         funnel,
         step,
-        await listSteps(funnel.id).catch((error) => {
+        await listSteps(businessId, funnel.id).catch((error) => {
           // Losing the sequence context costs the prompt one line. Losing the
           // editor costs the owner their page.
           console.error("[funnels/edit] could not read sibling steps for the first draft:", error)

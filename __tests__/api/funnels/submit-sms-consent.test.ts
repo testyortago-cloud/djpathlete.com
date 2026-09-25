@@ -229,8 +229,9 @@ describe("POST /api/funnels/submit — funnel status gate (audit §3.6)", () => 
     expect(await res.json()).toEqual({ error: "This page is no longer live." })
     expect(createSubmission).not.toHaveBeenCalled()
     // Presence control: this isn't "the mock happened to return nothing" —
-    // getFunnelById really was called, with the id off the request body.
-    expect(getFunnelById).toHaveBeenCalledWith(FUNNEL_ID)
+    // getFunnelById really was called, with the tenant resolved from the
+    // Host and the id off the request body.
+    expect(getFunnelById).toHaveBeenCalledWith("host-biz", FUNNEL_ID)
   })
 })
 

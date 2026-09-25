@@ -26,7 +26,7 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-import { addBusinessMember } from "@/lib/db/business-members"
+import { addBusinessMember, isBusinessMember } from "@/lib/db/business-members"
 
 beforeEach(() => {
   eqCalls.length = 0
@@ -62,5 +62,32 @@ describe("addBusinessMember", () => {
   it("throws when the existence read fails — a failed read is not 'no row'", async () => {
     existingError = { code: "42P01", message: "no such table" }
     await expect(addBusinessMember("bbb", "u9", "coach")).rejects.toThrow(/42P01|no such table/)
+  })
+})
+
+// Written for the `/go/<slug>?preview=1` escalation (fix wave item 2): a
+// staff session's global `role` cannot answer whether THIS caller may see
+// THIS tenant's unpublished funnel, only whether they hold a business_members
+// row on it.
+describe("isBusinessMember", () => {
+  it("is true when a business_members row exists for that exact pair", async () => {
+    existingRow = { business_id: "bbb", user_id: "u9", role: "staff" }
+    expect(await isBusinessMember("bbb", "u9")).toBe(true)
+    expect(eqCalls).toContainEqual(["business_id", "bbb"])
+    expect(eqCalls).toContainEqual(["user_id", "u9"])
+  })
+
+  it("is false — the permissive control — when no row exists", async () => {
+    // Without this control, a stubbed-true membership check would pass the
+    // test above and every refusal this function is meant to back.
+    existingRow = null
+    expect(await isBusinessMember("bbb", "u9")).toBe(false)
+  })
+
+  it("throws when the read fails — a failed read is not 'not a member'", async () => {
+    // The CALLER (the /go page) is what decides to fail closed on this; the
+    // DAL function itself must not silently launder an error into "false".
+    existingError = { code: "42P01", message: "no such table" }
+    await expect(isBusinessMember("bbb", "u9")).rejects.toThrow(/42P01|no such table/)
   })
 })

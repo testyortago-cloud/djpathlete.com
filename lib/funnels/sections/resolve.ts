@@ -140,7 +140,6 @@ import {
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
 import { getQuizDefinition, listQuizzes } from "@/lib/db/quizzes"
 import { quizGate } from "@/lib/quizzes/gate"
-import { platformBusinessId } from "@/lib/tenancy/platform"
 // The FAQ page keys that actually have rows. Not a CTA and not a uuid, but the
 // same failure class — see `UnknownFaqKey` below.
 import { getFaqCountsByPage } from "@/lib/db/faqs"
@@ -308,9 +307,10 @@ export function toCatalogue({ programs, sessionPacks, events }: CatalogueRows): 
       priced: typeof row.stripe_price_id === "string" && row.stripe_price_id.length > 0,
       // `>=`, not `>`. The 12th signup of a 12-place camp fills it, and a strict
       // comparison would sell a 13th place for the webhook to refund.
-      soldOut: typeof row.capacity === "number" && typeof row.signup_count === "number"
-        ? row.signup_count >= row.capacity
-        : false,
+      soldOut:
+        typeof row.capacity === "number" && typeof row.signup_count === "number"
+          ? row.signup_count >= row.capacity
+          : false,
     })),
   }
 }
@@ -485,29 +485,34 @@ function unionCatalogues(recognition: Catalogue, offer: Catalogue): Catalogue {
  * message (it names the table and the fix) rather than letting it become an
  * unhandled 500.
  */
-export async function loadCatalogues(): Promise<Catalogues> {
-  const [allPrograms, offerPrograms, allPacks, offerPacks, allEvents, offerEvents, faqCounts] =
-    await Promise.all([
-      listAllPrograms(),
-      listActivePrograms(),
-      listAllSessionPackProducts(),
-      listActiveSessionPackProducts(),
-      // `{}` is not a stray argument: `getEvents` filters status only when a
-      // status filter is present, so this is deliberately "every event, ever".
-      // `platformBusinessId()` — the same frozen seam `listQuizzes` below
-      // already uses; see that call's comment for why this whole builder
-      // subsystem is not part of this phase's conversion.
-      getEvents(platformBusinessId(), {}),
-      // No second argument: the `from: new Date()` default IS the offer bound.
-      // Passing an epoch here would silently widen the picker back to every
-      // event that ever ran, which is the mutant the offer-side test kills.
-      getPublishedEvents(platformBusinessId()),
-      // One lightweight `select page_key` — the same read the admin FAQ picker
-      // uses. Counts across EVERY status on purpose: a page key whose rows are
-      // all drafts is still a real key, and the live island filters by status
-      // itself. What must never happen is the model inventing a key.
-      getFaqCountsByPage(),
-    ])
+export async function loadCatalogues(businessId: string): Promise<Catalogues> {
+  const [allPrograms, offerPrograms, allPacks, offerPacks, allEvents, offerEvents, faqCounts] = await Promise.all([
+    // `programs` has no `business_id` column at all -- unconverted, not
+    // frozen. There is no per-tenant predicate to add without inventing a
+    // column this table does not have.
+    listAllPrograms(),
+    listActivePrograms(),
+    // `session_pack_products` has no `business_id` column either, for the
+    // same reason as the programs pair above.
+    listAllSessionPackProducts(),
+    listActiveSessionPackProducts(),
+    // `{}` is not a stray argument: `getEvents` filters status only when a
+    // status filter is present, so this is deliberately "every event, ever
+    // this tenant owns".
+    getEvents(businessId, {}),
+    // No second argument beyond the tenant: the `from: new Date()` default
+    // IS the offer bound. Passing an epoch here would silently widen the
+    // picker back to every event that ever ran, which is the mutant the
+    // offer-side test kills.
+    getPublishedEvents(businessId),
+    // One lightweight `select page_key` — the same read the admin FAQ picker
+    // uses. Counts across EVERY status on purpose: a page key whose rows are
+    // all drafts is still a real key, and the live island filters by status
+    // itself. What must never happen is the model inventing a key.
+    // `faqs` has no `business_id` column either -- same as programs and
+    // session packs above, not this seam's to invent.
+    getFaqCountsByPage(),
+  ])
 
   // The completeness contract for recognition, checked before either set is
   // assembled — see `assertNotTruncated`. Only the three RECOGNITION reads are
@@ -528,21 +533,7 @@ export async function loadCatalogues(): Promise<Catalogues> {
   // could matter — running them to produce a reason nobody will read would
   // make every builder turn slower for nothing. Concurrent, like the reads
   // above, so this adds one round trip rather than one per quiz.
-  // PLATFORM SEAM, NOT A RESOLUTION. `loadCatalogues` backs the AI page
-  // builder's whole call graph (build/publish/plan routes, the funnel editor
-  // page, and the shared draft-preview renderer) -- none of which is in this
-  // phase's declared conversion list (docs/superpowers/plans/2026-09-03-
-  // calendly-per-coach-phase1-multi-coach-ops.md's Task 8 touches quizzes.ts
-  // and its admin quiz pages/routes only). Threading a real per-request
-  // businessId through here would mean re-scoping that entire builder
-  // subsystem as a side effect of a DAL signature change, which is its own
-  // task. `platformBusinessId()` keeps today's behaviour byte-identical --
-  // `listQuizzes` never hard-coded anything; it took NO businessId argument
-  // at all and read every business's quizzes. It is byte-identical only
-  // because there is exactly one business's worth of quizzes to read today --
-  // and stays one greppable line for whichever task gives the builder a real
-  // tenant.
-  const quizRows = await listQuizzes(platformBusinessId())
+  const quizRows = await listQuizzes(businessId)
   const gated = await Promise.all(
     quizRows.map(async (row): Promise<QuizCatalogueEntry> => {
       if (row.status !== "active") return { id: row.id, status: row.status, gateBlocker: null }
@@ -553,7 +544,11 @@ export async function loadCatalogues(): Promise<Catalogues> {
       // answers into nothing.
       if (!definition) return { id: row.id, status: row.status, gateBlocker: "the quiz could not be read" }
       const gate = quizGate(definition)
-      return { id: row.id, status: row.status, gateBlocker: gate.ok ? null : (gate.blockers[0] ?? "it failed its checks") }
+      return {
+        id: row.id,
+        status: row.status,
+        gateBlocker: gate.ok ? null : (gate.blockers[0] ?? "it failed its checks"),
+      }
     }),
   )
   const quizzes: QuizCatalogueEntry[] = gated
@@ -1130,11 +1125,7 @@ function transformNode(value: unknown, path: string, visit: CtaVisitor): unknown
  * skipping the check. Every call site therefore has to say which of the two it
  * means — and the publish route is the one that may never say `null`.
  */
-export function resolveDoc(
-  doc: SectionDoc,
-  catalogues: Catalogues,
-  steps: FunnelStepRef[] | null,
-): ResolveResult {
+export function resolveDoc(doc: SectionDoc, catalogues: Catalogues, steps: FunnelStepRef[] | null): ResolveResult {
   sectionDocSchema.parse(doc)
 
   const sectionIds = new Set(doc.sections.map((section) => section.id))
@@ -1278,10 +1269,7 @@ export function resolveDoc(
       // one variable so the list the model was allowed to choose from and the
       // list the owner is offered can never drift apart.
       const offerRows = catalogues.offer[target.kind]
-      const outcome = matchRef(
-        { recognition: catalogues.recognition[target.kind], offer: offerRows },
-        target.ref,
-      )
+      const outcome = matchRef({ recognition: catalogues.recognition[target.kind], offer: offerRows }, target.ref)
 
       switch (outcome.status) {
         case "already_id":
@@ -1387,9 +1375,7 @@ function describeUnresolved(entry: UnresolvedCta): string {
 
 function describeUnknownFaqKey(entry: UnknownFaqKey): string {
   const known =
-    entry.candidates.length === 0
-      ? "no page has FAQs yet"
-      : `the pages with FAQs are: ${entry.candidates.join(", ")}`
+    entry.candidates.length === 0 ? "no page has FAQs yet" : `the pages with FAQs are: ${entry.candidates.join(", ")}`
   return (
     `Section "${entry.sectionId}" (${entry.field}): no FAQs are filed under ` +
     `"${entry.pageKey}", so that section would show nothing at all — ${known}.`

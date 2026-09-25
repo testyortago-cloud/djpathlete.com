@@ -25,6 +25,7 @@ import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { getAttributionBySession } from "@/lib/db/marketing-attribution"
 import { getBaseUrl } from "@/lib/url"
 import { FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT } from "@/lib/funnels/checkout/flag"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 /** Bots submit instantly; a person cannot read a page and type an email this fast. */
 const MIN_ELAPSED_MS = 1500
@@ -72,7 +73,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true })
   }
 
-  const [funnel, step] = await Promise.all([getFunnelById(body.funnelId), getStep(body.stepId)])
+  // PUBLIC ROUTE, NO SESSION. Same Host boundary as /api/funnels/submit
+  // (lib/tenancy/public.ts): a funnelId/stepId that is real but belongs to a
+  // DIFFERENT tenant than this request's Host reads as not-found below,
+  // exactly like a made-up id would.
+  const businessId = await resolvePublicTenant()
+
+  const [funnel, step] = await Promise.all([getFunnelById(businessId, body.funnelId), getStep(businessId, body.stepId)])
   if (!funnel || !step || step.funnel_id !== funnel.id) return reject(404, "Not found")
 
   // A DRAFT FUNNEL CANNOT SELL. `/go` only serves published funnels, so a
@@ -123,6 +130,7 @@ export async function POST(request: Request) {
       funnelId: funnel.id,
       stepId: step.id,
       leadId,
+      businessId,
       successUrl: `${base}/go/${funnel.slug}/${step.slug}?purchase=success&session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${pageUrl}?purchase=cancelled`,
       tracking,

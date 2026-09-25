@@ -25,6 +25,12 @@ vi.mock("@/lib/db/funnels", () => ({
 }))
 vi.mock("@/lib/db/funnel-page-tree", () => ({ getPageTree: vi.fn() }))
 vi.mock("@/lib/db/funnel-builder", () => ({ getDraft: vi.fn() }))
+// G31: the page resolves its own tenant (no request object in a server
+// component). Fixed to one business — this file's own claim is entirely about
+// which column wins, not about tenancy.
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenant: vi.fn(async () => ({ businessId: "biz-1", choices: [], isOperator: false })),
+}))
 // The designer is PARKED in production (lib/funnels/tree/parked.ts). The
 // decision table below is the fix for a real data-loss bug and must not rot
 // while it is switched off, so most of this file runs with the flag mocked

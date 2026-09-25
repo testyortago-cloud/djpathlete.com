@@ -88,8 +88,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many submissions. Please try again shortly." }, { status: 429 })
   }
 
+  // PUBLIC ROUTE, NO SESSION. The tenant is resolved from the request's Host
+  // (lib/tenancy/public.ts / business_domains) and threaded into every funnel
+  // read and write below — funnels, funnel_steps, funnel_step_versions and
+  // funnel_submissions all carry business_id since migration 00278, so a
+  // stepId/funnelId that is real but belongs to a DIFFERENT tenant than this
+  // Host reads as not-found rather than granting a cross-tenant lookup.
+  const businessId = await resolvePublicTenant()
+
   // The published config is the authority on which fields exist.
-  const config = await getPublishedFormConfig(parsedBody.stepId, parsedBody.formKey)
+  const config = await getPublishedFormConfig(businessId, parsedBody.stepId, parsedBody.formKey)
   if (!config) {
     return NextResponse.json({ error: "This form is no longer available." }, { status: 404 })
   }
@@ -108,7 +116,7 @@ export async function POST(request: Request) {
   // not this visitor's business.
   let step: Awaited<ReturnType<typeof getStep>>
   try {
-    step = await getStep(parsedBody.stepId)
+    step = await getStep(businessId, parsedBody.stepId)
   } catch (error) {
     console.error("[funnels/submit] step read failed:", error)
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
@@ -124,7 +132,7 @@ export async function POST(request: Request) {
   // above — rather than trusting the request body's id a second time.
   let funnel: Awaited<ReturnType<typeof getFunnelById>>
   try {
-    funnel = await getFunnelById(step.funnel_id)
+    funnel = await getFunnelById(businessId, step.funnel_id)
   } catch (error) {
     console.error("[funnels/submit] funnel read failed:", error)
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
@@ -162,16 +170,8 @@ export async function POST(request: Request) {
     leadUserId = await upsertLead(email, name)
   }
 
-  // PUBLIC ROUTE, NO SESSION — and no row to inherit a tenant from either:
-  // `funnels`, `funnel_steps` and `funnel_submissions` carry no business_id
-  // (no funnel migration mentions the column). The tenant is resolved from the
-  // request's Host by lib/tenancy/public.ts (business_domains), and is the
-  // platform's own only when no domain row claims the host. Resolved once,
-  // threaded.
-  const businessId = await resolvePublicTenant()
-
   try {
-    await createSubmission({
+    await createSubmission(businessId, {
       funnel_id: parsedBody.funnelId,
       step_id: parsedBody.stepId,
       form_key: parsedBody.formKey,
@@ -356,8 +356,8 @@ export async function POST(request: Request) {
    */
   async function funnelReturnUrls(): Promise<{ successUrl: string; cancelUrl: string } | undefined> {
     const [funnel, steps] = await Promise.all([
-      getFunnelById(parsedBody.funnelId).catch(() => null),
-      listSteps(parsedBody.funnelId).catch(() => [] as Awaited<ReturnType<typeof listSteps>>),
+      getFunnelById(businessId, parsedBody.funnelId).catch(() => null),
+      listSteps(businessId, parsedBody.funnelId).catch(() => [] as Awaited<ReturnType<typeof listSteps>>),
     ])
     const thisStep = steps.find((candidate) => candidate.id === parsedBody.stepId)
     const last = [...steps].sort((a, b) => a.position - b.position).at(-1)

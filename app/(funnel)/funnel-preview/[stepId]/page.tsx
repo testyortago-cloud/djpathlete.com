@@ -58,7 +58,7 @@
 
 import { notFound } from "next/navigation"
 import { auth } from "@/lib/auth"
-import { resolveAdminTenant } from "@/lib/tenancy/resolve"
+import { NoAccessibleBusinessError, resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { NodeRenderer } from "@/components/funnels/NodeRenderer"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile"
 import { getFunnelById, getStep } from "@/lib/db/funnels"
@@ -139,6 +139,21 @@ export default async function FunnelDraftPreviewPage({ params, searchParams }: P
   const role = session?.user?.role
   if (role !== "admin" && role !== "staff") notFound()
 
+  // THE ADMIN BOUNDARY, NOT THE HOST. This route is reached from the builder,
+  // by an admin or staff member already inside /admin -- the same caller as
+  // every other builder screen, resolved the same way and failing the same
+  // way (a coach whose membership was revoked mid-session gets a 404, not a
+  // page for a business they can no longer reach). `resolveAdminTenant`'s own
+  // multi-business choices are exactly what the sibling editor screen
+  // (app/(admin)/admin/funnels/[id]/edit/[stepId]/page.tsx) uses.
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenant())
+  } catch (error) {
+    if (error instanceof NoAccessibleBusinessError) notFound()
+    throw error
+  }
+
   const { stepId } = await params
 
   // EDIT MODE ADDS ATTRIBUTES AND A STYLESHEET. NOTHING ELSE.
@@ -153,35 +168,22 @@ export default async function FunnelDraftPreviewPage({ params, searchParams }: P
   const { edit } = await searchParams
   const editable = edit === "1"
 
-  const step = await getStep(stepId)
+  const step = await getStep(businessId, stepId)
   if (!step) notFound()
 
-  const funnel = await getFunnelById(step.funnel_id)
+  const funnel = await getFunnelById(businessId, step.funnel_id)
   if (!funnel) notFound()
-
-  // The tenant's brand kit, so this preview shows the same colours publish
-  // ships -- see `renderDraftPreview`'s own comment on why a failed read
-  // degrades to `null` rather than costing the preview anything. Wrapped here
-  // too: `resolveAdminTenant` can throw `NoAccessibleBusinessError` for a
-  // staff account whose membership was revoked mid-session, and that is not a
-  // reason to fail a page the owner only wants to look at.
-  let businessId: string | null = null
-  try {
-    ;({ businessId } = await resolveAdminTenant())
-  } catch (error) {
-    console.error("[funnel-preview] tenant resolution for brand kit failed — continuing without it:", error)
-  }
 
   // `/go/<slug>` and NOT the preview base. This route is the builder's iframe:
   // its links must read the way the published page's links read, because the
   // owner is judging the page, not walking it. The full-screen preview passes
   // `/preview/<slug>` to the same function and gets a walkable draft instead.
   const result = await renderDraftPreview({
+    businessId,
     stepId,
     funnelId: funnel.id,
     funnelBasePath: `/go/${funnel.slug}`,
     editable,
-    businessId,
   })
 
   if (result.kind === "doc-invalid") {

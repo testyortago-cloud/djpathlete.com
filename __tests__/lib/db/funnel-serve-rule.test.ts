@@ -12,6 +12,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
+const BUSINESS_ID = "55555555-5555-4555-8555-555555555555"
+
 const from = vi.fn()
 
 vi.mock("@/lib/supabase", () => ({
@@ -67,7 +69,7 @@ describe("getPublishedStep", () => {
     mockTables({ funnel: { data: { id: "f1", slug: "camp", status: "draft" }, error: null } })
     const { getPublishedStep } = await import("@/lib/db/funnels")
 
-    const result = await getPublishedStep("camp")
+    const result = await getPublishedStep(BUSINESS_ID, "camp")
 
     expect(result).toBeNull()
     expect(from).not.toHaveBeenCalledWith("funnel_steps")
@@ -89,7 +91,7 @@ describe("getPublishedStep", () => {
     })
     const { getPublishedStep } = await import("@/lib/db/funnels")
 
-    const result = await getPublishedStep("camp")
+    const result = await getPublishedStep(BUSINESS_ID, "camp")
 
     expect(result).toBeNull()
     expect(versions.eq).not.toHaveBeenCalled()
@@ -106,7 +108,7 @@ describe("getPublishedStep", () => {
     })
     const { getPublishedStep } = await import("@/lib/db/funnels")
 
-    const result = await getPublishedStep("camp")
+    const result = await getPublishedStep(BUSINESS_ID, "camp")
 
     expect(result).toMatchObject({ nodes: [{ t: "el" }], css: "body{color:red}" })
     expect(versions.eq).toHaveBeenCalledWith("id", "v1")
@@ -126,7 +128,7 @@ describe("getPublishedStep", () => {
     })
     const { getPublishedStep } = await import("@/lib/db/funnels")
 
-    const result = await getPublishedStep("camp", undefined, { includeUnpublished: true })
+    const result = await getPublishedStep(BUSINESS_ID, "camp", undefined, { includeUnpublished: true })
 
     expect(result).not.toBeNull()
     expect(versions.eq).toHaveBeenCalledWith("step_id", "s1")
@@ -143,7 +145,7 @@ describe("getFunnelBySlug", () => {
     const { funnels } = mockTables({ funnel: { data: null, error: null } })
     const { getFunnelBySlug } = await import("@/lib/db/funnels")
 
-    await getFunnelBySlug("%")
+    await getFunnelBySlug(BUSINESS_ID, "%")
 
     expect(funnels.ilike).toHaveBeenCalledWith("slug", "\\%")
   })
@@ -152,7 +154,7 @@ describe("getFunnelBySlug", () => {
     const { funnels } = mockTables({ funnel: { data: null, error: null } })
     const { getFunnelBySlug } = await import("@/lib/db/funnels")
 
-    await getFunnelBySlug("a_b")
+    await getFunnelBySlug(BUSINESS_ID, "a_b")
 
     expect(funnels.ilike).toHaveBeenCalledWith("slug", "a\\_b")
   })
@@ -163,7 +165,7 @@ describe("getFunnelBySlug", () => {
     const { funnels } = mockTables({ funnel: { data: null, error: null } })
     const { getFunnelBySlug } = await import("@/lib/db/funnels")
 
-    await getFunnelBySlug("plain-slug")
+    await getFunnelBySlug(BUSINESS_ID, "plain-slug")
 
     expect(funnels.ilike).toHaveBeenCalledWith("slug", "plain-slug")
   })

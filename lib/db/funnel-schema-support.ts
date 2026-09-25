@@ -19,6 +19,18 @@
 // The degraded path is not a special mode — it is EXACTLY the insert this
 // function performed before 00210, so a funnel created during the window is a
 // pre-template funnel and behaves like every other one.
+//
+// TENANCY (G31 / migration 00278): UNLIKE EVERY OTHER FUNCTION IN THIS DAL,
+// `hasIntakeColumns` takes NO `businessId` parameter. DO NOT ADD ONE BACK FOR
+// SYMMETRY. Whether `funnels.template` exists is a fact about the SCHEMA,
+// shared by every tenant; it cannot differ per business, and the
+// module-level cache below is deliberately global rather than per-tenant for
+// the same reason. Everywhere else in this branch a leading `businessId`
+// means "this call is tenant-scoped" — adding one here that nothing ever
+// filters on would be a false signal to the next reader, not a harmless
+// extra argument, and a tenant id in the warn logs below would frame a
+// database-wide deploy race as tenant-specific, when every tenant hitting it
+// logs the identical warning and no isolation is involved at all.
 
 /**
  * The column probed for. Any column 00210 adds would do; `template` is chosen

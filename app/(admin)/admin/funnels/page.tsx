@@ -12,12 +12,19 @@ import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 export const metadata = { title: "Funnels" }
 
 export default async function FunnelsScreen() {
-  const { businessId } = await resolveAdminTenant()
-  const funnels = await listFunnels({ kind: "funnel" })
+  const { businessId, choices } = await resolveAdminTenant()
+  // NAMED IN THE EMPTY STATE (spec D7): the selection cookie can default to
+  // something other than the platform business, and with a real second tenant
+  // "no funnels" must be readable as "this business has none", never as "they
+  // vanished". `choices` always contains `businessId` — `resolveAdminTenant`
+  // picks it FROM that list — so the fallback below is unreachable in
+  // practice and exists only to satisfy `.find`'s possibly-undefined type.
+  const businessName = choices.find((c) => c.id === businessId)?.name ?? "this business"
+  const funnels = await listFunnels(businessId, { kind: "funnel" })
 
   const [leadCounts, stepsPerFunnel] = await Promise.all([
-    getSubmissionCountsByFunnel().catch(() => ({}) as Record<string, number>),
-    Promise.all(funnels.map((funnel) => listSteps(funnel.id).catch(() => []))),
+    getSubmissionCountsByFunnel(businessId).catch(() => ({}) as Record<string, number>),
+    Promise.all(funnels.map((funnel) => listSteps(businessId, funnel.id).catch(() => []))),
   ])
 
   // ONE CARD PER FUNNEL, and its steps are a list inside that card.
@@ -103,7 +110,7 @@ export default async function FunnelsScreen() {
         </div>
       </div>
 
-      <FunnelList funnels={withSteps} leadCounts={leadCounts} quizByStepId={quizByStepId} />
+      <FunnelList funnels={withSteps} leadCounts={leadCounts} quizByStepId={quizByStepId} businessName={businessName} />
     </div>
   )
 }

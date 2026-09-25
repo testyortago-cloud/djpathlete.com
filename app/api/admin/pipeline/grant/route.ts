@@ -118,7 +118,10 @@ export const POST = withAudit(
         getOpportunity: (opportunityId: string) => readOpportunityForGrant(opportunityId, businessId),
         getContactIdentity: readContactIdentity,
         runGrant: (purchase) =>
-          grantFunnelPurchase(purchase, buildManualGrantDeps({ opportunityId: body.opportunityId as string })),
+          grantFunnelPurchase(
+            purchase,
+            buildManualGrantDeps({ opportunityId: body.opportunityId as string, businessId }),
+          ),
       },
     )
 

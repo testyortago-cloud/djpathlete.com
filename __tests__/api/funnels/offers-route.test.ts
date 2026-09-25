@@ -12,13 +12,23 @@ import { NextRequest } from "next/server"
 const authMock = vi.fn()
 const canAccessMock = vi.fn()
 const loadCataloguesMock = vi.fn()
+const resolveAdminTenantForRequestMock = vi.fn()
+
+const BUSINESS_ID = "biz-1"
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/permissions/guard", () => ({
   canAccessAdminPath: (...args: unknown[]) => canAccessMock(...args),
 }))
 vi.mock("@/lib/funnels/sections/resolve", () => ({
-  loadCatalogues: () => loadCataloguesMock(),
+  loadCatalogues: (businessId: string) => loadCataloguesMock(businessId),
+}))
+const { NoAccessibleBusinessError } = vi.hoisted(() => ({
+  NoAccessibleBusinessError: class NoAccessibleBusinessError extends Error {},
+}))
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: () => resolveAdminTenantForRequestMock(),
+  NoAccessibleBusinessError,
 }))
 
 const CATALOGUE = {
@@ -44,13 +54,16 @@ beforeEach(() => {
   vi.clearAllMocks()
   authMock.mockResolvedValue({ user: { id: "u1", role: "admin" } })
   canAccessMock.mockResolvedValue(true)
+  resolveAdminTenantForRequestMock.mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "Test Co", slug: "test-co" }],
+    isOperator: true,
+  })
   loadCataloguesMock.mockResolvedValue(CATALOGUE)
 })
 
 function request(kind?: string) {
-  const url = kind
-    ? `http://x/api/admin/funnels/offers?kind=${kind}`
-    : "http://x/api/admin/funnels/offers"
+  const url = kind ? `http://x/api/admin/funnels/offers?kind=${kind}` : "http://x/api/admin/funnels/offers"
   return new NextRequest(url)
 }
 
@@ -88,6 +101,21 @@ describe("GET /api/admin/funnels/offers", () => {
     const { GET } = await import("@/app/api/admin/funnels/offers/route")
     const body = await (await GET(request("event"))).json()
     expect(body.offers).toEqual([{ id: "e1", name: "Summer Camp 2026" }])
+  })
+
+  it("threads the resolved admin tenant into loadCatalogues, not a bare no-arg call", async () => {
+    // Task 8: this endpoint used to call `loadCatalogues()` with no tenant at
+    // all, reading every business's rows. It must now ask for THIS admin's
+    // resolved tenant specifically.
+    const { GET } = await import("@/app/api/admin/funnels/offers/route")
+    await GET(request("event"))
+    expect(loadCataloguesMock).toHaveBeenCalledWith(BUSINESS_ID)
+  })
+
+  it("refuses a caller resolveAdminTenantForRequest reports has no accessible business", async () => {
+    resolveAdminTenantForRequestMock.mockRejectedValue(new NoAccessibleBusinessError())
+    const { GET } = await import("@/app/api/admin/funnels/offers/route")
+    expect((await GET(request("event"))).status).toBe(403)
   })
 
   it("reads the offer set, never the recognition set", async () => {

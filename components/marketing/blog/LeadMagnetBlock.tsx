@@ -1,5 +1,6 @@
 import { Download, ArrowUpRight } from "lucide-react"
 import { findRelevantLeadMagnet } from "@/lib/db/lead-magnets"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 import type { BlogPost } from "@/types/database"
 
 interface LeadMagnetBlockProps {
@@ -13,11 +14,21 @@ interface LeadMagnetBlockProps {
  *
  * The asset_url is a direct link — clicking opens the asset in a new tab.
  * No email gate (intentional Phase 5 choice — gating is a future phase).
+ *
+ * PUBLIC, NO SESSION. The blog is public marketing content, so the tenant
+ * comes from the request's Host (lib/tenancy/public.ts) — resolved here,
+ * inside the component, the same way FormIsland/QuizIsland resolve their own
+ * rather than taking it as a prop. `lead_magnets` has carried business_id
+ * with no foreign key into any other tenanted table since migration 00278, so
+ * this predicate is the ONLY thing standing between one coach's downloadable
+ * and another coach's blog visitor.
  */
 export async function LeadMagnetBlock({ post }: LeadMagnetBlockProps) {
+  const businessId = await resolvePublicTenant()
+
   let magnet
   try {
-    magnet = await findRelevantLeadMagnet({
+    magnet = await findRelevantLeadMagnet(businessId, {
       tags: post.tags,
       category: post.category,
     })
@@ -50,9 +61,7 @@ export async function LeadMagnetBlock({ post }: LeadMagnetBlockProps) {
           >
             {magnet.title}
           </h3>
-          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-            {magnet.description}
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{magnet.description}</p>
           <a
             href={magnet.asset_url}
             target="_blank"

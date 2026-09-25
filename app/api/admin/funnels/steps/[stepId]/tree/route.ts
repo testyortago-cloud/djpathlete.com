@@ -18,6 +18,7 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { pageTreeSchema } from "@/lib/funnels/tree/schema"
 import { savePageTree } from "@/lib/db/funnel-page-tree"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import type { PageTree } from "@/lib/funnels/tree/types"
 
 const bodySchema = z.object({
@@ -34,6 +35,16 @@ export const PUT = withAudit(
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
     }
 
     const { stepId } = await ctx.params
@@ -54,6 +65,7 @@ export const PUT = withAudit(
 
     try {
       const result = await savePageTree(
+        businessId,
         stepId,
         parsed.data.tree as PageTree,
         parsed.data.revision,

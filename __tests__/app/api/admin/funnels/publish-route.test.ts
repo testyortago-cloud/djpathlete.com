@@ -39,12 +39,20 @@ vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.f
 // The FAQ page keys `loadCatalogues` reads for the `faq.pageKey` check — the
 // one model-written string that is not a CtaTarget.
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
+const { NoAccessibleBusinessError } = vi.hoisted(() => ({
+  NoAccessibleBusinessError: class NoAccessibleBusinessError extends Error {},
+}))
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: vi.fn(),
+  NoAccessibleBusinessError,
+}))
 
 import { POST } from "@/app/api/admin/funnels/steps/[stepId]/publish/route"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { getStep, publishStep, getFunnelById, updateFunnel, listSteps } from "@/lib/db/funnels"
 import { getDraft } from "@/lib/db/funnel-builder"
+import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
@@ -55,6 +63,7 @@ const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
 
 const STEP_ID = "3f1b7c5e-1111-4222-8333-444444444444"
 const ADMIN_ID = "aaaaaaaa-1111-4222-8333-444444444444"
+const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 const STEP = { id: STEP_ID, funnel_id: "ffffffff-1111-4222-8333-444444444444", slug: "apply", name: "Apply" }
 
 /** RFC-4122 conformant — Zod v4's `.uuid()` is strict. */
@@ -129,6 +138,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   mock(auth).mockResolvedValue({ user: { id: ADMIN_ID, role: "admin" } })
   mock(canAccessAdminPath).mockResolvedValue(true)
+  mock(resolveAdminTenantForRequest).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "Test Co", slug: "test-co" }],
+    isOperator: true,
+  })
   mock(getStep).mockResolvedValue(STEP)
   // The funnel's pages, for `resolveDoc`'s step-link check. Resolves cleanly
   // unless a test says otherwise, so a refusal below is never an accident of
@@ -229,7 +243,7 @@ describe("POST /api/admin/funnels/steps/:stepId/publish — the publish gate", (
       warnings: ["dropped a <marquee>"],
       wentLive: false,
     })
-    expect(publishStep).toHaveBeenCalledWith({
+    expect(publishStep).toHaveBeenCalledWith(BUSINESS_ID, {
       stepId: STEP_ID,
       html: HTML,
       css: CSS,
@@ -410,7 +424,7 @@ describe("publishing a landing page takes it live", () => {
     const res = await POST(req({ html: HTML, css: CSS, project_data: docWithCta(PROGRAM_NAME) }), ctx)
 
     expect(res.status).toBe(200)
-    expect(updateFunnel).toHaveBeenCalledWith("f1", { status: "published" })
+    expect(updateFunnel).toHaveBeenCalledWith(BUSINESS_ID, "f1", { status: "published" })
     expect((await res.json()).wentLive).toBe(true)
   })
 

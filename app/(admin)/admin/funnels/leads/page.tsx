@@ -59,15 +59,25 @@ export default async function FunnelLeadsPage({
     search: search || undefined,
   }
 
+  // THE TENANT, RESOLVED ONCE, UP FRONT. Until G31 `funnel_submissions` carried
+  // no `business_id` at all, so every read below was unscoped by construction
+  // and only the follow-up read further down (touching `contacts` and
+  // `sequence_runs`, which always had a tenant column) needed one. Migration
+  // 00278 gave `funnel_submissions` a column and Task 3 gave `lib/db/
+  // funnel-leads.ts` a predicate, so the mixed-scope situation that comment
+  // used to describe is closed — every read on this page now shares the one
+  // tenant resolved here.
+  const { businessId } = await resolveAdminTenant()
+
   const [leads, total, counts, funnels] = await Promise.all([
-    listLeads({ ...filters, limit: PAGE_SIZE }),
-    countLeads(filters),
+    listLeads(businessId, { ...filters, limit: PAGE_SIZE }),
+    countLeads(businessId, filters),
     // Counts for the status chips ignore the status filter itself — otherwise
     // selecting "New" would show "New (12)" and zero for the other two, which
     // reads as "there are no contacted leads" rather than "you are not looking
     // at them".
-    countLeadsByStatus({ ...filters, status: undefined }),
-    listFunnels().catch(() => []),
+    countLeadsByStatus(businessId, { ...filters, status: undefined }),
+    listFunnels(businessId).catch(() => []),
   ])
 
   // THE RESULTS BEHIND THE QUIZ LEADS ON THIS PAGE, and only them.
@@ -78,25 +88,13 @@ export default async function FunnelLeadsPage({
   const attemptIds = leads
     .map((lead) => lead.quiz_attempt_id)
     .filter((id): id is string => typeof id === "string" && id.length > 0)
-  const quizOutcomes = attemptIds.length > 0 ? await getQuizOutcomesForLeads(attemptIds).catch(() => ({})) : {}
+  const quizOutcomes =
+    attemptIds.length > 0 ? await getQuizOutcomesForLeads(businessId, attemptIds).catch(() => ({})) : {}
 
   // THE FOLLOW-UP EACH LEAD'S PERSON IS ON.
   //
-  // SCOPED WHILE ITS NEIGHBOURS ON THIS PAGE ARE NOT, and that is worth saying
-  // out loud rather than leaving to be discovered. `funnel_submissions` carries
-  // no `business_id` at all (gap G31), so the lead reads above are unscoped;
-  // this read touches `contacts` and `sequence_runs`, which both have one, and
-  // an unscoped read there would put another coach's follow-up on this coach's
-  // board. So it resolves a real tenant.
-  //
-  // What that mixed scope costs, stated exactly: a lead captured by ANOTHER
-  // tenant's funnel shows "—" here, because their contact is not in this
-  // business. That is under-reporting, which is the safe direction — it never
-  // shows the wrong person's status. The fix is G31, not a wider read here.
-  //
   // Fails soft for the same reason the quiz outcomes above do: a missing badge
   // is not worth taking the whole inbox down for.
-  const { businessId } = await resolveAdminTenant()
   const sequenceByEmail = Object.fromEntries(
     await latestRunsForEmails(
       leads.map((lead) => lead.email),

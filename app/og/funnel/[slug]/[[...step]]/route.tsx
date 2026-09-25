@@ -57,6 +57,7 @@ import { ImageResponse } from "next/og"
 import { getPublishedStep } from "@/lib/db/funnels"
 import { resolveFunnelStepSeo } from "@/lib/funnels/seo"
 import { OG_ACCENT, OG_ARENA, OG_ICE, OG_SIZE, ogClamp } from "@/lib/og/brand"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 export const dynamic = "force-dynamic"
 
@@ -66,8 +67,13 @@ export async function GET(_request: Request, ctx: { params: Promise<{ slug: stri
   // NEVER THROWS, AND NEVER 404s. A scraper that gets an error here shows no
   // card at all, which is the state this whole change exists to fix — so an
   // unreadable or unpublished row degrades to the brand card rather than to
-  // nothing. The page itself still 404s; only the picture is forgiving.
-  const published = await getPublishedStep(slug, step?.[0]).catch(() => null)
+  // nothing. The page itself still 404s; only the picture is forgiving. Same
+  // reasoning covers tenancy: a slug that belongs to a different tenant than
+  // this request's Host (lib/tenancy/public.ts) comes back null from
+  // getPublishedStep, exactly like an unknown slug, and gets the same brand
+  // default card rather than a cross-tenant leak.
+  const businessId = await resolvePublicTenant()
+  const published = await getPublishedStep(businessId, slug, step?.[0]).catch(() => null)
   const seo = published ? resolveFunnelStepSeo(published.funnel, published.step) : null
 
   const title = ogClamp(seo?.title ?? "DJP Athlete", 68)

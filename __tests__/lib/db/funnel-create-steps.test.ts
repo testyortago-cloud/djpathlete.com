@@ -6,6 +6,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { __resetIntakeColumnCache } from "@/lib/db/funnel-schema-support"
 
+const BUSINESS_ID = "55555555-5555-4555-8555-555555555555"
+
 const funnelInsert = vi.fn()
 const stepInsert = vi.fn()
 const from = vi.fn()
@@ -70,7 +72,7 @@ describe("createFunnel with a step plan", () => {
     mockSupabase(shuffledSteps(["index", "register", "payment"]))
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({ slug: "camp", name: "Camp", kind: "funnel", steps: threeSteps })
+    await createFunnel(BUSINESS_ID, { slug: "camp", name: "Camp", kind: "funnel", steps: threeSteps })
 
     const rows = stepInsert.mock.calls[0][0] as Record<string, unknown>[]
     expect(rows).toHaveLength(3)
@@ -85,7 +87,7 @@ describe("createFunnel with a step plan", () => {
     mockSupabase(shuffledSteps(["index", "register", "payment"]))
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({ slug: "camp", name: "Camp", kind: "funnel", steps: threeSteps })
+    await createFunnel(BUSINESS_ID, { slug: "camp", name: "Camp", kind: "funnel", steps: threeSteps })
 
     const rows = stepInsert.mock.calls[0][0] as Record<string, unknown>[]
     expect(rows.map((row) => row.goal)).toEqual(["event", "leads", "event"])
@@ -98,7 +100,7 @@ describe("createFunnel with a step plan", () => {
     mockSupabase(shuffledSteps(["index", "register", "payment"]))
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({ slug: "camp", name: "Camp", kind: "funnel", steps: threeSteps })
+    await createFunnel(BUSINESS_ID, { slug: "camp", name: "Camp", kind: "funnel", steps: threeSteps })
 
     const rows = stepInsert.mock.calls[0][0] as Record<string, unknown>[]
     expect(rows.filter((row) => row.is_entry)).toHaveLength(1)
@@ -111,7 +113,7 @@ describe("createFunnel with a step plan", () => {
     mockSupabase(shuffledSteps(["index"]))
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({
+    await createFunnel(BUSINESS_ID, {
       slug: "camp",
       name: "Camp",
       kind: "funnel",
@@ -125,7 +127,7 @@ describe("createFunnel with a step plan", () => {
     mockSupabase(shuffledSteps(["index"]))
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({
+    await createFunnel(BUSINESS_ID, {
       slug: "camp",
       name: "Camp",
       kind: "funnel",
@@ -158,7 +160,7 @@ describe("createFunnel with a step plan", () => {
     mockSupabase(shuffledSteps(["index"]))
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({ slug: "c", name: "C", kind: "funnel", template: "leads" })
+    await createFunnel(BUSINESS_ID, { slug: "c", name: "C", kind: "funnel", template: "leads" })
 
     const row = funnelInsert.mock.calls[0][0] as Record<string, unknown>
     expect(row.offer_kind).toBeNull()
@@ -173,7 +175,7 @@ describe("createFunnel with a step plan", () => {
     mockSupabase(shuffledSteps(["index", "register", "payment"]))
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    const result = await createFunnel({
+    const result = await createFunnel(BUSINESS_ID, {
       slug: "camp",
       name: "Camp",
       kind: "funnel",
@@ -190,7 +192,7 @@ describe("createFunnel with a step plan", () => {
     const { createFunnel } = await import("@/lib/db/funnels")
 
     await expect(
-      createFunnel({ slug: "camp", name: "Camp", kind: "funnel", steps: threeSteps }),
+      createFunnel(BUSINESS_ID, { slug: "camp", name: "Camp", kind: "funnel", steps: threeSteps }),
     ).rejects.toThrow(/entry step/i)
   })
 })
@@ -202,7 +204,7 @@ describe("createFunnel without a step plan — what must not change", () => {
     mockSupabase(shuffledSteps(["index"]))
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({ slug: "trial", name: "Trial", kind: "page" })
+    await createFunnel(BUSINESS_ID, { slug: "trial", name: "Trial", kind: "page" })
 
     const rows = stepInsert.mock.calls[0][0] as Record<string, unknown>[]
     expect(rows).toHaveLength(1)
@@ -222,7 +224,7 @@ describe("createFunnel without a step plan — what must not change", () => {
     mockSupabase(shuffledSteps(["index"]))
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await createFunnel({ slug: "f", name: "F", kind: "funnel" })
+    await createFunnel(BUSINESS_ID, { slug: "f", name: "F", kind: "funnel" })
 
     expect((stepInsert.mock.calls[0][0] as Record<string, unknown>[])[0].name).toBe("Step 1")
   })
@@ -231,6 +233,6 @@ describe("createFunnel without a step plan — what must not change", () => {
     mockSupabase(null, { message: "boom" })
     const { createFunnel } = await import("@/lib/db/funnels")
 
-    await expect(createFunnel({ slug: "f", name: "F" })).rejects.toThrow(/boom/)
+    await expect(createFunnel(BUSINESS_ID, { slug: "f", name: "F" })).rejects.toThrow(/boom/)
   })
 })

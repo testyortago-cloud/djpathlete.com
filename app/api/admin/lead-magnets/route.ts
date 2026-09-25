@@ -3,14 +3,26 @@ import { auth } from "@/lib/auth"
 import { leadMagnetFormSchema } from "@/lib/validators/lead-magnet"
 import { listLeadMagnets, createLeadMagnet } from "@/lib/db/lead-magnets"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await auth()
   if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
+
+  let businessId: string
   try {
-    const magnets = await listLeadMagnets(true)
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    throw err
+  }
+
+  try {
+    const magnets = await listLeadMagnets(businessId, true)
     return NextResponse.json({ magnets })
   } catch (err) {
     console.error("[GET /api/admin/lead-magnets]", err)
@@ -23,6 +35,17 @@ export async function POST(request: NextRequest) {
   if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
+
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    throw err
+  }
+
   const body = await request.json().catch(() => null)
   const parsed = leadMagnetFormSchema.safeParse(body)
   if (!parsed.success) {
@@ -35,7 +58,7 @@ export async function POST(request: NextRequest) {
     )
   }
   try {
-    const created = await createLeadMagnet({
+    const created = await createLeadMagnet(businessId, {
       slug: parsed.data.slug,
       title: parsed.data.title,
       description: parsed.data.description,

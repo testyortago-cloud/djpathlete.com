@@ -9,6 +9,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { __resetIntakeColumnCache } from "@/lib/db/funnel-schema-support"
 
+const BUSINESS_ID = "55555555-5555-4555-8555-555555555555"
+
 const update = vi.fn()
 const from = vi.fn()
 
@@ -17,9 +19,15 @@ vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => ({ from }) }))
 beforeEach(() => {
   vi.clearAllMocks()
   __resetIntakeColumnCache()
-  update.mockReturnValue({
-    eq: () => ({ select: () => ({ single: () => Promise.resolve({ data: { id: "f1" }, error: null }) }) }),
-  })
+  // Self-referential: `.eq()` may be chained any number of times before
+  // `.select().single()`. updateFunnel now chains two (business_id, id)
+  // where it used to chain one; a fixed-depth mock silently stopped matching
+  // the real call shape instead of failing loudly on the wrong column.
+  const updateChain: Record<string, unknown> = {
+    eq: () => updateChain,
+    select: () => ({ single: () => Promise.resolve({ data: { id: "f1" }, error: null }) }),
+  }
+  update.mockReturnValue(updateChain)
   // The 00210 presence probe answers "migrated" — the degraded path is covered
   // in funnel-pre-00210-tolerance.test.ts.
   from.mockReturnValue({
@@ -30,7 +38,7 @@ beforeEach(() => {
 
 async function patch(input: Record<string, unknown>) {
   const { updateFunnel } = await import("@/lib/db/funnels")
-  await updateFunnel("f1", input)
+  await updateFunnel(BUSINESS_ID, "f1", input)
   return update.mock.calls[0][0] as Record<string, unknown>
 }
 

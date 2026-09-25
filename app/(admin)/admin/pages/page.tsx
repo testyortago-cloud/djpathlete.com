@@ -24,12 +24,15 @@ import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 export const metadata = { title: "Landing pages" }
 
 export default async function LandingPagesScreen() {
-  const { businessId } = await resolveAdminTenant()
-  const funnels = await listFunnels({ kind: "page" })
+  const { businessId, choices } = await resolveAdminTenant()
+  // NAMED IN THE EMPTY STATE (spec D7) — same reasoning as the funnels screen,
+  // which shares this exact component. See that file's comment.
+  const businessName = choices.find((c) => c.id === businessId)?.name ?? "this business"
+  const funnels = await listFunnels(businessId, { kind: "page" })
 
   const [leadCounts, stepsPerFunnel] = await Promise.all([
-    getSubmissionCountsByFunnel().catch(() => ({}) as Record<string, number>),
-    Promise.all(funnels.map((funnel) => listSteps(funnel.id).catch(() => []))),
+    getSubmissionCountsByFunnel(businessId).catch(() => ({}) as Record<string, number>),
+    Promise.all(funnels.map((funnel) => listSteps(businessId, funnel.id).catch(() => []))),
   ])
 
   const withSteps: FunnelWithSteps[] = funnels.map((funnel, index) => ({
@@ -90,7 +93,13 @@ export default async function LandingPagesScreen() {
         </div>
       </div>
 
-      <FunnelList kind="page" funnels={withSteps} leadCounts={leadCounts} quizByStepId={quizByStepId} />
+      <FunnelList
+        kind="page"
+        funnels={withSteps}
+        leadCounts={leadCounts}
+        quizByStepId={quizByStepId}
+        businessName={businessName}
+      />
     </div>
   )
 }

@@ -28,6 +28,7 @@ export function buildGrantDeps(context: {
   funnelId: string | null
   stepId: string | null
   leadId: string | null
+  businessId: string
 }): GrantDeps {
   return {
     /**
@@ -101,10 +102,15 @@ export function buildGrantDeps(context: {
         today: () => new Date().toISOString().split("T")[0],
       }),
 
-    hasProcessed: hasProcessedCheckoutSession,
+    // Closes over `context.businessId` rather than widening `GrantDeps` --
+    // grant.ts takes no tenant of its own (it is the pure "no decisions" rule
+    // module its header describes), and this is the one place its ports are
+    // bound to real, tenant-scoped infrastructure. The real DAL call still
+    // gets the real businessId; nothing here drops it.
+    hasProcessed: (idempotencyKey) => hasProcessedCheckoutSession(context.businessId, idempotencyKey),
 
     recordProcessed: async ({ idempotencyKey, userId, purchase, accountCreated }) => {
-      await recordCheckoutGrant({
+      await recordCheckoutGrant(context.businessId, {
         stripe_session_id: idempotencyKey,
         user_id: userId,
         email: purchase.email,
@@ -156,13 +162,13 @@ export function buildGrantDeps(context: {
  * conversation, not a page, and inventing an attribution for it would put a
  * lie in the revenue reporting.
  */
-export function buildManualGrantDeps(context: { opportunityId: string }): GrantDeps {
-  const base = buildGrantDeps({ funnelId: null, stepId: null, leadId: null })
+export function buildManualGrantDeps(context: { opportunityId: string; businessId: string }): GrantDeps {
+  const base = buildGrantDeps({ funnelId: null, stepId: null, leadId: null, businessId: context.businessId })
   return {
     ...base,
-    hasProcessed: hasGrantedOpportunity,
+    hasProcessed: (idempotencyKey) => hasGrantedOpportunity(context.businessId, idempotencyKey),
     recordProcessed: async ({ userId, purchase, accountCreated }) => {
-      await recordCheckoutGrant({
+      await recordCheckoutGrant(context.businessId, {
         // Not stripe_session_id: the CHECK in 00235 refuses a row that sets
         // both, and a column named for Stripe must never hold something that
         // is not a Stripe id.

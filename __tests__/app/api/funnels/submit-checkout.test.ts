@@ -209,7 +209,9 @@ describe("POST /api/funnels/submit — checkout forms", () => {
 
   it("keeps the owner's unroled answers in the submission payload", async () => {
     await POST(request())
-    expect(createSubmission.mock.calls[0][0].payload).toMatchObject({ level: "First season of tennis" })
+    // calls[0][0] is the resolved tenant (businessId is now createSubmission's
+    // first argument); the input object moved to [1].
+    expect(createSubmission.mock.calls[0][1].payload).toMatchObject({ level: "First season of tennis" })
   })
 
   it("404s when the checkout flag is off, without touching Stripe", async () => {
@@ -224,9 +226,7 @@ describe("POST /api/funnels/submit — checkout forms", () => {
     const { returnUrls } = createEventSignupCheckout.mock.calls[0][1]
     // The LAST step by position, not by array order — the fixture lists them
     // out of order deliberately.
-    expect(returnUrls.successUrl).toBe(
-      `${getBaseUrl()}/go/summer-camp-2026/thank-you?session_id={CHECKOUT_SESSION_ID}`,
-    )
+    expect(returnUrls.successUrl).toBe(`${getBaseUrl()}/go/summer-camp-2026/thank-you?session_id={CHECKOUT_SESSION_ID}`)
     expect(returnUrls.cancelUrl).toBe(`${getBaseUrl()}/go/summer-camp-2026/register?checkout=cancelled`)
   })
 

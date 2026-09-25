@@ -198,7 +198,9 @@ describe("outcomes", () => {
 
   it("rewrites an internal redirect onto the preview base", async () => {
     armFunnelWithSecondPage()
-    mock(getDraft).mockImplementation(async (id: string) =>
+    // G31: getDraft(businessId, stepId) — the step id this branches on is now
+    // the SECOND argument.
+    mock(getDraft).mockImplementation(async (_businessId: string, id: string) =>
       id === NEXT_ID
         ? { doc: docWith({}), docInvalid: false, revision: 1 }
         : { doc: docWith({ successMode: "redirect", redirectUrl: "/go/summer-camp/thanks" }), docInvalid: false, revision: 1 },
@@ -211,7 +213,9 @@ describe("outcomes", () => {
 
   it("reports a next page with no draft instead of walking to a blank one", async () => {
     armFunnelWithSecondPage()
-    mock(getDraft).mockImplementation(async (id: string) =>
+    // G31: getDraft(businessId, stepId) — the step id this branches on is now
+    // the SECOND argument.
+    mock(getDraft).mockImplementation(async (_businessId: string, id: string) =>
       id === NEXT_ID
         ? { doc: null, docInvalid: false, revision: 0 }
         : { doc: docWith({ successMode: "redirect", redirectUrl: "/go/summer-camp/thanks" }), docInvalid: false, revision: 1 },

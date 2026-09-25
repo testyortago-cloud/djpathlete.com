@@ -4,20 +4,32 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { updateFunnelSchema } from "@/lib/validators/funnel"
 import { getFunnelById, updateFunnel, deleteFunnel, listSteps, listStepDocuments } from "@/lib/db/funnels"
+import { SlugTakenError } from "@/lib/db/businesses"
 import { deleteQuiz } from "@/lib/db/quizzes"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { quizUsesInSteps } from "@/lib/funnels/quiz-refs"
 
-export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
+
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    throw err
+  }
+
   const { id } = await ctx.params
   try {
-    const funnel = await getFunnelById(id)
+    const funnel = await getFunnelById(businessId, id)
     if (!funnel) return NextResponse.json({ error: "Not found" }, { status: 404 })
-    return NextResponse.json({ funnel, steps: await listSteps(id) })
+    return NextResponse.json({ funnel, steps: await listSteps(businessId, id) })
   } catch (error) {
     console.error("[GET /api/admin/funnels/:id]", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -73,6 +85,17 @@ export const PATCH = withAudit(
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
+
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
+    }
+
     const { id } = await ctx.params
 
     // A CLONE: the `metadata` resolver above reads the ORIGINAL request for
@@ -153,7 +176,7 @@ export const PATCH = withAudit(
        * STORED kind is the only kind there is, so gating on it is complete.
        */
       if (parsed.data.status === "published") {
-        const funnel = await getFunnelById(id)
+        const funnel = await getFunnelById(businessId, id)
         if (!funnel) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
         if (funnel.kind === "funnel") {
@@ -167,10 +190,13 @@ export const PATCH = withAudit(
         }
       }
 
-      return NextResponse.json({ funnel: await updateFunnel(id, parsed.data) })
+      return NextResponse.json({ funnel: await updateFunnel(businessId, id, parsed.data) })
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error"
-      if (message.includes("duplicate") || message.includes("unique")) {
+      // BY TYPE, NOT BY MESSAGE SUBSTRING — same fix as the POST route above.
+      // `SlugTakenError`'s message no longer contains "duplicate" or "unique",
+      // so a `message.includes(...)` check silently stopped catching it and a
+      // renamed-to-a-taken-slug PATCH 500'd instead of 409ing.
+      if (error instanceof SlugTakenError) {
         return NextResponse.json({ error: "That slug is already in use." }, { status: 409 })
       }
       console.error("[PATCH /api/admin/funnels/:id]", error)
@@ -238,15 +264,15 @@ export const DELETE = withAudit(
       // asked to remove should not survive because one read failed, and an id
       // that no longer names a row (already deleted, a stale request) simply
       // falls back to an id-only response/audit row below.
-      const funnel = await getFunnelById(id).catch(() => null)
-      const quizUses = await listSteps(id)
+      const funnel = await getFunnelById(businessId, id).catch(() => null)
+      const quizUses = await listSteps(businessId, id)
         .then(quizUsesInSteps)
         .catch((error) => {
           console.error("[DELETE /api/admin/funnels/:id] could not read steps for quiz cleanup", error)
           return []
         })
 
-      await deleteFunnel(id)
+      await deleteFunnel(businessId, id)
 
       // A QUIZ IS NOT PART OF THE FUNNEL ROW. Its block holds a POINTER, which
       // is what lets one weight edit take effect on every page showing it -- and
@@ -295,7 +321,7 @@ async function cleanUpOrphanedQuizzes(businessId: string, quizIds: string[]): Pr
   // get different handlers.
   let remaining: Awaited<ReturnType<typeof listStepDocuments>>
   try {
-    remaining = await listStepDocuments()
+    remaining = await listStepDocuments(businessId)
   } catch (error) {
     // Cannot tell whether anything still points at these quizzes, so touch
     // none of them. Failing closed here is the safe direction: the cost is an

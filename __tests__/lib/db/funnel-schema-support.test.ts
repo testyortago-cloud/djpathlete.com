@@ -9,11 +9,7 @@
 // never seen 00210, so without this every local funnel create would 500 too.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import {
-  hasIntakeColumns,
-  __resetIntakeColumnCache,
-  INTAKE_PROBE_COLUMN,
-} from "@/lib/db/funnel-schema-support"
+import { hasIntakeColumns, __resetIntakeColumnCache, INTAKE_PROBE_COLUMN } from "@/lib/db/funnel-schema-support"
 
 const limit = vi.fn()
 const select = vi.fn(() => ({ limit }))

@@ -19,6 +19,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const getPublishedStep = vi.fn()
 vi.mock("@/lib/db/funnels", () => ({ getPublishedStep }))
+// The ONE Host boundary. Mocked to a sentinel that is NOT the platform id, so
+// a route that hard-codes platformBusinessId() (or resolves it any other way)
+// cannot pass the assertions below.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "og-biz" }))
 
 const PUBLISHED = {
   funnel: { name: "Athlete Performance Insight", slug: "athlete-quiz" },
@@ -62,13 +66,13 @@ describe("/og/funnel — the generated share card", () => {
     // MUTANT KILLED: ignoring `step` and always reading the entry step, which
     // would draw the entry page's title onto every inner page's card — wrong,
     // and invisible, because a card still comes back.
-    expect(getPublishedStep).toHaveBeenCalledWith("gap-map", "thank-you")
+    expect(getPublishedStep).toHaveBeenCalledWith("og-biz", "gap-map", "thank-you")
   })
 
   it("reads the entry step when there is no step segment", async () => {
     getPublishedStep.mockResolvedValue(PUBLISHED)
     await render("athlete-quiz")
-    expect(getPublishedStep).toHaveBeenCalledWith("athlete-quiz", undefined)
+    expect(getPublishedStep).toHaveBeenCalledWith("og-biz", "athlete-quiz", undefined)
   })
 
   it("still returns an image when the row cannot be read", async () => {

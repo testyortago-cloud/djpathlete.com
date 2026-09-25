@@ -1,11 +1,13 @@
 import { Download } from "lucide-react"
 import { listLeadMagnets } from "@/lib/db/lead-magnets"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { LeadMagnetList } from "@/components/admin/lead-magnets/LeadMagnetList"
 
 export const metadata = { title: "Lead Magnets" }
 
 export default async function LeadMagnetsPage() {
-  const magnets = await listLeadMagnets(true)
+  const { businessId } = await resolveAdminTenant()
+  const magnets = await listLeadMagnets(businessId, true)
   return (
     <div>
       <div className="flex items-center justify-between mb-6">

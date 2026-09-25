@@ -22,7 +22,11 @@ interface PageProps {
 // the browser tab.
 export async function generateMetadata({ params }: PageProps) {
   const { id } = await params
-  const funnel = await getFunnelById(id)
+  // Independently resolved — Next invokes `generateMetadata` and the page
+  // component as separate calls, so each needs its own tenant, same as the
+  // public /go page's own generateMetadata since Task 6.
+  const { businessId } = await resolveAdminTenant()
+  const funnel = await getFunnelById(businessId, id)
   if (!funnel) return { title: "Not found" }
   return { title: funnel.kind === "page" ? `${funnel.name} · Landing page` : `${funnel.name} · Funnel` }
 }
@@ -43,13 +47,13 @@ export async function generateMetadata({ params }: PageProps) {
  */
 export async function FunnelDetailScreen({ id, base }: { id: string; base: "pages" | "funnels" }) {
   const { businessId } = await resolveAdminTenant()
-  const funnel = await getFunnelById(id)
+  const funnel = await getFunnelById(businessId, id)
   if (!funnel) notFound()
 
   const correctBase = funnel.kind === "page" ? "pages" : "funnels"
   if (correctBase !== base) redirect(`/admin/${correctBase}/${funnel.id}`)
 
-  const steps = await listSteps(id)
+  const steps = await listSteps(businessId, id)
 
   // THE QUIZ THIS FUNNEL USES, read out of the pages it has already loaded.
   //

@@ -94,7 +94,8 @@ const NO_PARAMS = { params: Promise.resolve({}) }
 
 /** The step plan `createFunnel` was actually handed. */
 function plannedSteps(): { name: string; slug: string; projectData?: unknown }[] {
-  return (createFunnelMock.mock.calls[0]?.[0] as { steps?: never[] } | undefined)?.steps ?? []
+  // G31: createFunnel(businessId, input) — the input object is now arg[1].
+  return (createFunnelMock.mock.calls[0]?.[1] as { steps?: never[] } | undefined)?.steps ?? []
 }
 
 beforeEach(() => {
@@ -261,6 +262,6 @@ describe("POST /api/admin/funnels — every other template", () => {
     await POST(post(quizBody), NO_PARAMS)
     // `funnels` has no `quiz` column. Spreading `parsed.data` straight through
     // is how a PATCH carrying `offer` once reached Postgres and 500'd.
-    expect(createFunnelMock.mock.calls[0][0]).not.toHaveProperty("quiz")
+    expect(createFunnelMock.mock.calls[0][1]).not.toHaveProperty("quiz")
   })
 })

@@ -19,6 +19,18 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/db/funnels", () => ({ getFunnelBySlug: vi.fn(), listSteps: vi.fn() }))
 vi.mock("@/lib/funnels/preview-render", () => ({ renderDraftPreview: vi.fn() }))
+// `vi.mock` factories are hoisted above every top-level statement, including a
+// bare `class` declaration -- referencing one directly here throws "Cannot
+// access before initialization" (this repo has already shipped that exact bug
+// in six other test files that pair a static top-level `import` with a bare
+// class). `vi.hoisted` is the escape hatch.
+const { NoAccessibleBusinessErrorMock } = vi.hoisted(() => ({
+  NoAccessibleBusinessErrorMock: class NoAccessibleBusinessErrorMock extends Error {},
+}))
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenant: vi.fn(),
+  NoAccessibleBusinessError: NoAccessibleBusinessErrorMock,
+}))
 // The renderer walks compiled nodes and reaches async islands; this page's
 // tests are about the gate and the base path, not about island internals.
 vi.mock("@/components/funnels/NodeRenderer", () => ({
@@ -29,6 +41,7 @@ import Page, { metadata } from "@/app/(funnel)/preview/[slug]/[[...step]]/page"
 import { auth } from "@/lib/auth"
 import { getFunnelBySlug, listSteps } from "@/lib/db/funnels"
 import { renderDraftPreview } from "@/lib/funnels/preview-render"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
 
@@ -41,6 +54,7 @@ const FUNNEL = {
 }
 const ENTRY = { id: "step-1", slug: "start", name: "Start", is_entry: true, position: 0, published_version_id: null }
 const SECOND = { id: "step-2", slug: "thanks", name: "Thanks", is_entry: false, position: 1, published_version_id: null }
+const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 
 const render = (slug: string, step?: string[]) => Page({ params: Promise.resolve({ slug, step }) })
 const html = async (slug: string, step?: string[]) =>
@@ -49,6 +63,11 @@ const html = async (slug: string, step?: string[]) =>
 beforeEach(() => {
   vi.resetAllMocks()
   mock(auth).mockResolvedValue({ user: { role: "admin" } })
+  mock(resolveAdminTenant).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "DJP Athlete", slug: "djp-athlete" }],
+    isOperator: true,
+  })
   mock(getFunnelBySlug).mockResolvedValue(FUNNEL)
   mock(listSteps).mockResolvedValue([ENTRY, SECOND])
   mock(renderDraftPreview).mockResolvedValue({ kind: "ok", nodes: [], css: ".x{}", problems: [] })
@@ -72,6 +91,23 @@ describe("the gate", () => {
   it("404s an unknown funnel slug", async () => {
     mock(getFunnelBySlug).mockResolvedValue(null)
     await expect(render("nope")).rejects.toThrow("NEXT_NOT_FOUND")
+  })
+
+  it("404s an admin whose tenant cannot be resolved, rather than 500ing", async () => {
+    // MUTANT: letting resolveAdminTenant's NoAccessibleBusinessError escape as
+    // an uncaught throw instead of the same 404 every other admin-gated
+    // screen answers with.
+    mock(resolveAdminTenant).mockRejectedValue(new NoAccessibleBusinessErrorMock())
+    await expect(render("summer-camp")).rejects.toThrow("NEXT_NOT_FOUND")
+    expect(getFunnelBySlug).not.toHaveBeenCalled()
+  })
+
+  it("resolves the tenant through the ADMIN boundary, and scopes getFunnelBySlug/listSteps to it", async () => {
+    // This is a staff/admin screen for looking at a DRAFT, not the public /go
+    // route -- it resolves through resolveAdminTenant(), never the Host.
+    await render("summer-camp")
+    expect(getFunnelBySlug).toHaveBeenCalledWith(BUSINESS_ID, "summer-camp")
+    expect(listSteps).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL.id)
   })
 
   it("404s more than one segment past the slug", async () => {

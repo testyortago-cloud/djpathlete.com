@@ -128,11 +128,11 @@ export const POST = withAudit(
     let funnelWasLive = false
 
     try {
-      const funnel = await getFunnelById(id)
+      const funnel = await getFunnelById(businessId, id)
       if (!funnel) return NextResponse.json({ error: "Not found" }, { status: 404 })
       funnelWasLive = funnel.status === "published"
 
-      const steps = await listSteps(id)
+      const steps = await listSteps(businessId, id)
       if (steps.length === 0) {
         // `funnelPublishPlan([])` is legitimately `ok` — it has no page to
         // object to. Publishing an empty funnel would serve a 404 at its own
@@ -145,7 +145,7 @@ export const POST = withAudit(
       // The drafts are read FIRST and the catalogue after, because a camp this
       // funnel sells may need its Stripe price created before the catalogue is
       // asked whether it has one. See `ensureCheckoutCampsPriced` below.
-      const drafts = await Promise.all(steps.map((step) => getDraft(step.id)))
+      const drafts = await Promise.all(steps.map((step) => getDraft(businessId, step.id)))
 
       // GIVE A CAMP ITS STRIPE PRICE RATHER THAN REFUSING IT.
       //
@@ -164,7 +164,7 @@ export const POST = withAudit(
       // READ ONCE FOR THE WHOLE FUNNEL. A funnel-wide fact, and re-reading it per
       // page would not only cost N times the work but could gate page 1 and page 4
       // against different catalogues.
-      const catalogues = await loadCatalogues()
+      const catalogues = await loadCatalogues(businessId)
       // `[]` is correct here and `null` would be wrong: these ARE the funnel's
       // pages, freshly read. `null` means "could not be checked", and a failed
       // read has already thrown into the catch below.
@@ -355,7 +355,7 @@ export const POST = withAudit(
       // THE WRITE LOOP. NOTHING BELOW THIS LINE MAY REFUSE A PAGE.
       // ---------------------------------------------------------------------
       for (const entry of prepared) {
-        const result = await publishStep({
+        const result = await publishStep(businessId, {
           stepId: entry.stepId,
           html: entry.html,
           css: entry.css,
@@ -381,7 +381,7 @@ export const POST = withAudit(
       }
 
       // LAST, and only on a clean sweep — see the header.
-      await updateFunnel(funnel.id, { status: "published" })
+      await updateFunnel(businessId, funnel.id, { status: "published" })
 
       return NextResponse.json({ published: published.length, pages: published, warnings })
     } catch (error) {

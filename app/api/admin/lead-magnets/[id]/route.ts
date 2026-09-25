@@ -7,19 +7,31 @@ import {
   updateLeadMagnet,
   deleteLeadMagnet,
 } from "@/lib/db/lead-magnets"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 interface Params {
   params: Promise<{ id: string }>
 }
 
-export async function GET(_request: NextRequest, { params }: Params) {
+export async function GET(request: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
+
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    throw err
+  }
+
   const { id } = await params
   try {
-    const magnet = await getLeadMagnetById(id)
+    const magnet = await getLeadMagnetById(businessId, id)
     if (!magnet) return NextResponse.json({ error: "Not found" }, { status: 404 })
     return NextResponse.json({ magnet })
   } catch (err) {
@@ -33,6 +45,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
+
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    throw err
+  }
+
   const { id } = await params
   const body = await request.json().catch(() => null)
   const parsed = leadMagnetFormSchema.partial().safeParse(body)
@@ -46,7 +69,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     )
   }
   try {
-    const updated = await updateLeadMagnet(id, parsed.data)
+    const updated = await updateLeadMagnet(businessId, id, parsed.data)
     return NextResponse.json({ magnet: updated })
   } catch (err) {
     console.error("[PATCH /api/admin/lead-magnets/[id]]", err)
@@ -54,14 +77,25 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: Params) {
+export async function DELETE(request: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
+
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    throw err
+  }
+
   const { id } = await params
   try {
-    await deleteLeadMagnet(id)
+    await deleteLeadMagnet(businessId, id)
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("[DELETE /api/admin/lead-magnets/[id]]", err)

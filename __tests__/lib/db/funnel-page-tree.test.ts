@@ -13,6 +13,11 @@ const from = vi.fn()
 
 vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => ({ from }) }))
 
+// G31 (migration 00278): both functions now take a tenant first. The VALUE is
+// not under test here — funnel-builder-tenancy.test.ts owns that — this file
+// only needs one fixed id to keep exercising the optimistic-lock behaviour.
+const BUSINESS_ID = "aaaaaaaa-0000-0000-0000-00000000000a"
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -41,7 +46,7 @@ describe("savePageTree", () => {
     from.mockReturnValue(updateChain([{ doc_revision: 4 }]))
     const { savePageTree } = await import("@/lib/db/funnel-page-tree")
 
-    await savePageTree("s1", tree, 3)
+    await savePageTree(BUSINESS_ID, "s1", tree, 3)
 
     expect(eq).toHaveBeenCalledWith("id", "s1")
     expect(eq).toHaveBeenCalledWith("doc_revision", 3)
@@ -53,7 +58,7 @@ describe("savePageTree", () => {
     from.mockReturnValue(updateChain([{ doc_revision: 4 }]))
     const { savePageTree } = await import("@/lib/db/funnel-page-tree")
 
-    await savePageTree("s1", tree, 3)
+    await savePageTree(BUSINESS_ID, "s1", tree, 3)
 
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ doc_revision: 4 }))
   })
@@ -75,7 +80,7 @@ describe("savePageTree", () => {
     from.mockImplementation(() => ({ update, ...readChain }) as never)
 
     const { savePageTree } = await import("@/lib/db/funnel-page-tree")
-    const result = await savePageTree("s1", tree, 3)
+    const result = await savePageTree(BUSINESS_ID, "s1", tree, 3)
 
     expect(result).toEqual({ ok: false, reason: "stale_revision", currentRevision: 9 })
   })
@@ -84,8 +89,11 @@ describe("savePageTree", () => {
     // MUTANT KILLED: trusting the caller. This is the last gate before the
     // column, and a route is not the only thing that can call a DAL.
     const { savePageTree } = await import("@/lib/db/funnel-page-tree")
-    const bad = { ...tree, sections: [{ id: "s1", style: {}, rows: [{ id: "r1", style: {}, layout: "1-1", columns: [] }] }] }
-    await expect(savePageTree("s1", bad as never, 1)).rejects.toThrow()
+    const bad = {
+      ...tree,
+      sections: [{ id: "s1", style: {}, rows: [{ id: "r1", style: {}, layout: "1-1", columns: [] }] }],
+    }
+    await expect(savePageTree(BUSINESS_ID, "s1", bad as never, 1)).rejects.toThrow()
   })
 })
 
@@ -105,7 +113,7 @@ describe("getPageTree", () => {
     from.mockReturnValue(chain)
 
     const { getPageTree } = await import("@/lib/db/funnel-page-tree")
-    const draft = await getPageTree("s1")
+    const draft = await getPageTree(BUSINESS_ID, "s1")
 
     expect(draft).toEqual({ tree: null, revision: 2, treeInvalid: true })
   })
@@ -121,6 +129,6 @@ describe("getPageTree", () => {
     from.mockReturnValue(chain)
 
     const { getPageTree } = await import("@/lib/db/funnel-page-tree")
-    expect(await getPageTree("s1")).toEqual({ tree: null, revision: 0, treeInvalid: false })
+    expect(await getPageTree(BUSINESS_ID, "s1")).toEqual({ tree: null, revision: 0, treeInvalid: false })
   })
 })

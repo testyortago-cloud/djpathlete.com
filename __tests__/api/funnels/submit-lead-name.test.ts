@@ -158,7 +158,7 @@ describe("POST /api/funnels/submit — lead name capture", () => {
     await flush()
 
     expect(res.status).toBe(200)
-    expect(createSubmission).toHaveBeenCalledWith(expect.objectContaining({ name: "Aean Audit" }))
+    expect(createSubmission).toHaveBeenCalledWith("host-biz", expect.objectContaining({ name: "Aean Audit" }))
     expect(sendNewFunnelLeadEmail).toHaveBeenCalledWith(expect.objectContaining({ name: "Aean Audit" }))
     // And WHOSE lead it is. Since G30 the mailer reads the sender identity and
     // the coach's mailbox from this id, so a route that stopped passing it
@@ -176,7 +176,7 @@ describe("POST /api/funnels/submit — lead name capture", () => {
     await flush()
 
     expect(res.status).toBe(200)
-    expect(createSubmission).toHaveBeenCalledWith(expect.objectContaining({ name: "Riley Audit" }))
+    expect(createSubmission).toHaveBeenCalledWith("host-biz", expect.objectContaining({ name: "Riley Audit" }))
   })
 
   it("still reads the legacy first_name/last_name shape older templates use", async () => {
@@ -187,7 +187,7 @@ describe("POST /api/funnels/submit — lead name capture", () => {
     await flush()
 
     expect(res.status).toBe(200)
-    expect(createSubmission).toHaveBeenCalledWith(expect.objectContaining({ name: "Riley Audit" }))
+    expect(createSubmission).toHaveBeenCalledWith("host-biz", expect.objectContaining({ name: "Riley Audit" }))
   })
 
   it("falls back to a plain *name* text field when there is no role or legacy key", async () => {
@@ -199,7 +199,7 @@ describe("POST /api/funnels/submit — lead name capture", () => {
     await flush()
 
     expect(res.status).toBe(200)
-    expect(createSubmission).toHaveBeenCalledWith(expect.objectContaining({ name: "Casey Audit" }))
+    expect(createSubmission).toHaveBeenCalledWith("host-biz", expect.objectContaining({ name: "Casey Audit" }))
   })
 
   it("returns null when nothing on the form looks like a name", async () => {
@@ -211,7 +211,7 @@ describe("POST /api/funnels/submit — lead name capture", () => {
     await flush()
 
     expect(res.status).toBe(200)
-    expect(createSubmission).toHaveBeenCalledWith(expect.objectContaining({ name: null }))
+    expect(createSubmission).toHaveBeenCalledWith("host-biz", expect.objectContaining({ name: null }))
   })
 })
 

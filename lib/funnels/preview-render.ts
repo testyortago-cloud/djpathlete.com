@@ -57,6 +57,16 @@ export type DraftPreviewResult =
   | { kind: "ok"; nodes: FunnelNode[]; css: string; problems: string[] }
 
 export interface DraftPreviewInput {
+  /**
+   * The tenant this draft belongs to. REQUIRED, not resolved in here: this
+   * is a shared library, not a route, and it is called from two routes that
+   * each gate through a DIFFERENT boundary (the admin tenant for both draft
+   * previews). Resolving it here would mean picking one boundary for both
+   * callers, or duplicating the resolve -- either way the caller's own gate
+   * (which 404s on failure) would no longer be the thing standing between an
+   * unresolved tenant and a DB read.
+   */
+  businessId: string
   stepId: string
   funnelId: string
   /** `/go/<slug>` for the builder iframe, `/preview/<slug>` full screen. */
@@ -66,25 +76,16 @@ export interface DraftPreviewInput {
    * slug-addressed URL must never reach edit mode.
    */
   editable?: boolean
-  /**
-   * The tenant whose brand kit should back this render's palette default, or
-   * `null` when it could not be resolved. Optional (defaults to `null`) so
-   * existing callers that predate the brand kit keep compiling unchanged.
-   * A failed `business_settings` read degrades to `null` INSIDE this
-   * function -- it never becomes its own `DraftPreviewResult` kind, because a
-   * missing brand is not a reason to stop showing the draft.
-   */
-  businessId?: string | null
 }
 
 export async function renderDraftPreview({
+  businessId,
   stepId,
   funnelId,
   funnelBasePath,
   editable = false,
-  businessId = null,
 }: DraftPreviewInput): Promise<DraftPreviewResult> {
-  const draft = await getDraft(stepId)
+  const draft = await getDraft(businessId, stepId)
   if (!draft) return { kind: "no-draft" }
   if (draft.docInvalid) return { kind: "doc-invalid" }
   if (!draft.doc) return { kind: "no-draft" }
@@ -93,12 +94,10 @@ export async function renderDraftPreview({
   // read failure must cost only the palette default, not the resolution this
   // preview shares with publish.
   let brandKit: BrandKit | null = null
-  if (businessId) {
-    try {
-      brandKit = await resolveBrandKit(businessId)
-    } catch (error) {
-      console.error("[funnels/preview-render] brand kit read failed — continuing without it:", error)
-    }
+  try {
+    brandKit = await resolveBrandKit(businessId)
+  } catch (error) {
+    console.error("[funnels/preview-render] brand kit read failed — continuing without it:", error)
   }
 
   // THE SAME RESOLUTION PUBLISH RUNS, so the preview cannot disagree with it
@@ -110,8 +109,8 @@ export async function renderDraftPreview({
   let gateBlockers: string[] = []
   try {
     const [catalogues, pages] = await Promise.all([
-      loadCatalogues(),
-      listSteps(funnelId).then((rows) => rows.map((row) => ({ slug: row.slug, name: row.name }))),
+      loadCatalogues(businessId),
+      listSteps(businessId, funnelId).then((rows) => rows.map((row) => ({ slug: row.slug, name: row.name }))),
     ])
     const resolution = resolveDoc(draft.doc, catalogues, pages)
     docToRender = resolution.doc

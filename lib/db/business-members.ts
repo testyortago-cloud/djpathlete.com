@@ -16,6 +16,31 @@ function getClient() {
   return createServiceRoleClient()
 }
 
+/**
+ * True if `userId` holds a `business_members` row on `businessId`.
+ *
+ * Written for the `/go/<slug>?preview=1` escalation (whole-branch review item
+ * 2): that route resolves its tenant from the request's HOST, not from the
+ * viewer's session cookie the way every admin page does, so the session's
+ * global `role` alone cannot answer "may THIS caller see THIS tenant's
+ * unpublished funnel". A staff member of tenant B is `role: "staff"`
+ * regardless of which host they typed, and without this check that role
+ * check alone let them read tenant A's draft by visiting A's host directly.
+ * `resolveAdminTenant`'s own operator branch (role `"admin"`) is unaffected —
+ * an operator has every business in its `choices` already, so it never calls
+ * this.
+ */
+export async function isBusinessMember(businessId: string, userId: string): Promise<boolean> {
+  const { data, error } = await getClient()
+    .from("business_members")
+    .select("user_id")
+    .eq("business_id", businessId)
+    .eq("user_id", userId)
+    .maybeSingle()
+  if (error) throw new Error(`isBusinessMember failed (${error.code}): ${error.message}`)
+  return data !== null
+}
+
 export async function listBusinessMembers(businessId: string): Promise<BusinessMember[]> {
   const { data, error } = await getClient()
     .from("business_members")

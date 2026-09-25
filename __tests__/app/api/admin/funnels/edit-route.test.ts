@@ -13,12 +13,22 @@ vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/permissions/guard", () => ({ canAccessAdminPath: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 vi.mock("@/lib/db/funnel-builder", () => ({ getDraft: vi.fn(), appendTurn: vi.fn() }))
+const { NoAccessibleBusinessError } = vi.hoisted(() => ({
+  NoAccessibleBusinessError: class NoAccessibleBusinessError extends Error {},
+}))
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: vi.fn(),
+  NoAccessibleBusinessError,
+}))
 
 import { PUT } from "@/app/api/admin/funnels/steps/[stepId]/edit/route"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { getDraft, appendTurn } from "@/lib/db/funnel-builder"
+import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
+
+const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 
 function aDoc(): SectionDoc {
   return {
@@ -63,6 +73,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(auth).mockResolvedValue({ user: { id: "u1", role: "admin" } } as never)
   vi.mocked(canAccessAdminPath).mockResolvedValue(true)
+  vi.mocked(resolveAdminTenantForRequest).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "Test Co", slug: "test-co" }],
+    isOperator: true,
+  } as never)
   vi.mocked(getDraft).mockResolvedValue({ doc: aDoc(), docInvalid: false, revision: 4 })
   vi.mocked(appendTurn).mockResolvedValue({ ok: true, revision: 5, turn: {} as never })
 })
@@ -80,6 +95,7 @@ describe("PUT /api/admin/funnels/steps/:id/edit", () => {
     // record of what changed the page, and a click changed it just as much as
     // a model turn did.
     expect(appendTurn).toHaveBeenCalledWith(
+      BUSINESS_ID,
       expect.objectContaining({
         stepId: "s1",
         expectedRevision: 4,
@@ -96,7 +112,7 @@ describe("PUT /api/admin/funnels/steps/:id/edit", () => {
     const response = await PUT(put({ ops: [goodOp], revision: 4 }) as never, ctx as never)
     expect(response.status).toBe(200)
 
-    const stored = vi.mocked(appendTurn).mock.calls[0][0].doc as SectionDoc
+    const stored = vi.mocked(appendTurn).mock.calls[0][1].doc as SectionDoc
     const before = vi.mocked(getDraft).mock.results[0].value as Promise<{ doc: SectionDoc }>
     const original = (await before).doc
     expect(stored.sections[1]).toBe(original.sections[1])
@@ -199,7 +215,7 @@ describe("PUT /api/admin/funnels/steps/:id/edit", () => {
     // no message renders as a blank row, so the receipt is turned into prose
     // here rather than left to the UI to invent.
     await PUT(put({ ops: [goodOp], revision: 4 }) as never, ctx as never)
-    const message = vi.mocked(appendTurn).mock.calls[0][0].message
+    const message = vi.mocked(appendTurn).mock.calls[0][1].message
     expect(message).toMatch(/hero/i)
     expect(message).toMatch(/headline/i)
   })

@@ -3,6 +3,15 @@
 // Two functions, and between them they are the only thing standing between a
 // Stripe retry and a second program grant plus a second "set your password"
 // email to someone who has already set one.
+//
+// TENANCY (G31 / migration 00278): all three functions take `businessId`
+// first. `funnel_checkout_grants` has NO foreign key into the funnel tables —
+// unlike `funnel_step_turns` or `funnel_submissions`, 00278 could not give it
+// a composite FK, so the `.eq("business_id", ...)` predicate below is the
+// ONLY thing scoping it to a tenant. The uniqueness on `stripe_session_id` /
+// `opportunity_id` themselves stays GLOBAL, not per-tenant, deliberately:
+// Stripe session ids are already globally unique by construction, so scoping
+// that constraint to a tenant would only weaken it.
 
 import { createServiceRoleClient } from "@/lib/supabase"
 
@@ -39,11 +48,12 @@ export interface FunnelCheckoutGrantRow {
  * than the flow deciding nothing has been processed and granting on every
  * single retry.
  */
-export async function hasProcessedCheckoutSession(sessionId: string): Promise<boolean> {
+export async function hasProcessedCheckoutSession(businessId: string, sessionId: string): Promise<boolean> {
   const supabase = createServiceRoleClient()
   const { data, error } = await supabase
     .from("funnel_checkout_grants")
     .select("id")
+    .eq("business_id", businessId)
     .eq("stripe_session_id", sessionId)
     .maybeSingle()
   if (error) throw new Error(`funnel_checkout_grants read failed: ${error.message}`)
@@ -68,20 +78,23 @@ export async function hasProcessedCheckoutSession(sessionId: string): Promise<bo
  * risk a second account and a second "set your password" email to somebody
  * who has already set one.
  */
-export async function hasGrantedOpportunity(opportunityId: string): Promise<boolean> {
+export async function hasGrantedOpportunity(businessId: string, opportunityId: string): Promise<boolean> {
   const supabase = createServiceRoleClient()
   const { data, error } = await supabase
     .from("funnel_checkout_grants")
     .select("id")
+    .eq("business_id", businessId)
     .eq("opportunity_id", opportunityId)
     .maybeSingle()
   if (error) throw new Error(`funnel_checkout_grants read failed: ${error.message}`)
   return data !== null
 }
 
-export async function recordCheckoutGrant(row: FunnelCheckoutGrantRow): Promise<void> {
+export async function recordCheckoutGrant(businessId: string, row: FunnelCheckoutGrantRow): Promise<void> {
   const supabase = createServiceRoleClient()
-  const { error } = await supabase.from("funnel_checkout_grants").insert(row)
+  // STAMPED explicitly, never left to the column default — see the file
+  // header on why the default cannot be trusted as a source of truth.
+  const { error } = await supabase.from("funnel_checkout_grants").insert({ ...row, business_id: businessId })
   if (!error) return
   // 23505 = unique_violation.
   if (error.code === "23505") return
