@@ -19,6 +19,7 @@ import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import type { ContactEventSource } from "@/lib/db/contacts"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
+import { LEAD_ALERT_ROLES, listBusinessMemberUserIds } from "@/lib/db/business-members"
 
 export const maxDuration = 45
 
@@ -225,8 +226,23 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       })
     }
 
-    // Notify all admins
-    const { data: admins } = await supabase.from("users").select("id").eq("role", "admin")
+    // WHO GETS THE BELL: this business's owners and coaches (LEAD_ALERT_ROLES,
+    // the owner's ruling in G35), not every `users.role = 'admin'` row in the
+    // deployment. That read belled every platform operator about every
+    // business's applications. G30 moved the EMAIL half of this alert to the
+    // business's own `reply_to`; this moves the bell half. Read here, before
+    // the inquiry row, because the lead analysis below names its first entry.
+    //
+    // A FAILED READ IS LOGGED AND THE ROUTE CARRIES ON: the applicant's
+    // submission is already captured, and neither the coach's email nor the
+    // auto-reply depends on who gets a bell. The DAL throws rather than
+    // answering [] so that a lost alert leaves this line behind.
+    let alertRecipients: string[] = []
+    try {
+      alertRecipients = await listBusinessMemberUserIds(businessId, LEAD_ALERT_ROLES)
+    } catch (err) {
+      console.error("[inquiry] could not read this business's owners and coaches; no bell alert was filed:", err)
+    }
 
     // Persist the raw submission — previously these fields only ever existed
     // transiently in the notification email body.
@@ -257,15 +273,22 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
     // the plain notification below if this fails, same pattern as the email
     // sends further down).
     let aiAnalysis: LeadAnalysisResult | null = null
-    const firstAdminId = admins?.[0]?.id ?? null
-    if (leadInquiryId && firstAdminId) {
+    // Logged as requested by this business's longest-standing owner or coach —
+    // the first recipient, in the DAL's fixed order — rather than by whichever
+    // platform admin a `users` read happened to return first. Both
+    // `ai_generation_log.requested_by` and the audit actor name a person, and
+    // for a coach's lead that person is theirs. No recipient (a business with
+    // no owner or coach, or a failed read) skips the analysis exactly as "no
+    // admin" always did; the inquiry row and both emails are unaffected.
+    const analysisRequesterId = alertRecipients[0] ?? null
+    if (leadInquiryId && analysisRequesterId) {
       const startTime = Date.now()
       let logId: string | null = null
       try {
         const log = await createGenerationLog({
           program_id: null,
           client_id: leadUserId,
-          requested_by: firstAdminId,
+          requested_by: analysisRequesterId,
           status: "pending",
           input_params: {
             feature: "lead_inquiry_analysis",
@@ -328,7 +351,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
         await recordAudit({
           action: "lead.ai_analysis_generated",
           category: "automation",
-          actor: { id: firstAdminId, role: "system" },
+          actor: { id: analysisRequesterId, role: "system" },
           target: { type: "lead_inquiry", id: leadInquiryId, label: name },
           metadata: { priority: content.priority },
         })
@@ -346,14 +369,14 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
           action: "lead.ai_analysis_generated",
           category: "automation",
           outcome: "failure",
-          actor: { id: firstAdminId, role: "system" },
+          actor: { id: analysisRequesterId, role: "system" },
           target: { type: "lead_inquiry", id: leadInquiryId, label: name },
           error: { message: err instanceof Error ? err.message : "Unknown error" },
         }).catch(() => {})
       }
     }
 
-    if (admins && admins.length > 0) {
+    if (alertRecipients.length > 0) {
       const details = [
         `Service: ${serviceLabel}`,
         `From: ${name} (${email})`,
@@ -372,8 +395,8 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
         .filter(Boolean)
         .join("\n")
 
-      const notifications = admins.map((admin) => ({
-        user_id: admin.id,
+      const notifications = alertRecipients.map((userId) => ({
+        user_id: userId,
         type: "info" as const,
         title: `New ${serviceLabel} Application`,
         message: details,

@@ -7,6 +7,7 @@ import { withAudit } from "@/lib/audit/with-audit"
 import { captureLead } from "@/lib/lead-engine/capture"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
+import { LEAD_ALERT_ROLES, listBusinessMemberUserIds } from "@/lib/db/business-members"
 
 export const POST = withAudit({ action: "contact.submitted", category: "marketing" }, async (request) => {
   try {
@@ -79,18 +80,28 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       timezone: result.data.timezone ?? null, // G06
     })
 
-    // Find all admin users to notify
-    const { data: admins, error: adminsError } = await supabase.from("users").select("id").eq("role", "admin")
-
-    if (adminsError) {
-      console.error("Failed to fetch admin users:", adminsError)
-      // Still return success to the client — we don't want to expose internal errors
-      return NextResponse.json({ success: true })
+    // WHO GETS THE BELL: this business's owners and coaches (LEAD_ALERT_ROLES,
+    // the owner's ruling in G35), not `users where role = 'admin'`. That read
+    // belled every platform operator about every business's contact form — a
+    // cross-tenant broadcast the moment a second business's site takes a
+    // message. `businessId` is the Host tenant resolved above.
+    //
+    // A FAILED READ IS LOGGED AND THE ROUTE CARRIES ON. It used to `return`
+    // here, so a failed recipients read also skipped the email below, the
+    // visitor's auto-reply and the CRM sync — none of which depends on who
+    // gets a bell. The DAL throws rather than answering [] precisely so that
+    // this line exists: an empty list would read as "this business has nobody
+    // to tell" and leave no trace of the lost alert.
+    let alertRecipients: string[] = []
+    try {
+      alertRecipients = await listBusinessMemberUserIds(businessId, LEAD_ALERT_ROLES)
+    } catch (err) {
+      console.error("[contact] could not read this business's owners and coaches; no bell alert was filed:", err)
     }
 
-    if (admins && admins.length > 0) {
-      const notifications = admins.map((admin) => ({
-        user_id: admin.id,
+    if (alertRecipients.length > 0) {
+      const notifications = alertRecipients.map((userId) => ({
+        user_id: userId,
         type: "info" as const,
         title: "New Contact Form Submission",
         message: `From: ${name} (${email})\nSubject: ${subject}\n\n${message}`,
