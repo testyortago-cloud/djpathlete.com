@@ -1,0 +1,72 @@
+name: PostgREST Select Contract
+
+# Runs every PostgREST select in the deployed code against the DEV CLONE's live
+# schema, with limit=0, and fails on any the server refuses. The test, and why
+# it exists (G31's leads-inbox outage), is in
+# __tests__/integration/postgrest-select-contract.test.ts.
+#
+# A BACKSTOP, NOT A GATE. Branches here are merged locally and reach GitHub only
+# as a push to main, so this runs alongside the Vercel deploy and reports a bad
+# select after it has shipped. The gate is `npm run test:integration:selects`
+# before the merge, as CLAUDE.md says.
+#
+# The dev clone only has the migrations a session applied to it by hand
+# (apply-migrations.yml targets production). A push whose code needs a migration
+# the clone lacks fails here until the clone catches up — which is correct: the
+# clone is then not a copy of production.
+#
+# NEEDS ONE REPOSITORY SECRET: DEV_CLONE_SERVICE_ROLE_KEY — the dev clone's
+# service-role key, NEVER production's. The test refuses any URL but the clone's.
+# Without the secret this job FAILS instead of skipping: a skipped check reads as
+# a passing one.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "lib/**"
+      - "app/**"
+      - "components/**"
+      - "functions/src/**"
+      - "render-worker/src/**"
+      - "supabase/migrations/**"
+      - "scripts/lib/collect-postgrest-selects.ts"
+      - "__tests__/integration/postgrest-select-contract.test.ts"
+      - ".github/workflows/postgrest-select-contract.yml"
+      - "package-lock.json"
+  workflow_dispatch:
+
+concurrency:
+  group: postgrest-select-contract
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Not a secret: the clone's ref is in every clone URL. Pinned here so the
+      # job cannot be pointed anywhere else by a repository variable.
+      NEXT_PUBLIC_SUPABASE_URL: https://anjvztjiokcgiyhobknq.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DEV_CLONE_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Refuse to report green without the key
+        if: env.SUPABASE_SERVICE_ROLE_KEY == ''
+        run: |
+          echo "::error title=Select contract NOT run::The DEV_CLONE_SERVICE_ROLE_KEY repository secret is not set, so no select was checked."
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Node 24: vitest.config.ts refuses to start on a Node without require(esm).
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Probe every select against the dev clone
+        run: npm run test:integration:selects
