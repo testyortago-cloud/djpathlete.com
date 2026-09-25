@@ -1,10 +1,10 @@
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
 import { NewsletterForm } from "@/components/admin/newsletter/NewsletterForm"
 
 export const metadata = { title: "New Newsletter" }
 
 export default async function NewNewsletterPage() {
-  const session = await requireAdmin()
+  const session = await requirePermission("blog")
 
   return (
     <div>

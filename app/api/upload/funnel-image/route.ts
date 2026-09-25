@@ -1,7 +1,8 @@
 // POST /api/upload/funnel-image — one image for a funnel page's media slot.
 //
 // Mirrors the shape of the sibling upload routes (`event-image`, `blog-image`):
-// multipart body, allowlisted content types, size cap, admin only. It differs
+// multipart body, allowlisted content types, size cap, and the owner or a
+// teammate holding `funnels`. It differs
 // in where the bytes land — Firebase Storage, at a path `storage.rules` makes
 // publicly readable — because a funnel page's `media.src` is published to
 // anonymous visitors and must never be a URL that expires. See
@@ -29,7 +30,10 @@ const SAFE_STEP_ID = /^[a-zA-Z0-9_-]{1,64}$/
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
+    // `request` MUST be passed. proxy.ts never runs on /api/upload, so without
+    // it canAccessAdminPath reads a header nobody set and refuses every staff
+    // member — which is what it did until 2026-09-25, `funnels` or not.
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user, request))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

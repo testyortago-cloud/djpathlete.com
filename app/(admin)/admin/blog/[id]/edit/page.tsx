@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation"
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
 import { getBlogPostById } from "@/lib/db/blog-posts"
 import { BlogPostForm } from "@/components/admin/blog/BlogPostForm"
 import { BlogPostImageWatcher } from "@/components/admin/blog/BlogPostImageWatcher"
@@ -12,7 +12,7 @@ interface Props {
 export const metadata = { title: "Edit Blog Post" }
 
 export default async function EditBlogPostPage({ params }: Props) {
-  const session = await requireAdmin()
+  const session = await requirePermission("blog")
   const { id } = await params
 
   let post: BlogPost

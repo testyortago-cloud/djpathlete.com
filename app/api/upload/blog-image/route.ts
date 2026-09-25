@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { uploadBlogImage } from "@/lib/blog-storage"
 
 const MAX_SIZE = 5 * 1024 * 1024 // 5 MB
@@ -8,7 +9,9 @@ const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"]
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    // `request` is passed because proxy.ts never runs on /api/upload, so there
+    // is no stamped path header to read. Resolves to `blog` in the registry.
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user, request))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

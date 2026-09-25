@@ -492,6 +492,13 @@ export const PATH_PERMISSIONS: readonly PathRule[] = [
   { prefix: "/api/admin/topic-suggestions", permission: "blog" },
   { prefix: "/api/admin/reviews", permission: "blog" },
   { prefix: "/api/admin/google-reviews", permission: "blog" },
+  // The blog editor's two upload calls. `/api/upload/*` is outside proxy.ts's
+  // matcher, so these rows are read ONLY by the routes themselves, which pass
+  // their own request to canAccessAdminPath — there is no stamped header to
+  // read. Without a row here a teammate holding `blog` could open the editor
+  // and then be refused the moment they added an image.
+  { prefix: "/api/upload/blog-image", permission: "blog" },
+  { prefix: "/api/upload/extract-text", permission: "blog" },
 
   { prefix: "/admin/social", permission: "social" },
   { prefix: "/admin/calendar", permission: "social" },
@@ -520,6 +527,8 @@ export const PATH_PERMISSIONS: readonly PathRule[] = [
   { prefix: "/admin/pages", permission: "funnels" },
   { prefix: "/admin/funnels", permission: "funnels" },
   { prefix: "/api/admin/funnels", permission: "funnels" },
+  // Read only by the route itself — see the note above /api/upload/blog-image.
+  { prefix: "/api/upload/funnel-image", permission: "funnels" },
 
   { prefix: "/admin/integrations/gsc", permission: "seo" },
   { prefix: "/admin/seo-agent", permission: "seo" },

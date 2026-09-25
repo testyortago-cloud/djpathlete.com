@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation"
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
 import { getNewsletterById } from "@/lib/db/newsletters"
 import { NewsletterForm } from "@/components/admin/newsletter/NewsletterForm"
 import type { Newsletter } from "@/types/database"
@@ -11,7 +11,7 @@ interface Props {
 export const metadata = { title: "Edit Newsletter" }
 
 export default async function EditNewsletterPage({ params }: Props) {
-  await requireAdmin()
+  await requirePermission("blog")
   const { id } = await params
 
   let newsletter: Newsletter

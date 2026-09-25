@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
 import { BlogPostForm } from "@/components/admin/blog/BlogPostForm"
 
 export const metadata = { title: "New Blog Post" }
@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default async function NewBlogPostPage({ searchParams }: Props) {
-  const session = await requireAdmin()
+  const session = await requirePermission("blog")
   const { prompt } = await searchParams
 
   return (
