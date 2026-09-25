@@ -28,6 +28,13 @@ export interface FunnelRenderContext {
    * screen's (the platform's), not the funnel's, so a Host read would make
    * preview and `/go` disagree about the same document. Added by G35 for the
    * quiz island. See QuizIsland.tsx.
+   *
+   * Also read by the live FAQ and testimonial islands (G35 §B2) — but for a
+   * different question. They don't fetch UNDER this business; `faqs` and
+   * `testimonials` have no `business_id` column at all, so there is nothing
+   * to scope. They compare it against `platformBusinessId()` to decide
+   * whether this page may show the platform's rows at all, and render
+   * nothing when it isn't. See FaqIsland.tsx and TestimonialsIsland.tsx.
    */
   businessId: string
   funnelId: string
@@ -75,11 +82,7 @@ export interface FunnelRenderContext {
 
 type Props = Record<string, unknown>
 
-export function renderIsland(
-  name: IslandName,
-  props: Props,
-  context: FunnelRenderContext,
-): ReactNode {
+export function renderIsland(name: IslandName, props: Props, context: FunnelRenderContext): ReactNode {
   switch (name) {
     case "form":
       return <FormIsland props={props} context={context} />
@@ -90,9 +93,9 @@ export function renderIsland(
     case "booking":
       return <BookingIsland props={props} />
     case "testimonials":
-      return <TestimonialsIsland props={props} />
+      return <TestimonialsIsland props={props} context={context} />
     case "faq":
-      return <FaqIsland props={props} />
+      return <FaqIsland props={props} context={context} />
     case "quiz":
       return <QuizIsland props={props} context={context} />
     default: {

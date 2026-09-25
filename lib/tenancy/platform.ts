@@ -171,6 +171,24 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     without it every real booking would be dropped in the window between the
  *     deploy and the owner clicking Connect. Its use is console.warn'd, and an
  *     event type matching NEITHER is ignored rather than filed here.
+ *   - the funnel page's live FAQ list and live testimonial feed
+ *     (components/funnels/islands/FaqIsland.tsx and
+ *     components/funnels/islands/TestimonialsIsland.tsx), since G35. Neither
+ *     `faqs` nor `testimonials` has a `business_id` column: every row in them
+ *     is the platform's own, written for darrenjpaul.com. The island does not
+ *     resolve a tenant itself -- the route that renders it already has one
+ *     (/go from the Host; /preview and /funnel-preview from the admin
+ *     session) and hands it down on the render context -- and it consults
+ *     this ONLY to decide whether that business is the one those rows
+ *     describe. Any other business gets nothing rather than the platform's
+ *     rows, the same call the chat's booking offer above makes: a coach's
+ *     visitors must not read the platform's answers or its athletes' quotes
+ *     as that coach's own. Deliberately NOT `resolvePublicTenant()` inside
+ *     the island, the way the event island does it: on the two preview
+ *     routes the Host is the admin's, not the funnel's, so a platform admin
+ *     previewing a coach's page would see the platform's rows while the live
+ *     page on the coach's host showed none -- preview and live disagreeing
+ *     about one document, which is this subsystem's worst failure.
  *   - the Stripe webhook's purchase capture (app/api/stripe/webhook/route.ts).
  *     One Stripe account serves every business, so the webhook has no
  *     tenant of its own. It resolves the payer's contact row first — the

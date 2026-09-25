@@ -118,6 +118,22 @@ describe("/go/<slug> resolves the requesting Host's own tenant", () => {
     expect(findContext(element)).toMatchObject({ businessId: "tenant-a", funnelId: "f1", stepId: "s1" })
   })
 
+  it("follows the resolved tenant when the Host changes, rather than a constant (G35)", async () => {
+    // The live FAQ and testimonial islands (§B2) decide from this value
+    // whether the platform's rows may appear here — a context that happened
+    // to equal "tenant-a" without actually tracking the Host would make every
+    // page look like the platform's.
+    mocks.getPublishedStep.mockResolvedValue(PUBLISHED)
+
+    mocks.resolvePublicTenant.mockResolvedValue("tenant-a")
+    const onA = await Page({ params: paramsFor("free-guide"), searchParams: noSearchParams })
+    expect(findContext(onA)?.businessId).toBe("tenant-a")
+
+    mocks.resolvePublicTenant.mockResolvedValue("tenant-b")
+    const onB = await Page({ params: paramsFor("free-guide"), searchParams: noSearchParams })
+    expect(findContext(onB)?.businessId).toBe("tenant-b")
+  })
+
   it("404s a slug that belongs to another tenant — the SAME path an unknown slug takes", async () => {
     // Tenant A's host, but "b-only" is tenant B's slug: getPublishedStep
     // filters on business_id internally, so this is exactly what it returns

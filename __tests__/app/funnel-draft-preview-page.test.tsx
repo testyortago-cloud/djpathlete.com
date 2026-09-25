@@ -330,6 +330,18 @@ describe("/funnel-preview/[stepId] — the gate", () => {
     expect(findContext(await render())).toMatchObject({ businessId: BUSINESS_ID, isPreview: true })
   })
 
+  it("follows the admin tenant the page resolved, not a constant (G35)", async () => {
+    // MUTANT: `businessId` from anywhere but `resolveAdminTenant`. The live
+    // FAQ and testimonial islands (§B2) decide from it whether the platform's
+    // rows may appear, so the canvas must agree with /go on the funnel's own
+    // Host.
+    expect(findContext(await render())).toMatchObject({ businessId: BUSINESS_ID })
+
+    const OTHER = "cccccccc-1111-4222-8333-444444444444"
+    mock(resolveAdminTenant).mockResolvedValue({ businessId: OTHER, choices: [], isOperator: true })
+    expect(findContext(await render())).toMatchObject({ businessId: OTHER })
+  })
+
   it("is marked noindex", async () => {
     // MUTANT: omitting the robots directive. A draft that gets indexed
     // competes with the published page it is a draft of.
