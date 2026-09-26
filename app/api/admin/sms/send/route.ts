@@ -135,6 +135,25 @@ export const POST = withAudit(
           { status: 400 },
         )
       }
+      // G45. `sendManualSms` asks for consent on THIS contact and texts
+      // `phone`. Consent is recorded per contact, not per number, so a request
+      // pairing an agreeing contact with any other number would text that
+      // number on the contact's permission and file it in their thread. The
+      // number must be the one on file. Refused regardless of the "Send
+      // anyway" override: that answers "no consent recorded", not "whose
+      // number is this". Both sides normalised, so a trunk-prefixed variant of
+      // the same line still matches; a contact with no number on file matches
+      // nothing.
+      const onFile = contact.phone_e164 ? (normalisePhone(contact.phone_e164) ?? contact.phone_e164) : null
+      if (!onFile || onFile !== (normalisePhone(phone) ?? phone)) {
+        return NextResponse.json(
+          {
+            error: "That number is not the one on file for this contact, so it cannot be texted from their conversation.",
+            reason: "phone_not_contacts",
+          },
+          { status: 400 },
+        )
+      }
     }
 
     const settings = await getBusinessSettings(businessId)

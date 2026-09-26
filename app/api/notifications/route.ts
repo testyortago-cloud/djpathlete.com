@@ -42,7 +42,12 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: true })
     }
 
-    const notification = await markAsRead(parsed.data.id)
+    // The caller's own notification only (G45). Someone else's id reads as
+    // not found, exactly like a made-up one.
+    const notification = await markAsRead(session.user.id, parsed.data.id)
+    if (!notification) {
+      return NextResponse.json({ error: "Notification not found" }, { status: 404 })
+    }
     return NextResponse.json({ notification })
   } catch (error) {
     console.error("Notifications PATCH error:", error)

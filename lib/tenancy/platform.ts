@@ -421,12 +421,9 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     event signup and checkout. Every business's customers see, and record
  *     their acceptance of, the platform's waiver. An owner and legal
  *     decision before it is a code one. G43.
- *   - `getLeadInquiryById` (lib/db/lead-inquiries.ts) reads `lead_inquiries`
- *     by id alone. The regenerate-analysis route
- *     (app/api/admin/leads/[id]/regenerate-analysis/route.ts) reaches it
- *     through `leads`, which the Front Desk and Marketing Manager presets
- *     grant, and returns the whole row. Reaching one needs its UUID, and no
- *     list of these rows sits on a grantable surface. G45.
+ *
+ * Left the shelf: S12, the by-id inquiry read, when G45 gave `lead_inquiries`
+ * a `business_id` (migration 00280) and the read a predicate on it.
  */
 export function platformBusinessId(): string {
   return SINGLETON_BUSINESS_ID

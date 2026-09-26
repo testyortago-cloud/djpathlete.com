@@ -9,7 +9,12 @@ function makeBuilder() {
   const maybeSingle = vi.fn(() => Promise.resolve(state.result))
   const limit = vi.fn(() => ({ maybeSingle }))
   const order = vi.fn(() => ({ limit }))
-  const eqAfterSelect = vi.fn(() => ({ order, single }))
+  // `.eq()` chains any number of times: the G45 reads and the update carry a
+  // business predicate as well as the id.
+  const afterSelect: Record<string, unknown> = { order, single, maybeSingle }
+  afterSelect.eq = vi.fn(() => afterSelect)
+  const afterUpdate: Record<string, unknown> = { select: vi.fn(() => ({ single })) }
+  afterUpdate.eq = vi.fn(() => afterUpdate)
   return {
     insert: vi.fn((payload: unknown) => {
       state.lastInsert = payload
@@ -17,9 +22,9 @@ function makeBuilder() {
     }),
     update: vi.fn((payload: unknown) => {
       state.lastUpdate = payload
-      return { eq: vi.fn(() => ({ select: vi.fn(() => ({ single })) })) }
+      return afterUpdate
     }),
-    select: vi.fn(() => ({ eq: eqAfterSelect })),
+    select: vi.fn(() => afterSelect),
   }
 }
 
@@ -43,6 +48,7 @@ beforeEach(() => {
 describe("createLeadInquiry", () => {
   it("inserts the raw submission fields", async () => {
     await createLeadInquiry({
+      business_id: "biz-1",
       lead_user_id: "user-1",
       name: "Logan Scalzo",
       email: "logan@example.com",
@@ -62,6 +68,7 @@ describe("createLeadInquiry", () => {
     state.result = { data: null, error: { message: "boom" } }
     await expect(
       createLeadInquiry({
+        business_id: "biz-1",
         lead_user_id: null,
         name: "x",
         email: "x@example.com",
@@ -80,7 +87,7 @@ describe("createLeadInquiry", () => {
 
 describe("updateLeadInquiryAiFields", () => {
   it("updates the AI-generated fields", async () => {
-    await updateLeadInquiryAiFields("li-1", {
+    await updateLeadInquiryAiFields("biz-1", "li-1", {
       ai_priority: "high",
       ai_priority_reason: "Clear goals",
       ai_summary: "Summary",
@@ -103,7 +110,7 @@ describe("getLeadInquiryByUserId", () => {
 describe("getLeadInquiryById", () => {
   it("returns the row", async () => {
     state.result = { data: { id: "li-1" }, error: null }
-    const row = await getLeadInquiryById("li-1")
-    expect(row.id).toBe("li-1")
+    const row = await getLeadInquiryById("biz-1", "li-1")
+    expect(row?.id).toBe("li-1")
   })
 })

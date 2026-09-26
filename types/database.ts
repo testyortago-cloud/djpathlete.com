@@ -886,6 +886,8 @@ export type LeadPriority = "high" | "medium" | "low"
 
 export interface LeadInquiry {
   id: string
+  /** 00280 (G45). Null only on a row an old bundle wrote before the backfill. */
+  business_id: string | null
   lead_user_id: string | null
   name: string
   email: string

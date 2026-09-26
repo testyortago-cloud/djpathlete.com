@@ -2,7 +2,14 @@
 // https://www.darrenjpaul.com and proves the deployed route, DAL and
 // save_pipeline_stages RPC agree with each other.
 //
-//   node --env-file=.env.prod scripts/smoke-g29-pipeline-settings-prod.mjs
+//   node --env-file=.env.prod scripts/smoke-g29-pipeline-settings-prod.mjs --business <uuid>
+//
+// --business IS REQUIRED (G45), and here it guards a WRITE. Since 00279 every
+// business has an 'assessment' board. The empty-board precondition below is
+// checked on the named business's board, and the browser is sent the same
+// business in its `djp_business` cookie, so the board the UI reorders is the
+// board that was checked. Without that, "this board has no cards" could be
+// true of one business while the reorder lands on another's.
 //
 // ────────────────────────────────────────────────────────────────────────────
 // THIS SCRIPT WRITES TO PRODUCTION. It was run once, with the owner's explicit
@@ -29,6 +36,7 @@ import { createClient } from "@supabase/supabase-js"
 import { encode } from "next-auth/jwt"
 import { chromium } from "playwright"
 import { mkdirSync } from "node:fs"
+import { findByKeyForBusiness, readBusinessArg } from "./_business-scope.mjs"
 
 const SITE = "https://www.darrenjpaul.com"
 const PROD_REF = "epzuvzkokzqtzomeyoha"
@@ -38,6 +46,7 @@ const ADMIN_EMAIL = "admin@darrenjpaul.com"
 const OUT = "screenshots/g29-prod-smoke"
 const WIDTH = 1440
 const DSF = 2
+const BUSINESS = readBusinessArg(process.argv.slice(2))
 
 function must(cond, msg) {
   if (!cond) throw new Error(`SMOKE FAILED — ${msg}`)
@@ -46,16 +55,17 @@ function must(cond, msg) {
 const log = (m) => console.log(`  ${m}`)
 
 async function stageRows(supabase) {
-  const { data: pipe, error: pErr } = await supabase
-    .from("pipelines")
-    .select("id, key, business_id")
-    .eq("key", BOARD)
-    .single()
-  must(!pErr, `could not read the ${BOARD} pipeline: ${pErr?.message}`)
+  const pipe = await findByKeyForBusiness(supabase, "pipelines", {
+    businessId: BUSINESS,
+    key: BOARD,
+    select: "id, key, business_id",
+  })
+  must(!!pipe, `business ${BUSINESS} has no ${BOARD} pipeline`)
 
   const { data, error } = await supabase
     .from("pipeline_stages")
     .select("id, key, name, kind, position")
+    .eq("business_id", BUSINESS)
     .eq("pipeline_id", pipe.id)
     .order("position", { ascending: true })
   must(!error, `could not read stages: ${error?.message}`)
@@ -138,6 +148,9 @@ async function main() {
       httpOnly: true,
       sameSite: "Lax",
     },
+    // The page renders the business this cookie selects (lib/tenancy/resolve.ts),
+    // so the board the UI reorders is the board the precondition checked.
+    { name: "djp_business", value: BUSINESS, domain: ".darrenjpaul.com", path: "/", secure: true, sameSite: "Lax" },
   ])
   const page = await ctx.newPage()
 

@@ -267,12 +267,13 @@ describe("lib/tenancy/platform.ts inventory", () => {
 describe("lib/tenancy/platform.ts — the UNTENANTED BY SCHEMA shelf", () => {
   // Presence control for every "nothing is stale" check below: an emptied or
   // truncated list would pass all of them vacuously. Twelve was the design's
-  // count of readers (S1-S12); G40 took S8 (the public funnel checkout) off
-  // the shelf by binding its product to the page's offers, leaving eleven.
-  // The list has one row per table each reads. Lower this only when an entry
-  // is fixed, and say which.
-  it("lists at least the eleven readers still on the shelf (S1-S12 less S8, fixed by G40)", () => {
-    expect(new Set(UNTENANTED_BY_SCHEMA.map((e) => e.file)).size).toBeGreaterThanOrEqual(11)
+  // count of readers (S1-S12). G40 took S8 (the public funnel checkout) off
+  // the shelf by binding its product to the page's offers, and G45 took S12
+  // (the by-id inquiry read) off by giving `lead_inquiries` a `business_id`,
+  // leaving ten. The list has one row per table each reads. Lower this only
+  // when an entry is fixed, and say which.
+  it("lists at least the ten readers still on the shelf (S1-S12 less S8 and S12, fixed by G40 and G45)", () => {
+    expect(new Set(UNTENANTED_BY_SCHEMA.map((e) => e.file)).size).toBeGreaterThanOrEqual(10)
   })
 
   // (a) The prose names each entry — on the SHELF, not merely somewhere in

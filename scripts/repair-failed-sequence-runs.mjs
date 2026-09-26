@@ -38,7 +38,14 @@
  * NEVER RUN BY A SESSION AGAINST PROD. A human runs this, pointed at
  * .env.prod. Dry run is the default; --apply is required to write.
  *
+ * THE BUSINESS IS REQUIRED TOO (G45). Since 00279 every business has a
+ * sequence with each seeded key, so --sequence alone names one per business.
+ * --business names which, and the timeline rows are filed under it: that
+ * column defaults to the platform's id, so leaving it out would file another
+ * business's contact's history under the platform.
+ *
  *   node scripts/repair-failed-sequence-runs.mjs --env .env.prod \
+ *     --business 00000000-0000-0000-0000-000000000001 \
  *     --sequence sms_repermission \
  *     --error-pattern "domain is not verified" \
  *     --next-run-at 2026-09-02T12:00:00Z
@@ -48,13 +55,14 @@
 import { readFileSync } from "node:fs"
 import { createClient } from "@supabase/supabase-js"
 import { selectRepairable } from "./_repair-failed-sequence-runs-lib.mjs"
+import { findByKeyForBusiness, parseBusinessId } from "./_business-scope.mjs"
 
-const KNOWN_FLAGS = new Set(["--env", "--sequence", "--error-pattern", "--next-run-at", "--apply"])
+const KNOWN_FLAGS = new Set(["--env", "--business", "--sequence", "--error-pattern", "--next-run-at", "--apply"])
 
 function usage(message) {
   if (message) console.error(`error: ${message}\n`)
   console.error("usage: node scripts/repair-failed-sequence-runs.mjs \\")
-  console.error("         --env <env-file> --sequence <key> --error-pattern <text> \\")
+  console.error("         --env <env-file> --business <uuid> --sequence <key> --error-pattern <text> \\")
   console.error("         --next-run-at <iso8601> [--apply]")
   console.error("")
   console.error("Dry run is the default. --apply writes.")
@@ -77,11 +85,18 @@ function parseArgs(argv) {
     if (!value || value.startsWith("--")) usage(`${flag} needs a value`)
     i += 1
     if (flag === "--env") out.envFile = value
+    if (flag === "--business") out.businessId = value
     if (flag === "--sequence") out.sequenceKey = value
     if (flag === "--error-pattern") out.errorPattern = value
     if (flag === "--next-run-at") out.nextRunAt = value
   }
   if (!out.envFile) usage("--env is required")
+  if (!out.businessId) usage("--business is required — every business has a sequence with this key (00279)")
+  try {
+    parseBusinessId(out.businessId)
+  } catch (err) {
+    usage(err.message)
+  }
   if (!out.sequenceKey) usage("--sequence is required")
   if (!out.errorPattern) usage("--error-pattern is required")
   if (!out.nextRunAt) usage("--next-run-at is required — see this file's header for why it has no default")
@@ -111,6 +126,7 @@ async function main() {
   // running against the wrong database while believing otherwise, and the
   // operator's only defence is seeing which one it is.
   console.log(`host:          ${url}`)
+  console.log(`business:      ${args.businessId}`)
   console.log(`sequence:      ${args.sequenceKey}`)
   console.log(`error pattern: ${args.errorPattern}`)
   console.log(`next_run_at:   ${args.nextRunAt}`)
@@ -119,17 +135,17 @@ async function main() {
 
   const supabase = createClient(url, key, { auth: { persistSession: false } })
 
-  const { data: sequence, error: seqErr } = await supabase
-    .from("sequences")
-    .select("id, key")
-    .eq("key", args.sequenceKey)
-    .maybeSingle()
-  if (seqErr) throw seqErr
-  if (!sequence) usage(`no sequence with key "${args.sequenceKey}" on this host`)
+  const sequence = await findByKeyForBusiness(supabase, "sequences", {
+    businessId: args.businessId,
+    key: args.sequenceKey,
+    select: "id, key",
+  })
+  if (!sequence) usage(`no sequence with key "${args.sequenceKey}" for business ${args.businessId} on this host`)
 
   const { data: rawRuns, error: runsErr } = await supabase
     .from("sequence_runs")
     .select("id, contact_id, status, last_error, current_position, attempts")
+    .eq("business_id", args.businessId)
     .eq("sequence_id", sequence.id)
     .eq("status", "failed")
   if (runsErr) throw runsErr
@@ -185,6 +201,7 @@ async function main() {
     repaired += 1
 
     const { error: tlErr } = await supabase.from("contact_timeline_events").insert({
+      business_id: args.businessId,
       contact_id: run.contact_id,
       kind: "sequence_run_repaired",
       source: "repair_script",

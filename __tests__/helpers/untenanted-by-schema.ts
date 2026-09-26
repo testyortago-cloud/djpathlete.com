@@ -141,14 +141,8 @@ export const UNTENANTED_BY_SCHEMA: UntenantedRead[] = [
       "app/(marketing)/clinics/page.tsx",
     ],
   },
-  // S12 — one inquiry by id.
-  {
-    file: "lib/db/lead-inquiries.ts",
-    fn: "getLeadInquiryById",
-    table: "lead_inquiries",
-    row: "G45",
-    surfaces: ["app/api/admin/leads/[id]/regenerate-analysis/route.ts"],
-  },
+  // S12 (one inquiry by id) left the shelf with G45: migration 00280 gave
+  // `lead_inquiries` a `business_id`, and the read filters on it.
 ]
 
 /** Every table on the shelf, once each, sorted. */

@@ -25,6 +25,7 @@ vi.mock("@/lib/supabase", () => ({
 import { createLeadInquiry } from "@/lib/db/lead-inquiries"
 
 const INPUT = {
+  business_id: "biz-1",
   lead_user_id: "user-1",
   name: "Ada Lovelace",
   email: "ada@example.com",
@@ -84,6 +85,9 @@ describe("createLeadInquiry — pre-00211 schema tolerance", () => {
     expect(retried).not.toHaveProperty("fbclid")
     expect(retried.gclid).toBe("the-gclid")
     expect(retried.email).toBe("ada@example.com")
+    // G45: the click-id retry drops click ids, never the tenant. An inquiry
+    // written with no business_id is nobody's (the column has no default).
+    expect(retried.business_id).toBe("biz-1")
   })
 
   it("does not retry — and surfaces — an error unrelated to the new columns", async () => {
