@@ -121,13 +121,27 @@ export interface CreateBusinessInput {
 }
 
 /**
- * Creates a whole tenant -- businesses + business_settings + booking_hosts +
- * an owner membership -- in ONE transaction, via the plpgsql function of
- * migration 00244. Four separate inserts from here could not be atomic
- * (supabase-js opens no transaction) and any subset is a broken tenant.
+ * The unique constraint on businesses.slug (the dev clone's pg_constraint).
+ * Only a violation naming it means the slug is taken.
+ */
+const SLUG_UNIQUE_CONSTRAINT = "businesses_slug_key"
+
+/**
+ * Creates a whole tenant -- the business, its settings, booking host and
+ * owner membership, then, through `seed_business_starter_set` (00279), the
+ * three boards and eleven draft sequences -- in ONE transaction, via the
+ * plpgsql function of migration 00244. Separate inserts from here could not
+ * be atomic (supabase-js opens no transaction) and any subset is a broken
+ * tenant.
  *
  * Takes NO default businessId and never will: a new function that defaults
  * the tenant is how the next leak ships.
+ *
+ * The 23505 mapping below checks the constraint NAME, not just the code:
+ * `create_business` now inserts many rows on top of the businesses row
+ * (boards, stages, sequences, steps), so a bare 23505 no longer means the
+ * slug clashed -- it could just as easily be a starter-set uniqueness
+ * violation, which must NOT read as "slug taken" to the caller.
  */
 export async function createBusiness(input: CreateBusinessInput): Promise<Business> {
   const supabase = getClient()
@@ -140,7 +154,9 @@ export async function createBusiness(input: CreateBusinessInput): Promise<Busine
     p_created_by: input.createdBy,
   })
   if (error) {
-    if (error.code === "23505") throw new SlugTakenError(input.slug)
+    if (error.code === "23505" && (error.message ?? "").includes(SLUG_UNIQUE_CONSTRAINT)) {
+      throw new SlugTakenError(input.slug)
+    }
     throw new Error(`create_business failed (${error.code}): ${error.message}`)
   }
   // PostgREST resolves rather than throwing, so a null row with a null error

@@ -87,7 +87,14 @@ describe("createBusiness", () => {
   })
 
   it("maps 23505 to SlugTakenError rather than a raw throw", async () => {
-    rpcResult = { data: null, error: { code: "23505", message: "duplicate key" } }
+    rpcResult = {
+      data: null,
+      error: {
+        code: "23505",
+        message: 'duplicate key value violates unique constraint "businesses_slug_key"',
+        details: "Key (slug)=(taken) already exists.",
+      },
+    }
     await expect(
       createBusiness({
         name: "Dupe",
@@ -98,6 +105,29 @@ describe("createBusiness", () => {
         createdBy: "u1",
       }),
     ).rejects.toBeInstanceOf(SlugTakenError)
+  })
+
+  it("does not call an unrelated duplicate a taken slug (control)", async () => {
+    // create_business (00279) now inserts boards, stages, sequences and steps
+    // too -- a bare 23505 no longer means the slug clashed.
+    rpcResult = {
+      data: null,
+      error: {
+        code: "23505",
+        message: 'duplicate key value violates unique constraint "sequences_business_key_uniq"',
+        details: "Key (business_id, key)=(x, new_lead_nurture) already exists.",
+      },
+    }
+    const attempt = createBusiness({
+      name: "A",
+      slug: "fresh",
+      timezone: "UTC",
+      hostDisplayName: "A",
+      hostEmail: "",
+      createdBy: null,
+    })
+    await expect(attempt).rejects.not.toBeInstanceOf(SlugTakenError)
+    await expect(attempt).rejects.toThrow(/sequences_business_key_uniq/)
   })
 
   it("throws on any other rpc error instead of returning a partial business", async () => {
