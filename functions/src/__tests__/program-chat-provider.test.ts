@@ -44,6 +44,8 @@ vi.mock("../ai/program-chat-tools.js", () => ({
 }))
 vi.mock("../lib/supabase.js", () => ({ getSupabase: vi.fn() }))
 
+import OpenAI from "openai"
+import Anthropic from "@anthropic-ai/sdk"
 import { createWithRetry, isTransientError } from "../program-chat.js"
 import { ProviderFallbackError } from "../ai/openrouter.js"
 import { createDeadline, DeadlineExceededError } from "../lib/deadline.js"
@@ -91,6 +93,18 @@ async function settle<T>(p: Promise<T>): Promise<{ value?: T; error?: unknown }>
 }
 
 const modelsCalled = () => h.compat.mock.calls.map((c) => (c[0] as { model: string }).model)
+
+/**
+ * A request that is still in flight when the deadline fires: it settles only
+ * when its signal aborts, and then fails the way that SDK fails an aborted
+ * request. Both SDKs' APIUserAbortError leave `.name` as "Error".
+ */
+const hangUntilAborted =
+  (abortError: () => Error) =>
+  ({ signal }: { signal?: AbortSignal }) =>
+    new Promise<never>((_, reject) => {
+      signal?.addEventListener("abort", () => reject(abortError()), { once: true })
+    })
 
 beforeEach(() => {
   h.compat.mockReset()
@@ -184,6 +198,90 @@ describe("createWithRetry", () => {
     // Opus at 0s, 3s and 9s; the next 12s backoff crosses the 10s budget.
     expect(modelsCalled()).toEqual([OPUS, OPUS, OPUS])
     expect(r.error).toBeInstanceOf(DeadlineExceededError)
+    deadline.dispose()
+  })
+
+  // The test above only ever sees p-retry's own AbortError, thrown between
+  // attempts. A request cut off MID-FLIGHT fails with the SDK's
+  // APIUserAbortError instead, and neither SDK sets its `.name`: it is
+  // "Error". The old check asked isAbortError(error), which reads `.name`, so
+  // an in-flight abort reached the coach as "Request was aborted." rather than
+  // the time budget the job is meant to record. The deadline's own state is
+  // the only reliable witness.
+  it.each([
+    ["OpenAI's (the OpenRouter path)", () => new OpenAI.APIUserAbortError()],
+    ["Anthropic's (the direct fallback)", () => new Anthropic.APIUserAbortError()],
+  ])(
+    "reports the deadline, not %s bare 'Request was aborted.', when the deadline cuts off an in-flight request",
+    async (_label, abortError) => {
+      expect(abortError().name).toBe("Error") // the premise: `.name` cannot identify it
+      const deadline = createDeadline(10_000, "Program generation")
+      h.compat.mockImplementation(hangUntilAborted(abortError))
+
+      const r = await settle(createWithRetry(params, OPUS, deadline))
+
+      expect(r.error).toBeInstanceOf(DeadlineExceededError)
+      expect(modelsCalled()).toEqual([OPUS])
+      deadline.dispose()
+    },
+  )
+
+  // What surfaces when a request is cut off is the transport's business, not
+  // ours: a connection error, a timeout, or the compat shim's wrapper around
+  // an aborted Anthropic fallback (OpenRouter out of credit, so the shim fell
+  // back, and the deadline fired mid-request). None of them is abort-shaped,
+  // so no reading of the ERROR can tell that the budget ran out. Once the
+  // deadline has fired, the turn reports the budget whatever was thrown.
+  it.each([
+    ["OpenAI's APIConnectionError", () => new OpenAI.APIConnectionError({ message: "Connection error." })],
+    ["OpenAI's APIConnectionTimeoutError", () => new OpenAI.APIConnectionTimeoutError()],
+    [
+      "a ProviderFallbackError around Anthropic's abort",
+      () => new ProviderFallbackError(statusError(402, "402 Insufficient credits"), new Anthropic.APIUserAbortError()),
+    ],
+  ])("reports the deadline once it has fired, whatever the SDK threw: %s", async (_label, thrown) => {
+    const deadline = createDeadline(10_000, "Program generation")
+    h.compat.mockImplementation(hangUntilAborted(thrown))
+
+    const r = await settle(createWithRetry(params, OPUS, deadline))
+
+    expect(r.error).toBeInstanceOf(DeadlineExceededError)
+    expect(modelsCalled()).toEqual([OPUS])
+    deadline.dispose()
+  })
+
+  it.each([
+    ["OpenAI's APIUserAbortError", () => new OpenAI.APIUserAbortError()],
+    ["OpenAI's APIConnectionError", () => new OpenAI.APIConnectionError({ message: "Connection error." })],
+  ])(
+    "reports the deadline when it cuts off an in-flight HAIKU request, after the Opus retries are spent: %s",
+    async (_label, thrown) => {
+      // Opus fails at 0s, 3s, 9s and 21s; Haiku starts at 21s and is still in
+      // flight when the 30s budget fires. This is the second reportDeadline site.
+      const deadline = createDeadline(30_000, "Program generation")
+      h.compat.mockImplementation(async (req: { model: string; signal?: AbortSignal }) => {
+        if (req.model === OPUS) throw statusError(503)
+        return hangUntilAborted(thrown)(req)
+      })
+
+      const r = await settle(createWithRetry(params, OPUS, deadline))
+
+      expect(modelsCalled()).toEqual([OPUS, OPUS, OPUS, OPUS, HAIKU])
+      expect(r.error).toBeInstanceOf(DeadlineExceededError)
+      deadline.dispose()
+    },
+  )
+
+  it("rethrows an in-flight abort unchanged while the deadline is still live", async () => {
+    // Not every abort is the budget's: a live deadline must not be reported
+    // as spent.
+    const deadline = createDeadline(60_000, "Program generation")
+    const aborted = new OpenAI.APIUserAbortError()
+    h.compat.mockRejectedValue(aborted)
+
+    const r = await settle(createWithRetry(params, OPUS, deadline))
+
+    expect(r.error).toBe(aborted)
     deadline.dispose()
   })
 

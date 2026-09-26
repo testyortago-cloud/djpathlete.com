@@ -21,7 +21,7 @@ import {
   embedConversationMessage,
 } from "./ai/rag.js"
 import { getSupabase } from "./lib/supabase.js"
-import { createDeadline, isAbortError, type Deadline } from "./lib/deadline.js"
+import { createDeadline, type Deadline } from "./lib/deadline.js"
 import pRetry from "p-retry"
 
 /**
@@ -36,6 +36,70 @@ import pRetry from "p-retry"
  * it failed 45 minutes later. Every completed week was discarded.
  */
 const PROGRAM_CHAT_BUDGET_MS = 450_000 // 7.5 min
+
+/**
+ * The function's `timeoutSeconds` (index.ts programChat), in milliseconds. The
+ * platform hard-kills the turn here and nothing after it runs.
+ */
+const PROGRAM_CHAT_HARD_KILL_MS = 540_000
+
+/**
+ * Kept free at the end of the hard-kill window for what the turn still does
+ * after its last model call: the history insert, the chat-state save, and the
+ * done/completed writes (or the error/failed ones).
+ */
+const CLOSING_CALL_MARGIN_MS = 30_000
+
+/** The most a closing reply gets: it only relays a result the coach already has on screen. */
+const CLOSING_CALL_MAX_MS = 60_000
+
+/**
+ * Below this a closing call is not started. One reply plus a single 3s retry
+ * backoff does not fit, and a reply cut off halfway only spends tokens.
+ */
+const CLOSING_CALL_MIN_MS = 15_000
+
+/** What the coach is told when the closing call is skipped or cut off after a complete program was saved. */
+const PROGRAM_SAVED_CLOSING = "Your program is built and saved. Open it to review the weeks."
+
+export type ClosingCallBudget = { kind: "turn" } | { kind: "own"; budgetMs: number } | { kind: "skip" }
+
+/**
+ * The deadline for a model call made AFTER generate_program ran in this turn.
+ *
+ * WHY NOT SIMPLY THE TURN'S. generate_program runs on the turn's own 450s
+ * deadline, and a long program is EXPECTED to spend it: generation stops before
+ * a week it cannot finish, saves what it built and queues the rest. The next
+ * model call, the one that tells the coach, then started on a deadline that had
+ * already fired. p-retry's throwIfAborted threw before any request went out,
+ * and a turn that had just put a saved program on the coach's screen ended
+ * "failed" with a DeadlineExceededError.
+ *
+ * So the closing call keeps the turn's deadline while that still gives it at
+ * least as long as it would get on its own (this never shortens it). Otherwise
+ * it gets its own deadline, measured against the hard kill rather than the spent
+ * budget. When even that would be too short to finish, the call is skipped.
+ *
+ * @param elapsedMs        Time since the turn started.
+ * @param turnRemainingMs  What the turn's deadline still has (0 once it fired).
+ */
+export function closingCallBudget(elapsedMs: number, turnRemainingMs: number): ClosingCallBudget {
+  const ownMs = Math.min(CLOSING_CALL_MAX_MS, PROGRAM_CHAT_HARD_KILL_MS - CLOSING_CALL_MARGIN_MS - elapsedMs)
+  if (turnRemainingMs >= CLOSING_CALL_MIN_MS && turnRemainingMs >= ownMs) return { kind: "turn" }
+  if (ownMs < CLOSING_CALL_MIN_MS) return { kind: "skip" }
+  return { kind: "own", budgetMs: ownMs }
+}
+
+/**
+ * Has this deadline fired? Asked of the deadline itself, never inferred from the
+ * error a cut-off request threw. Neither SDK sets `.name` on its
+ * APIUserAbortError, and a request cut off mid-flight can just as well surface
+ * as a connection error, a timeout, or the compat shim's ProviderFallbackError
+ * around an aborted Anthropic fallback. None of those says "the budget ran out".
+ */
+function deadlineFired(deadline: Deadline): boolean {
+  return deadline.expired() || deadline.signal.aborted
+}
 
 /**
  * One turn of the API history. It is persisted to Firestore (`ai_chat_state`)
@@ -112,8 +176,9 @@ export function isTransientError(error: unknown): boolean {
  * slowly failing provider to carry the turn past the 540s hard kill, where the
  * catch block never runs and the job sits in "streaming" (the 2026-08-24
  * incident). The deadline's signal cuts off the in-flight request AND stops
- * p-retry waiting for the next one; an abort at the deadline is reported as
- * the DeadlineExceededError the job records, not as a bare "aborted".
+ * p-retry waiting for the next one; once the deadline has fired, whatever the
+ * call threw is reported as the DeadlineExceededError the job records, not as
+ * a bare "aborted".
  */
 export async function createWithRetry(
   params: Omit<CompatMessageParams, "model" | "signal">,
@@ -123,8 +188,12 @@ export async function createWithRetry(
   const callModel = (model: string) =>
     createMessageCompat({ ...params, model, ...(deadline ? { signal: deadline.signal } : {}) })
   const stopAtDeadline = deadline ? { signal: deadline.signal } : {}
+  // Decided by the deadline's own state, whatever was thrown. This used to
+  // require isAbortError(error) as well, which reads `.name`, and a real
+  // in-flight OpenAI APIUserAbortError has the name "Error": the turn failed
+  // with "Request was aborted." instead of the time budget the job records.
   const reportDeadline = (error: unknown): never => {
-    if (deadline?.expired() && isAbortError(error)) deadline.assertLive(`model call (${primaryModel})`)
+    if (deadline && deadlineFired(deadline)) deadline.assertLive(`model call (${primaryModel})`)
     throw error
   }
 
@@ -149,7 +218,7 @@ export async function createWithRetry(
     })
   } catch (error) {
     // Out of time: no Haiku attempt either — it would start past the budget.
-    if (deadline?.expired()) reportDeadline(error)
+    if (deadline && deadlineFired(deadline)) reportDeadline(error)
     // If primary model exhausted retries on transient error, fall back to Haiku
     if (primaryModel !== MODEL_HAIKU && isTransientError(error)) {
       console.warn(`[program-chat] ${primaryModel} exhausted retries — falling back to ${MODEL_HAIKU}`)
@@ -354,6 +423,11 @@ function buildConversationSummary(
 }
 
 export async function handleProgramChat(jobId: string): Promise<void> {
+  // Measured as early as this handler can: before the job reads below, so those
+  // are counted. The platform's 540s clock started EARLIER still — cold start
+  // and the dynamic import in index.ts run first — so this UNDERSTATES elapsed
+  // time by that much; CLOSING_CALL_MARGIN_MS is what absorbs the difference.
+  const turnStartedAt = Date.now()
   const db = getFirestore()
   const jobRef = db.collection("ai_jobs").doc(jobId)
   const chunksRef = jobRef.collection("chunks")
@@ -472,6 +546,31 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       console.log(`[program-chat] Tools already called: ${[...calledTools].join(", ")}`)
     }
 
+    // What the coach is told if the turn has to close without the model after
+    // generate_program ran (see closingCallBudget). Set only once generate_program
+    // has run in THIS turn, so a plain chat turn that runs out of time still fails.
+    let closingAfterGeneration: string | null = null
+
+    // Every piece of assistant text reaches the coach the same way: a delta
+    // chunk, plus the running text saved to the conversation history.
+    async function sendAssistantText(text: string): Promise<void> {
+      accumulatedText += text
+      await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
+        index: chunkIndex - 1,
+        type: "delta",
+        data: { text },
+        createdAt: FieldValue.serverTimestamp(),
+      })
+    }
+
+    // The fixed closing also becomes the assistant's turn in the saved history,
+    // so the next turn resumes from a conversation that does not end on a
+    // tool result nobody answered.
+    async function closeWithoutModel(text: string): Promise<void> {
+      await sendAssistantText(text)
+      apiMessages.push({ role: "assistant", content: text })
+    }
+
     // Tool use loop
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       // Check for cancellation between rounds
@@ -490,16 +589,53 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       // (generate_program is always allowed since it's the terminal action)
       const availableTools = TOOL_DEFINITIONS.filter((t) => t.name === "generate_program" || !calledTools.has(t.name))
 
-      const response = await createWithRetry(
-        {
-          max_tokens: 32000,
-          system: systemPrompt,
-          messages: apiMessages,
-          tools: availableTools,
-        },
-        MODEL_OPUS,
-        deadline,
-      )
+      // Once generate_program has run, the closing call must not inherit the
+      // budget the generation was entitled to spend. See closingCallBudget.
+      let callDeadline = deadline
+      let closingDeadline: Deadline | null = null
+      if (closingAfterGeneration !== null) {
+        const budget = closingCallBudget(Date.now() - turnStartedAt, deadline.remainingMs())
+        if (budget.kind === "skip") {
+          console.warn(
+            `[program-chat] Job ${jobId}: too little time left for a closing reply — closing with a fixed message`,
+          )
+          await closeWithoutModel(closingAfterGeneration)
+          break
+        }
+        if (budget.kind === "own") {
+          closingDeadline = createDeadline(budget.budgetMs, "Program chat closing reply")
+          callDeadline = closingDeadline
+        }
+      }
+
+      let response: CompatMessage
+      try {
+        response = await createWithRetry(
+          {
+            max_tokens: 32000,
+            system: systemPrompt,
+            messages: apiMessages,
+            tools: availableTools,
+          },
+          MODEL_OPUS,
+          callDeadline,
+        )
+      } catch (error) {
+        // The closing reply ran out of time, but what the coach needed to hear
+        // (the program card, or the generation's error) is already on screen.
+        // Say it in fixed words and complete the turn: a saved program must
+        // never be reported as a failed turn because of the clock. Any other
+        // failure, or a turn that never ran generate_program, fails as before.
+        if (closingAfterGeneration === null || !deadlineFired(callDeadline)) throw error
+        console.warn(
+          `[program-chat] Job ${jobId}: closing reply ran out of time — closing with a fixed message (${error instanceof Error ? error.message : error})`,
+        )
+        await closeWithoutModel(closingAfterGeneration)
+        break
+      } finally {
+        // A live timer could otherwise abort a reused container's next invocation.
+        closingDeadline?.dispose()
+      }
 
       tokensInput += response.usage?.input_tokens ?? 0
       tokensOutput += response.usage?.output_tokens ?? 0
@@ -510,13 +646,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
 
       for (const block of assistantContent) {
         if (block.type === "text" && block.text) {
-          accumulatedText += block.text
-          await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
-            index: chunkIndex - 1,
-            type: "delta",
-            data: { text: block.text },
-            createdAt: FieldValue.serverTimestamp(),
-          })
+          await sendAssistantText(block.text)
         } else if (block.type === "tool_use") {
           toolUseBlocks.push(block)
 
@@ -671,6 +801,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
                       : {}),
                     summary: partialSummary ?? `Program created successfully (${genResult.duration_ms}ms).`,
                   }
+                  closingAfterGeneration = partialSummary ?? PROGRAM_SAVED_CLOSING
 
                   await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
                     index: chunkIndex - 1,
@@ -686,6 +817,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
                 } catch (genError) {
                   const errMsg = genError instanceof Error ? genError.message : "Generation failed"
                   toolResult = { success: false, summary: errMsg }
+                  closingAfterGeneration = `The program could not be built: ${errMsg}`
 
                   await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
                     index: chunkIndex - 1,
