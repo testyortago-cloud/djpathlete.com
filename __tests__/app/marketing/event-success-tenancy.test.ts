@@ -192,11 +192,26 @@ describe("clinic success page enforces signup ownership", () => {
   })
 })
 
-describe("EventIsland is scoped to the host's business", () => {
-  it("passes the host business to getEventById", async () => {
+describe("EventIsland is scoped to the page's business", () => {
+  it("passes the business the route put on the context to getEventById", async () => {
+    // On `/go` that business IS the Host's: the page resolves it and puts it
+    // on the render context. The island reads the context rather than the Host
+    // itself (G35 review, F4), so the previews, whose Host is the admin's, read
+    // under the same business `/go` does. The route-vs-Host case is pinned in
+    // __tests__/components/funnels/event-island-tenant-resolution.test.tsx.
     mocks.getEventById.mockResolvedValue({ ...FAKE_CAMP, status: "published" })
     const { EventIsland } = await import("@/components/funnels/islands/EventIsland")
-    await EventIsland({ props: { eventId: FAKE_CAMP.id } })
+    await EventIsland({
+      props: { eventId: FAKE_CAMP.id },
+      context: {
+        businessId: "host-biz",
+        funnelId: "ffffffff-1111-4222-8333-444444444444",
+        funnelSlug: "summer-camp",
+        stepId: "3f1b7c5e-1111-4222-8333-444444444444",
+        stepSlug: "index",
+        isPreview: false,
+      },
+    })
     expect(mocks.getEventById).toHaveBeenCalledWith("host-biz", FAKE_CAMP.id)
   })
 })

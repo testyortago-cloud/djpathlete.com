@@ -5,8 +5,8 @@
 // on the server, against the real catalogue. It is the mechanism that makes a
 // hallucinated id structurally impossible rather than merely unlikely.
 //
-// WHY THIS MATTERS MORE THAN IT LOOKS. `EventIsland.tsx:38` returns `null`
-// for an unknown event id. So a PLAUSIBLE hallucinated UUID passes Zod, passes
+// WHY THIS MATTERS MORE THAN IT LOOKS. `EventIsland` returns `null` for an
+// unknown event id (its `!event` check). So a PLAUSIBLE hallucinated UUID passes Zod, passes
 // the compiler, and renders as nothing at all — silent absence, the worst
 // possible failure for an owner who cannot read the DOM. Names can't be
 // hallucinated into existence the same way: a name either matches a row this

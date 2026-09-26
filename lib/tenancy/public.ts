@@ -116,16 +116,20 @@ import { recordAudit } from "@/lib/audit/record"
  *     app/(marketing)/clinics/page.tsx
  *
  *   Phase 5a (docs/superpowers/sdd/2026-09-06-tenancy-phase5a-events-per-
- *   tenant) added three more, each guarding against a different tenant's row:
+ *   tenant) added two more, each guarding against a different tenant's row:
  *   the two post-purchase success pages scope getEventBySlug and then check
  *   the Stripe-session-keyed signup's own business_id against the resolved
  *   tenant before rendering it (that lookup itself stays unscoped — see
- *   getEventSignupByStripeSessionId's own doc comment); EventIsland scopes
- *   getEventById, since a funnel document names an event id with no tenant
- *   of its own:
+ *   getEventSignupByStripeSessionId's own doc comment):
  *     app/(marketing)/camps/[slug]/success/page.tsx
  *     app/(marketing)/clinics/[slug]/success/page.tsx
- *     components/funnels/islands/EventIsland.tsx
+ *   Phase 5a added the funnel event island here as a third. It LEFT this list
+ *   in the G35 review (F4): it still scopes getEventById, since a funnel
+ *   document names an event id with no tenant of its own, but under the
+ *   tenant the ROUTE put on the render context, not the Host. On the two
+ *   preview routes the Host is the admin's, so a Host read made the preview
+ *   and `/go` disagree about one document. `/go` (below) resolves the Host
+ *   and hands it down; the island itself resolves nothing.
  *
  *   G31 (funnel tenancy, migration 00278) converted the remaining public
  *   funnel surfaces — the ones that read/write funnels, funnel_steps,

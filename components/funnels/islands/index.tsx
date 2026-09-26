@@ -27,7 +27,8 @@ export interface FunnelRenderContext {
    * `resolvePublicTenant()`. On the two preview routes the Host is the admin
    * screen's (the platform's), not the funnel's, so a Host read would make
    * preview and `/go` disagree about the same document. Added by G35 for the
-   * quiz island. See QuizIsland.tsx.
+   * quiz island (see QuizIsland.tsx); the event island reads its event under
+   * it too (G35 review, F4; see EventIsland.tsx).
    *
    * Also read by the live FAQ and testimonial islands (G35 §B2) — but for a
    * different question. They don't fetch UNDER this business; `faqs` and
@@ -89,7 +90,7 @@ export function renderIsland(name: IslandName, props: Props, context: FunnelRend
     case "checkout":
       return <CheckoutIsland props={props} />
     case "event":
-      return <EventIsland props={props} />
+      return <EventIsland props={props} context={context} />
     case "booking":
       return <BookingIsland props={props} />
     case "testimonials":
