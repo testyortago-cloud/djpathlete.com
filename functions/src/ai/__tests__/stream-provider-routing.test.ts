@@ -101,9 +101,17 @@ function abortError(): Error {
   return e
 }
 
-/** What the openai SDK throws when the signal fires before the stream opens. `.name` is "Error". */
+/**
+ * What the openai SDK throws when the signal fires before the stream opens.
+ * `.name` is "Error". The socket errno on its cause is what makes the tests
+ * using it pins: a bare abort has no status and no connection class, so it
+ * would not fall back even if nothing recognised it as an abort. With the
+ * errno, only the abort check stands between it and a fallback.
+ */
 function sdkAbort(): Error {
-  const e = new OpenAI.APIUserAbortError()
+  const e = Object.assign(new OpenAI.APIUserAbortError(), {
+    cause: Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }),
+  })
   expect(e.name).toBe("Error")
   return e
 }

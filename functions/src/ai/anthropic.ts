@@ -625,11 +625,12 @@ function callAgentWithModel<T>(
       minTimeout: 5_000,
       maxTimeout: 30_000,
       // The backoff sleeps are 5s, 10s, 20s and 30s. Without the caller's
-      // signal, a deadline that fired mid-sleep was only noticed by the NEXT
-      // attempt, after the sleep — wall-clock the budget no longer had, and one
-      // more request started past it. With it, pRetry ends the sleep and throws
-      // the signal's reason (an AbortError) at once. The isAbortError checks
-      // below stay: they cover an abort thrown by the request itself.
+      // signal, a deadline that fired mid-sleep was only noticed after the
+      // sleep: up to 30s the budget no longer had, then one more attempt that
+      // failed at once on the aborted signal (the SDK checks it before any
+      // request goes out). With it, pRetry ends the sleep and throws the
+      // signal's reason (an AbortError) at once. The isAbortError checks below
+      // stay: they cover an abort thrown by the request itself.
       signal: options?.signal,
       shouldRetry: (ctx) => {
         const err = ctx.error
@@ -735,9 +736,12 @@ export async function callAgent<T>(
  * rethrown exactly as it arrived.
  *
  * WHY THE WRAPPED ERROR. When both providers fail before anything was emitted,
- * the consumer's catch shows `error.message` to the user. A
+ * admin-chat.ts's catch shows `error.message` to the owner. A
  * ProviderFallbackError leads with OpenRouter's fault — the story — and keeps
- * Anthropic's as the footnote. If the fallback had already emitted something,
+ * Anthropic's as the footnote. ai-coach.ts deliberately does NOT: its reader is
+ * an athlete, so it logs this error and shows athleteFacingCoachError's fixed
+ * "try again" text instead. Do not reword this error for athletes; it is not
+ * shown to them. If the fallback had already emitted something,
  * its own error is rethrown as-is: by then it IS the stream being read.
  *
  * An abort is the caller's decision and never falls back, and a non-Claude id

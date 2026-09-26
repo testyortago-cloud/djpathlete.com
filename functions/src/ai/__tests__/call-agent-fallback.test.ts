@@ -105,7 +105,8 @@ async function settle<T>(p: Promise<T>): Promise<{ value?: T; error?: unknown }>
 const orModels = () => h.orAgent.mock.calls.map((c) => c[0] as string)
 
 /** The options callAgentViaOpenRouter received on call `i` (its 7th argument). */
-const orOptions = (i: number) => h.orAgent.mock.calls[i][6] as { effort?: string; signal?: AbortSignal }
+const orOptions = (i: number) =>
+  h.orAgent.mock.calls[i][6] as { effort?: string; signal?: AbortSignal; maxTokens?: number }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -207,7 +208,7 @@ describe("callAgent: OpenRouter first, on every attempt", () => {
     expect(orModels()).toEqual([...Array(5).fill(MODEL_SONNET), MODEL_HAIKU])
   })
 
-  it("does not hand the primary's effort to the Haiku fallback", async () => {
+  it("does not hand the primary's effort to the Haiku fallback, and keeps every other option", async () => {
     // The blog draft runs on Fable with effort "medium". Through OpenRouter,
     // effort goes out as `reasoning` on every branch, including the forced
     // tool choice Haiku is asked with — a combination Anthropic refuses.
@@ -216,8 +217,11 @@ describe("callAgent: OpenRouter first, on every attempt", () => {
       return OPENROUTER_OK
     })
     h.anthropicStream.mockImplementation(() => anthropicFails(creditError()))
+    const signal = new AbortController().signal
 
-    const { value, error } = await settle(callAgent("sys", "user", schema, { model: MODEL_FABLE, effort: "medium" }))
+    const { value, error } = await settle(
+      callAgent("sys", "user", schema, { model: MODEL_FABLE, effort: "medium", maxTokens: 1234, signal }),
+    )
 
     expect(error).toBeUndefined()
     expect(value?.content).toEqual({ ok: true })
@@ -225,6 +229,11 @@ describe("callAgent: OpenRouter first, on every attempt", () => {
     // Which value, not just presence: the primary still ran with its effort.
     expect(orOptions(0).effort).toBe("medium")
     expect(orOptions(5).effort).toBeUndefined()
+    // Only effort is dropped. Losing the signal would let Haiku run five more
+    // attempts past the caller's deadline; losing maxTokens would change the
+    // answer's length limit.
+    expect(orOptions(5).signal).toBe(signal)
+    expect(orOptions(5).maxTokens).toBe(1234)
   })
 
   it("does not fall back or retry on an OpenRouter 400", async () => {
@@ -239,8 +248,14 @@ describe("callAgent: OpenRouter first, on every attempt", () => {
   })
 
   it("does not fall back or retry when OpenRouter was aborted by the caller's deadline", async () => {
-    // What the openai SDK really throws when the signal fires mid-request.
-    const aborted = new OpenAI.APIUserAbortError()
+    // What the openai SDK really throws when the signal fires mid-request. The
+    // socket errno on its cause is what makes this a pin: without it the abort
+    // has no status and no connection class, so it would not fall back even
+    // if nothing recognised it as an abort. With it, only the abort check
+    // stands between this error and a fallback past the deadline.
+    const aborted = Object.assign(new OpenAI.APIUserAbortError(), {
+      cause: Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }),
+    })
     expect(aborted.name).toBe("Error")
     h.orAgent.mockRejectedValue(aborted)
 
@@ -352,9 +367,8 @@ describe("callAgent: a malformed answer is retried as a malformed answer, never 
   })
 
   it("retries a Zod '<=500 characters' miss on the same model and does not send it to Haiku", async () => {
-    const tooLong = z
-      .object({ excerpt: z.string().max(500) })
-      .safeParse({ excerpt: "x".repeat(501) }).error as z.ZodError
+    const tooLong = z.object({ excerpt: z.string().max(500) }).safeParse({ excerpt: "x".repeat(501) })
+      .error as z.ZodError
     expect(tooLong.message).toContain("<=500")
     h.orAgent.mockRejectedValue(tooLong)
 

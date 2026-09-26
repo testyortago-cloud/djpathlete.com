@@ -79,6 +79,28 @@ describe("createDeadline", () => {
     }
   })
 
+  it("counts as spent the moment its signal aborts, even while its clock reads a moment short", () => {
+    // Node can fire the timer before `now - startedAt` reaches the budget
+    // (libuv arms timers from its cached loop time): 2 of 600 real deadlines
+    // in the 2026-09-26 program-chat review. In that window assertLive did not
+    // throw, so an aborted request surfaced as the SDK's raw "Request was
+    // aborted." instead of the DeadlineExceededError the job records.
+    vi.useFakeTimers()
+    try {
+      const clock = fakeClock()
+      const d = createDeadline(5_000, "Program chat", clock.now)
+      clock.advance(4_999)
+      vi.advanceTimersByTime(5_000)
+      expect(d.signal.aborted).toBe(true)
+      expect(d.expired()).toBe(true)
+      expect(d.remainingMs()).toBe(0)
+      expect(() => d.assertLive("closing reply")).toThrow(DeadlineExceededError)
+      d.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("dispose cancels the timer so the signal never aborts afterwards", () => {
     vi.useFakeTimers()
     try {

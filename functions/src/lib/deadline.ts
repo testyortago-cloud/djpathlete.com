@@ -58,7 +58,11 @@ export function createDeadline(budgetMs: number, label: string, nowFn: () => num
   const controller = new AbortController()
   const startedAt = nowFn()
 
-  const remainingMs = () => Math.max(0, budgetMs - (nowFn() - startedAt))
+  // The aborted signal wins over the clock. Node can fire the timer a moment
+  // before `now - startedAt` reaches the budget (libuv arms timers from its
+  // cached loop time), and in that window a clock-only check disagreed with the
+  // signal: assertLive did not throw for a request the signal had just killed.
+  const remainingMs = () => (controller.signal.aborted ? 0 : Math.max(0, budgetMs - (nowFn() - startedAt)))
   const expired = () => remainingMs() <= 0
 
   // unref() so a pending timer can never hold the container open past the work.
