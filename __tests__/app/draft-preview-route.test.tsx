@@ -53,12 +53,32 @@ const FUNNEL = {
   kind: "funnel",
 }
 const ENTRY = { id: "step-1", slug: "start", name: "Start", is_entry: true, position: 0, published_version_id: null }
-const SECOND = { id: "step-2", slug: "thanks", name: "Thanks", is_entry: false, position: 1, published_version_id: null }
+const SECOND = {
+  id: "step-2",
+  slug: "thanks",
+  name: "Thanks",
+  is_entry: false,
+  position: 1,
+  published_version_id: null,
+}
 const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 
 const render = (slug: string, step?: string[]) => Page({ params: Promise.resolve({ slug, step }) })
-const html = async (slug: string, step?: string[]) =>
-  renderToStaticMarkup((await render(slug, step)) as ReactElement)
+const html = async (slug: string, step?: string[]) => renderToStaticMarkup((await render(slug, step)) as ReactElement)
+
+/** The context handed to NodeRenderer, found by walking the returned element tree. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findContext(element: any): Record<string, unknown> | null {
+  if (!element || typeof element !== "object") return null
+  if (element.props && element.props.context) return element.props.context as Record<string, unknown>
+  const children = element.props?.children
+  const list = Array.isArray(children) ? children : [children]
+  for (const child of list) {
+    const found = findContext(child)
+    if (found) return found
+  }
+  return null
+}
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -108,6 +128,25 @@ describe("the gate", () => {
     await render("summer-camp")
     expect(getFunnelBySlug).toHaveBeenCalledWith(BUSINESS_ID, "summer-camp")
     expect(listSteps).toHaveBeenCalledWith(BUSINESS_ID, FUNNEL.id)
+  })
+
+  it("hands the islands the ADMIN tenant, not the Host's (G35)", async () => {
+    // MUTANT: leaving `businessId` out of the NodeRenderer context. The quiz
+    // island reads its quiz under it, and this screen is served from the
+    // admin's host whichever coach is looking, so the Host is the wrong one.
+    expect(findContext(await render("summer-camp"))).toMatchObject({ businessId: BUSINESS_ID, testRun: true })
+  })
+
+  it("follows the admin tenant, not a constant that happens to equal it (G35)", async () => {
+    // MUTANT: `businessId` taken from anywhere but `resolveAdminTenant`. The
+    // live FAQ and testimonial islands (§B2) decide from it whether the
+    // platform's rows may appear here, so this preview must agree with what
+    // /go on the funnel's own Host will show.
+    expect(findContext(await render("summer-camp"))?.businessId).toBe(BUSINESS_ID)
+
+    const OTHER = "cccccccc-1111-4222-8333-444444444444"
+    mock(resolveAdminTenant).mockResolvedValue({ businessId: OTHER, choices: [], isOperator: true })
+    expect(findContext(await render("summer-camp"))?.businessId).toBe(OTHER)
   })
 
   it("404s more than one segment past the slug", async () => {

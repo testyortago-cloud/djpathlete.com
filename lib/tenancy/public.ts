@@ -76,18 +76,31 @@ import { recordAudit } from "@/lib/audit/record"
  *     app/api/funnels/submit/route.ts
  *     app/api/ask/config/route.ts
  *   The two places a row's tenant is DECIDED, after which the row carries it:
- *     app/api/quiz/progress/route.ts   (createAttempt; quiz/submit inherits)
+ *     app/api/quiz/progress/route.ts   (createAttempt; quiz/submit inherits.
+ *                                       Since G35 it resolves FIRST, on every
+ *                                       request: the quiz is read under the
+ *                                       Host, and an existing attempt stamped
+ *                                       with another business is refused)
  *     app/api/ask/route.ts             (createConversation; the rest of that
- *                                       route threads conversation.business_id)
+ *                                       route threads conversation.business_id.
+ *                                       Since G35 it resolves BEFORE reading
+ *                                       an existing conversation too, and
+ *                                       reads it under the Host, so another
+ *                                       business's conversation id is unknown)
+ *   One route that resolves only to FENCE a read, never to decide a tenant
+ *   (G35). It reads the visitor's conversation under the Host, so a
+ *   conversation id from another business's site answers the same 404 as an
+ *   unknown one. It then files under conversation.business_id, which that
+ *   fenced read makes the Host's tenant by construction:
+ *     app/api/ask/capture/route.ts
  *   The pages and server components that render the consent wording those
  *   routes file, which must name the SAME business the route files under.
  *   For camps/clinics and the two form/quiz islands that holds because both
- *   sides read the Host directly. app/(marketing)/ask/page.tsx is the one
- *   exception: it resolves the Host's business itself, but POST
- *   /api/ask/capture never reads the Host — it inherits
- *   conversation.business_id, set once when POST /api/ask created the
- *   conversation from the same origin. The two still agree, TRANSITIVELY
- *   through that shared origin, not because they share one resolution:
+ *   sides read the Host directly. Since G35 app/(marketing)/ask/page.tsx holds
+ *   for the same reason: POST /api/ask/capture now reads the Host too (above).
+ *   Before G35 it did not, and the page and the route agreed only
+ *   TRANSITIVELY, through the origin POST /api/ask created the conversation
+ *   from:
  *     app/(marketing)/ask/page.tsx
  *     app/(marketing)/camps/[slug]/page.tsx
  *     app/(marketing)/clinics/[slug]/page.tsx
@@ -103,16 +116,20 @@ import { recordAudit } from "@/lib/audit/record"
  *     app/(marketing)/clinics/page.tsx
  *
  *   Phase 5a (docs/superpowers/sdd/2026-09-06-tenancy-phase5a-events-per-
- *   tenant) added three more, each guarding against a different tenant's row:
- *   the two post-purchase success pages scope getEventBySlug and then check
- *   the Stripe-session-keyed signup's own business_id against the resolved
- *   tenant before rendering it (that lookup itself stays unscoped — see
- *   getEventSignupByStripeSessionId's own doc comment); EventIsland scopes
- *   getEventById, since a funnel document names an event id with no tenant
- *   of its own:
+ *   tenant) added three more. Two remain, each guarding against a different
+ *   tenant's row: the two post-purchase success pages scope getEventBySlug
+ *   and then check the Stripe-session-keyed signup's own business_id against
+ *   the resolved tenant before rendering it (that lookup itself stays
+ *   unscoped — see getEventSignupByStripeSessionId's own doc comment):
  *     app/(marketing)/camps/[slug]/success/page.tsx
  *     app/(marketing)/clinics/[slug]/success/page.tsx
- *     components/funnels/islands/EventIsland.tsx
+ *   The third was the funnel event island. It LEFT this list in the G35
+ *   review (F4): it still scopes getEventById, since a funnel
+ *   document names an event id with no tenant of its own, but under the
+ *   tenant the ROUTE put on the render context, not the Host. On the two
+ *   preview routes the Host is the admin's, so a Host read made the preview
+ *   and `/go` disagree about one document. `/go` (below) resolves the Host
+ *   and hands it down; the island itself resolves nothing.
  *
  *   G31 (funnel tenancy, migration 00278) converted the remaining public
  *   funnel surfaces — the ones that read/write funnels, funnel_steps,

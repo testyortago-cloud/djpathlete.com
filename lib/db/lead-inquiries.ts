@@ -92,6 +92,11 @@ export async function getLeadInquiryByUserId(userId: string) {
 
 export async function getLeadInquiryById(id: string) {
   const supabase = getClient()
+  // UNTENANTED BY SCHEMA (G45). `lead_inquiries` has no `business_id` column
+  // (the public inquiry route resolves the Host's business, then writes here
+  // without it), so this reads any business's inquiry by id. Reaching one
+  // needs its UUID, and no list of these rows sits on a grantable surface.
+  // See the shelf in lib/tenancy/platform.ts.
   const { data, error } = await supabase.from("lead_inquiries").select("*").eq("id", id).single()
   if (error) throw error
   return data as LeadInquiry

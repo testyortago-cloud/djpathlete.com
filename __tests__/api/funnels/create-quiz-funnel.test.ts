@@ -154,7 +154,24 @@ describe("POST /api/admin/funnels — the quiz template", () => {
     getQuizDefinitionMock.mockResolvedValue({ id: EXISTING_QUIZ_ID, questions: [], branches: [], tiers: [], profiles: [] })
     const { POST } = await import("@/app/api/admin/funnels/route")
     await POST(post({ ...quizBody, quiz: { copyFrom: EXISTING_QUIZ_ID } }), NO_PARAMS)
-    expect(getQuizDefinitionMock).toHaveBeenCalledWith(EXISTING_QUIZ_ID)
+    // MUTANT: `getQuizDefinition(quizIntake.copyFrom)`, the id-only read (G35).
+    expect(getQuizDefinitionMock).toHaveBeenCalledWith(BUSINESS_ID, EXISTING_QUIZ_ID)
+  })
+
+  it("refuses another business's copyFrom at the READ, with the same 400, before creating anything (G35)", async () => {
+    // One argument is the pre-G35 id-only read and answers for anyone. Under
+    // the mutant the source comes back, the (mocked) ownership check passes,
+    // and a clone is created.
+    getQuizDefinitionMock.mockImplementation(async (...args: unknown[]) =>
+      args.length < 2 || args[0] === "another-business"
+        ? { id: EXISTING_QUIZ_ID, questions: [], branches: [], tiers: [], profiles: [] }
+        : null,
+    )
+    const { POST } = await import("@/app/api/admin/funnels/route")
+    const res = await POST(post({ ...quizBody, quiz: { copyFrom: EXISTING_QUIZ_ID } }), NO_PARAMS)
+    expect(res.status).toBe(400)
+    expect(createQuizFromMock).not.toHaveBeenCalled()
+    expect(createFunnelMock).not.toHaveBeenCalled()
   })
 
   it("refuses a copyFrom naming a quiz that does not exist, before creating anything", async () => {
@@ -176,9 +193,9 @@ describe("POST /api/admin/funnels — the quiz template", () => {
   })
 
   it("refuses to clone a copyFrom that belongs to another business, before creating anything", async () => {
-    // THE CROSS-TENANT CLONE HOLE. `getQuizDefinition` above is scoped by id
-    // alone, so without this guard an admin could name another business's
-    // quiz id and clone its full content into their own.
+    // THE CROSS-TENANT CLONE HOLE. Since G35 the read itself is scoped (the
+    // test above). This pins the SECOND line, the ownership check, against a
+    // read that answers regardless, the way the pre-G35 one did.
     getQuizDefinitionMock.mockResolvedValue({ id: EXISTING_QUIZ_ID, questions: [], branches: [], tiers: [], profiles: [] })
     assertQuizInBusinessMock.mockRejectedValue(new QuizNotInBusinessError(EXISTING_QUIZ_ID))
     const { POST } = await import("@/app/api/admin/funnels/route")

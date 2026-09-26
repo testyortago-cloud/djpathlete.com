@@ -9,6 +9,11 @@ function getClient() {
 
 export async function getAssignments(userId?: string) {
   const supabase = getClient()
+  // UNTENANTED BY SCHEMA (G37). `program_assignments` has no `business_id`
+  // column, and neither has the `programs` row it embeds, so with no `userId`
+  // this is every business's assignments: /admin/programs builds its counts
+  // and its completion rate from exactly that. See the shelf in
+  // lib/tenancy/platform.ts.
   let query = supabase.from("program_assignments").select("*, programs(*)").order("created_at", { ascending: false })
   if (userId) {
     query = query.eq("user_id", userId)
@@ -106,6 +111,8 @@ export async function getActiveAssignment(userId: string) {
 
 export async function getAssignmentCountsByProgram(): Promise<Record<string, number>> {
   const supabase = getClient()
+  // UNTENANTED BY SCHEMA (G37): `program_assignments` has no `business_id`
+  // column, so these counts run across every business. See `getAssignments`.
   const { data, error } = await supabase.from("program_assignments").select("program_id").eq("status", "active")
   if (error) throw error
   const counts: Record<string, number> = {}

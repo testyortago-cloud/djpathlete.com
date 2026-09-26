@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { headers } from "next/headers"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { createAiJob } from "@/lib/ai-jobs"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export async function POST(_req: NextRequest) {
   const auth = (await headers()).get("authorization") ?? ""
@@ -18,7 +19,12 @@ export async function POST(_req: NextRequest) {
   const { jobId } = await createAiJob({
     type: "social_agent_run",
     userId: "system",
-    input: { platform: "linkedin" },
+    // businessId (G35): whose owners get the "no eligible topic" alert. The
+    // platform's, by construction: a cron has no session to resolve from, and
+    // nothing the social agent reads or writes (blog_posts, strategy_briefs,
+    // social_posts, social_agent_memos) has a business_id. lib/tenancy/platform.ts
+    // lists this route under CORRECT BY CONSTRUCTION.
+    input: { platform: "linkedin", businessId: platformBusinessId() },
   })
   return NextResponse.json({ jobId, status: "pending" })
 }

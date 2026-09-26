@@ -43,10 +43,13 @@ const QUIZZES_BY_BUSINESS: Record<string, { id: string; status: string }[]> = {
   [BUSINESS_B]: [{ id: "quiz-b", status: "draft" }],
 }
 
-async function stubTenantedDal() {
+async function stubTenantedDal(
+  quizzesByBusiness: Record<string, { id: string; status: string }[]> = QUIZZES_BY_BUSINESS,
+) {
   const getEventsCalls: string[] = []
   const getPublishedEventsCalls: string[] = []
   const listQuizzesCalls: string[] = []
+  const getQuizDefinitionCalls: unknown[][] = []
 
   vi.resetModules()
   vi.doMock("@/lib/db/programs", () => ({
@@ -77,16 +80,20 @@ async function stubTenantedDal() {
   vi.doMock("@/lib/db/quizzes", () => ({
     listQuizzes: async (businessId: string) => {
       listQuizzesCalls.push(businessId)
-      return QUIZZES_BY_BUSINESS[businessId] ?? []
+      return quizzesByBusiness[businessId] ?? []
     },
-    // Both fixtures above are `status: "draft"`, so `loadCatalogues` never
-    // calls this -- it only assembles a definition for an ACTIVE quiz. Wired
-    // anyway so a future fixture change does not throw for an unrelated reason.
-    getQuizDefinition: async () => null,
+    // The default fixtures are all `status: "draft"`, so `loadCatalogues`
+    // never calls this for them. It only assembles a definition for an ACTIVE
+    // quiz. The G35 test below passes an active one. Every call is recorded
+    // WHOLE, so the tenant argument is visible as a call shape.
+    getQuizDefinition: async (...args: unknown[]) => {
+      getQuizDefinitionCalls.push(args)
+      return null
+    },
   }))
 
   const { loadCatalogues } = await import("@/lib/funnels/sections/resolve")
-  return { loadCatalogues, getEventsCalls, getPublishedEventsCalls, listQuizzesCalls }
+  return { loadCatalogues, getEventsCalls, getPublishedEventsCalls, listQuizzesCalls, getQuizDefinitionCalls }
 }
 
 describe("loadCatalogues tenancy", () => {
@@ -143,6 +150,18 @@ describe("loadCatalogues tenancy", () => {
     expect(getEventsCalls).toEqual([BUSINESS_A])
     expect(getPublishedEventsCalls).toEqual([BUSINESS_A])
     expect(listQuizzesCalls).toEqual([BUSINESS_A])
+  })
+
+  it("assembles an ACTIVE quiz's definition under the asking tenant, not by id alone (G35)", async () => {
+    // MUTANT: `getQuizDefinition(row.id)`, the id-only read this seam had
+    // before G35.
+    const { loadCatalogues, getQuizDefinitionCalls } = await stubTenantedDal({
+      [BUSINESS_A]: [{ id: "quiz-a", status: "active" }],
+    })
+
+    await loadCatalogues(BUSINESS_A)
+
+    expect(getQuizDefinitionCalls).toEqual([[BUSINESS_A, "quiz-a"]])
   })
 })
 

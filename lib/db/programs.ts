@@ -8,6 +8,11 @@ function getClient() {
 
 export async function getPrograms() {
   const supabase = getClient()
+  // UNTENANTED BY SCHEMA (G37). `programs` has no `business_id` column, so
+  // this is every business's programmes, and there is no predicate to add
+  // without inventing the column. Staff holding `programs` (the Coach preset)
+  // read it through /admin/programs. Listed on the shelf in
+  // lib/tenancy/platform.ts; the table converts first, then this read.
   const { data, error } = await supabase
     .from("programs")
     .select("*")
@@ -32,6 +37,9 @@ export async function getPrograms() {
  *
  * DO NOT reach for this to render a list to a visitor or an admin picker —
  * it will happily hand back retired products. Recognition only.
+ *
+ * UNTENANTED BY SCHEMA (G37), like `getPrograms` above: `programs` has no
+ * `business_id` column, so "every program" is every business's.
  */
 export async function getAllPrograms() {
   const supabase = getClient()
@@ -45,6 +53,10 @@ export async function getAllPrograms() {
 
 export async function getProgramById(id: string) {
   const supabase = getClient()
+  // UNTENANTED BY SCHEMA (G37): `programs` has no `business_id` column, so an
+  // id from ANY business resolves here. /admin/programs/[id] opens whatever
+  // id is in its URL, and the funnel checkout sells whatever id its body
+  // names (G40). See the shelf in lib/tenancy/platform.ts.
   const { data, error } = await supabase.from("programs").select("*").eq("id", id).single()
   if (error) throw error
   return data as Program

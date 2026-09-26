@@ -34,6 +34,9 @@ import { FormIsland } from "@/components/funnels/islands/FormIsland"
 import type { FunnelFormField } from "@/lib/funnels/islands"
 
 const CONTEXT = {
+  // Required on FunnelRenderContext since G35. Distinct from the Host's
+  // "host-biz", so the form's Host-resolved reads cannot pass for it.
+  businessId: "route-biz",
   funnelId: "ffffffff-1111-4222-8333-444444444444",
   funnelSlug: "test",
   stepId: "3f1b7c5e-1111-4222-8333-444444444444",

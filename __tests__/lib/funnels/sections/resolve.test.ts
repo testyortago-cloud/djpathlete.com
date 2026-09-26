@@ -125,7 +125,12 @@ function catalogue(overrides: Partial<Catalogue> = {}, faqPageKeys: string[] = F
   // `quizzes: []` is the safe default: a doc with no quiz section does not
   // care, and one WITH a quiz section reports it "missing" rather than
   // quietly passing. Tests that need a real quiz spread this and override.
-  return { recognition: lists(overrides), offer: lists(overrides), faqPageKeys, quizzes: [] }
+  //
+  // `liveFeedsAvailable: true` — THE PLATFORM'S catalogue. Every FAQ test in
+  // this file was written about the platform's own feeds, the only business
+  // whose page keys are looked up at all (G35). Every other business is
+  // `coachCatalogue()` below.
+  return { recognition: lists(overrides), offer: lists(overrides), faqPageKeys, liveFeedsAvailable: true, quizzes: [] }
 }
 
 function docOf(sections: Section[]): SectionDoc {
@@ -683,6 +688,7 @@ describe("resolveDoc — the recognition / offer split", () => {
       recognition: lists({}),
       offer: lists({ event: [] }),
       faqPageKeys: FAQ_KEYS,
+      liveFeedsAvailable: true,
       quizzes: [],
     }
     const doc = docOf([hero({ primaryCta: eventCta(EVENT_CAMP) })])
@@ -716,6 +722,7 @@ describe("resolveDoc — the recognition / offer split", () => {
       }),
       offer: lists({ program: [{ id: PROGRAM_COMEBACK, name: "Comeback Code" }] }),
       faqPageKeys: FAQ_KEYS,
+      liveFeedsAvailable: true,
       quizzes: [],
     }
     const doc = docOf([
@@ -755,6 +762,7 @@ describe("resolveDoc — the recognition / offer split", () => {
       }),
       offer: lists({ event: [{ id: EVENT_CAMP, name: "Summer Camp" }] }),
       faqPageKeys: FAQ_KEYS,
+      liveFeedsAvailable: true,
       quizzes: [],
     }
 
@@ -783,6 +791,7 @@ describe("resolveDoc — the recognition / offer split", () => {
       quizzes: before.quizzes,
       offer: { ...before.offer, event: [] },
       faqPageKeys: before.faqPageKeys,
+      liveFeedsAvailable: before.liveFeedsAvailable,
     }
     const second = resolveDoc(first.doc, after)
 
@@ -1055,6 +1064,122 @@ describe("resolveDoc — faq pageKey", () => {
 
     expect(gate.ok).toBe(false)
     expect(gate.blockers[0]).toContain("no page has FAQs yet")
+  })
+})
+
+// ===========================================================================
+// G35: the platform's live feeds on a business that is not the platform.
+//
+// `faqs` and `testimonials` have no `business_id` column, so every row either
+// live island can show is the platform's own, and the islands render nothing
+// on any other business's page. `loadCatalogues` says so with
+// `liveFeedsAvailable: false` (and no FAQ keys); these pin what `resolveDoc`
+// and `publishGate` do with it. Mock-free, like everything above.
+// ===========================================================================
+
+function liveTestimonial(id = "t1"): Section {
+  return { id, kind: "testimonial", variant: "grid", style: {}, props: { source: "live" } }
+}
+
+function quoteTestimonial(id = "t2"): Section {
+  return {
+    id,
+    kind: "testimonial",
+    variant: "grid",
+    style: {},
+    props: { source: "quote", quotes: [{ quote: "Stronger than ever.", name: "A. Athlete" }] },
+  }
+}
+
+/** What `loadCatalogues` answers for a business that is not the platform: no keys, no feeds. */
+function coachCatalogue(): Catalogues {
+  return { ...catalogue({}, []), liveFeedsAvailable: false }
+}
+
+describe("resolveDoc — the platform's live feeds on a business that is not the platform (G35)", () => {
+  it("reports a live FAQ section as an unavailable feed, NOT as an unknown page key", () => {
+    // MUTANT: no feed check, leaving the key check to catch it. With
+    // `faqPageKeys: []` it WOULD be caught — as "no FAQs are filed under camps
+    // … no page has FAQs yet", which sends the owner to add FAQ rows that
+    // would still never appear on this business's page.
+    const result = resolveDoc(docOf([liveFaq("camps")]), coachCatalogue())
+
+    expect(result.unavailableLiveFeeds).toEqual([{ sectionId: "faq1", kind: "faq" }])
+    expect(result.unknownFaqKeys).toEqual([])
+  })
+
+  it("reports a live testimonial section — the check that did not exist before G35", () => {
+    // MUTANT: no testimonial branch at all, which is what shipped: nothing in
+    // resolveDoc looked at a testimonial section, so a coach's page with a live
+    // feed published green and rendered an empty band.
+    const result = resolveDoc(docOf([liveTestimonial()]), coachCatalogue())
+
+    expect(result.unavailableLiveFeeds).toEqual([{ sectionId: "t1", kind: "testimonial" }])
+  })
+
+  it("(control) reports nothing for the SAME live sections on the platform's own page", () => {
+    // Without this, an implementation that flagged every live section for
+    // everyone would pass both tests above. "camps" has rows, so the key check
+    // stays quiet too.
+    const result = resolveDoc(docOf([liveFaq("camps"), liveTestimonial()]), catalogue())
+
+    expect(result.unavailableLiveFeeds).toEqual([])
+    expect(result.unknownFaqKeys).toEqual([])
+  })
+
+  it("never reports inline FAQs or authored quotes — they are the business's own content", () => {
+    // MUTANT: checking the section KIND without discriminating on `source`,
+    // which would block every coach page with any FAQ or testimonial at all.
+    // The live testimonial in the same doc is the presence control: a gutted
+    // check that reports nothing fails here too.
+    const result = resolveDoc(
+      docOf([inlineFaq("faq2"), quoteTestimonial("t2"), liveTestimonial("t1")]),
+      coachCatalogue(),
+    )
+
+    expect(result.unavailableLiveFeeds).toEqual([{ sectionId: "t1", kind: "testimonial" }])
+  })
+
+  it("does not rewrite the document — the fix needs content only the owner has", () => {
+    // MUTANT: "helpfully" flipping the section to inline/quote. There is
+    // nothing to put in it: an inline FAQ needs questions and a quote needs a
+    // real person's words.
+    const doc = docOf([liveFaq("camps"), liveTestimonial()])
+
+    const result = resolveDoc(doc, coachCatalogue())
+
+    expect(result.doc).toBe(doc)
+    expect(result.unavailableLiveFeeds).toHaveLength(2)
+  })
+})
+
+describe("publishGate — the platform's live feeds (G35)", () => {
+  it("BLOCKS, in words that say whose list it is and what to switch to", () => {
+    // MUTANT 1: reporting it as a warning — the owner cannot SEE an empty band
+    // on a page they already approved, which is the line blockers sit on.
+    // MUTANT 2: reusing `describeUnknownFaqKey`'s wording.
+    const gate = publishGate(resolveDoc(docOf([liveFaq("camps"), liveTestimonial()]), coachCatalogue()))
+
+    expect(gate.ok).toBe(false)
+    expect(gate.warnings).toEqual([])
+    expect(gate.blockers).toHaveLength(2)
+    const [faqLine, testimonialLine] = gate.blockers
+    expect(faqLine).toContain('Section "faq1" uses live FAQs.')
+    expect(faqLine).not.toContain("DJP")
+    expect(faqLine).toContain("FAQs (Inline)")
+    expect(testimonialLine).toContain('Section "t1" uses live testimonials.')
+    expect(testimonialLine).not.toContain("DJP")
+    expect(testimonialLine).toContain("your own quotes")
+    // Not the unknown-key sentence. Its presence control is the next test.
+    expect(gate.blockers.join(" ")).not.toContain("no page has FAQs yet")
+  })
+
+  it("(control) the platform with no FAQ rows still gets the unknown-key sentence, not this one", () => {
+    const gate = publishGate(resolveDoc(docOf([liveFaq("camps")]), catalogue({}, [])))
+
+    expect(gate.blockers).toHaveLength(1)
+    expect(gate.blockers[0]).toContain("no page has FAQs yet")
+    expect(gate.blockers[0]).not.toContain("DJP")
   })
 })
 
@@ -1352,13 +1477,26 @@ const DEFAULT_DAL_ROWS: DalRows = {
 /** Every test in this block reads as this tenant unless it says otherwise. */
 const STUB_BUSINESS_ID = "biz-under-test"
 
+/**
+ * What `platformBusinessId()` answers inside this block (G35). A sentinel
+ * rather than the real constant, so a `loadCatalogues` that compared against a
+ * hard-coded platform literal instead of asking the seam cannot pass — and
+ * DISTINCT from `STUB_BUSINESS_ID`, which is therefore a business that is NOT
+ * the platform and gets no live feeds.
+ */
+const PLATFORM_STUB_ID = "platform-under-test"
+
 async function stubDal(overrides: Partial<DalRows> = {}) {
   const rows: DalRows = { ...DEFAULT_DAL_ROWS, ...overrides }
   const getEventsCalls: { businessId: string; filters?: EventFilters }[] = []
   const quizDefinitionCalls: string[] = []
   const publishedEventsCalls: { businessId: string; filters?: EventFilters }[] = []
+  // Every read of the faqs table, so "a business that is not the platform
+  // never reads it" is observable rather than inferred from an empty list.
+  const faqCountsCalls: number[] = []
 
   vi.resetModules()
+  vi.doMock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => PLATFORM_STUB_ID }))
   vi.doMock("@/lib/db/programs", () => ({
     getPrograms: async () => rows.offerPrograms,
     getAllPrograms: async () => rows.allPrograms,
@@ -1382,14 +1520,19 @@ async function stubDal(overrides: Partial<DalRows> = {}) {
     },
   }))
   vi.doMock("@/lib/db/faqs", () => ({
-    getFaqCountsByPage: async () => rows.faqCounts,
+    getFaqCountsByPage: async () => {
+      faqCountsCalls.push(1)
+      return rows.faqCounts
+    },
   }))
   // Two quizzes, one active one draft, so "the draft was gated anyway" and
   // "the active one was not gated" are both visible. `getQuizDefinition` MUST
   // NOT be called for the draft — asserted below.
   vi.doMock("@/lib/db/quizzes", () => ({
     listQuizzes: async () => rows.quizzes,
-    getQuizDefinition: async (id: string) => {
+    // (businessId, quizId) since G35. The tenant is asserted by
+    // load-catalogues-tenancy.test.ts; this block keeps asserting WHICH quiz.
+    getQuizDefinition: async (_businessId: string, id: string) => {
       quizDefinitionCalls.push(id)
       if (rows.quizDefinitionMissing) return null
       return { id, key: "k", name: "n", status: "active", branches: [], questions: [], tiers: [], profiles: [] }
@@ -1397,16 +1540,18 @@ async function stubDal(overrides: Partial<DalRows> = {}) {
   }))
 
   const { loadCatalogues } = await import("@/lib/funnels/sections/resolve")
-  return { loadCatalogues, getEventsCalls, publishedEventsCalls, quizDefinitionCalls }
+  return { loadCatalogues, getEventsCalls, publishedEventsCalls, quizDefinitionCalls, faqCountsCalls }
 }
 
-async function loadCataloguesWithStubbedDal(overrides: Partial<DalRows> = {}) {
-  const { loadCatalogues, getEventsCalls, publishedEventsCalls, quizDefinitionCalls } = await stubDal(overrides)
+async function loadCataloguesWithStubbedDal(overrides: Partial<DalRows> = {}, businessId: string = STUB_BUSINESS_ID) {
+  const { loadCatalogues, getEventsCalls, publishedEventsCalls, quizDefinitionCalls, faqCountsCalls } =
+    await stubDal(overrides)
   return {
-    catalogues: await loadCatalogues(STUB_BUSINESS_ID),
+    catalogues: await loadCatalogues(businessId),
     getEventsCalls,
     publishedEventsCalls,
     quizDefinitionCalls,
+    faqCountsCalls,
   }
 }
 
@@ -1417,6 +1562,7 @@ describe("loadCatalogues", () => {
     vi.doUnmock("@/lib/db/events")
     vi.doUnmock("@/lib/db/faqs")
     vi.doUnmock("@/lib/db/quizzes")
+    vi.doUnmock("@/lib/tenancy/platform")
     vi.resetModules()
   })
 
@@ -1493,16 +1639,36 @@ describe("loadCatalogues", () => {
     expect(catalogues.offer.session_pack.map((r) => r.id)).toEqual(["pack-active"])
   })
 
-  it("reads the FAQ page keys from getFaqCountsByPage, sorted", async () => {
-    // MUTANT: `faqPageKeys: []` (or dropping the read). It fails LOUDLY rather
-    // than silently — every live FAQ section would become an unknown key and
-    // block publish on pages that are fine — which is why it needs its own
-    // test: none of the CTA assertions above can see this field at all.
+  it("gives a business that is not the platform NO FAQ keys and no live feeds, without reading the faqs table (G35)", async () => {
+    // RETARGETED, NOT DELETED. This test used to load as `STUB_BUSINESS_ID`
+    // and expect the platform's keys. That business is not the platform, and
+    // the rows are the platform's own, so it now gets none.
+    //
+    // MUTANT 1: no platform check — the coach's builder is offered the
+    // platform's page keys, a live FAQ section passes the gate, and the island
+    // renders an empty band on the live page.
+    // MUTANT 2: the check placed AFTER the read — the keys are discarded but
+    // the table is still read for a business it can never serve. Only the call
+    // count tells that apart from a correct implementation.
+    const { catalogues, faqCountsCalls } = await loadCataloguesWithStubbedDal()
+
+    expect(catalogues.faqPageKeys).toEqual([])
+    expect(catalogues.liveFeedsAvailable).toBe(false)
+    expect(faqCountsCalls).toEqual([])
+  })
+
+  it("(control) reads the PLATFORM's FAQ page keys from getFaqCountsByPage, sorted", async () => {
+    // MUTANT: `faqPageKeys: []` for everyone (or dropping the read). It fails
+    // LOUDLY rather than silently — every live FAQ section on the platform's
+    // own pages would become a blocker on pages that are fine — which is why it
+    // needs its own test: none of the CTA assertions above can see this field.
     // The stub returns the keys in NON-alphabetical order, so `sort()` is
-    // observable rather than accidental.
-    const { catalogues } = await loadCataloguesWithStubbedDal()
+    // observable rather than accidental. Same stub rows as the test above.
+    const { catalogues, faqCountsCalls } = await loadCataloguesWithStubbedDal({}, PLATFORM_STUB_ID)
 
     expect(catalogues.faqPageKeys).toEqual(["camps", "training"])
+    expect(catalogues.liveFeedsAvailable).toBe(true)
+    expect(faqCountsCalls).toHaveLength(1)
   })
 
   it("builds the RECOGNITION program list from getAllPrograms — deactivating a program must not break the page selling it", async () => {
@@ -1609,7 +1775,9 @@ describe("loadCatalogues", () => {
     // exports and not from the identically-named `listActiveProducts` in
     // `lib/db/shop-products.ts`. Whole-object `toEqual` on both sets, so an
     // extra or missing key fails too.
-    const { catalogues, quizDefinitionCalls } = await loadCataloguesWithStubbedDal()
+    // AS THE PLATFORM (G35): the only business whose FAQ rows are read, so the
+    // only one where "the FAQ rows land under `faqPageKeys`" can be checked.
+    const { catalogues, quizDefinitionCalls } = await loadCataloguesWithStubbedDal({}, PLATFORM_STUB_ID)
 
     expect(catalogues).toEqual({
       recognition: {
@@ -1636,6 +1804,7 @@ describe("loadCatalogues", () => {
         event: [{ id: "event-published", name: "Published Event", priced: false, soldOut: false }],
       },
       faqPageKeys: ["camps", "training"],
+      liveFeedsAvailable: true,
       // Both quizzes appear, and the two `gateBlocker` values differ for the
       // reason that matters: the ACTIVE one was really run through `quizGate`
       // — the stub hands back a definition with no questions, and that is the
@@ -1831,7 +2000,7 @@ function eventCatalogue(
     event:
       row === null && opts.knownButNotOffered ? [{ id: EVENT_CAMP, name: "Summer Camp" }] : row === null ? [] : [row],
   })
-  return { recognition, offer, faqPageKeys: FAQ_KEYS, quizzes: [] }
+  return { recognition, offer, faqPageKeys: FAQ_KEYS, liveFeedsAvailable: true, quizzes: [] }
 }
 
 describe("publishGate on a form that takes payment", () => {

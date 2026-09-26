@@ -231,6 +231,9 @@ export default async function FunnelDraftPreviewPage({ params, searchParams }: P
           funnelSlug: funnel.slug,
           stepId: step.id,
           stepSlug: step.slug,
+          // THE ADMIN TENANT, not the Host's: see the full-screen preview's
+          // identical line. Islands read their own rows under it (G35).
+          businessId,
           // ALWAYS true, never derived from a query string. A draft preview
           // must not create a real lead, a real checkout session or a real
           // event registration — the page is not published, so anything it

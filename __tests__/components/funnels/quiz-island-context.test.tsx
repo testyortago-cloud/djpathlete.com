@@ -44,12 +44,25 @@ const DEFINITION: QuizDefinition = {
   questions: [],
 }
 
+/**
+ * The tenant the ROUTE resolved (G35). It is deliberately NOT the Host's
+ * "host-biz" above, so a quiz read under the Host cannot pass for one read
+ * under the route's tenant.
+ */
+const ROUTE_BUSINESS = "route-biz"
+
 const CONTEXT: FunnelRenderContext = {
   funnelId: FUNNEL_ID,
   funnelSlug: "athlete-quiz",
   stepId: STEP_ID,
   stepSlug: "quiz",
   isPreview: false,
+  businessId: ROUTE_BUSINESS,
+}
+
+/** One argument is the pre-G35 id-only read and answers for anyone; see quiz-progress.test.ts. */
+function ownedBy(owner: string, def: QuizDefinition) {
+  return async (...args: unknown[]) => (args.length < 2 || args[0] === owner ? def : null)
 }
 
 beforeEach(() => {
@@ -76,5 +89,26 @@ describe("QuizIsland", () => {
   it("reads the business settings for the Host-resolved tenant, not the platform's", async () => {
     await QuizIsland({ props: { quizId: QUIZ_ID }, context: CONTEXT })
     expect(getBusinessSettings).toHaveBeenCalledWith("host-biz")
+  })
+
+  it("reads the quiz under the ROUTE's tenant, not the Host's (G35)", async () => {
+    // MUTANT: `getQuizDefinition(await resolvePublicTenant(), quizId)`. On /go
+    // the two are the same business. On /preview and /funnel-preview the Host
+    // is the admin screen's (the platform's), so a coach's own quiz would
+    // vanish from their builder canvas while /go still showed it.
+    await QuizIsland({ props: { quizId: QUIZ_ID }, context: CONTEXT })
+    expect(getQuizDefinition).toHaveBeenCalledWith(ROUTE_BUSINESS, QUIZ_ID)
+  })
+
+  it("renders nothing for a quiz the route's business does not own", async () => {
+    getQuizDefinition.mockImplementation(ownedBy("another-business", DEFINITION))
+    expect(await QuizIsland({ props: { quizId: QUIZ_ID }, context: CONTEXT })).toBeNull()
+  })
+
+  it("renders the runner for the route's own quiz under the same fake — the presence control", async () => {
+    getQuizDefinition.mockImplementation(ownedBy(ROUTE_BUSINESS, DEFINITION))
+    const element = (await QuizIsland({ props: { quizId: QUIZ_ID }, context: CONTEXT })) as ReactElement
+    expect(element).not.toBeNull()
+    expect((element.props as { definition?: { id?: string } }).definition?.id).toBe(QUIZ_ID)
   })
 })

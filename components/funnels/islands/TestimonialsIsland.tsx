@@ -2,13 +2,23 @@
 // as the library grows, without the owner re-editing the page.
 
 import { getTestimonials, getFeaturedTestimonials } from "@/lib/db/testimonials"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import type { Testimonial } from "@/types/database"
+import type { FunnelRenderContext } from "./index"
 
 interface TestimonialsIslandProps {
   props: Record<string, unknown>
+  context: FunnelRenderContext
 }
 
-export async function TestimonialsIsland({ props }: TestimonialsIslandProps) {
+export async function TestimonialsIsland({ props, context }: TestimonialsIslandProps) {
+  // THE PLATFORM'S ATHLETES, ON THE PLATFORM'S PAGES ONLY (G35). `testimonials`
+  // has no `business_id` column: every quote is from someone the platform
+  // coached. Shown on another business's page they would be presented as that
+  // coach's clients — so that page gets nothing. Same rule, same reasons and
+  // the same placement (before either read) as FaqIsland.
+  if (context.businessId !== platformBusinessId()) return null
+
   const limit = typeof props.limit === "number" ? props.limit : 3
   const featuredOnly = props.featuredOnly === true
 

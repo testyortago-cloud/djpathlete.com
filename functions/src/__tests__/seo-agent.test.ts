@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest"
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 
 const gatherSeoSignalsMock = vi.fn()
 const reasonAboutWeekMock = vi.fn()
@@ -99,7 +99,11 @@ describe("handleSeoAgent", () => {
   it("happy path: gather, reason, execute 2 actions, insert memo, mark job completed", async () => {
     jobRefGet.mockResolvedValueOnce({
       exists: true,
-      data: () => ({ status: "pending", type: "seo_agent_run", input: { userId: "admin-uuid" } }),
+      data: () => ({
+        status: "pending",
+        type: "seo_agent_run",
+        input: { userId: "admin-uuid", businessId: "biz-1" },
+      }),
     })
     gatherSeoSignalsMock.mockResolvedValueOnce({
       gsc_28d: { total_clicks: 100, total_impressions: 1000, avg_position: 12, top_winnable: [], top_decayed: [] },
@@ -134,6 +138,13 @@ describe("handleSeoAgent", () => {
     await handleSeoAgent("job-1")
 
     expect(executeActionMock).toHaveBeenCalledTimes(2)
+    // G35: the job's business reaches every executor, beside the memo and
+    // the user. MUTANT: ctx built as { memoId, userId } — flag_for_human then
+    // has no business to find owners in.
+    expect(executeActionMock.mock.calls.map((c) => c[1])).toEqual([
+      { memoId: "memo-1", userId: "admin-uuid", businessId: "biz-1" },
+      { memoId: "memo-1", userId: "admin-uuid", businessId: "biz-1" },
+    ])
     const finalUpdate = jobRefUpdate.mock.calls.at(-1)?.[0] as { status?: string; result?: unknown }
     expect(finalUpdate?.status).toBe("completed")
     expect((finalUpdate?.result as { memoId: string }).memoId).toBe("memo-1")
@@ -199,6 +210,118 @@ describe("handleSeoAgent", () => {
     const { handleSeoAgent } = await import("../seo-agent.js")
     await handleSeoAgent("done-job")
     expect(gatherSeoSignalsMock).not.toHaveBeenCalled()
+  })
+
+  describe("the job's business, and what each action did (G35)", () => {
+    const spies: Array<{ mockRestore: () => void }> = []
+    afterEach(() => {
+      for (const s of spies.splice(0)) s.mockRestore()
+    })
+    function silence(method: "log" | "warn" | "error") {
+      const spy = vi.spyOn(console, method).mockImplementation(() => {})
+      spies.push(spy)
+      return spy
+    }
+    const messages = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.map((c) => String(c[0]))
+
+    function runWith(input: Record<string, unknown>, results: Array<Record<string, unknown>>) {
+      jobRefGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ status: "pending", type: "seo_agent_run", input }),
+      })
+      gatherSeoSignalsMock.mockResolvedValueOnce({
+        gsc_28d: { total_clicks: 0, total_impressions: 0, avg_position: 0, top_winnable: [], top_decayed: [] },
+        inventory: { total_posts: 0, oldest_post_age_days: 0, never_refreshed_count: 0 },
+        recent_tavily: [],
+        orphan_post_ids: [],
+        last_8_memos_outcomes: [],
+        gsc_distinct_dates: 30,
+        brief_context: null,
+        tool_performance: [],
+      })
+      reasonAboutWeekMock.mockResolvedValueOnce({
+        decision: {
+          rationale: "r",
+          actions: [
+            { rank: 1, tool: "flag_for_human", args: { issue: "i", urgency: "low", context: "c" } },
+            { rank: 2, tool: "queue_new_post", args: { keyword: "deadlift", angle: "a" } },
+          ],
+          brief_alignment_score: null,
+          agent_confidence: 9,
+          dissent_from_upstream: { dissents: false, reason: null },
+        },
+        tokens_used: 1,
+      })
+      for (const r of results) executeActionMock.mockResolvedValueOnce(r)
+      supabaseFromMock.mockImplementation(defaultSupabaseRouter({ critiqueFlag: { enabled: false } }))
+    }
+
+    // MUTANT: default a missing businessId to the platform business. A job
+    // enqueued by a route older than G35 carries none; flag_for_human then
+    // fails closed, and this warning is where that shows in the logs.
+    it("threads a job with no businessId as null, and warns that its alert will not be sent", async () => {
+      const warn = silence("warn")
+      silence("log")
+      runWith({ userId: "u" }, [
+        { executed: true, execution_target_id: "t1" },
+        { executed: true, execution_target_id: "t2" },
+      ])
+      const { handleSeoAgent } = await import("../seo-agent.js")
+      await handleSeoAgent("job-old-route")
+      expect(executeActionMock.mock.calls[0]?.[1]).toEqual({ memoId: "memo-1", userId: "u", businessId: null })
+      expect(messages(warn).some((m) => m.includes("no input.businessId"))).toBe(true)
+    })
+
+    // Presence control for the warning above: same run, business present.
+    it("does not warn when the job carries its business", async () => {
+      const warn = silence("warn")
+      silence("log")
+      runWith({ userId: "u", businessId: "biz-1" }, [
+        { executed: true, execution_target_id: "t1" },
+        { executed: true, execution_target_id: "t2" },
+      ])
+      const { handleSeoAgent } = await import("../seo-agent.js")
+      await handleSeoAgent("job-new-route")
+      expect(executeActionMock.mock.calls[0]?.[1]).toEqual({ memoId: "memo-1", userId: "u", businessId: "biz-1" })
+      expect(messages(warn).some((m) => m.includes("no input.businessId"))).toBe(false)
+    })
+
+    // MUTANT: the old log line, which printed executed and target only. The
+    // flag's PGRST205 went unseen on every run for exactly that reason.
+    it("logs an action's error and a guardrail's rejection instead of dropping them", async () => {
+      const error = silence("error")
+      const warn = silence("warn")
+      runWith({ userId: "u", businessId: "biz-1" }, [
+        { executed: false, execution_target_id: null, error: "business biz-1 has no owner to notify" },
+        { executed: false, execution_target_id: null, rejection_reason: "brief_dont_do:deadlift" },
+      ])
+      const { handleSeoAgent } = await import("../seo-agent.js")
+      await handleSeoAgent("job-failed-actions")
+      expect(messages(error)).toContainEqual(
+        expect.stringContaining(
+          "tool=flag_for_human executed=false target=null error=business biz-1 has no owner to notify",
+        ),
+      )
+      expect(messages(warn)).toContainEqual(
+        expect.stringContaining("tool=queue_new_post executed=false target=null rejected=brief_dont_do:deadlift"),
+      )
+    })
+
+    // Presence control: a clean action still logs on console.log, unadorned.
+    it("logs a clean action as before", async () => {
+      const log = silence("log")
+      const error = silence("error")
+      runWith({ userId: "u", businessId: "biz-1" }, [
+        { executed: true, execution_target_id: "notif-1" },
+        { executed: true, execution_target_id: "cc-1" },
+      ])
+      const { handleSeoAgent } = await import("../seo-agent.js")
+      await handleSeoAgent("job-clean")
+      expect(messages(log)).toContainEqual(
+        "[seo-agent] action rank=1 tool=flag_for_human executed=true target=notif-1",
+      )
+      expect(messages(error)).toEqual([])
+    })
   })
 
   describe("self-critique pass", () => {

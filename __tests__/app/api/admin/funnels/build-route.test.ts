@@ -79,6 +79,11 @@ vi.mock("@/lib/funnels/render-image", () => ({ renderDocToImages: vi.fn() }))
 vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.fn() }))
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
+// The quiz reads `loadCatalogues` makes. Unmocked, they reached the dev clone
+// through `.env.local` — harmless for `BUSINESS_ID`, which owns no quizzes
+// there, but the G35 control below builds as the PLATFORM, which does, and a
+// unit test must not depend on what the dev database holds today.
+vi.mock("@/lib/db/quizzes", () => ({ listQuizzes: vi.fn(async () => []), getQuizDefinition: vi.fn(async () => null) }))
 vi.mock("@/lib/funnels/sections/doc", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/funnels/sections/doc")>()
   // `vi.fn(original.reassemble)`, NOT a bare `vi.fn()`: every call still runs
@@ -98,6 +103,8 @@ import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
+import { platformBusinessId } from "@/lib/tenancy/platform"
+import { LIVE_FEEDS_UNAVAILABLE } from "@/lib/funnels/sections/prompt"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
@@ -696,6 +703,80 @@ describe("POST .../build — a catalogue that cannot be read", () => {
     const system = mock(streamAgent).mock.calls[0][0] as string
     expect(system).toContain("The catalogue — the only names a CTA may reference")
     expect(system).not.toContain(PROGRAM_NAME)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G35: the platform's live feeds. `loadPageContext` reads the FAQ page keys a
+// SECOND time, independently of `loadCatalogues`, for Block B — so it has to
+// apply the same rule, or the model is offered keys the gate then refuses.
+// `BUSINESS_ID` is not the platform's.
+// ---------------------------------------------------------------------------
+
+describe("POST .../build — the platform's live feeds (G35)", () => {
+  it("tells a business that is not the platform the live feeds are unavailable, and offers it no FAQ keys", async () => {
+    // MUTANT 1: `loadPageContext` with no platform check — Block B lists the
+    // platform's page keys to a coach's builder. MUTANT 2: the check placed
+    // after the read, in either reader — only the call assertion sees it.
+    // MUTANT 3: the flag never reaching `buildSystemPrompt` — no line.
+    await runTurn({ message: "hi", revision: 4 })
+
+    const system = mock(streamAgent).mock.calls[0][0] as string
+    expect(system).toContain(LIVE_FEEDS_UNAVAILABLE)
+    expect(system).not.toContain('"coaching"')
+    expect(getFaqCountsByPage).not.toHaveBeenCalled()
+  })
+
+  it("(control) offers the platform its own FAQ keys and says nothing about the feeds", async () => {
+    mock(resolveAdminTenantForRequest).mockResolvedValue({
+      businessId: platformBusinessId(),
+      choices: [{ id: platformBusinessId(), name: "DJP Athlete", slug: "djp-athlete" }],
+      isOperator: true,
+    })
+
+    await runTurn({ message: "hi", revision: 4 })
+
+    const system = mock(streamAgent).mock.calls[0][0] as string
+    expect(system).toContain('"coaching"')
+    expect(system).not.toContain(LIVE_FEEDS_UNAVAILABLE)
+  })
+
+  // The review stage. Its reviser never sees Block B, so the route has to
+  // hand it the same answer, on both of the paths that run it.
+  it("tells the automatic review of a first draft that this business has no live feeds", async () => {
+    // MUTANT: `runReviewStage` not passing `context.liveFeedsAvailable` to
+    // `reviewDoc`, or passing a constant. The reviser then follows Block A's
+    // "prefer live" and can undo what Block B told the builder.
+    mock(streamAgent).mockImplementation(() => agentResult(setPageResult()))
+    mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 4 })
+
+    await runTurn({ message: "build me a page", revision: 4 })
+
+    expect(reviewDoc).toHaveBeenCalledTimes(1)
+    expect(reviewDoc).toHaveBeenCalledWith(expect.objectContaining({ liveFeedsAvailable: false }))
+  })
+
+  it("tells the Polish review the same", async () => {
+    // MUTANT: the Polish path building its review input separately and
+    // leaving the flag out. `handlePolish` loads its own `PageContext`.
+    await runTurn({ action: "polish", revision: 4 })
+
+    expect(reviewDoc).toHaveBeenCalledTimes(1)
+    expect(reviewDoc).toHaveBeenCalledWith(expect.objectContaining({ liveFeedsAvailable: false }))
+  })
+
+  it("(control) tells the platform's own review its feeds are available", async () => {
+    mock(resolveAdminTenantForRequest).mockResolvedValue({
+      businessId: platformBusinessId(),
+      choices: [{ id: platformBusinessId(), name: "DJP Athlete", slug: "djp-athlete" }],
+      isOperator: true,
+    })
+    mock(streamAgent).mockImplementation(() => agentResult(setPageResult()))
+    mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 4 })
+
+    await runTurn({ message: "build me a page", revision: 4 })
+
+    expect(reviewDoc).toHaveBeenCalledWith(expect.objectContaining({ liveFeedsAvailable: true }))
   })
 })
 

@@ -2058,16 +2058,28 @@ export async function readOpportunityForGrant(
 }
 
 /**
- * Where to send the invite. Null email is a refusal upstream, never a guess —
- * an account nobody can be told about helps no one.
+ * Where to send the invite, or whom the chat's booking link is prefilled for.
+ * Null email is a refusal upstream, never a guess: an account nobody can be
+ * told about helps no one.
+ *
+ * `businessId` FIRST and REQUIRED (G35). Both callers hold a contact id they
+ * took off another row that was scoped to this business: the won opportunity
+ * (app/api/admin/pipeline/grant/route.ts) and the chat conversation
+ * (app/api/ask/route.ts, read under the Host). On correct data the predicate
+ * changes nothing. It is here anyway because "the caller's row was scoped" is
+ * a property of the caller. The chat's conversation read was not scoped at
+ * all until G35, and this read inherited that hole silently. `contacts`
+ * carries its own business_id, so the answer can be true locally.
  */
 export async function readContactIdentity(
+  businessId: string,
   contactId: string,
 ): Promise<{ email: string | null; name: string | null } | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("contacts")
     .select("email, name")
+    .eq("business_id", businessId)
     .eq("id", contactId)
     .maybeSingle()
   if (error) throw new Error(`contacts read failed: ${error.message}`)
@@ -2096,6 +2108,14 @@ export async function readContactIdentity(
  * The real hazard is therefore picking the WRONG athlete's plan out of
  * eighteen similar names, which is a case for search in the picker rather than
  * for a narrower query here. Noted, not built.
+ *
+ * UNTENANTED BY SCHEMA (G37), and it is where "a named plan in this list is
+ * correct, not a leak" stops being true. `programs` has no `business_id`
+ * column, so once a second business exists this is EVERY business's priced
+ * plans, offered on that business's own pipeline board to anyone holding
+ * `contacts` (the Coach preset) — and a grant hands one of them out. There is
+ * no predicate to add without the column. See the shelf in
+ * lib/tenancy/platform.ts.
  */
 export async function listGrantablePrograms(): Promise<
   Array<{ id: string; name: string; price_cents: number | null }>

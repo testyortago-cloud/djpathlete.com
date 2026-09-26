@@ -101,9 +101,15 @@ export async function loadRunContext(run: SequenceRunRow, now: Date, businessId:
   }
 
   // Do not wrap these in try/catch. See the doc comment above.
+  //
+  // Under THIS run's business (G35), the same tenant every read above is
+  // scoped to. `contact_consents` has no composite key tying a consent row's
+  // business to its contact's, so the contact read above belonging to
+  // `businessId` proves nothing about which business a consent row for that
+  // contact id was filed under.
   const [hasEmailConsent, hasSmsConsent] = await Promise.all([
-    hasConsent(run.contact_id, "email"),
-    hasConsent(run.contact_id, "sms"),
+    hasConsent(run.contact_id, "email", businessId),
+    hasConsent(run.contact_id, "sms", businessId),
   ])
 
   // Suppression is keyed by identifier, not contact id (it must survive a

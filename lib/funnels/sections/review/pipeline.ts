@@ -29,6 +29,12 @@ import { runReviser } from "@/lib/funnels/sections/review/reviser"
 
 export interface ReviewInput {
   doc: SectionDoc
+  /**
+   * Whether this business may use the platform's live FAQ list and live
+   * testimonial feed (G35). Handed to the reviser, which never sees the
+   * builder's Block B — see `ReviserOptions`. REQUIRED for the same reason.
+   */
+  liveFeedsAvailable: boolean
   /** Called as each finding lands, so the route can stream it to the owner. */
   onFinding?: (finding: Finding) => void
   /**
@@ -162,14 +168,18 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 export async function reviewDoc(input: ReviewInput): Promise<ReviewOutcome> {
-  const { doc, onFinding, render } = input
+  const { doc, liveFeedsAvailable, onFinding, render } = input
 
   // The kill switch. `0` means the stage is off, and off must cost nothing —
   // not even the deterministic pass.
   if (SECTION_REVIEW_MAX_ROUNDS < 1) return unchanged(doc, [], null)
 
   try {
-    return await withTimeout(runReview(doc, onFinding, render), SECTION_REVIEW_TIMEOUT_MS, "review")
+    return await withTimeout(
+      runReview(doc, liveFeedsAvailable, onFinding, render),
+      SECTION_REVIEW_TIMEOUT_MS,
+      "review",
+    )
   } catch (error) {
     // Includes the timeout, and anything `runReview` failed to contain. The
     // page the builder made stands.
@@ -180,6 +190,7 @@ export async function reviewDoc(input: ReviewInput): Promise<ReviewOutcome> {
 
 async function runReview(
   doc: SectionDoc,
+  liveFeedsAvailable: boolean,
   onFinding?: (finding: Finding) => void,
   render?: RenderedPage | null,
 ): Promise<ReviewOutcome> {
@@ -246,7 +257,9 @@ async function runReview(
   for (let round = 0; round < SECTION_REVIEW_MAX_ROUNDS; round += 1) {
     let revision: { summary: string; ops: SectionOp[]; tokensUsed: number }
     try {
-      revision = await runReviser(workingDoc, outstanding)
+      // Every round, not only the first: a later round is as able as the
+      // first to switch a section to a live feed (G35).
+      revision = await runReviser(workingDoc, outstanding, { liveFeedsAvailable })
       tokensUsed += revision.tokensUsed
     } catch (error) {
       console.error("[funnels/review] reviser failed:", error)

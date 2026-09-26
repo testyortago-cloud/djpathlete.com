@@ -68,6 +68,7 @@ async function runTurn(message: string) {
   const systemPrompt = buildSystemPrompt({
     catalogue: { program: [], session_pack: [], event: [] },
     faqPageKeys: [],
+    liveFeedsAvailable: true,
     stepSlugs: [],
     nextStepSlug: null,
     funnelSlug: null,

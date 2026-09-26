@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 type Row = Record<string, any>
 
-const state: { users: Row[] } = { users: [] }
+const state: { users: Row[]; notifications: Row[] } = { users: [], notifications: [] }
 
 const mocks = vi.hoisted(() => ({
   createLeadInquiry: vi.fn(),
@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   recordContactEvent: vi.fn(),
   recordConsent: vi.fn(),
   getBusinessSettings: vi.fn(),
+  listBusinessMemberUserIds: vi.fn(),
 }))
 
 vi.mock("@/lib/db/lead-inquiries", () => ({
@@ -66,6 +67,13 @@ vi.mock("@/lib/db/contact-consents", () => ({
 vi.mock("@/lib/db/businesses", () => ({
   getBusinessSettings: mocks.getBusinessSettings,
 }))
+// The bell's recipients (G35). Only the reader is replaced: LEAD_ALERT_ROLES
+// stays the real constant, so the call assertions below check what the route
+// actually passes.
+vi.mock("@/lib/db/business-members", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/db/business-members")>()),
+  listBusinessMemberUserIds: mocks.listBusinessMemberUserIds,
+}))
 
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({
@@ -77,7 +85,9 @@ vi.mock("@/lib/supabase", () => ({
               maybeSingle: async () => ({
                 data: state.users.find((u) => u[field] === value) ?? null,
               }),
-              // admins lookup: `await supabase.from("users").select("id").eq("role","admin")`
+              // The pre-G35 admin read (`.eq("role", "admin")`) resolved through
+              // here. Kept so the bell tests below can seed a platform admin that
+              // a route still making that read would find.
               then: (resolve: any) => resolve({ data: state.users.filter((u) => u[field] === value), error: null }),
             }),
           }),
@@ -94,7 +104,12 @@ vi.mock("@/lib/supabase", () => ({
         }
       }
       return {
-        insert: async () => ({ error: null }),
+        // `notifications` rows are kept so the bell tests can say who was told;
+        // every other table's insert is accepted and forgotten.
+        insert: async (payload: Row | Row[]) => {
+          if (table === "notifications") state.notifications.push(...(Array.isArray(payload) ? payload : [payload]))
+          return { error: null }
+        },
         select: () => ({ eq: async () => ({ data: [] }) }),
       }
     },
@@ -135,6 +150,7 @@ async function flush() {
 
 beforeEach(() => {
   state.users = []
+  state.notifications = []
   vi.clearAllMocks()
   mocks.createLeadInquiry.mockResolvedValue({ id: "inquiry-1" })
   mocks.claimAttribution.mockResolvedValue(undefined)
@@ -146,6 +162,10 @@ beforeEach(() => {
   mocks.recordContactEvent.mockResolvedValue({ contactId: "contact-1", created: true, merged: false })
   mocks.recordConsent.mockResolvedValue(undefined)
   mocks.getBusinessSettings.mockResolvedValue({ business_id: "biz-1", display_name: "Acme Fitness" })
+  // Nobody to bell unless a test says otherwise: the state every older test
+  // here was written against (no admin in `state.users`), which also keeps the
+  // lead analysis off, as it was.
+  mocks.listBusinessMemberUserIds.mockResolvedValue([])
 })
 
 describe("POST /api/inquiry — joins the contact spine", () => {
@@ -361,5 +381,97 @@ describe("POST /api/inquiry — tenant", () => {
     expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
     expect(mocks.getBusinessSettings).toHaveBeenCalledWith("host-biz")
     expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
+  })
+})
+
+// G35. Same change as POST /api/contact: the bell goes to the site business's
+// owners and coaches, not to every `users.role = 'admin'` row. This route also
+// named its FIRST admin as the requester of the lead analysis, so that moves
+// with it. PLATFORM_ADMIN is what the old read would have found.
+describe("POST /api/inquiry — who gets the bell (G35)", () => {
+  const PLATFORM_ADMIN = { id: "platform-admin", email: "ops@example.com", role: "admin" }
+
+  beforeEach(() => {
+    // With a recipient present the lead analysis runs, so its collaborators
+    // answer the way the real ones do. A bare vi.fn() returns undefined, and the
+    // route's failure path calls `recordAudit(...).catch`, which would throw
+    // into the outer catch and turn every test here into a 500.
+    mocks.createGenerationLog.mockResolvedValue({ id: "log-1" })
+    mocks.updateGenerationLog.mockResolvedValue(undefined)
+    mocks.updateLeadInquiryAiFields.mockResolvedValue(undefined)
+    mocks.recordAudit.mockResolvedValue(undefined)
+    mocks.generateLeadAnalysis.mockResolvedValue({
+      content: { priority: "high", priority_reason: "Ready now", summary: "Sprinter", draft_reply: "Hi Ada" },
+      tokens_used: 10,
+    })
+  })
+
+  it("bells the site business's owners and coaches, not every platform admin", async () => {
+    // MUTANT: the old `users where role = 'admin'` read — it bells
+    // platform-admin and neither owner-1 nor coach-1. MUTANT: the platform's
+    // id, or `staff` among the roles — the call assertion fails.
+    state.users = [PLATFORM_ADMIN]
+    mocks.listBusinessMemberUserIds.mockResolvedValue(["owner-1", "coach-1"])
+
+    const res = await post(VALID_BODY)
+
+    expect(res.status).toBe(200)
+    expect(mocks.listBusinessMemberUserIds).toHaveBeenCalledWith("host-biz", ["owner", "coach"])
+    expect(state.notifications.map((n) => n.user_id)).toEqual(["owner-1", "coach-1"])
+  })
+
+  it("names the business's first owner or coach as the analysis requester, not a platform admin", async () => {
+    // MUTANT: the requester still taken from the `users` admin read — the log
+    // row and the audit actor would both name platform-admin.
+    state.users = [PLATFORM_ADMIN]
+    mocks.listBusinessMemberUserIds.mockResolvedValue(["owner-1", "coach-1"])
+
+    await post(VALID_BODY)
+
+    expect(mocks.createGenerationLog).toHaveBeenCalledWith(expect.objectContaining({ requested_by: "owner-1" }))
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "lead.ai_analysis_generated", actor: { id: "owner-1", role: "system" } }),
+    )
+  })
+
+  it("files no bell and runs no analysis for a business with no owner or coach — never the platform's admins", async () => {
+    // MUTANT: an empty recipient list falling back to the `users` admin read.
+    state.users = [PLATFORM_ADMIN]
+    mocks.listBusinessMemberUserIds.mockResolvedValue([])
+
+    const res = await post(VALID_BODY)
+
+    expect(res.status).toBe(200)
+    expect(state.notifications).toEqual([])
+    expect(mocks.createGenerationLog).not.toHaveBeenCalled()
+    // Presence control: the rest of the route ran, so the absences above are
+    // not the route having stopped early.
+    expect(mocks.createLeadInquiry).toHaveBeenCalledTimes(1)
+    expect(mocks.sendInquiryEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it("logs a failed recipients read and still captures the inquiry and sends both emails", async () => {
+    // MUTANT: a catch that swallows without logging, so the lost alert leaves
+    // no trace. MUTANT: no catch at all — the throw reaches the route's outer
+    // catch, and an applicant who already submitted is told it went wrong.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    state.users = [PLATFORM_ADMIN]
+    mocks.listBusinessMemberUserIds.mockRejectedValue(
+      new Error("listBusinessMemberUserIds failed (42P01): no such table"),
+    )
+
+    const res = await post(VALID_BODY)
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true })
+    expect(state.notifications).toEqual([])
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("no bell alert"),
+      expect.objectContaining({ message: expect.stringContaining("42P01") }),
+    )
+    expect(mocks.createLeadInquiry).toHaveBeenCalledTimes(1)
+    expect(mocks.sendInquiryEmail).toHaveBeenCalledTimes(1)
+    expect(mocks.sendInquiryAutoReply).toHaveBeenCalledTimes(1)
+    errorSpy.mockRestore()
   })
 })

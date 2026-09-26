@@ -49,6 +49,13 @@ vi.mock("@/lib/db/ai-generation-log", () => ({
   createGenerationLog: vi.fn(),
   updateGenerationLog: vi.fn(),
 }))
+// G35: the bell's recipients come from business_members. Nothing here is about
+// who is told, so the read answers nobody — what the old `users` admin read
+// answered against this suite's stub.
+vi.mock("@/lib/db/business-members", () => ({
+  LEAD_ALERT_ROLES: ["owner", "coach"],
+  listBusinessMemberUserIds: vi.fn().mockResolvedValue([]),
+}))
 
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({
@@ -99,8 +106,8 @@ function req(body: Record<string, unknown>, cookie?: string) {
   })
 }
 
-// The route's `admins` lookup uses `.select().eq()` which our stub resolves to
-// `{ data: [] }`; no admin notifications are asserted here.
+// The bell's recipients come from the business-members mock above, which
+// answers nobody; no notifications are asserted here.
 async function post(body: Record<string, unknown>, cookie?: string) {
   return POST(req(body, cookie) as never, { params: Promise.resolve({}) } as never)
 }

@@ -70,6 +70,13 @@ vi.mock("@/lib/db/businesses", () => ({
 vi.mock("@/lib/db/pipeline", () => ({
   applyPipelineEvent: mocks.applyPipelineEvent,
 }))
+// G35: the bell's recipients come from business_members. Nothing here is about
+// who is told, so the read answers nobody — what the old `users` admin read
+// answered against this suite's empty `state.users`.
+vi.mock("@/lib/db/business-members", () => ({
+  LEAD_ALERT_ROLES: ["owner", "coach"],
+  listBusinessMemberUserIds: vi.fn().mockResolvedValue([]),
+}))
 
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({

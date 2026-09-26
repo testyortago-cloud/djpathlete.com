@@ -161,9 +161,28 @@ async function assemble(quizRow: Row, opts: { includeInactive?: boolean } = {}):
   }
 }
 
-/** Returns null — never a half-built object — when the quiz does not exist. */
-export async function getQuizDefinition(quizId: string): Promise<QuizDefinition | null> {
-  const { data, error } = await getClient().from("quizzes").select("*").eq("id", quizId).maybeSingle()
+/**
+ * One quiz, assembled, IN ONE BUSINESS. Returns null (never a half-built
+ * object) when the quiz does not exist, and the same null when it exists
+ * under another business.
+ *
+ * `businessId` FIRST and REQUIRED (G35). Until G35 this read took the id
+ * alone, and nothing compared the quiz's business with the attempt's. Business
+ * B's host could open an attempt (stamped B) on business A's quiz, and
+ * /api/quiz/submit would file B's contact, pipeline card and consent row
+ * against A's quiz. Each caller now passes the tenant it already holds:
+ *   - /api/quiz/progress: the Host's
+ *   - /api/quiz/submit: the attempt's
+ *   - the quiz island: the route's (`FunnelRenderContext.businessId`)
+ *   - the admin routes and `loadCatalogues`: the admin tenant
+ */
+export async function getQuizDefinition(businessId: string, quizId: string): Promise<QuizDefinition | null> {
+  const { data, error } = await getClient()
+    .from("quizzes")
+    .select("*")
+    .eq("id", quizId)
+    .eq("business_id", businessId)
+    .maybeSingle()
   if (error) throw error
   if (!data) return null
   return assemble(data as Row)
@@ -201,10 +220,9 @@ export async function getQuizDefinitionByKey(businessId: string, key: string): P
  * `quizGate` filters `isActive` itself, so handing it this wider definition
  * changes no verdict.
  *
- * SCOPED BY businessId. Both its callers are admin-only (the quiz editor
- * page and its save route) -- unlike `getQuizDefinition`, which several
- * public, unauthenticated quiz-taking routes also call and cannot yet supply
- * a real tenant for. Without this, a staff coach holding the `funnels`
+ * SCOPED BY businessId, like `getQuizDefinition` since G35. Both its callers
+ * are admin-only (the quiz editor page and its save route). Without this, a
+ * staff coach holding the `funnels`
  * permission (not `OWNER_ONLY_PREFIXES` -- see lib/permissions/registry.ts)
  * could open `/admin/funnels/quizzes/<uuid>` for any business's quiz by id.
  */
@@ -558,14 +576,14 @@ export class QuizNotInBusinessError extends Error {
 /**
  * Throws `QuizNotInBusinessError` unless `quizId` belongs to `businessId`.
  *
- * EXPORTED, NOT PRIVATE TO `saveQuizDefinition` -- it is also the guard
- * `getQuizDefinition`'s own callers need. `getQuizDefinition` is scoped by id
- * alone (several of its callers are public, unauthenticated quiz-taking
- * routes with no tenant to check against yet), so any admin-side caller that
- * turns its result into a WRITE -- cloning it (`createQuizFrom`) or
- * composing it onto another record (`add-to-step`'s draft doc) -- must run
- * this first, or the read alone is a cross-tenant hole one step removed from
- * the write the read was scoped to protect.
+ * EXPORTED, NOT PRIVATE TO `saveQuizDefinition`. While `getQuizDefinition`
+ * took the id alone, this was the guard its admin callers needed: any caller
+ * that turned the result into a WRITE had to run it first. That meant cloning
+ * it (`createQuizFrom`) or composing it onto another record (`add-to-step`'s
+ * draft doc). Since G35 `getQuizDefinition` is scoped by business itself, so
+ * on those two paths this is a second check that gives the same answer. They
+ * keep it rather than lean on the read alone: it is one indexed lookup, and
+ * both routes' tests pin it by name.
  */
 export async function assertQuizInBusiness(businessId: string, quizId: string): Promise<void> {
   const { data, error } = await getClient().from("quizzes").select("id").eq("id", quizId).eq("business_id", businessId).maybeSingle()
@@ -923,6 +941,20 @@ export interface QuizAttemptRow {
   businessId: string
 }
 
+/**
+ * One attempt by id, and ONLY by id, with no business predicate on purpose.
+ *
+ * THE ID IS A BEARER TOKEN. It is an unguessable UUID that /api/quiz/progress
+ * issued to the visitor who started the attempt, the same standing
+ * `getInviteByToken`'s token has: holding it is the permission. Its public
+ * callers cannot pass a tenant here without going in a circle, because
+ * /api/quiz/submit reads its tenant OFF this row.
+ *
+ * What stops the id crossing businesses is the comparison each caller makes
+ * AFTER the read (G35). Progress refuses an attempt whose `businessId` is not
+ * the Host's tenant. Submit reads the quiz under `attempt.businessId`, so a
+ * quiz of another business reads as absent.
+ */
 export async function getAttempt(attemptId: string): Promise<QuizAttemptRow | null> {
   const { data, error } = await getClient()
     .from("quiz_attempts")

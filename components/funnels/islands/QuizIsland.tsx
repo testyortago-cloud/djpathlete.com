@@ -18,7 +18,18 @@ export async function QuizIsland({ props, context }: QuizIslandProps) {
   const quizId = typeof props.quizId === "string" ? props.quizId : ""
   if (!quizId) return null
 
-  const definition = await getQuizDefinition(quizId).catch(() => null)
+  // UNDER THE ROUTE'S TENANT, NOT THE HOST'S (G35). `context.businessId` is
+  // the tenant the page's own route resolved. On /go that is the Host's
+  // business, the same one /api/quiz/progress will read this quiz under. On
+  // /preview and /funnel-preview it is the admin tenant: those screens are
+  // served from the platform's host whichever coach is looking, so a Host read
+  // here would make a coach's own quiz vanish from their builder canvas while
+  // /go on their host still showed it. That is preview and live disagreeing
+  // about one page. A quiz id that is not this business's reads as absent and
+  // renders nothing below. (The consent wording further down still reads the
+  // Host. That is what /api/quiz/submit files under on the live page, and a
+  // preview files nothing.)
+  const definition = await getQuizDefinition(context.businessId, quizId).catch(() => null)
   // A quiz that cannot be read renders NOTHING rather than an empty shell that
   // takes answers into the void. The publish gate should have stopped this
   // page reaching a visitor at all; if it is here anyway, silence is the

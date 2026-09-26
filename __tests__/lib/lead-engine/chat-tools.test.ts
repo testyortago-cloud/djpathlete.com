@@ -18,6 +18,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { readFileSync } from "fs"
 import type { BusinessSettings } from "@/lib/db/businesses"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 // Rows the real fact accessors will read. The accessors' own visibility
 // filters are pinned by `chat-facts.test.ts` against a mock that applies
@@ -175,7 +176,7 @@ describe("the executor", () => {
   it("hands programme facts and a card to the turn, with money as integer cents", async () => {
     const { createToolExecutor } = await import("@/lib/lead-engine/chat/tools")
     rowsByTable = { programs: [PUBLIC_PROGRAMME] }
-    const ex = createToolExecutor()
+    const ex = createToolExecutor({ businessId: platformBusinessId() })
     await ex.execute("list_programmes", {})
     const outcome = ex.outcome()
     expect(outcome.facts).toContainEqual(
@@ -189,7 +190,7 @@ describe("the executor", () => {
   it("does not duplicate facts or cards when the model looks the same thing up twice", async () => {
     const { createToolExecutor } = await import("@/lib/lead-engine/chat/tools")
     rowsByTable = { programs: [PUBLIC_PROGRAMME] }
-    const ex = createToolExecutor()
+    const ex = createToolExecutor({ businessId: platformBusinessId() })
     await ex.execute("list_programmes", {})
     await ex.execute("list_programmes", {})
     expect(ex.outcome().facts).toHaveLength(1)
@@ -310,5 +311,56 @@ describe("no model-authored prose reaches the visitor on a card", () => {
     const { visitorSafeCards } = await import("@/lib/lead-engine/chat/tools")
     const consult = { kind: "consult" as const, href: "/contact" }
     expect(visitorSafeCards([consult])).toEqual([consult])
+  })
+})
+
+// G35. `search_faqs`, `list_programmes` and `list_testimonials` read tables with
+// no business_id column — every row is the platform business's own. The
+// executor must hand each lookup the conversation's tenant, so the facts layer
+// can answer another business with nothing (that gate is pinned in
+// chat-facts-tenancy.test.ts; this pins that the executor passes the tenant at
+// all). The mock above hands back every row regardless, so anything a coach's
+// turn receives here got there because the tenant did not.
+describe("the untenanted lookups follow the conversation's tenant (G35)", () => {
+  const ROWS = {
+    faqs: [{ question: "How much is the camp?", answer: "Camp pricing", status: "published", page_key: "faq" }],
+    programs: [PUBLIC_PROGRAMME],
+    testimonials: [{ quote: "Best coaching around.", name: "Sam R.", is_active: true, display_order: 0 }],
+  }
+  const LOOKUPS: Array<[string, Record<string, unknown>]> = [
+    ["search_faqs", { query: "camp pricing" }],
+    ["list_programmes", {}],
+    ["list_testimonials", {}],
+  ]
+
+  // MUTANT: the lookup called without the tenant, or with a fixed one — the
+  // platform's rows come back as this coach's facts and cards.
+  it.each(LOOKUPS)("%s gives another business's conversation nothing", async (name, input) => {
+    const { createToolExecutor } = await import("@/lib/lead-engine/chat/tools")
+    rowsByTable = ROWS
+    const ex = createToolExecutor({ businessId: "coach-biz" })
+    const out = await ex.execute(name, input)
+    expect(out).not.toContain('"results"')
+    expect(ex.outcome().facts).toEqual([])
+    expect(ex.outcome().cards).toEqual([])
+  })
+
+  it.each(LOOKUPS)("%s still answers the platform business's conversation (control)", async (name, input) => {
+    const { createToolExecutor } = await import("@/lib/lead-engine/chat/tools")
+    rowsByTable = ROWS
+    const ex = createToolExecutor({ businessId: platformBusinessId() })
+    const out = await ex.execute(name, input)
+    expect(out).toContain('"results"')
+    expect(ex.outcome().facts).toHaveLength(1)
+  })
+
+  // MUTANT: the guard dropped, so a turn with no tenant reads as "nothing is
+  // published" instead of failing as the wiring bug it is — the rule
+  // list_camps_and_clinics already follows.
+  it.each(LOOKUPS)("%s throws when the turn carries no businessId", async (name, input) => {
+    const { createToolExecutor } = await import("@/lib/lead-engine/chat/tools")
+    rowsByTable = ROWS
+    const ex = createToolExecutor()
+    await expect(ex.execute(name, input)).rejects.toThrow(/businessId/)
   })
 })

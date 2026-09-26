@@ -44,6 +44,11 @@ vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.f
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
+// The quiz reads the REAL `loadCatalogues` makes. Unmocked, they reached the
+// dev clone through `.env.local`; the G35 tests below also publish as the
+// PLATFORM, which owns real quizzes there, and a unit test must not depend on
+// what the dev database holds today.
+vi.mock("@/lib/db/quizzes", () => ({ listQuizzes: vi.fn(async () => []), getQuizDefinition: vi.fn(async () => null) }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
 // `vi.mock` factories are hoisted above every top-level statement in this
 // file, including a plain `class` declaration -- referencing one directly
@@ -69,6 +74,7 @@ import { getEvents, getPublishedEvents } from "@/lib/db/events"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
@@ -307,6 +313,16 @@ describe("renderDocForPublish — refusals", () => {
     // MUTANT KILLED: gating on `unresolved` alone. `faq.pageKey` is not a CTA,
     // so the CTA walk never sees it, and a key with no rows renders the whole
     // section as NOTHING on the live page — `compile.ok: true`, `warnings: []`.
+    //
+    // AS THE PLATFORM (G35). Only the platform's pages can show live FAQs at
+    // all, so it is the only business on which a page key is looked up; on
+    // `BUSINESS_ID` this section is refused for a different reason, pinned by
+    // the next test.
+    mock(resolveAdminTenant).mockResolvedValue({
+      businessId: platformBusinessId(),
+      choices: [{ id: platformBusinessId(), name: "DJP Athlete", slug: "djp-athlete" }],
+      isOperator: true,
+    })
     const doc = {
       v: 1,
       engine: "sections",
@@ -323,6 +339,38 @@ describe("renderDocForPublish — refusals", () => {
     expect(result.blockers.join(" ")).toContain("kettlebells")
     // The real keys, so the fix is one name away.
     expect(result.blockers.join(" ")).toContain("camps")
+  })
+
+  it("refuses a live FAQ section on a business that is not the platform, and says whose list it is (G35)", async () => {
+    // MUTANT: `loadCatalogues` offering every business the platform's FAQ keys.
+    // "camps" HAS rows, so without the G35 rule this page would publish and
+    // its FAQ band would render empty on the coach's live page.
+    const doc = {
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "accent", radius: "soft" },
+      sections: [{ id: "faq1", kind: "faq", variant: "stack", style: {}, props: { source: "live", pageKey: "camps" } }],
+    } as SectionDoc
+
+    const refused = await renderDocForPublish(STEP_ID, doc)
+
+    expect(refused.ok).toBe(false)
+    if (refused.ok) return
+    expect(refused.blockers.join(" ")).toContain('Section "faq1" uses live FAQs.')
+    // Ruling R4: no platform brand literal in coach-facing copy.
+    expect(refused.blockers.join(" ")).not.toContain("DJP")
+    // Not read at all for a business the rows can never serve.
+    expect(getFaqCountsByPage).not.toHaveBeenCalled()
+
+    // PRESENCE CONTROL: the same document, as the platform, publishes — so the
+    // refusal above is about the business, not the document.
+    mock(resolveAdminTenant).mockResolvedValue({
+      businessId: platformBusinessId(),
+      choices: [{ id: platformBusinessId(), name: "DJP Athlete", slug: "djp-athlete" }],
+      isOperator: true,
+    })
+    const published = await renderDocForPublish(STEP_ID, doc)
+    expect(published.ok).toBe(true)
   })
 
   it("refuses a document the builder cannot read, instead of throwing at the owner", async () => {

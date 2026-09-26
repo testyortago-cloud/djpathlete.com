@@ -5,13 +5,14 @@ import Link from "next/link"
 import { ctaClassFor } from "@/lib/funnels/cta-class"
 import { getEventById } from "@/lib/db/events"
 import { formatEventWhen } from "@/lib/events/format"
-import { resolvePublicTenant } from "@/lib/tenancy/public"
+import type { FunnelRenderContext } from "./index"
 
 interface EventIslandProps {
   props: Record<string, unknown>
+  context: FunnelRenderContext
 }
 
-export async function EventIsland({ props }: EventIslandProps) {
+export async function EventIsland({ props, context }: EventIslandProps) {
   const eventId = typeof props.eventId === "string" ? props.eventId : ""
   const showSpots = props.showSpots !== false
   const label = typeof props.label === "string" ? props.label : "Register"
@@ -20,17 +21,17 @@ export async function EventIsland({ props }: EventIslandProps) {
 
   // A funnel document names an event id; without the tenant predicate a
   // funnel built on one business's host could embed another business's
-  // event. resolvePublicTenant() is called BARE, matching FormIsland and
-  // QuizIsland — its first action is `await headers()`, which Next relies on
-  // throwing (a postpone signal) to bail a route to dynamic rendering during
-  // a static prerender. Catching around it would swallow that signal and
-  // silently prerender the island with the platform's tenant. Only the DB
-  // read below is wrapped: a failed event lookup degrades to no island, not
-  // a 500.
-  const businessId = await resolvePublicTenant()
+  // event. The predicate is `context.businessId`, the tenant the ROUTE
+  // resolved, never the Host read here (G35 review, F4): on both preview
+  // routes the Host is the admin screen's, so a Host read would show the
+  // coach's preview a different event than `/go` shows their visitors. See
+  // `FunnelRenderContext.businessId`. Every route that renders this island
+  // resolves its tenant before it gets here, which is also what keeps those
+  // routes dynamic. Only the read is wrapped: a failed event lookup degrades
+  // to no island, not a 500.
   let event
   try {
-    event = await getEventById(businessId, eventId)
+    event = await getEventById(context.businessId, eventId)
   } catch {
     // A page must not 500 because one embedded event failed to load.
     return null

@@ -57,7 +57,7 @@ async function main() {
 
   const { data: quiz } = await supabase
     .from("quizzes")
-    .select("id, key, name, status")
+    .select("id, business_id, key, name, status")
     .eq("name", QUIZ_NAME)
     .maybeSingle()
   if (!quiz) throw new Error(`No quiz named "${QUIZ_NAME}". Seed it first.`)
@@ -120,7 +120,10 @@ async function main() {
   // ---- 3. gate, then activate ---------------------------------------------
   // AGAINST THE DATABASE'S OWN COPY. Gating the local seed module would pass
   // trivially and prove nothing about the rows that landed.
-  const definition = await getQuizDefinition(quiz.id)
+  // Under the quiz's OWN business, read off its row. getQuizDefinition takes
+  // the tenant first since G35, and this script has no session to resolve
+  // one from.
+  const definition = await getQuizDefinition(quiz.business_id, quiz.id)
   if (!definition) throw new Error(`Could not read quiz ${quiz.id} back.`)
   const gate = quizGate(definition)
   console.log(`\n  Gate (against the rows in this database): ${gate.ok ? "PASS" : "FAIL"}`)

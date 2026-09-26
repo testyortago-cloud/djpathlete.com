@@ -420,7 +420,11 @@ export async function sendManualSms(args: {
     // no" are different answers. That throw is left to propagate — the
     // route maps it to the generic 502 "try again", which is the honest
     // answer for an unreadable row.
-    if (!(await hasConsent(args.contactId, "sms"))) {
+    //
+    // Asked under THIS business (G35): a consent row filed under another
+    // business for the same contact id is not this coach's permission to
+    // text, and nothing in the schema stops one existing.
+    if (!(await hasConsent(args.contactId, "sms", businessId))) {
       throw new SmsNoConsentError(phone)
     }
   }

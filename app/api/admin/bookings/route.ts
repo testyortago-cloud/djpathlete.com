@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { getBookingById, updateBookingStatus } from "@/lib/db/bookings"
 import { recordAudit } from "@/lib/audit/record"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import { z } from "zod"
 
 const updateSchema = z.object({
@@ -27,13 +28,43 @@ export async function PATCH(request: Request) {
 
     const { id, status, notes } = result.data
 
-    // Snapshot previous state for transition dispatch.
-    const existing = await getBookingById(id).catch(() => null)
+    // SCOPED BY BUSINESS (G35). `schedule` is a grantable permission (the
+    // Coach preset carries it), and this route answers with the booking's
+    // contact name, email and phone. It used to resolve no tenant at all, so
+    // any holder could change, and read back, any business's booking by id.
+    // The tenant comes from the session and the business cookie, never from
+    // the body.
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
+    }
 
-    const booking = await updateBookingStatus(id, status, notes)
+    // Snapshot previous state for transition dispatch. A booking of another
+    // business reads as absent, the same as one that does not exist, and
+    // both answer 404 before anything is written. This read used to be
+    // `.catch(() => null)`, which also turned a failed read into "no
+    // snapshot" and went on to write anyway; a read failure now reaches the
+    // 500 below instead.
+    const existing = await getBookingById(businessId, id)
+    if (!existing) {
+      return NextResponse.json({ error: "Booking not found" }, { status: 404 })
+    }
+
+    // The write carries the same predicate as the read. `null` here means the
+    // row stopped matching between the two (deleted in between): still a 404,
+    // never a success with no booking in it.
+    const booking = await updateBookingStatus(businessId, id, status, notes)
+    if (!booking) {
+      return NextResponse.json({ error: "Booking not found" }, { status: 404 })
+    }
 
     // Dispatch audit slug on status transition only (note-only updates aren't audit-worthy).
-    if (existing && existing.status !== status) {
+    if (existing.status !== status) {
       let slug: string | null = null
       if (status === "completed") slug = "booking.completed"
       else if (status === "cancelled") slug = "booking.cancelled"

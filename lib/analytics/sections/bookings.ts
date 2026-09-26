@@ -33,13 +33,14 @@ export async function buildDailyBookings(opts: Options): Promise<DailyBookingsPa
   const dayEnd = endOfDay(opts.referenceDate)
   const overnightSince = new Date(opts.referenceDate.getTime() - 24 * 60 * 60 * 1000)
 
-  // HALF-SCOPED, deliberately not fully. `signups` is scoped to opts.businessId
-  // below; `getBookingsInRange` beside it is NOT, even though `bookings` DOES
-  // carry a business_id column (unlike bookkeeping's unscoped arms, which have
-  // no column to scope by at all). This builder's own signup arm is this
-  // phase's; the sibling booking read is not -- scoping it is a separate task.
+  // BOTH arms read under opts.businessId (G35). The booking arm used to read
+  // every business's rows while the signup arm beside it was scoped, so this
+  // section listed every business's calls, by the booker's name, next to the
+  // platform's own signup count. The caller (lib/analytics/daily-pulse.ts)
+  // passes the platform's own business: the Daily Brief is the platform
+  // coach's digest, not a per-business email.
   const [bookings, signups] = await Promise.all([
-    getBookingsInRange(dayStart, dayEnd),
+    getBookingsInRange(opts.businessId, dayStart, dayEnd),
     listSignupsCreatedSince(opts.businessId, overnightSince),
   ])
 

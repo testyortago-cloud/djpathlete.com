@@ -59,4 +59,22 @@ describe("buildDailyBookings", () => {
     const result = await buildDailyBookings({ referenceDate, businessId })
     expect(result).toEqual({ callsToday: [], newSignupsOvernight: 1 })
   })
+
+  it("reads today's bookings under the same business as the signups (G35)", async () => {
+    // MUTANT: `getBookingsInRange(dayStart, dayEnd)` — the booking arm read
+    // every business's calls while the signup arm beside it was scoped.
+    // `businessId` here is not the platform id, so a DAL call that hard-coded
+    // the platform would fail this too. Whether the DAL then narrows by it is
+    // __tests__/lib/db/bookings.test.ts's job; this pins the threading.
+    await buildDailyBookings({ referenceDate, businessId })
+
+    expect(getBookingsInRangeMock).toHaveBeenCalledTimes(1)
+    const [passedBusiness, from, to] = getBookingsInRangeMock.mock.calls[0]
+    expect(passedBusiness).toBe(businessId)
+    // The window is still the reference day, start before end.
+    expect(from).toBeInstanceOf(Date)
+    expect(to).toBeInstanceOf(Date)
+    expect((from as Date).getTime()).toBeLessThan((to as Date).getTime())
+    expect(listSignupsCreatedSinceMock).toHaveBeenCalledWith(businessId, expect.any(Date))
+  })
 })

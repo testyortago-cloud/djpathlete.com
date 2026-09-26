@@ -31,6 +31,18 @@ let bookingsEqCalls: Array<[string, unknown]>
 // (`{ count, error }`) — each describe block below sets what it needs.
 let bookingsResult: Record<string, unknown>
 
+// G35. The describes above assert which `.eq()` calls were made, which is
+// enough for a list read. The by-id read, the update and the range read need
+// more: "a booking of another business reads as ABSENT" is a claim about
+// which ROW comes back, and only a store that genuinely narrows can make it.
+// When `bookingsRows` is non-null the `bookings` builder narrows it by every
+// `.eq()`, `.gte()` and `.lt()` applied — so dropping a predicate returns the
+// foreign row instead of recording one call fewer. `null` keeps the canned
+// `bookingsResult` path the older describes rely on.
+type BookingRow = Record<string, unknown>
+let bookingsRows: BookingRow[] | null = null
+let bookingsReadError: { code: string; message: string } | null = null
+
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({
     from: (table: string) => {
@@ -49,22 +61,85 @@ vi.mock("@/lib/supabase", () => ({
         }
       }
       if (table === "bookings") {
+        const eqs: Array<[string, unknown]> = []
+        const ranges: Array<[">=" | "<", string, string]> = []
+        let patch: BookingRow | null = null
+        const narrowed = (): BookingRow[] =>
+          (bookingsRows ?? []).filter(
+            (row) =>
+              eqs.every(([col, val]) => row[col] === val) &&
+              ranges.every(([op, col, val]) => (op === ">=" ? String(row[col]) >= val : String(row[col]) < val)),
+          )
         const builder: Record<string, unknown> = {}
         builder.eq = (...args: unknown[]) => {
           bookingsEqCalls.push(args as [string, unknown])
+          eqs.push(args as [string, unknown])
+          return builder
+        }
+        builder.gte = (col: string, val: string) => {
+          ranges.push([">=", col, val])
+          return builder
+        }
+        builder.lt = (col: string, val: string) => {
+          ranges.push(["<", col, val])
           return builder
         }
         builder.order = () => builder
-        builder.then = (resolve: (value: unknown) => void) => resolve(bookingsResult)
-        return { select: () => builder }
+        builder.select = () => builder
+        builder.maybeSingle = async () => {
+          if (bookingsReadError) return { data: null, error: bookingsReadError }
+          const rows = narrowed()
+          // An UPDATE touches only the rows its predicates matched — the
+          // foreign row keeps its status, which the tests below check.
+          if (patch) for (const row of rows) Object.assign(row, patch)
+          return { data: rows[0] ?? null, error: null }
+        }
+        // What the old by-id read and update used. Real PostgREST answers
+        // zero rows under `.single()` with PGRST116, not with `data: null` —
+        // modelled so that a revert to `.single()` fails the "answers null"
+        // test for the real reason instead of on a missing method.
+        builder.single = async () => {
+          if (bookingsReadError) return { data: null, error: bookingsReadError }
+          const rows = narrowed()
+          if (patch) for (const row of rows) Object.assign(row, patch)
+          if (rows.length !== 1) {
+            return {
+              data: null,
+              error: { code: "PGRST116", message: "JSON object requested, multiple (or no) rows returned" },
+            }
+          }
+          return { data: rows[0], error: null }
+        }
+        builder.then = (resolve: (value: unknown) => void) =>
+          resolve(bookingsRows ? { data: narrowed(), error: bookingsReadError } : bookingsResult)
+        return {
+          select: () => builder,
+          update: (p: BookingRow) => {
+            patch = p
+            return builder
+          },
+        }
       }
       throw new Error(`unmocked table ${table}`)
     },
   }),
 }))
 
-import { getBookings, getBookingStats } from "@/lib/db/bookings"
+import {
+  getBookings,
+  getBookingStats,
+  getBookingById,
+  updateBookingStatus,
+  getBookingsInRange,
+} from "@/lib/db/bookings"
 import { platformHostId } from "@/lib/tenancy/platform"
+
+// File-level, so it runs before every describe's own beforeEach: the older
+// describes get the canned `bookingsResult` path whatever order they run in.
+beforeEach(() => {
+  bookingsRows = null
+  bookingsReadError = null
+})
 
 describe("platformHostId", () => {
   beforeEach(() => {
@@ -153,5 +228,119 @@ describe("getBookingStats", () => {
     await getBookingStats("bbb")
     const statuses = bookingsEqCalls.filter(([column]) => column === "status").map(([, value]) => value)
     expect(statuses.sort()).toEqual(["cancelled", "completed", "no_show", "scheduled"])
+  })
+})
+
+// G35. Two businesses, one booking each. Every id below is distinct from the
+// platform constant, so a DAL that hard-coded its tenant would fail too.
+const OWN = "bbb"
+const OTHER = "ccc"
+function seedTwoBusinesses() {
+  bookingsRows = [
+    {
+      id: "bk-own",
+      business_id: OWN,
+      contact_name: "Own Booker",
+      booking_date: "2026-09-25T15:00:00.000Z",
+      status: "scheduled",
+    },
+    {
+      id: "bk-other",
+      business_id: OTHER,
+      contact_name: "Other Booker",
+      booking_date: "2026-09-25T16:00:00.000Z",
+      status: "scheduled",
+    },
+  ]
+}
+
+describe("getBookingById (G35)", () => {
+  beforeEach(() => {
+    bookingsEqCalls = []
+    seedTwoBusinesses()
+  })
+
+  it("reads another business's booking as ABSENT, not as the row (MUTANT: drop the business_id .eq)", async () => {
+    expect(await getBookingById(OWN, "bk-other")).toBeNull()
+  })
+
+  it("control: returns this business's own booking", async () => {
+    expect(await getBookingById(OWN, "bk-own")).toMatchObject({ id: "bk-own", contact_name: "Own Booker" })
+  })
+
+  it("answers null for an id that does not exist, instead of throwing PGRST116 (MUTANT: .single())", async () => {
+    // `.single()` turned "no such booking" into an error the route could only
+    // answer with a 500. A missing row is an answer, not a failure.
+    expect(await getBookingById(OWN, "bk-nope")).toBeNull()
+  })
+
+  it("still throws a real read failure rather than reporting 'no booking'", async () => {
+    bookingsReadError = { code: "42P01", message: 'relation "bookings" does not exist' }
+    await expect(getBookingById(OWN, "bk-own")).rejects.toMatchObject({ code: "42P01" })
+  })
+})
+
+describe("updateBookingStatus (G35)", () => {
+  beforeEach(() => {
+    bookingsEqCalls = []
+    seedTwoBusinesses()
+  })
+
+  it("does NOT change another business's booking, and answers null (MUTANT: drop the business_id .eq on the UPDATE)", async () => {
+    expect(await updateBookingStatus(OWN, "bk-other", "cancelled")).toBeNull()
+    const other = bookingsRows!.find((r) => r.id === "bk-other")!
+    expect(other.status).toBe("scheduled")
+  })
+
+  it("control: changes this business's own booking and returns the updated row", async () => {
+    const updated = await updateBookingStatus(OWN, "bk-own", "completed", "showed up early")
+    expect(updated).toMatchObject({ id: "bk-own", status: "completed", notes: "showed up early" })
+    expect(bookingsRows!.find((r) => r.id === "bk-own")!.status).toBe("completed")
+  })
+
+  it("leaves notes alone when none are given", async () => {
+    const updated = await updateBookingStatus(OWN, "bk-own", "no_show")
+    expect(updated).not.toHaveProperty("notes")
+  })
+
+  it("throws a real write failure rather than reporting 'no booking'", async () => {
+    bookingsReadError = { code: "42501", message: "permission denied for table bookings" }
+    await expect(updateBookingStatus(OWN, "bk-own", "completed")).rejects.toMatchObject({ code: "42501" })
+  })
+})
+
+describe("getBookingsInRange (G35)", () => {
+  beforeEach(() => {
+    bookingsEqCalls = []
+    seedTwoBusinesses()
+  })
+
+  const from = new Date("2026-09-25T00:00:00.000Z")
+  const to = new Date("2026-09-26T00:00:00.000Z")
+
+  it("returns this business's bookings and NOT another business's in the same range (MUTANT: drop the business_id .eq)", async () => {
+    const rows = await getBookingsInRange(OWN, from, to)
+    // Presence and absence on one read: the own booking is there, the other
+    // business's booking — same day, same range — is not.
+    expect(rows.map((r) => r.id)).toEqual(["bk-own"])
+  })
+
+  it("still applies the date range alongside the business scope (MUTANT: drop .gte/.lt)", async () => {
+    const rows = await getBookingsInRange(
+      OWN,
+      new Date("2026-09-26T00:00:00.000Z"),
+      new Date("2026-09-27T00:00:00.000Z"),
+    )
+    expect(rows).toEqual([])
+  })
+})
+
+describe("getUpcomingBookings (G35)", () => {
+  it("is gone: it had no caller, and any new one would read every business's bookings (MUTANT: the export is restored)", async () => {
+    const dal = await import("@/lib/db/bookings")
+    expect("getUpcomingBookings" in dal).toBe(false)
+    // Presence control on the same module object: an `in` check against
+    // something that is not the module would pass the line above vacuously.
+    expect("getBookingsInRange" in dal).toBe(true)
   })
 })

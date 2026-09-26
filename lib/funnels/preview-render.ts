@@ -38,7 +38,7 @@ import { listSteps } from "@/lib/db/funnels"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import type { BrandKit } from "@/lib/funnels/sections/render"
 import { resolveBrandKit } from "@/lib/funnels/brand-kit"
-import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
+import { liveFeedsAvailableFor, loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
 import type { FunnelNode } from "@/lib/funnels/compile/types"
 
 /**
@@ -122,13 +122,21 @@ export async function renderDraftPreview({
     ]
   }
 
+  // G35: what the canvas note on a live FAQ or testimonial section says —
+  // the platform's canvas is sent to its own lists, any other business's is
+  // told to switch to its own content. Asked of the business, not read off
+  // the catalogue above: that read can throw, and the note must tell the
+  // truth on the render that fails soft too. `loadCatalogues` asks the same
+  // function, so the canvas and the gate cannot disagree.
+  const liveFeedsAvailable = liveFeedsAvailableFor(businessId)
+
   // `reassemble` re-parses the document and throws on a bad one. `getDraft` has
   // already parsed it with the same schema, so this cannot legitimately fire —
   // but an uncaught throw is a 500 for an owner who only wanted to look at their
   // draft, and "here is what is wrong with it" is strictly more useful.
   let rendered
   try {
-    rendered = reassemble(docToRender, { funnelBasePath, editable, brandKit })
+    rendered = reassemble(docToRender, { funnelBasePath, editable, brandKit, liveFeedsAvailable })
   } catch (error) {
     return { kind: "render-failed", message: (error as Error).message }
   }

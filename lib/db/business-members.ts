@@ -63,6 +63,54 @@ export async function listBusinessMembers(businessId: string): Promise<BusinessM
 }
 
 /**
+ * WHO IS TOLD, IN THE ADMIN BELL, THAT A LEAD ARRIVED ON THIS BUSINESS'S SITE:
+ * its owners and coaches. The owner's ruling (G35, 2026-09-25), shared by the
+ * contact form and the inquiry form so the two cannot drift apart.
+ *
+ * Staff are left out by that ruling, not by oversight. 00246 made every
+ * platform teammate a `staff` member of the platform business, so adding
+ * `staff` here would start belling all of them about every contact form.
+ *
+ * Before G35 both routes belled `users where role = 'admin'`: every platform
+ * operator, whichever business's site the lead came from. That is the same
+ * cross-tenant broadcast the "New Call Booked" fan-out in
+ * lib/bookings/ingest.ts already stopped being.
+ */
+export const LEAD_ALERT_ROLES = ["owner", "coach"] as const satisfies readonly BusinessMemberRole[]
+
+/**
+ * The user ids of `businessId`'s members holding one of `roles`, oldest
+ * membership first, then by user id, so two rows sharing a `created_at` still
+ * come back in one order. The inquiry route names the FIRST of them as the
+ * requester of its lead analysis, which is why the order is fixed rather than
+ * whatever Postgres happens to return.
+ *
+ * THROWS on a failed read, like every reader in this file. A failed read is
+ * not "nobody to tell": answering [] would make "this business has no owner"
+ * and "the alert was lost to an error" the same silence. The caller decides
+ * what a lost alert costs (both lead routes log it and carry on, because the
+ * visitor's submission has already succeeded).
+ *
+ * `roles` is non-empty by type. `.in("role", [])` asks PostgREST for
+ * `role=in.()`, and a caller that built its list wrong should fail to compile,
+ * not quietly bell nobody.
+ */
+export async function listBusinessMemberUserIds(
+  businessId: string,
+  roles: readonly [BusinessMemberRole, ...BusinessMemberRole[]],
+): Promise<string[]> {
+  const { data, error } = await getClient()
+    .from("business_members")
+    .select("user_id")
+    .eq("business_id", businessId)
+    .in("role", roles)
+    .order("created_at", { ascending: true })
+    .order("user_id", { ascending: true })
+  if (error) throw new Error(`listBusinessMemberUserIds failed (${error.code}): ${error.message}`)
+  return ((data ?? []) as Array<{ user_id: string }>).map((r) => r.user_id)
+}
+
+/**
  * Idempotent by construction. business_members is
  * `primary key (business_id, user_id)`, so two concurrent accepts of the same
  * invite race: read first, and treat a 23505 from the insert as "the other one

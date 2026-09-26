@@ -205,6 +205,11 @@ export default async function DraftPreviewPage({ params }: PageProps) {
             funnelSlug: funnel.slug,
             stepId: target.id,
             stepSlug: target.slug,
+            // THE ADMIN TENANT, not the Host's. This screen is served from the
+            // admin's host whichever coach is looking. Islands read their own
+            // rows under it, so the draft shows what /go on the funnel's own
+            // host will (G35).
+            businessId,
             // STILL TRUE, and still the guard that matters: the page is not
             // published, so nothing it submits may reach the real world.
             isPreview: true,

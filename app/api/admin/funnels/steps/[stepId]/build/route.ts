@@ -103,6 +103,7 @@ import { reassemble } from "@/lib/funnels/sections/doc"
 import type { BrandKit } from "@/lib/funnels/sections/render"
 import { resolveBrandKit } from "@/lib/funnels/brand-kit"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import {
   buildResultSchema,
@@ -495,6 +496,15 @@ interface PageContext {
   funnelSlug: string | null
   faqPageKeys: string[]
   /**
+   * Whether this business may use the platform's live FAQ list and live
+   * testimonial feed (G35): true for the platform only. Decided here rather
+   * than read off the catalogue, because the catalogue can fail to load while
+   * this context degrades on its own — and the answer is a pure function of
+   * the business, so both branches of `loadPageContext` can tell the truth.
+   * `faqPageKeys` above is `[]` whenever this is false.
+   */
+  liveFeedsAvailable: boolean
+  /**
    * The tenant's brand kit, threaded into `reassemble` as the page's palette
    * default when the document itself carries none (Task 4's `themeCss`
    * fallback). `null` on a business-id resolution failure or a
@@ -509,6 +519,15 @@ interface PageContext {
 async function loadPageContext(businessId: string, funnelId: string, thisStepSlug: string): Promise<PageContext> {
   const brandKit = await loadBrandKitSafely(businessId)
 
+  // THE PLATFORM'S LIVE FEEDS, AND ONLY THE PLATFORM'S (G35) — the rule
+  // `loadCatalogues` applies, applied again here because this is a SECOND,
+  // independent read of the FAQ keys (Block B's list), and a second reader
+  // without it would offer a coach's builder keys the gate then refuses.
+  // `faqs` and `testimonials` have no `business_id` column; every row is the
+  // platform's own. Outside the `try`, and pure: the degraded branch below
+  // must tell the model the same truth.
+  const liveFeedsAvailable = businessId === platformBusinessId()
+
   // Degrades rather than throws: none of this is correctness-critical (a
   // missing base path makes a step CTA a disabled placeholder, a missing slug
   // list just means the model is not offered step targets), and a 500 on a
@@ -517,7 +536,8 @@ async function loadPageContext(businessId: string, funnelId: string, thisStepSlu
     const [funnel, steps, faqCounts] = await Promise.all([
       getFunnelById(businessId, funnelId),
       listSteps(businessId, funnelId),
-      getFaqCountsByPage(),
+      // Not read at all for a business the rows can never serve.
+      liveFeedsAvailable ? getFaqCountsByPage() : Promise.resolve<Record<string, number>>({}),
     ])
     // BY POSITION, not by the order the rows arrived. `listSteps` already
     // orders, but deriving "what comes next" from an assumed sort is how a
@@ -533,6 +553,7 @@ async function loadPageContext(businessId: string, funnelId: string, thisStepSlu
       nextStepSlug: next?.slug ?? null,
       funnelSlug: funnel?.slug ?? null,
       faqPageKeys: Object.keys(faqCounts).sort(),
+      liveFeedsAvailable,
       brandKit,
     }
   } catch (error) {
@@ -551,6 +572,7 @@ async function loadPageContext(businessId: string, funnelId: string, thisStepSlu
       // for the field regardless, and the two degrade independently.
       funnelSlug: null,
       faqPageKeys: [],
+      liveFeedsAvailable,
       brandKit,
     }
   }
@@ -1250,6 +1272,7 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
     // keeps the menu and the door in agreement.
     catalogue: catalogues?.offer ?? EMPTY_CATALOGUE,
     faqPageKeys: context.faqPageKeys,
+    liveFeedsAvailable: context.liveFeedsAvailable,
     stepSlugs: context.stepSlugs,
     nextStepSlug: context.nextStepSlug,
     funnelSlug: context.funnelSlug,
@@ -1910,6 +1933,11 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
 
   const review = await reviewDoc({
     doc,
+    // G35. The reviser never sees Block B, so it is told here what Block B
+    // told the builder — on BOTH paths that reach this stage (first draft and
+    // Polish), which is why it is read off `context` inside this function
+    // rather than passed by each caller.
+    liveFeedsAvailable: context.liveFeedsAvailable,
     ...(render ? { render } : {}),
     onFinding: (finding) => emit({ type: "finding", finding }),
   })

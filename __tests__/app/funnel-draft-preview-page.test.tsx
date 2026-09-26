@@ -39,6 +39,14 @@ vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.f
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
+// The quiz reads `loadCatalogues` makes (G35 review, F7). Unmocked, they
+// reached the dev clone through `.env.local` on every run: a unit test that
+// passes or fails on what the shared database holds today. `clearAllMocks`
+// below keeps these implementations.
+vi.mock("@/lib/db/quizzes", () => ({
+  listQuizzes: vi.fn(async () => []),
+  getQuizDefinition: vi.fn(async () => null),
+}))
 // `resolveBrandKit` is now called UNCONDITIONALLY inside `renderDraftPreview`
 // (Task 7 made `businessId` required, not an optional cosmetic extra), so an
 // unmocked `getBusinessSettings` here would make a REAL Supabase call every
@@ -321,6 +329,25 @@ describe("/funnel-preview/[stepId] — the gate", () => {
     await render()
     expect(getStep).toHaveBeenCalledWith(BUSINESS_ID, STEP_ID)
     expect(getFunnelById).toHaveBeenCalledWith(BUSINESS_ID, STEP.funnel_id)
+  })
+
+  it("hands the islands the ADMIN tenant the page resolved, not the Host's (G35)", async () => {
+    // MUTANT: leaving `businessId` out of the island context. The builder's
+    // canvas is served from the admin's host whichever coach is editing, so an
+    // island reading under the Host would show another business's rows, or none.
+    expect(findContext(await render())).toMatchObject({ businessId: BUSINESS_ID, isPreview: true })
+  })
+
+  it("follows the admin tenant the page resolved, not a constant (G35)", async () => {
+    // MUTANT: `businessId` from anywhere but `resolveAdminTenant`. The live
+    // FAQ and testimonial islands (§B2) decide from it whether the platform's
+    // rows may appear, so the canvas must agree with /go on the funnel's own
+    // Host.
+    expect(findContext(await render())).toMatchObject({ businessId: BUSINESS_ID })
+
+    const OTHER = "cccccccc-1111-4222-8333-444444444444"
+    mock(resolveAdminTenant).mockResolvedValue({ businessId: OTHER, choices: [], isOperator: true })
+    expect(findContext(await render())).toMatchObject({ businessId: OTHER })
   })
 
   it("is marked noindex", async () => {

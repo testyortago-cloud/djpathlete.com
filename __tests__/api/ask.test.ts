@@ -56,6 +56,10 @@ const h = vi.hoisted(() => ({
   execute: vi.fn(),
   runEscalation: vi.fn(),
   recordAudit: vi.fn(),
+  // G35: a spy, so "resolved once, before the read" is countable.
+  resolvePublicTenant: vi.fn(),
+  // G35: the booking-prefill read, so its tenant argument is observable.
+  readContactIdentity: vi.fn(),
   outcome: {
     facts: [] as Fact[],
     cards: [] as Card[],
@@ -92,7 +96,10 @@ vi.mock("@/lib/lead-engine/chat/tools", async (importOriginal) => {
 // The route resolves its tenant from the request's Host through the ONE Host
 // boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
 // platform's, so a route that hard-codes platformBusinessId() cannot pass.
-vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: h.resolvePublicTenant }))
+// Mocked since G35: the route's prefill read was reaching the real pipeline DAL
+// whenever a fixture carried a contact_id.
+vi.mock("@/lib/db/pipeline", () => ({ readContactIdentity: h.readContactIdentity }))
 
 import { POST } from "@/app/api/ask/route"
 import {
@@ -237,6 +244,21 @@ function appended(role: "user" | "assistant") {
   return h.appendMessage.mock.calls.map((c) => c[0]).filter((a) => a.role === role)
 }
 
+/** What `resolvePublicTenant()` answers in every test unless one says otherwise. */
+const HOST_BUSINESS = "host-biz"
+
+/**
+ * The DAL's contract, modelled rather than canned: a conversation comes back
+ * only under ITS OWN business. `undefined` is modelled as the pre-G35 optional
+ * signature ("any tenant"), so a route that stops passing the Host's tenant
+ * gets the foreign row back and goes red. An argument-blind mock would let it
+ * pass.
+ */
+function storedUnder(row: ChatConversation) {
+  return async (id: string, businessId?: string) =>
+    id === row.id && (businessId === undefined || businessId === row.business_id) ? row : null
+}
+
 beforeEach(() => {
   // reset, not clear: a queued `*Once` implementation that outlives its test
   // reappears in an unrelated one and misattributes the failure. Everything is
@@ -255,6 +277,8 @@ beforeEach(() => {
   h.runWithTools.mockResolvedValue(toolResult())
   h.runEscalation.mockResolvedValue({ ok: true, contactId: null, notice: "sent", timelineEvent: false })
   h.recordAudit.mockResolvedValue(undefined)
+  h.resolvePublicTenant.mockResolvedValue(HOST_BUSINESS)
+  h.readContactIdentity.mockResolvedValue(null)
 
   h.outcome = { facts: [], cards: [], wantsCapture: false, wantsEscalate: false }
   h.consultHref = CONSULT_PATH
@@ -626,6 +650,11 @@ describe("POST /api/ask — the tenant seam", () => {
   // is the presence control: if the route re-derived resolvePublicTenant()
   // for appendMessage instead of reading it off the conversation it already
   // has, this business id would never show up in any appendMessage call.
+  //
+  // Since G35 the real read is fenced to the Host, so a conversation whose
+  // business differs from the Host's can no longer come back from it. The
+  // mock here is argument-blind ON PURPOSE: that is the only way to make the
+  // two values differ, and the difference is what this test reads.
   it("stamps every appended message with the conversation's own business, not the seam value", async () => {
     const OTHER_BUSINESS = "33333333-3333-3333-3333-333333333333"
     h.getConversation.mockResolvedValue(conversation({ business_id: OTHER_BUSINESS }))
@@ -1013,5 +1042,114 @@ describe("POST /api/ask — the way forward", () => {
 
     expect(body.reply).toBe(REFUSAL_INJURY)
     expect(body.cards).toEqual([])
+  })
+})
+
+describe("POST /api/ask — an existing conversation is read under the Host's tenant (G35)", () => {
+  const OTHER_BUSINESS = "44444444-4444-4444-8444-444444444444"
+
+  it("reads the conversation under the tenant the Host resolves to", async () => {
+    // MUTANT: `getConversation(requestedId)`, the id-only read this route
+    // shipped with. Another business's conversation id would then continue
+    // that business's conversation from this host, under its settings and
+    // facts.
+    h.getConversation.mockImplementation(storedUnder(conversation({ business_id: HOST_BUSINESS })))
+
+    await POST(req({ conversationId: CONVERSATION_ID, message: "hi" }))
+
+    expect(h.getConversation).toHaveBeenCalledWith(CONVERSATION_ID, HOST_BUSINESS)
+  })
+
+  it("treats another business's conversation id as unknown: the same 404, no model, nothing written", async () => {
+    h.getConversation.mockImplementation(storedUnder(conversation({ business_id: OTHER_BUSINESS })))
+
+    const res = await POST(req({ conversationId: CONVERSATION_ID, message: "hi" }))
+
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({
+      error: "That conversation has expired. Start a new one and I'll pick it up from there.",
+    })
+    expect(h.listMessages).not.toHaveBeenCalled()
+    expect(h.appendMessage).not.toHaveBeenCalled()
+    // Not silently replaced with a fresh conversation either. The visitor starts one.
+    expect(h.createConversation).not.toHaveBeenCalled()
+    expect(h.runWithTools).not.toHaveBeenCalled()
+  })
+
+  it("answers the same conversation when it IS this Host's — the presence control for the test above", async () => {
+    h.getConversation.mockImplementation(storedUnder(conversation({ business_id: HOST_BUSINESS })))
+
+    const res = await POST(req({ conversationId: CONVERSATION_ID, message: "hi" }))
+
+    expect(res.status).toBe(200)
+    expect(h.listMessages).toHaveBeenCalledWith(CONVERSATION_ID)
+    expect(h.runWithTools).toHaveBeenCalled()
+  })
+
+  it("resolves the Host for an EXISTING conversation too — once", async () => {
+    // MUTANT: resolving only on the create path, as before G35. The read
+    // above would then have no tenant to be fenced to.
+    h.getConversation.mockImplementation(storedUnder(conversation({ business_id: HOST_BUSINESS })))
+
+    await POST(req({ conversationId: CONVERSATION_ID, message: "hi" }))
+
+    expect(h.resolvePublicTenant).toHaveBeenCalledTimes(1)
+  })
+
+  it("stamps a new conversation with the SAME answer — one resolution per request, not two", async () => {
+    // MUTANT: a second `resolvePublicTenant()` left at the createConversation
+    // site. Two lookups in one request are two answers that can disagree.
+    h.resolvePublicTenant.mockResolvedValueOnce(HOST_BUSINESS).mockResolvedValueOnce("a-second-answer")
+
+    await POST(req({ message: "hi" }))
+
+    expect(h.resolvePublicTenant).toHaveBeenCalledTimes(1)
+    expect(h.createConversation).toHaveBeenCalledWith(expect.objectContaining({ businessId: HOST_BUSINESS }))
+  })
+
+  it("does not resolve the Host for a request the per-origin limit already refused", async () => {
+    // MUTANT: resolving above the message count. A flood the database count
+    // refuses must not also buy a business_domains read per request.
+    h.countRecentMessagesByIp.mockResolvedValue(MAX_MESSAGES_PER_IP_PER_HOUR)
+
+    const res = await POST(req({ message: "hi" }))
+
+    expect(res.status).toBe(429)
+    expect(h.resolvePublicTenant).not.toHaveBeenCalled()
+  })
+
+  it("hands the escalation the conversation's own business", async () => {
+    // MUTANT: `runEscalation({ conversationId, summary })` with no business,
+    // the shape this route had. runEscalation then read the row by id alone.
+    h.getConversation.mockImplementation(storedUnder(conversation({ business_id: HOST_BUSINESS })))
+    h.outcome = { facts: [], cards: [], wantsCapture: false, wantsEscalate: true, escalateSummary: "Wants a person" }
+
+    await POST(req({ conversationId: CONVERSATION_ID, message: "can someone call me?" }))
+
+    expect(h.runEscalation).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: CONVERSATION_ID, businessId: HOST_BUSINESS }),
+    )
+  })
+
+  it("reads the visitor's contact for the booking prefill under the conversation's business", async () => {
+    // MUTANT: `readContactIdentity(conversation.contact_id)`, the one-argument
+    // id-only read this had before G35.
+    h.getConversation.mockImplementation(
+      storedUnder(conversation({ business_id: HOST_BUSINESS, contact_id: "contact-7" })),
+    )
+    h.readContactIdentity.mockResolvedValue({ email: "visitor@example.com", name: "Visitor" })
+
+    await POST(req({ conversationId: CONVERSATION_ID, message: "what do you offer?" }))
+
+    expect(h.readContactIdentity).toHaveBeenCalledWith(HOST_BUSINESS, "contact-7")
+    expect(h.createToolExecutor.mock.calls[0][0].visitor).toEqual({ email: "visitor@example.com", name: "Visitor" })
+  })
+
+  it("reads no contact for a conversation nobody was captured on — the absence beside the presence above", async () => {
+    h.getConversation.mockImplementation(storedUnder(conversation({ business_id: HOST_BUSINESS })))
+
+    await POST(req({ conversationId: CONVERSATION_ID, message: "what do you offer?" }))
+
+    expect(h.readContactIdentity).not.toHaveBeenCalled()
   })
 })

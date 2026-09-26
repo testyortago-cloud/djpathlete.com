@@ -52,6 +52,12 @@ export async function removeSubscriber(email: string): Promise<void> {
 
 export async function getActiveSubscribers(): Promise<{ email: string }[]> {
   const supabase = getClient()
+  // UNTENANTED BY SCHEMA (G38). `newsletter_subscribers` has no `business_id`
+  // column: this is ONE list for every business. The public subscribe route
+  // resolves the Host's business and then writes here anyway, so someone who
+  // subscribed on a coach's host is on the platform's list. See the shelf in
+  // lib/tenancy/platform.ts.
+  //
   // Paginated — a single query would cap at 1000, silently shrinking sends and counts.
   return fetchAllRows<{ email: string }>(() =>
     supabase
@@ -77,6 +83,10 @@ export interface Subscriber {
 
 export async function getAllSubscribers(): Promise<Subscriber[]> {
   const supabase = getClient()
+  // UNTENANTED BY SCHEMA (G38): `newsletter_subscribers` has no `business_id`
+  // column, so /admin/newsletter/subscribers lists every business's
+  // subscribers to anyone holding `blog`. See `getActiveSubscribers`.
+  //
   // Paginated — a single query would cap at 1000, so the admin list/stats/export
   // would under-report (e.g. show 1000 when 5894 exist).
   return fetchAllRows<Subscriber>(() =>

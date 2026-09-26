@@ -73,6 +73,20 @@ function paramsFor(slug: string, step: string[] = []) {
   return Promise.resolve({ slug, step })
 }
 
+/** The context handed to NodeRenderer, found by walking the returned element tree. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findContext(element: any): Record<string, unknown> | null {
+  if (!element || typeof element !== "object") return null
+  if (element.props && element.props.context) return element.props.context as Record<string, unknown>
+  const children = element.props?.children
+  const list = Array.isArray(children) ? children : [children]
+  for (const child of list) {
+    const found = findContext(child)
+    if (found) return found
+  }
+  return null
+}
+
 beforeEach(() => {
   mocks.resolvePublicTenant.mockReset().mockResolvedValue("tenant-a")
   mocks.getPublishedStep.mockReset()
@@ -90,6 +104,34 @@ describe("/go/<slug> resolves the requesting Host's own tenant", () => {
     expect(mocks.getPublishedStep).toHaveBeenCalledWith("tenant-a", "free-guide", undefined, {
       includeUnpublished: false,
     })
+  })
+
+  it("hands the islands the Host's tenant, the same one the page was read under (G35)", async () => {
+    // MUTANT: leaving `businessId` out of the NodeRenderer context, or filling
+    // it with anything but the resolved tenant. The quiz island reads its quiz
+    // under it, and on /go that must be the Host's business.
+    mocks.resolvePublicTenant.mockResolvedValue("tenant-a")
+    mocks.getPublishedStep.mockResolvedValue(PUBLISHED)
+
+    const element = await Page({ params: paramsFor("free-guide"), searchParams: noSearchParams })
+
+    expect(findContext(element)).toMatchObject({ businessId: "tenant-a", funnelId: "f1", stepId: "s1" })
+  })
+
+  it("follows the resolved tenant when the Host changes, rather than a constant (G35)", async () => {
+    // The live FAQ and testimonial islands (§B2) decide from this value
+    // whether the platform's rows may appear here — a context that happened
+    // to equal "tenant-a" without actually tracking the Host would make every
+    // page look like the platform's.
+    mocks.getPublishedStep.mockResolvedValue(PUBLISHED)
+
+    mocks.resolvePublicTenant.mockResolvedValue("tenant-a")
+    const onA = await Page({ params: paramsFor("free-guide"), searchParams: noSearchParams })
+    expect(findContext(onA)?.businessId).toBe("tenant-a")
+
+    mocks.resolvePublicTenant.mockResolvedValue("tenant-b")
+    const onB = await Page({ params: paramsFor("free-guide"), searchParams: noSearchParams })
+    expect(findContext(onB)?.businessId).toBe("tenant-b")
   })
 
   it("404s a slug that belongs to another tenant — the SAME path an unknown slug takes", async () => {

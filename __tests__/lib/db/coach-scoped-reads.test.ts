@@ -3,10 +3,12 @@
 // __tests__/lib/db/coach-scoped-reads.test.ts
 //
 // The two reads that had NO business predicate at all until 2026-09-04, and
-// were safe only because nothing could reach them.
+// were safe only because nothing could reach them, plus a third (G35) that
+// inherited the first one's hole through the public chat route:
 //
 //   lib/db/chat.ts          getConversation(id)
 //   lib/db/pipeline.ts      readOpportunityForGrant(opportunityId)
+//   lib/db/pipeline.ts      readContactIdentity(contactId)          (G35)
 //
 // Both took a UUID that arrives from a URL bar or a request body and returned
 // whichever row carried it, in any tenant. `/admin/chat` and
@@ -56,7 +58,7 @@ vi.mock("@/lib/supabase", () => ({
 }))
 
 import { getConversation } from "@/lib/db/chat"
-import { readOpportunityForGrant } from "@/lib/db/pipeline"
+import { readContactIdentity, readOpportunityForGrant } from "@/lib/db/pipeline"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 /** The coach's own tenant. Distinct from the singleton — see the header. */
@@ -96,17 +98,20 @@ describe("getConversation", () => {
     })
   })
 
-  it("stays UNSCOPED when no business is given, for the public /api/ask paths", () => {
-    // Not an oversight and not a loophole to close. A website visitor resolves
-    // their own conversation by the id in their session before anyone knows
-    // which business it belongs to — the row is what CARRIES that answer, so
-    // requiring it as an argument would be circular. app/api/ask/route.ts,
-    // app/api/ask/capture/route.ts and lib/lead-engine/chat/escalate.ts rely on
-    // this. If this ever becomes required, those three break at runtime, not at
-    // compile time, because the argument is optional.
-    return getConversation(SUBJECT_ID).then(() => {
+  it("applies the predicate UNCONDITIONALLY — an empty tenant matches nothing, never everything (G35)", () => {
+    // RETARGETED, not deleted. This used to pin the opposite: that omitting
+    // the business left the read unscoped for the public /api/ask paths, which
+    // then had no tenant to give. Since the Host boundary (phase 4) they do,
+    // and G35 made the argument required. What is worth pinning now is the
+    // SHAPE that made it optional. MUTANT: `if (businessId) query =
+    // query.eq("business_id", businessId)`. The type system stops `undefined`.
+    // It does not stop an empty string from a caller whose own resolution came
+    // back blank, and under the mutant that reads EVERY business's
+    // conversation. Here it is filtered like any other value.
+    return getConversation(SUBJECT_ID, "").then(() => {
       const record = calls.find((c) => c.table === "chat_conversations")!
-      expect(eqOps(record).map(([, col]) => col)).toEqual(["id"])
+      expect(eqOps(record).map(([, col]) => col)).toEqual(["id", "business_id"])
+      expect(eqValue(record, "business_id")).toBe("")
     })
   })
 
@@ -145,5 +150,42 @@ describe("readOpportunityForGrant", () => {
     // and, worse, a retry as a fresh grant.
     result = { data: null, error: { code: "PGRST301", message: "boom" } }
     return expect(readOpportunityForGrant(SUBJECT_ID, BUSINESS)).rejects.toBeTruthy()
+  })
+})
+
+describe("readContactIdentity (G35)", () => {
+  it("fences the read to the business it was given", () => {
+    // MUTANT: dropping `.eq("business_id", businessId)`. Both callers hold a
+    // contact id taken off another row (a chat conversation, a won
+    // opportunity). The chat's conversation read had no predicate until G35,
+    // and this read inherited that hole silently. The predicate makes "this
+    // contact is that business's" true here, not only in the caller.
+    return readContactIdentity(BUSINESS, SUBJECT_ID).then(() => {
+      const record = calls.find((c) => c.table === "contacts")
+      expect(record).toBeDefined()
+      expect(eqValue(record!, "business_id")).toBe(BUSINESS)
+      expect(eqValue(record!, "id")).toBe(SUBJECT_ID)
+    })
+  })
+
+  it("does not silently scope to the singleton instead", () => {
+    return readContactIdentity(BUSINESS, SUBJECT_ID).then(() => {
+      const record = calls.find((c) => c.table === "contacts")!
+      expect(eqValue(record, "business_id")).not.toBe(SINGLETON_BUSINESS_ID)
+    })
+  })
+
+  it("returns the name and email it found — the presence control", async () => {
+    result = { data: { email: "athlete@example.test", name: "Sam" }, error: null }
+    await expect(readContactIdentity(BUSINESS, SUBJECT_ID)).resolves.toEqual({
+      email: "athlete@example.test",
+      name: "Sam",
+    })
+  })
+
+  it("answers null for no row, and throws on a failed read rather than reading as 'no contact'", async () => {
+    await expect(readContactIdentity(BUSINESS, SUBJECT_ID)).resolves.toBeNull()
+    result = { data: null, error: { code: "PGRST301", message: "boom" } }
+    await expect(readContactIdentity(BUSINESS, SUBJECT_ID)).rejects.toThrow(/contacts read failed/)
   })
 })

@@ -660,9 +660,101 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 ### G34 · Settings are owner-only · **decision, scoping**
 - `/admin/businesses` is in `OWNER_ONLY_PREFIXES`. Letting a tenant coach edit their own branding touches the "do not elaborate permissions" invariant in `CLAUDE.md`; it belongs in the SaaS direction spec, not here. Record the decision; no code until then.
 
-### G35 · Readers with no tenant predicate · **S**
+### G35 · Readers with no tenant predicate · **S → M** · **BUILT 2026-09-26 (branch worktree-g35-untenanted-readers, awaiting merge)**
 - Chat facts read `faqs`, `programs`, `testimonials` with no `business_id` (those tables have none — a seam to name in `platform.ts`); `hasConsent` is keyed on contact UUID only; campaign-revenue reads `marketing_attribution` without one (no column). Name each seam honestly in `lib/tenancy/platform.ts` or add the predicate where a column exists.
-- **Carries one owner question (added 2026-09-25).** The PostgREST select contract found that `functions/src/seo/execute.ts` and `functions/src/social-agent.ts` read a `profiles` table that does not exist, so the SEO and social agents' admin alerts have never sent (pinned in `KNOWN_REFUSED`). The obvious fix, "the first user where role = 'admin'", makes an UNTENANTED reader live, which is this row's subject. Whether that is acceptable, or the alert should go to a tenant's `reply_to` the way G30 routed lead mail, is the owner's call, not this row's to decide silently.
+- **Its one owner question is answered: owners, in-app.** It asked where the SEO and social agents' admin alert should go. Both read a `profiles` table that does not exist, so PostgREST answered `PGRST205` on every run and no agent alert has ever reached anyone. The owner ruled neither "the first admin user" (which makes an untenanted reader live) nor the tenant's `reply_to` email: the alert is a bell row for each **owner** of the job's business. Both `profiles` entries are deleted from `KNOWN_REFUSED`, in the same commit that stopped reading `profiles`.
+- **Built on `worktree-g35-untenanted-readers` off `main@8b7fb0e6`. NOT MERGED — the owner has not given the word.** Spec `docs/superpowers/specs/2026-09-25-g35-untenanted-readers-design.md` (`4f3fa23b`), plan `docs/superpowers/plans/2026-09-25-g35-untenanted-readers.md` (`10ba091d`). No migration. One commit per spec section, listed below.
+- **THE ROW NAMED THREE READERS. THE SWEEP FOUND A CLASS, and that is why it grew from S to M.** Before designing, a discovery workflow (five investigators and a completeness critic, 13 claims re-checked) swept every read of the 38 tables that carry `business_id`: **197 read sites, 41 with no business predicate.** Most of the 41 are safe by construction: keyed on a webhook id, a token, or an id that came from an already-scoped read. The critic then found what the sweep could not see by construction: readers of tables with NO `business_id`, behind a staff permission an owner can grant or a public route that resolved another business's Host. That class became the new shelf (D1) and most of G36-G45 below.
+- **Production has one business** (`Primary`, measured 2026-09-23), so nothing here was leaking in production. Every item was a fuse for the white-label destination, not an incident. The dev clone has second businesses, and that is where the cross-business paths could be reached.
+- **The owner ruled four things (2026-09-25):**
+  1. **Scope:** fix the readers where the tenant is already in hand, name every no-column seam honestly, and record the large ones as new rows with the owner's questions. Not "only what the row says", and not "make the admin AI chat and `/admin/programs` owner-only now".
+  2. **Show nothing:** the chat's facts and a funnel's live FAQ and testimonial sections give a business that is not the platform NOTHING, never the platform's rows. The chat's Calendly offer already follows this rule.
+  3. **Agent alerts go to the owners** of the job's business, as bell rows.
+  4. **Contact and inquiry bells go to owner + coach:** the site business's members with role `owner` or `coach`.
+- **What was built, one commit per spec section:**
+  - **A1 · `115306ef` · consent.** `hasConsent(contactId, channel, businessId)` filters on the business in the query, before the limit, so another business's newer revoke cannot cancel this business's grant either. `contact_consents` has two separate foreign keys and no composite, and its `business_id` defaults to the platform's id, so nothing in the schema kept a consent row's business equal to its contact's (dev clone: 0 of 59 rows mismatched). All three callers already held the tenant. `contactsWithEmailConsent`'s claim that the report and the engine cannot disagree is now true by construction instead of true by data.
+  - **A2 · `4df9c2db` · bookings.** `PATCH /api/admin/bookings` (permission `schedule`, which the Coach preset grants) resolved no tenant and filtered on id alone, and it returned the row with the contact's name, email and phone. It now resolves the admin tenant (403 when there is none). `getBookingById` and `updateBookingStatus` take `businessId` first and filter the UPDATE as well as the read. A booking of another business, or no booking at all, answers 404 before anything is written (a missing row used to be a `PGRST116` and a 500). `getBookingsInRange` takes the tenant, so the Daily Brief lists the business's own calls. `getUpcomingBookings` had no caller and read every business's bookings; it is deleted.
+  - **A3 · `ebe9b3a9` · chat conversations.** `getConversation(id, businessId)`: the tenant is required and always applied (it was optional, and both public routes passed none). `/api/ask` and `/api/ask/capture` resolve the Host before reading, so a conversation id from another business's site reads as absent: both `/api/ask` and `/api/ask/capture` answer their existing 404, and nothing is created (Ruling R7; the spec's "starts a fresh conversation" was overruled, and the spec now says so). `runEscalation` reads under the conversation's business. `readContactIdentity(businessId, contactId)` is fenced too, and **the spec missed its second caller**: the pipeline grant route (`app/api/admin/pipeline/grant/route.ts`) was ported in the same commit. The capture route joined the Host boundary's inventory in `lib/tenancy/public.ts`.
+  - **A4 · `396d7860` · quizzes.** `getQuizDefinition(businessId, quizId)`. Nothing compared a quiz's business with an attempt's, so business B's host could open an attempt (stamped B) on business A's quiz, and submit filed B's contact, card and consent row against A's quiz. Progress now resolves the Host first and refuses an existing attempt stamped with another business (404). Submit reads under the attempt's business and still resolves nothing, which is the invariant `platform.ts` records. `getAttempt` stays keyed on its id, a bearer token issued to the visitor, and its doc comment says why. **The spec missed `QuizIsland`**, which reads the quiz too. A Host read there would hide a coach's own quiz from their preview canvas (on the previews the Host is the admin's), so this commit added the required `FunnelRenderContext.businessId`: set from the Host by `/go`, and from the admin tenant by both preview routes. B2 uses the same field.
+  - **A5 · `9acdbdd0` · bell alerts.** The contact and inquiry routes belled every `users.role = 'admin'` row, whichever business's site the lead came from. They now bell the site business's owners and coaches through one reader, `listBusinessMemberUserIds(businessId, LEAD_ALERT_ROLES)`. This changes three things the owner will see; they are (a) to (c) below.
+  - **B1 · `d56337b6` · chat facts.** `searchPublicFaqs`, `listPublicProgrammes` and `listPublicTestimonials` take the conversation's tenant and return `[]`, before any query, when it is not the platform. The tool executor passes it through one `tenantFor()` guard, which throws on a turn with no tenant. A coach's `/ask` assistant now says it does not know, instead of quoting the platform's prices and clients as that coach's.
+  - **B2 · `69147da5` · funnel islands.** `FaqIsland` and `TestimonialsIsland` receive the render context and show nothing off the platform, before any read. They use the route's tenant, not `resolvePublicTenant()` inside the island: on the preview routes the Host is the admin's, and the preview must agree with `/go`, whose disagreement G31 called this subsystem's worst failure.
+  - **B3/B4 · `d451a2ff` · builder catalogue, publish gate, build prompt.** `loadCatalogues` answers `faqPageKeys: []` and a new required `liveFeedsAvailable: false` for any business that is not the platform, without reading `faqs`. `resolveDoc` records a live FAQ or live testimonial section there as an `UnavailableLiveFeed`, not an `UnknownFaqKey`: that one's "no page has FAQs yet" would send the owner to add rows that still would not show. `publishGate` blocks on it. Nothing inspected testimonial sections before. The build route's own FAQ-key read follows the same rule, and its Block B tells a non-platform builder to use inline FAQs, and a quoted testimonial only for words the owner gave verbatim (that last half is the final review's F1; the first wording asked for "quoted testimonials written for this business", i.e. invented ones). All five new `platformBusinessId()` callers of B1-B3 are named on the NARROWER VARIANT shelf.
+  - **C1 · `a87162e4` · the agent job carries its business.** The weekly SEO cron, the Tue/Thu social cron and the manual social run stamp `businessId: platformBusinessId()` into the job. The manual route uses the PLATFORM id, not the admin's selected business, though it has a session: every table the agents read or write has no `business_id`, and their subject is the platform's own blog (CORRECT BY CONSTRUCTION shelf). The tests mock the seam to a distinct id, because `SYSTEM_USER_ID` and the platform business id are the same literal, and a test on the real id cannot tell the stamp from `userId`.
+  - **C2-C4 · `0eb8efb5` · alerts to owners.** `notifyBusinessOwners` (`functions/src/lib/`, a functions-only helper: `functions/` cannot import `lib/`, and the Next.js member reader, `listBusinessMemberUserIds`, is deliberately different — owner + coach, and it inserts nothing) reads `business_members` for `role = 'owner'` with literal select strings the select contract probes, checks the read error, and inserts one bell row per owner. It returns the FIRST owner's notification id (`created_at`, then `user_id`), because the outcome tracker resolves a flag by reading one notification by id: "acknowledged" means that owner read it. A job with no `businessId` skips its alert (the SEO flag returns `executed: false` with a reason) and never defaults. `seo-agent.ts` now logs each action's error and rejection reason; it dropped them before, which is why the `PGRST205` stayed invisible. The social alert links to `/admin/strategy`, because `/admin/social-agent/memos` is not a page. Deploy order does not matter: new functions with an old route skip the alert, and old functions ignore the new field.
+  - **D1/D2 · `85451da6` · UNTENANTED BY SCHEMA.** A new shelf in `lib/tenancy/platform.ts` names twelve readers (19 reads) of tables with no `business_id`, on surfaces a second business can reach. Each entry names its table, its surface, who reaches it, and the row that owns it (G04, G31, G37, G38, G40, G42, G43, G45). The inventory test keeps the shelf true: each read must still be inside the function named for it, no migration may add `business_id` to its table, every path the shelf names must be an entry, every function its entries name must be an entry's function or a stated context name (added by the final review, F5: the path check alone passed with a row of a multi-row file dropped; it still cannot see a dropped TABLE row of a function that keeps others, or a route-handler entry, and the test says so), and a fixture for a table that HAS the column (`events`) must fail. The live select contract probes `select=business_id` on each shelf table and expects `42703`, the only check that sees a column added outside the migrations. The same commit reworded the NARROWER VARIANT shelf's header, which described only the fallback case: five of its entries consult the seam as a COMPARISON instead (the chat's booking offer, the chat facts, the two funnel islands, the builder catalogue and the build route).
+  - **D3 · `387dd833` · comments.** Every shelf read says in place that its table has no `business_id` and which row owns it, and the test fails for an entry without that note. Four comments that argued the opposite are corrected: the pipeline page's "nothing to scope"; `findAttributionForContact`'s phase-4 reason and its "user_id is never shared across businesses" (`linkContactsToUser` shares it by design); and the booking ingest's "nothing writes `contacts.user_id`" (G04 gave it writers).
+  - **Final review · `f11dc869`, `770f6156`, `8454abec` + this ledger commit.** A six-lens whole-branch review with a verifier per lens (range `8b7fb0e6..04d8019f`) confirmed 13 findings, one of them important, and refuted one. All 13 are fixed (F1-F8) except one recorded under G45 by ruling. **F1 (important):** Block B's line told a coach's builder to write "quoted testimonials written for this business". The model has no real quotes, so that asked it to invent endorsements under the coach's brand. It now allows `source: "quote"` only for words the owner gave verbatim, and otherwise no testimonial section. **F2:** the automatic reviser never saw Block B, and Block A tells every model to prefer live feeds, so a review round could put a live feed back. It now gets the same line in its user message, on every round. **F3:** the builder canvas note on a live section sent every business to "your Testimonials list", which holds the platform's rows. Off the platform it now says the feed is not available and to switch to your own content. **F4:** the event island resolved the Host, so both previews could show a coach a different event than `/go`. It now reads under the render context like its siblings, and left `lib/tenancy/public.ts`'s caller list. **F5:** the shelf's reverse check is now function-level too. **F6-F7:** the S1 surface wording, and a test that read the dev clone. **F8:** this row, G44, G45, the headline and the spec, corrected as described in place.
+  - **The session that started this fix wave died mid-run, and left a trap worth knowing about.** Its agent was killed while mutation-testing F3, between applying a mutant (`liveFeedsAvailable === true || true` in `render.ts`) and restoring it. So the working tree held a deliberately broken line that showed every coach the platform's "change them under Testimonials" note. It was found by reading the agent's transcript (the mutant edit's result arrived, the restore's never did, and the file's mtime was the mutant's), and restored before anything was committed.
+- **FIVE BEHAVIOUR CHANGES THE OWNER WILL SEE:**
+  - **(a) The inquiry's AI lead analysis now needs an owner or coach.** It is requested by the business's first owner or coach (fixed `created_at`, `user_id` order) instead of the first admin row, so `ai_generation_log` and the audit actor name that business's own person. A business with no owner or coach member, or a failed recipients read, gets no analysis, the same as "no admin" did before.
+  - **(b) The contact route no longer stops when the recipients read fails.** It used to return early, which also skipped the platform inbox's email, the visitor's auto-reply and the GHL sync. The failure is now logged and all three still run.
+  - **(c) Contact and inquiry bells go to the owners and coaches of the site's business.** In production that is the same people only if `Primary`'s owners still match the admins migration `00246` backfilled. **That is unconfirmed: production was not readable from this session.** A `Primary` member with role `coach` would newly get these bells. Staff do not, by the ruling.
+  - **(d) The coach-facing blocker names no brand.** The spec's wording said live FAQs and testimonials "come from DJP Athlete's own lists". It was built as "Live FAQs are not available for this business, so the section would show nothing. Switch it to your own FAQs (Inline)." (and the same for testimonials, ending "your own quotes"), because a white-label coach should not read the platform owner's name in their own builder.
+  - **(e) The gate stops NEW publishes only.** A page a non-platform business had already published with a live FAQ or testimonial section now shows an empty section band. The island is the only guarantee, because `steps/[stepId]/publish/route.ts` lets a step with no section document through the gate. The dev clone has no such page, and production has one business, so there is none there either.
+- **The row's consent example was the only consent reader that needed the predicate.** Suppressions were already per-business: `contact_suppressions_uniq` is `UNIQUE (business_id, identifier)` (`00215`), and `isSuppressed(identifier, businessId)` filters on it. Only `hasConsent` was missing it.
+- **Deliberately not built, and where each one lives now:** everything in G36-G45 below. That includes the composite foreign keys and dropping the platform `DEFAULT` (G44), converting any subsystem G36-G39 names, and binding the checkout's product to the page (G40). The builder's "Content source" select still offers "Live" to a non-platform business. A live section chosen there shows the blocker on the preview banner and is refused at publish, and threading tenant data into the inspector was not worth it for a state the gate already stops. Also not built, and recorded here so nobody assumes otherwise:
+  - **The contact form's EMAIL half still takes no business.** A5 routed the contact route's BELLS to the site business's owners and coaches, but `sendContactFormEmail` still goes to `INFO_EMAIL` cc `ADMIN_CC`, and `sendContactAutoReply` still sends the platform's copy ("Thanks for reaching out to DJP Athlete") with the platform's booking link. So another business's contact message lands in the platform's inbox, and its visitor gets the platform's auto-reply. The fix has G30's shape (the tenant's own `reply_to` and brand), and it is carried forward on that shape rather than widened into G35.
+  - **The marketing site served on a coach's host.** It is the platform's own site in full, not a reader at a time; it belongs on the "output keyed to one host" shelf.
+  - **Hard-bounce and shared-sender suppression policy.** Per-business suppression is already correct for STOP and unsubscribe (`contact_suppressions_uniq`, above). Whether a hard bounce on one business's send should suppress the address for every business on a shared sender is a policy question. It has no row of its own yet, and neither G38 nor G44 covers it; it is recorded only here, and belongs beside G38's newsletter decision when that is taken.
+- **Verified, in three rounds.** (1) Whole branch at `387dd833`: every test file importing or mocking any of the 54 changed modules, 193 files / 2994 tests green (the live-model `chat-live` lane excluded); functions suites 4 files / 49 tests; functions build exit 0; tsc 238 / 54 per-file identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `test:integration:selects` 22/22; `npm run build` exit 0; `SINGLETON_BUSINESS_ID` 5. (2) The final fix wave: every test file importing a module it changed, plus the two inventory tests, 29 files / 904 tests; the 30th such file, `__tests__/integration/builder-colour-live.test.ts`, is a paid live-model probe outside the unit lane and was not run (tsc covers it). Every new test was seen red before its fix; F3's two mutants and F5's dropped-row proof were run live. A scoped re-review of the fix wave confirmed F1-F8 and found five minor items, all acted on. (3) **`main` (`af4c41c3`, the OpenRouter work) merged INTO this branch at `03905f2a`, and gated as the tree it will merge as:** 30 files / 925 tests (the fix-wave list plus main's new `build-route-recovery.test.ts`); G35's functions suites 4 / 49 and the functions tsc clean; tsc 238 / 54 per-file identical; selects 22/22; build exit 0; `SINGLETON_BUSINESS_ID` 5. Only this ledger line changed after that gate. Lint not run (broken repo-wide). Production was not read.
+
+#### Found by G35's sweep (2026-09-25) — recorded, not built
+
+Ten rows the G35 sweep and its critic found. None is built. Each carries its evidence and, where the spec says it needs one, the owner's question. Production has one business, so none of them leaks today; each is a fuse for the white-label destination. "Shelf entry S1-S12" means an entry on the UNTENANTED BY SCHEMA shelf, numbered as in the spec's §D1 table; `lib/tenancy/platform.ts` lists them in the same order, unnumbered.
+
+### G36 · Grantable staff surfaces read every business's data · **M** · **owner decision**
+- **The headline is the admin AI chat.** `/api/admin/ai-chat` sits behind `ai_tools` (`lib/permissions/registry.ts:577`), a checkbox an owner can grant, and runs about 46 tool reads with no tenant: clients' personal details, payments, orders, subscriptions, bookings, events and signups, attribution.
+- The same holds for the blog, website-CMS, money, analytics and exercise-library surfaces, which read tables with no `business_id`. They are named here as whole subsystems, one decision each, rather than one reader at a time on the UNTENANTED BY SCHEMA shelf (its preamble points here).
+- The precedent is `/admin/ads`, made owner-only (2026-09-04) for exactly this reason. That narrowed who can reach the reader; it did not scope it.
+- **Question:** scope these surfaces, or make them owner-only (the ads precedent) before any of them is granted to another business's staff?
+
+### G37 · Programmes, assignments and client lists are shared across businesses · **M/L** · **owner decision**
+- Reachable through the Coach preset (`programs`, `contacts`, `lib/permissions/registry.ts:270-291`) by every second-business coach on the dev clone today. Such a coach sees the platform's private programmes, most of them named after an athlete; every assignment; and every client of every business. A public programme that coach creates goes into the platform's chat, because `programs` has no `business_id` and the platform's chat reads every public row.
+- The readers are shelf entries S1-S5: `getPrograms`, `getAllPrograms`, `getProgramById` (`lib/db/programs.ts`); `getAssignments`, `getAssignmentCountsByProgram` (`lib/db/assignments.ts`); the copy-sources GET (`app/api/admin/programs/copy-sources/route.ts`), which returns each assignee's full name; `getClients` (`lib/db/users.ts`), the assign picker's roster; and `listGrantablePrograms` (`lib/db/pipeline.ts`), which lets a coach grant another business's programme from their own board.
+- **Question:** the programs tenancy ruling that the phase 5a spec already parks (`docs/superpowers/specs/2026-09-06-tenancy-phase5a-events-per-tenant-design.md`, "It needs an owner ruling before it gets a phase"). Is a coach's programme their business's own, or content the platform shares with every coach?
+
+### G38 · One newsletter list for every business · **M** · **owner decision**
+- `newsletter_subscribers` has no `business_id`. A visitor who subscribes on business B's host, under consent wording that names B, joins the one list. The platform mails them (`functions/src/newsletter-send.ts:43`), and they are uploaded to the platform's Google Ads Customer Match list (`lib/ads/audiences.ts:107`).
+- The admin readers are shelf entry S10: `getActiveSubscribers` and `getAllSubscribers` (`lib/db/newsletter.ts`), on `/admin/newsletter` behind `blog`, which the Marketing Manager preset grants.
+- **Question:** does each business get its own newsletter list, mailed from its own sender? Or is it one platform list, in which case a coach's subscribe form must not promise the coach's newsletter?
+
+### G39 · The ads subsystem mixes businesses · **unsized** · **frozen, owner decision**
+- Customer Match uploads every business's bookers (`lib/ads/audiences.ts:88`) and subscribers (`:107`) under the platform's ad account. Conversion adjustments pick a booking from any business (`lib/ads/conversions.ts:136`). The strategist is fed every business's events (`lib/ads/agent.ts:933`). The accounts list, and its disconnect, span every business: `listGoogleAdsAccounts` (`lib/db/google-ads-accounts.ts:10`) reads every account, and the disconnect route (`app/api/integrations/google-ads/disconnect/route.ts:26-28`) deactivates every account it lists. The pipeline's bookings arm reads a table that HAS a `business_id` with no predicate (`lib/ads/pipeline.ts:150`).
+- This extends the DELIBERATELY FROZEN shelf in `lib/tenancy/platform.ts`, which already names the ads accounts' readers. `/admin/ads` is owner-only since 2026-09-04, so no teammate reaches it today.
+- **Question:** scope the ads subsystem per business, or keep it the platform's own account and stop feeding it other businesses' bookers, subscribers and events?
+
+### G40 · Funnel checkout sells any priced programme · **S** · **correctness, no owner**
+- `app/api/funnels/checkout/route.ts` checks only that `productId` is a UUID (`:41`) whose programme has a price (`:99-106`). It does not check that the product is one of the published page's offers, that it is active or public, or that it is this business's. The sale is filed under the Host's business. Shelf entry S8.
+- **Fix:** bind `productId` to the published version's offers.
+
+### G41 · The strategy critic's attribution read filters on columns that do not exist, and the select contract cannot see it · **S** · **no owner**
+- `functions/src/strategy/critic-signals.ts:60` reads `marketing_attribution` with `.gte("occurred_at", cutoff)`, and `aggregateAttribution` / `aggregateFunnel` (`:26-49`) group on `channel` and `event_type`. None of the three columns exists: not in `00101`, which creates the table, nor in any later migration, and the dev clone's `information_schema.columns` agrees (re-measured 2026-09-26). PostgREST answers `42703`, the code never reads `attrRes.error`, and `attrRes.data ?? []` turns the error into "no attribution". **The Chief critic has never seen attribution.**
+- `npm run test:integration:selects` cannot see this. It probes select lists and `.order()` columns, not filter columns.
+- **Fix both:** the critic's read and the contract's blind spot.
+
+### G42 · `marketing_attribution` has no tenant · **unsized** · **owner decision**
+- The DAL's reason for no column ("the tenant is not resolved until phase 4") expired with the Host boundary. `landing_url` carries the host on 509 of 512 dev-clone rows (re-measured 2026-09-26), so a backfill is possible. Production was not measured.
+- `findAttributionForContact` (shelf entry S9) reads by `user_id`, and it crosses businesses through `linkContactsToUser`: once one login is linked to two businesses' contacts, a click id captured on one business's page attaches to the other's purchase or booking.
+- **Question:** give `marketing_attribution` a `business_id` backfilled from the landing host, or keep it one platform table and accept that attribution can cross businesses?
+
+### G43 · Every business's customers accept the platform's waiver · **unsized** · **owner / legal decision**
+- `getActiveDocument` (`lib/db/legal-documents.ts`, shelf entry S11) serves the platform's `legal_documents` on the camp and clinic pages, each event's page, the event signup and checkout, and the funnel form. Those surfaces resolve another business's Host tenant, and their customers see, and record acceptance of, the platform's waiver.
+- **Question:** does each business need its own waiver and terms, and until then may another business's customers accept the platform's? This is a legal decision before it is a code one.
+
+### G44 · Schema guards for tenancy · **M** · **later**
+- The platform `DEFAULT` on `business_id` in 30 of 38 tenanted tables (measured on the dev clone 2026-09-26 from `information_schema.columns.column_default`; the eight without one are `booking_hosts`, `booking_notifications`, `booking_types`, `business_domains`, `business_members`, `business_settings`, `coach_calendar_connections` and `team_invites`): one schema-wide decision, already known from `00278`. G31 records that the seed and capture scripts must be fixed before it can be dropped.
+- No composite foreign key ties a consent row (or any cascading child) to its contact's business. A1 made the reader filter; the schema still allows the mismatch.
+- `merge_contacts` never checks that the survivor exists in `p_business`.
+- The `lead_magnets` "active lead magnets are public" RLS policy returns every business's magnets to the anon key.
+
+### G45 · Small ownership checks · **S** · **no owner**
+- `markAsRead(id)` (`lib/db/notifications.ts:20-25`) updates a notification by id without checking who owns it.
+- `getLeadInquiryById` (`lib/db/lead-inquiries.ts`, shelf entry S12) reads by id with no tenant. The regenerate-analysis route reaches it through `leads`.
+- `/admin/team` lists, revokes and resends every business's invites. It is operator-only today.
+- `sendManualSms` checks consent on `args.contactId` but sends to `args.phone`, and the route does not check that the two match. That is within one business, so it is a G28 concern.
+- The SEO job reports "completed" whatever its actions did.
+- The funnel form's and quiz's SMS-consent wording reads its business name from the Host (`resolvePublicTenant()` in `FormIsland` and `QuizIsland`), not from the render context. On `/go` that is the page's own business. On both previews the Host is the admin's, so a coach's preview names the platform's business in the consent line. Preview-only wording: nothing is filed under it (preview submits write nothing). Left by the G35 final review (Ruling R12), because the live page's wording must keep matching the route that files the consent, which reads the Host.
 
 ---
 
@@ -747,7 +839,8 @@ option over a staged rollout, on the measured basis that no policies are require
 | 1 — truthful data | G04, G05, G06, G07, G08 | M + 4 S ≈ 3 days |
 | 2 — quoted behaviours | G09, G10, G11, G12, G13, G14, G15, G16, G17, G18 | 5 M + 5 S ≈ 2 weeks |
 | 3 — entry points + pipeline | G20–G29 | 2 M + 7 S + 1 L ≈ 1 week |
-| 4 — white-label edges | ~~G30~~, ~~G31~~, G32, ~~G33~~, G35 | M + S (G30 built 2026-09-23, G31 merged 2026-09-25, G33 built 2026-09-25) |
+| 4 — white-label edges | ~~G30~~, ~~G31~~, G32, ~~G33~~, ~~G35~~ | M (G32 only; G30 built 2026-09-23, G31 merged 2026-09-25, G33 built 2026-09-25, G35 built 2026-09-26 on its branch, awaiting merge) |
+| 4b — found by G35's sweep | G36-G45 | decisions + S/M rows |
 
 Phase 0 today. Phases 1 and 2 are what make the quotation's sentences true. Phases 3 and 4 are what make "GoHighLevel replacement" and "white-label ready" true.
 
@@ -796,9 +889,18 @@ nothing — read production back; every new column needs a named reader.
 
 ### Finished vs not — the one-screen answer
 
-**34 of 37 rows are finished, merged, pushed and deployed. 3 are not.** Everything not finished is
-either Phase 4 white-label or wording only the owner can write. *(Corrected 2026-09-25. This line
-said "30 of 36 … 6 are not" through G30b, G31 and G33, while the scoreboard below moved on.)*
+**35 of 47 rows are finished in code: 34 merged, pushed and deployed, and G35 built on branch
+`worktree-g35-untenanted-readers`, awaiting the owner's merge. 12 are not.** Four of the 12 need
+no owner and can be built now: G32 (unblocked by G31), G40, G41 and G45. G44 is recorded for later.
+The other seven wait on the owner: G34 is parked by ruling, and G36, G37, G38, G39, G42 and G43 are
+decisions only the owner can take. Separately, some finished rows still need wording only the owner
+can write (below). *(Corrected 2026-09-26 by the G35 final review: this sentence said everything not
+finished was an owner decision or owner wording, which G40, G41 and G45 are not. Commit `04d8019f`'s
+message makes the same overstatement, "each is a scoping decision, not a bug fix"; the commit is not
+rewritten.)* *(Updated 2026-09-26 on that branch: G35 is built, and the ten rows its sweep found are added
+as G36-G45, so the count went from 37 to 47. `main` still says 34 of 37 until the branch merges.)*
+*(Corrected 2026-09-25. This line said "30 of 36 … 6 are not" through G30b, G31 and G33, while the
+scoreboard below moved on.)*
 
 **FINISHED — built, reviewed, merged, pushed, live on production:**
 
@@ -810,13 +912,22 @@ said "30 of 36 … 6 are not" through G30b, G31 and G33, while the scoreboard be
 | 3 — entry points + pipeline | G20 G21 G22 G23 G24 G25 G26 G27 G28 G29 | whole phase complete |
 | Security (not a gap) | S01 S02 | migrations `00274`/`00275` live; 0 tables with RLS off |
 
-**NOT FINISHED — 3 rows, none of them started:**
+**NOT FINISHED — 12 rows, none of them started:**
 
 | Row | What | Size | Why it is open |
 |---|---|---|---|
 | G32 | A new tenant gets no sequences | **M** | **Unblocked** — G31 landed the shape it needed |
 | G34 | Settings are owner-only | — | **Deliberately parked.** Decision 11 ruled: record it, write NO code — it belongs in the SaaS direction spec |
-| G35 | Readers with no tenant predicate | **S** | Ordinary cleanup, plus one owner question (the agents' admin alert; see the row) |
+| G36 | Grantable staff surfaces read every business's data | **M** | **Owner decision:** scope them, or make them owner-only first |
+| G37 | Programmes, assignments and client lists are shared across businesses | **M/L** | **Owner decision:** the programs tenancy ruling phase 5a parked |
+| G38 | One newsletter list for every business | **M** | **Owner decision:** one list per business, or one platform list |
+| G39 | The ads subsystem mixes businesses | — | **Frozen; owner decision** |
+| G40 | Funnel checkout sells any priced programme | **S** | Not started; needs no owner |
+| G41 | The strategy critic's attribution read filters on columns that do not exist | **S** | Not started; needs no owner |
+| G42 | `marketing_attribution` has no tenant | — | **Owner decision:** a column and a backfill, or one platform table |
+| G43 | Every business's customers accept the platform's waiver | — | **Owner / legal decision** |
+| G44 | Schema guards for tenancy | **M** | Not started; later |
+| G45 | Small ownership checks | **S** | Not started; needs no owner |
 
 **FINISHED IN CODE, NOT FINISHED IN WORDS — these need the owner, not a developer:**
 - **G18's `ai_chat` sequence** — the consent half is live; the follow-up sequence a chat lead enters
@@ -900,9 +1011,15 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, re-measured 2026-09-25 on `worktree-g33-sms-sender-e164`: 37 rows · 34 done · 3 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29** **G30** **G30b** **G31** **G33**.
-Open: G32 G34 G35.
+**Scoreboard, re-measured 2026-09-26 on `worktree-g35-untenanted-readers` (NOT merged): 47 rows · 35 done · 12 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29** **G30** **G30b** **G31** **G33** **G35**.
+Open: G32 G34 G36 G37 G38 G39 G40 G41 G42 G43 G44 G45.
+
+**G35 is counted Done while it is still on its branch.** Done here means finished in code, as it
+does for G18. G35 is not on `main` until the owner gives the word, and until then `main`'s copy
+of this scoreboard says 37 · 34 · 3. **The row count went from 37 to 47** because G35's sweep
+recorded ten new rows, G36-G45, under its own heading after G35. They are rows, not lettered
+sub-rows: each is a separate decision or fix, and none was built in G35.
 
 **G31 merged 2026-09-25 in TWO pushes** — `2c3a659d` (migration `00278` alone) then `2b4dd3c1`
 (the code), the second only after the first was confirmed applied to production. Its row above
@@ -945,7 +1062,7 @@ production. G18's `ai_chat` follow-up sequence is NOT built and is blocked on th
 "every row is built" was an overclaim; it is counted under Done in the scoreboard because that list
 means FINISHED IN CODE, and G18's outstanding half is in the owner section below. G21 and G28, the two rows that were
 blocked on an owner decision, were ruled on and built the same day. G29, the last Phase 3 row and the one deliberately deferred until Phases 0-2 were done, was
-built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the first two Phase 4 rows, were merged and pushed on 2026-09-23 and 2026-09-25. G33 was built on 2026-09-25. What remains is **Phase 4's G32 and G35** (and G34, which is a decision, not work).
+built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the first two Phase 4 rows, were merged and pushed on 2026-09-23 and 2026-09-25. G33 was built on 2026-09-25. G35 was built on 2026-09-26 on its own branch and is awaiting the owner's merge. What remains is **Phase 4's G32** (and G34, which is a decision, not work), plus **the ten rows G35's sweep found, G36-G45**: six wait on an owner decision (G36-G39, G42, G43), three are small fixes that need no owner (G40, G41, G45), and G44 is schema work for later.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
@@ -968,16 +1085,34 @@ built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the fir
 - **G30 made `sales@darrenjpaul.com` go quiet** — new-inquiry alerts now go to
   `business_settings.reply_to` (`darren@`) alone, per decision 9. If `sales@` should still receive
   them, the fix is a recipient list, not a revert.
-- **The SEO and social agents' admin alert (G35's question)** — both read a `profiles` table that
-  does not exist, so the alert has never sent. Pointing it at "the first admin user" works today and
-  makes an untenanted reader live; pointing it at the tenant's `reply_to` is the G30 shape. Which
-  one is the owner's call.
+- **G35's merge** — built on `worktree-g35-untenanted-readers` and not merged; the owner's go-ahead
+  merges it. Read the row's five behaviour changes first, especially (c): contact and inquiry bells
+  move to `Primary`'s owners and coaches, which is today's admin set only if `Primary`'s owners
+  still match `00246`'s backfill. That is unconfirmed, because production was not readable.
+  *(G35's own question, where the agents' alert goes, is answered: owners, as bell rows. See the
+  row.)*
+- **G36 · the grantable staff surfaces** — scope the admin AI chat, blog, website CMS, money,
+  analytics and exercise-library surfaces, or make them owner-only (the ads precedent) before any is
+  granted to another business's staff.
+- **G37 · programmes, assignments and client lists** — the programs tenancy ruling phase 5a parked:
+  is a coach's programme their business's own, or content the platform shares with every coach?
+- **G38 · the newsletter list** — one list per business, mailed from its own sender, or one
+  platform list with subscribe forms that say so.
+- **G39 · the ads subsystem** — scope it per business, or keep it the platform's own account and
+  stop feeding it other businesses' bookers, subscribers and events.
+- **G42 · `marketing_attribution`** — give it a `business_id` backfilled from the landing host
+  (509 of 512 dev-clone rows carry one), or keep one platform table and accept that attribution can
+  cross businesses.
+- **G43 · the waiver** — may another business's customers accept the platform's `legal_documents`,
+  or does each business need its own first? A legal decision before a code one.
 - **The decisions in §Decisions** that Phase 3 rows still name (G21, G28, G34).
 
-**Next unblocked: G35** (**S**: name each untenanted reader's seam honestly in `platform.ts`, or
-add the predicate where a column exists; its one owner question is in the row and in the owner list
-above), then **G32** (**M**), which G31 unblocked. **G33 is done.** **G34 is not work**: decision 11
-ruled record it, write no code.
+**Next unblocked: G32** (**M**), which G31 unblocked. Then the three **S** rows G35's sweep found
+that need no owner: **G40** (bind the funnel checkout's product to the published page's offers),
+**G41** (the strategy critic's attribution read, and the select contract's blindness to filter
+columns) and **G45** (small ownership checks). **G35 is built** on its branch, awaiting merge.
+**G33 is done.** **G34 is not work**: decision 11 ruled record it, write no code. G36-G39, G42 and
+G43 wait on the questions above, and G44 is schema work for later.
 
 *(Corrected 2026-09-25. This paragraph ended in a half-sentence, "so **G32** that has to land
 before **G32** has a shape to copy", left from an edit that removed its middle.)*

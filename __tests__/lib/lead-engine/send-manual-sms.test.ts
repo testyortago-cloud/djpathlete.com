@@ -548,7 +548,9 @@ describe("sendManualSms — G28 consent gate", () => {
     })
 
     expect(global.fetch).toHaveBeenCalledTimes(1)
-    expect(hasConsent).toHaveBeenCalledWith(CONTACT, "sms")
+    // G35: asked under THIS business. MUTANT: sendManualSms drops the third
+    // argument — hasConsent would then read every business's consent rows.
+    expect(hasConsent).toHaveBeenCalledWith(CONTACT, "sms", BIZ)
   })
 
   it("asks about the SMS channel, not email", async () => {
@@ -562,8 +564,10 @@ describe("sendManualSms — G28 consent gate", () => {
       appendOptOut: false,
       consentOverride: false,
     })
-    expect(hasConsent).toHaveBeenCalledWith(CONTACT, "sms")
-    expect(hasConsent).not.toHaveBeenCalledWith(CONTACT, "email")
+    expect(hasConsent).toHaveBeenCalledWith(CONTACT, "sms", BIZ)
+    // `expect.anything()` for the tenant, not BIZ: an email ask under ANY
+    // business is the bug. The line above is this line's presence control.
+    expect(hasConsent).not.toHaveBeenCalledWith(CONTACT, "email", expect.anything())
   })
 
   it("SENDS without consent when the override is set, and does not even ask", async () => {

@@ -213,10 +213,15 @@ const CONTACT_ID_CHUNK = 200
  * dangerous one.
  *
  * The tiebreak matches `hasConsent` in lib/db/contact-consents.ts exactly —
- * `occurred_at desc, created_at desc` — so the report and the engine cannot
- * disagree about one person. `id desc` is appended only as a paging tiebreaker
- * (see below); it never changes which row wins for a contact whose rows carry
- * distinct timestamps.
+ * `occurred_at desc, created_at desc` — and so, since G35, does the tenant
+ * predicate: both read only rows filed under `businessId`. That pair is what
+ * makes it impossible for the report and the engine to disagree about one
+ * person BY CONSTRUCTION. Before G35 `hasConsent` had no business predicate
+ * while this read did, so the two agreed only because no consent row's
+ * business differed from its contact's (0 of 59 on the dev clone):
+ * `contact_consents` has no composite key that makes it so. `id desc` is
+ * appended only as a paging tiebreaker (see below); it never changes which
+ * row wins for a contact whose rows carry distinct timestamps.
  *
  * Bulk, unlike `hasConsent`, which issues one query per contact: this is a
  * report over every contact in every sequence, and the per-contact version

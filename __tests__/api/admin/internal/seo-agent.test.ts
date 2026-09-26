@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { NextRequest } from "next/server"
+import { SYSTEM_USER_ID } from "@/lib/system-user"
 
 const isCronSkipped = vi.fn()
 const jobSetMock = vi.fn()
@@ -13,6 +14,11 @@ vi.mock("@/lib/firebase-admin", () => ({
 vi.mock("firebase-admin/firestore", () => ({
   FieldValue: { serverTimestamp: () => "server-ts" },
 }))
+// G35. The seam is mocked to an id nothing else in the job could produce.
+// SYSTEM_USER_ID (the job's userId) and the platform business id are the SAME
+// literal, "00000000-0000-0000-0000-000000000001", so an assertion on the real
+// id could not tell a stamp read from the seam from `businessId: userId`.
+vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz-g35" }))
 
 beforeEach(() => {
   isCronSkipped.mockReset()
@@ -60,6 +66,21 @@ describe("POST /api/admin/internal/seo-agent", () => {
       type: "seo_agent_run",
       status: "pending",
       triggeredBy: "seo_agent_cron",
+    })
+  })
+
+  // G35. MUTANTS: no businessId (today's input); `businessId: SYSTEM_USER_ID`;
+  // the platform literal inline. The last two equal the REAL platform id, so
+  // only the seam mocked to a distinct id above tells them apart.
+  it("stamps the platform business into the job input, read from the seam", async () => {
+    isCronSkipped.mockResolvedValueOnce({ skipped: false })
+    jobSetMock.mockResolvedValueOnce(undefined)
+    await call()
+    const jobArg = jobSetMock.mock.calls[0]?.[0] as { input: Record<string, unknown> }
+    expect(jobArg.input).toEqual({
+      userId: SYSTEM_USER_ID,
+      businessId: "platform-biz-g35",
+      runDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     })
   })
 })

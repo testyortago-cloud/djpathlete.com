@@ -10,6 +10,10 @@
 // `saveQuizDefinition` child-table write this task's first pass already
 // closed, except this route already holds a real, resolved businessId with
 // no architectural reason to skip the check.
+//
+// Since G35 `getQuizDefinition` takes the business too, so the read itself
+// refuses another business's quiz. The ownership check stays and still runs
+// first. Both are pinned below.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
@@ -87,6 +91,14 @@ describe("POST /api/admin/quizzes/[id]/add-to-step", () => {
     const { POST } = await import("@/app/api/admin/quizzes/[id]/add-to-step/route")
     await POST(post({ stepId: STEP_ID }), ctx)
     expect(assertQuizInBusinessMock).toHaveBeenCalledWith(BUSINESS_ID, QUIZ_ID)
+  })
+
+  it("reads the quiz definition under the same business (G35)", async () => {
+    // MUTANT: `getQuizDefinition(quizId)`, the id-only read the ownership check
+    // above used to have to stand in front of.
+    const { POST } = await import("@/app/api/admin/quizzes/[id]/add-to-step/route")
+    await POST(post({ stepId: STEP_ID }), ctx)
+    expect(getQuizDefinitionMock).toHaveBeenCalledWith(BUSINESS_ID, QUIZ_ID)
   })
 
   it("succeeds and composes the quiz onto the draft when ownership checks out", async () => {

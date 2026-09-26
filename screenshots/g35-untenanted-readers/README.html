@@ -1,0 +1,147 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>G35 untenanted readers — review sheet</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 40px 16px; background: #f6f6f4; color: #16323c;
+         font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: #5b7280; margin: 0 0 32px; }
+  h2.pair { font-size: 20px; margin: 48px 0 16px; }
+  figure { margin: 0 0 44px; background: #fff; border: 1px solid #e2e5e3;
+           border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { padding: 18px 22px 22px; border-top: 1px solid #e2e5e3; }
+  figcaption h3 { font-size: 18px; margin: 0 0 6px; }
+  figcaption p { margin: 0 0 8px; color: #40525c; }
+  .route { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+           font-size: 13px; color: #7a6a52; background: #fdf6ec;
+           border: 1px solid #f0e2cc; border-radius: 6px; padding: 2px 7px; display: inline-block; }
+  .note { background: #fff; border: 1px solid #e2e5e3; border-left: 4px solid #c8873f;
+          border-radius: 8px; padding: 18px 22px; margin: 0 0 28px; }
+  .note h2 { font-size: 17px; margin: 0 0 8px; }
+  .note ul { margin: 8px 0 0; padding-left: 20px; }
+  .note li { margin-bottom: 6px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+         background: #eef0ee; border-radius: 4px; padding: 1px 5px; overflow-wrap: anywhere; }
+  pre { background: #eef0ee; border-radius: 6px; padding: 10px 12px; overflow-x: auto;
+        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+<div class="wrap">
+
+<h1>G35 — a coach's business sees none of the platform's shared content</h1>
+<p class="sub">
+  Two screens, each captured twice in the real running app on the real route: once for a coach's business,
+  "Trailhead Strength &amp; Conditioning", and once for the platform's own business, "Primary". The platform
+  shot in each pair is the comparison. Without it, "nothing is shown" would look the same as a page that
+  failed to load. Annotations are burned into each PNG. Captured 2026-09-26 on the dev database by
+  <code>scripts/capture-g35-untenanted-screenshots.mjs</code>.
+</p>
+
+<div class="note">
+  <h2>What these shots are, and are not</h2>
+  <ul>
+    <li><strong>Light only.</strong> The admin screens have no working dark mode, and the draft preview is an
+      admin screen. The two chat shots are light as well, so each pair compares like with like.</li>
+    <li><strong>How the coach's web address was reached.</strong> Every public request carried
+      <code>x-forwarded-host: phase4-coach.test</code>, a web address the dev database assigns to Trailhead.
+      This is the header the app reads first to decide which business a visitor is on, and it is the one the
+      hosting provider sets in production. The platform shots sent <code>www.darrenjpaul.com</code> the same way.
+      Opening <code>http://phase4-coach.test:3064</code> directly was tried first and does not work locally. The
+      site's security settings upgrade every script on a non-local http address to https, so the page never
+      becomes interactive and the chat cannot answer.</li>
+    <li><strong>What was written to the dev database, and what was removed.</strong> The two draft pages behind
+      shots 3 and 4 were created by the script, one for each business, holding the same document. No page on
+      the dev database had a questions section set to "Live", so there was nothing existing to photograph. Both
+      drafts were deleted when the script finished, and a re-read confirmed it (query below). The chat
+      questions are real visits, so the app kept its own record of each conversation, as it does for any
+      visitor. The shots are from conversations <code>ff8f9ab3-427c-4873-b165-022b73b8d865</code> (coach) and
+      <code>15d2026d-5525-4ff6-b0ef-99b21774d1ef</code> (platform). One earlier take left two more,
+      <code>4b451268…</code> and <code>48c76044…</code>. None was handed to a person, and no email could have been sent,
+      because no business on the dev database has a reply-to address.</li>
+    <li><strong>The top bar still shows the platform's logo on the coach's web address.</strong> It is the site's
+      shared frame, and it is the same on every web address today. Giving each coach their own name there is
+      separate work, not part of G35. Shot 1 says so on the image.</li>
+    <li><strong>Two things visible in the chat shots are not G35, and were not fixed here:</strong>
+      <ul>
+        <li>The platform's answer (shot 2) says the client stories are "on the cards beside this reply". The
+          chat has no card for client stories. It can show programmes, events, consultation links, free times
+          and a contact form, and nothing else. So that sentence describes the screen wrongly.</li>
+        <li>The coach's answer (shot 1) calls the consultation "free". No lookup told it that, and the
+          assistant's instructions forbid saying so unless one does. Nothing caught it before the visitor saw it.
+          It also offers to check this week's times, but this coach has no calendar connected, so the only
+          thing it can offer is the contact page already on screen.</li>
+      </ul>
+    </li>
+    <li><strong>Not captured: a live testimonials section on a page.</strong> It follows the same rule as the
+      questions section, with its own words ("uses live testimonials … Switch it to your own quotes"). The tests
+      in <code>__tests__/lib/funnels/sections/resolve.test.ts</code> and
+      <code>__tests__/components/funnels/live-feed-islands-tenant.test.tsx</code> cover it. Capturing it would have
+      needed two more drafts for the same picture.</li>
+  </ul>
+</div>
+
+<h2 class="pair">The public chat — "Ask a question"</h2>
+
+<figure>
+  <img src="01-coach-chat-no-platform-clients.png" alt="The coach's Ask a question page answering that it has no client stories to show">
+  <figcaption>
+    <h3>1 · A coach's own site no longer borrows the platform's clients</h3>
+    <p><span class="route">/ask</span> on the coach's web address. The visitor asked "What do your clients say
+      about you?". The answer says there are no client stories to show. The script checked what the server
+      recorded, not just the screen. The conversation is filed under Trailhead. Its lookups handed the assistant no
+      client stories, no questions and answers, and no programmes from the platform. The answer names none of the
+      platform's 7 clients and does not mention Darren. The "Book a consultation" button opens the coach's own
+      <code>/contact</code> page, not the platform's booking calendar.</p>
+  </figcaption>
+</figure>
+
+<figure>
+  <img src="02-platform-chat-uses-its-clients.png" alt="The platform's Ask a question page summing up its clients' stories">
+  <figcaption>
+    <h3>2 · The platform's own site still answers from its clients' stories</h3>
+    <p>The same page and the same question on <code>www.darrenjpaul.com</code>. The conversation is filed under
+      Primary, and the lookup handed the assistant 6 of the platform's published client stories. The answer sums
+      them up and talks about Darren by name. It did not name any client this time; the model words it
+      differently each run. What the script requires is that the stories reached the assistant and that the
+      answer uses them. The consultation button here opens the platform's own booking calendar.</p>
+  </figcaption>
+</figure>
+
+<h2 class="pair">The draft page preview — a questions section set to "Live"</h2>
+
+<figure>
+  <img src="03-coach-preview-live-faq-blocked.png" alt="The coach's draft preview with a warning at the top and an empty questions section">
+  <figcaption>
+    <h3>3 · A coach's page can no longer show the platform's questions</h3>
+    <p><span class="route">/preview/&lt;slug&gt;</span>, the full-screen draft preview, signed in as the dev operator
+      with Trailhead chosen. The warning at the top is the same check that runs when the page is published. It reads,
+      word for word: "Section "questions" uses live FAQs. Live FAQs are not available for this business, so the
+      section would show nothing. Switch it to your own FAQs (Inline)." The questions section shows only its
+      heading. The script checked that no question from the platform's list is on the page.</p>
+  </figcaption>
+</figure>
+
+<figure>
+  <img src="04-platform-preview-live-faq-renders.png" alt="The platform's draft preview listing its live questions">
+  <figcaption>
+    <h3>4 · The same section on the platform's own page still lists its questions</h3>
+    <p>The same draft, word for word, owned by "Primary". There is no warning at the top, and the section lists 6
+      of the platform's published questions, starting with "What is DJP Athlete?" and "Who is Darren J Paul?".
+      Those are exactly the words a coach's page must not show as its own.</p>
+  </figcaption>
+</figure>
+
+<div class="note">
+  <h2>How to retake it, and the proof the drafts are gone</h2>
+  <pre>npx next dev --port 3064 &gt; &lt;scratch&gt;/g35-dev.log 2&gt;&amp;1 &amp;
+APP=http://localhost:3064 node scripts/capture-g35-untenanted-screenshots.mjs
+# ONLY=preview or ONLY=chat retakes one pair</pre>
+  <p>The chat allows five new conversations an hour from one address, and every local run counts as one address.
+    A full take uses two. Run against the dev database after the take:</p>
+  <pre>select count(*) from funnels where slug like 'g35-live-faq-%';   -- 0</pre>
+</div>
+
+</div>

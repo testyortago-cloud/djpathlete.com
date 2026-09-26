@@ -5,12 +5,26 @@
 
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
 import { getSupabase } from "../lib/supabase.js"
+import { notifyBusinessOwners } from "../lib/notify-business-owners.js"
 import type { Action } from "./decision-schema.js"
 import type { SeoSignalsSummary } from "./signals.js"
 
 export interface AgentContext {
   memoId: string
   userId: string
+  /**
+   * The business the job was enqueued for: `input.businessId`, stamped by the
+   * enqueue route since G35 (the platform's own, by construction — every table
+   * this agent reads and writes has no business_id). Only flag_for_human reads
+   * it, to find whose owners to bell.
+   *
+   * Nullable, never optional, and never defaulted: a job enqueued by a route
+   * older than G35 carries none, and its flag is then skipped with a reason
+   * rather than sent to a guessed business. An optional tenant is how
+   * getConversation ended up with `if (businessId)` and a caller that never
+   * passed one; a required-but-nullable one makes every caller say which.
+   */
+  businessId: string | null
 }
 
 export interface ExecutionResult {
@@ -128,40 +142,34 @@ export async function executeFlagForHuman(
   args: { issue: string; urgency: "low" | "medium" | "high"; context: string },
   ctx: AgentContext,
 ): Promise<ExecutionResult> {
-  const supabase = getSupabase()
-
-  // Resolve admin user via role lookup. Solo-dev project — one admin row.
-  const { data: admins, error: adminErr } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("role", "admin")
-    .limit(1)
-  if (adminErr) {
-    return { executed: false, execution_target_id: null, error: adminErr.message }
-  }
-  const adminId = (admins as Array<{ id: string }> | null)?.[0]?.id
-  if (!adminId) {
-    return { executed: false, execution_target_id: null, error: "no admin user found" }
+  // Fail closed (G35). No business on the job means no one to address the
+  // flag to; it is skipped with a reason seo-agent.ts logs, never defaulted.
+  // Checked before the client is even built, so a skipped flag touches nothing.
+  if (!ctx.businessId) {
+    return {
+      executed: false,
+      execution_target_id: null,
+      error: "job carries no businessId (enqueued before G35?); flag not sent",
+    }
   }
 
-  const { data, error } = await supabase
-    .from("notifications")
-    .insert({
-      user_id: adminId,
-      // Map urgency → notifications.type (constrained to info/success/warning/error).
-      // 'high' → warning (most-attention category), 'medium'/'low' → info.
-      type: args.urgency === "high" ? "warning" : "info",
-      title: `SEO Agent: ${args.issue}`,
-      message: args.context,
-      link: "/admin/seo-agent/memos",
-      is_read: false,
-    })
-    .select("id")
-    .single()
-  if (error || !data) {
-    return { executed: false, execution_target_id: null, error: error?.message ?? "notification insert failed" }
+  // The owners of the job's business, one bell row each. This used to read
+  // `profiles` for "the first admin" — a table that does not exist, so every
+  // flag died on PGRST205 (see notifyBusinessOwners for the whole story).
+  const outcome = await notifyBusinessOwners(getSupabase(), ctx.businessId, {
+    // Map urgency → notifications.type (constrained to info/success/warning/error).
+    // 'high' → warning (most-attention category), 'medium'/'low' → info.
+    type: args.urgency === "high" ? "warning" : "info",
+    title: `SEO Agent: ${args.issue}`,
+    message: args.context,
+    link: "/admin/seo-agent/memos",
+  })
+  if (!outcome.ok) {
+    return { executed: false, execution_target_id: null, error: outcome.error }
   }
-  return { executed: true, execution_target_id: (data as { id: string }).id }
+  // ONE id — the first owner's row — because the outcome tracker resolves
+  // this by reading a single notification by id 14 days later.
+  return { executed: true, execution_target_id: outcome.notificationId }
 }
 
 // ─── Dispatcher ────────────────────────────────────────────────────────────

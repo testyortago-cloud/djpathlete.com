@@ -219,3 +219,34 @@ describe("PATCH /api/admin/quizzes/[id]", () => {
     expect((await res.json()).gate.ok).toBe(false)
   })
 })
+
+/** One argument is the pre-G35 id-only read and answers for anyone; see quiz-progress.test.ts. */
+function ownedBy(owner: string, def: QuizDefinition) {
+  return async (...args: unknown[]) => (args.length < 2 || args[0] === owner ? def : null)
+}
+
+describe("PATCH /api/admin/quizzes/[id] — read in the caller's own business (G35)", () => {
+  it("reads the quiz under the admin tenant, before AND after the save", async () => {
+    // MUTANT: `getQuizDefinition(id)` at either read. The first now refuses
+    // another business's quiz. The second is the one the gate runs on.
+    await patch({ quiz: { name: "Renamed" } })
+    expect(getQuizDefinition.mock.calls).toEqual([
+      [BUSINESS_ID, QUIZ_ID],
+      [BUSINESS_ID, QUIZ_ID],
+    ])
+  })
+
+  it("404s another business's quiz before anything is written", async () => {
+    getQuizDefinition.mockImplementation(ownedBy("another-business", healthy()))
+    const res = await patch({ quiz: { name: "Renamed" } })
+    expect(res.status).toBe(404)
+    expect(saveQuizDefinition).not.toHaveBeenCalled()
+  })
+
+  it("saves the caller's own quiz under the same fake — the presence control", async () => {
+    getQuizDefinition.mockImplementation(ownedBy(BUSINESS_ID, healthy()))
+    const res = await patch({ quiz: { name: "Renamed" } })
+    expect(res.status).toBe(200)
+    expect(saveQuizDefinition).toHaveBeenCalled()
+  })
+})

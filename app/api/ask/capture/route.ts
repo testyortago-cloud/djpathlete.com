@@ -76,6 +76,7 @@ import { isSuppressed, recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { recordAudit } from "@/lib/audit/record"
 import { rateLimit } from "@/lib/shop/rate-limit"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 import { askCaptureSchema } from "@/lib/validators/chat"
 import {
   CHAT_ASSISTANT_FLAG,
@@ -231,13 +232,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: COPY.failed }, { status: 500 })
   }
 
-  // 5. The conversation. A FAILED READ IS NOT AN ABSENT ROW: `getConversation`
-  //    throws on a read error and returns null only for "no such row", so the
-  //    two answers stay apart. Reporting an outage as "that conversation has
-  //    expired" would tell the visitor to start again into the same outage.
+  // 5. The conversation, READ UNDER THE HOST'S TENANT (G35). Until G35 it was
+  //    read by id alone, so a conversation id from another business's site
+  //    filed a contact, and consent rows, under that business from this one's
+  //    host. The Host is resolved HERE, after the limits, so a refused request
+  //    costs no lookup. Another business's conversation answers the same 404
+  //    as one that does not exist. The `conversation.business_id` every write
+  //    below files under is therefore the Host's by construction.
+  //
+  //    A FAILED READ IS NOT AN ABSENT ROW: `getConversation` throws on a read
+  //    error and returns null only for "no such row", so the two answers stay
+  //    apart. Reporting an outage as "that conversation has expired" would
+  //    tell the visitor to start again into the same outage.
   let conversation
   try {
-    conversation = await getConversation(conversationId)
+    const hostBusinessId = await resolvePublicTenant()
+    conversation = await getConversation(conversationId, hostBusinessId)
   } catch (err) {
     const e = err as { message?: unknown } | null | undefined
     console.error(`[ask/capture] could not read conversation ${conversationId}`, {

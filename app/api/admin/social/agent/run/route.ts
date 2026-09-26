@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createAiJob } from "@/lib/ai-jobs"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -26,7 +27,15 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const input: Record<string, unknown> = { platform }
+  // businessId (G35): whose owners get the agent's "no eligible topic" alert.
+  // The PLATFORM's, not the business this admin has selected, although this
+  // route has a session and could resolve one: every table the social agent
+  // reads and writes (blog_posts, strategy_briefs, social_posts,
+  // platform_connections, social_agent_memos) has no business_id, so the run
+  // is about darrenjpaul.com's blog whichever business is selected. Stamping
+  // the selected one would alert a coach's owners about the platform's posts.
+  // lib/tenancy/platform.ts lists this route under CORRECT BY CONSTRUCTION.
+  const input: Record<string, unknown> = { platform, businessId: platformBusinessId() }
   if (body?.blogPostId) input.blogPostId = body.blogPostId
 
   const { jobId, status } = await createAiJob({

@@ -16,6 +16,28 @@ import { QuizIsland } from "./QuizIsland"
 
 /** What an island needs to know about the page it is standing on. */
 export interface FunnelRenderContext {
+  /**
+   * The business this page belongs to, as the ROUTE resolved it. On `/go` that
+   * is the Host's tenant (lib/tenancy/public.ts). On `/preview` and
+   * `/funnel-preview` it is the admin tenant (lib/tenancy/resolve.ts).
+   * REQUIRED, so a route that forgets it is a compile error rather than an
+   * island that quietly reads someone else's rows.
+   *
+   * An island reads its OWN rows under this, never under
+   * `resolvePublicTenant()`. On the two preview routes the Host is the admin
+   * screen's (the platform's), not the funnel's, so a Host read would make
+   * preview and `/go` disagree about the same document. Added by G35 for the
+   * quiz island (see QuizIsland.tsx); the event island reads its event under
+   * it too (G35 review, F4; see EventIsland.tsx).
+   *
+   * Also read by the live FAQ and testimonial islands (G35 §B2) — but for a
+   * different question. They don't fetch UNDER this business; `faqs` and
+   * `testimonials` have no `business_id` column at all, so there is nothing
+   * to scope. They compare it against `platformBusinessId()` to decide
+   * whether this page may show the platform's rows at all, and render
+   * nothing when it isn't. See FaqIsland.tsx and TestimonialsIsland.tsx.
+   */
+  businessId: string
   funnelId: string
   funnelSlug: string
   stepId: string
@@ -61,24 +83,20 @@ export interface FunnelRenderContext {
 
 type Props = Record<string, unknown>
 
-export function renderIsland(
-  name: IslandName,
-  props: Props,
-  context: FunnelRenderContext,
-): ReactNode {
+export function renderIsland(name: IslandName, props: Props, context: FunnelRenderContext): ReactNode {
   switch (name) {
     case "form":
       return <FormIsland props={props} context={context} />
     case "checkout":
       return <CheckoutIsland props={props} />
     case "event":
-      return <EventIsland props={props} />
+      return <EventIsland props={props} context={context} />
     case "booking":
       return <BookingIsland props={props} />
     case "testimonials":
-      return <TestimonialsIsland props={props} />
+      return <TestimonialsIsland props={props} context={context} />
     case "faq":
-      return <FaqIsland props={props} />
+      return <FaqIsland props={props} context={context} />
     case "quiz":
       return <QuizIsland props={props} context={context} />
     default: {

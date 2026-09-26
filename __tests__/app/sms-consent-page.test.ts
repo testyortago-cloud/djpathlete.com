@@ -603,4 +603,34 @@ describe("readSmsConsentState — what the page renders is what the write decide
     const token = signSmsConsentToken(CONTACT, BUSINESS)
     expect(await readSmsConsentState(token)).toMatchObject({ state: "ask" })
   })
+
+  // G35. `contact_consents` has no composite key tying a row's business to its
+  // contact's, so a grant for this contact id can exist under ANOTHER
+  // business. It is not an answer to this business's ask: the page must still
+  // ask, and a press must still file this business's own row.
+  // MUTANT: readSmsConsentState calls hasConsent without the token's business.
+  it("asks again when the only grant on file belongs to another business", async () => {
+    store.consents = [
+      {
+        business_id: "99999999-9999-4999-8999-999999999999",
+        contact_id: CONTACT,
+        channel: "sms",
+        granted: true,
+        occurred_at: "2026-01-01T00:00:00Z",
+      },
+    ]
+    const token = signSmsConsentToken(CONTACT, BUSINESS)
+    expect(await readSmsConsentState(token)).toMatchObject({ state: "ask" })
+
+    // Presence control: the same grant under the token's own business is
+    // "already said yes".
+    store.consents.push({
+      business_id: BUSINESS,
+      contact_id: CONTACT,
+      channel: "sms",
+      granted: true,
+      occurred_at: "2026-01-02T00:00:00Z",
+    })
+    expect(await readSmsConsentState(token)).toMatchObject({ state: "already_consented" })
+  })
 })

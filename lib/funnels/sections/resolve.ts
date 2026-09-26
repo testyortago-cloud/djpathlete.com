@@ -5,8 +5,8 @@
 // on the server, against the real catalogue. It is the mechanism that makes a
 // hallucinated id structurally impossible rather than merely unlikely.
 //
-// WHY THIS MATTERS MORE THAN IT LOOKS. `EventIsland.tsx:38` returns `null`
-// for an unknown event id. So a PLAUSIBLE hallucinated UUID passes Zod, passes
+// WHY THIS MATTERS MORE THAN IT LOOKS. `EventIsland` returns `null` for an
+// unknown event id (its `!event` check). So a PLAUSIBLE hallucinated UUID passes Zod, passes
 // the compiler, and renders as nothing at all — silent absence, the worst
 // possible failure for an owner who cannot read the DOM. Names can't be
 // hallucinated into existence the same way: a name either matches a row this
@@ -117,6 +117,7 @@ import {
   formSectionPropsSchema,
   quizSectionPropsSchema,
   sectionDocSchema,
+  testimonialPropsSchema,
   type CtaTarget,
   type CtaWithLabel,
   type QuizSectionProps,
@@ -143,6 +144,9 @@ import { quizGate } from "@/lib/quizzes/gate"
 // The FAQ page keys that actually have rows. Not a CTA and not a uuid, but the
 // same failure class — see `UnknownFaqKey` below.
 import { getFaqCountsByPage } from "@/lib/db/faqs"
+// Whether this business may use the platform's live FAQ and testimonial feeds
+// at all — see `Catalogues.liveFeedsAvailable` (G35).
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 // ---------------------------------------------------------------------------
 // The catalogue
@@ -236,6 +240,25 @@ export interface Catalogues {
    * this field closes.
    */
   faqPageKeys: string[]
+  /**
+   * Whether this business may show the platform's LIVE FAQ list and LIVE
+   * testimonial feed (G35). True for the platform business only.
+   *
+   * `faqs` and `testimonials` have no `business_id` column: every row is the
+   * platform's own. The live islands render nothing on any other business's
+   * page (keyed on the route's tenant), so for that business `faqPageKeys`
+   * above is `[]` — the table is not even read — and `resolveDoc` reports a
+   * live FAQ or live testimonial section as an `UnavailableLiveFeed` rather
+   * than letting it publish as an empty band.
+   *
+   * A FLAG, NOT "`faqPageKeys` is empty". An empty key list already means
+   * something else — the platform has no FAQ rows yet — and the two need
+   * different words in front of the owner. Testimonials have no key list at
+   * all, so without a flag their check would have nothing to read.
+   *
+   * REQUIRED, never optional, for the reason `faqPageKeys` is.
+   */
+  liveFeedsAvailable: boolean
   /**
    * Every quiz, with enough to answer all three publish questions without a
    * second read: does it exist, is it active, and can it score?
@@ -426,6 +449,30 @@ function unionCatalogues(recognition: Catalogue, offer: Catalogue): Catalogue {
 }
 
 /**
+ * Whether `businessId` may use the platform's live FAQ list and live
+ * testimonial feed — `Catalogues.liveFeedsAvailable`'s answer, without the
+ * reads.
+ *
+ * THE ONE PLACE THIS FILE ASKS WHO THE PLATFORM IS (G35). The business is
+ * already in hand; the seam is consulted only to decide whether it is the
+ * business the `faqs` and `testimonials` rows describe. Not a fallback: a
+ * business that is not the platform gets no live feeds, never the platform's.
+ * lib/tenancy/platform.ts lists this file for that reason.
+ *
+ * Exported, and pure, because the draft preview needs the answer even when
+ * `loadCatalogues` throws: its canvas note must still tell a coach the truth
+ * on the render that fails soft. The canvas and the publish gate ask this one
+ * function, so they cannot disagree about a business. The build route asks
+ * the same question inline (`loadPageContext`), as its own entry on
+ * lib/tenancy/platform.ts's NARROWER VARIANT shelf says; the comparison is
+ * one line, and routing it through here would take that route off the seam's
+ * caller list.
+ */
+export function liveFeedsAvailableFor(businessId: string): boolean {
+  return businessId === platformBusinessId()
+}
+
+/**
  * Loads BOTH sets. Deliberately trivial — every ounce of logic lives in
  * `resolveDoc`/`toCatalogue` so it can be tested without mocks. The only thing
  * this function decides is WHICH FETCHER FEEDS WHICH SET, and that decision is
@@ -486,10 +533,12 @@ function unionCatalogues(recognition: Catalogue, offer: Catalogue): Catalogue {
  * unhandled 500.
  */
 export async function loadCatalogues(businessId: string): Promise<Catalogues> {
+  const liveFeedsAvailable = liveFeedsAvailableFor(businessId)
   const [allPrograms, offerPrograms, allPacks, offerPacks, allEvents, offerEvents, faqCounts] = await Promise.all([
     // `programs` has no `business_id` column at all -- unconverted, not
     // frozen. There is no per-tenant predicate to add without inventing a
-    // column this table does not have.
+    // column this table does not have. UNTENANTED BY SCHEMA (G31), with the
+    // packs pair below: on the shelf in lib/tenancy/platform.ts.
     listAllPrograms(),
     listActivePrograms(),
     // `session_pack_products` has no `business_id` column either, for the
@@ -511,7 +560,12 @@ export async function loadCatalogues(businessId: string): Promise<Catalogues> {
     // itself. What must never happen is the model inventing a key.
     // `faqs` has no `business_id` column either -- same as programs and
     // session packs above, not this seam's to invent.
-    getFaqCountsByPage(),
+    //
+    // NOT READ AT ALL for a business that is not the platform (G35): every
+    // row is the platform's, the live FAQ island shows them to nobody else,
+    // and a key list offered to that business would only let the builder
+    // write sections the page can never fill. See `liveFeedsAvailable`.
+    liveFeedsAvailable ? getFaqCountsByPage() : Promise.resolve<Record<string, number>>({}),
   ])
 
   // The completeness contract for recognition, checked before either set is
@@ -537,7 +591,9 @@ export async function loadCatalogues(businessId: string): Promise<Catalogues> {
   const gated = await Promise.all(
     quizRows.map(async (row): Promise<QuizCatalogueEntry> => {
       if (row.status !== "active") return { id: row.id, status: row.status, gateBlocker: null }
-      const definition = await getQuizDefinition(row.id)
+      // Under the asking tenant (G35). The row came from `listQuizzes`, which
+      // is already scoped, so this agrees by construction.
+      const definition = await getQuizDefinition(businessId, row.id)
       // A row that vanished between the list and this read is reported as a
       // quiz that cannot score, not as one that passes. Failing closed here
       // costs a blocked publish; failing open ships a page that collects
@@ -562,6 +618,7 @@ export async function loadCatalogues(businessId: string): Promise<Catalogues> {
     // Sorted so the blocker message and the prompt's Block B list the keys in
     // the same order the owner sees them in /admin/marketing/faqs.
     faqPageKeys: Object.keys(faqCounts).sort(),
+    liveFeedsAvailable,
     quizzes,
   }
 }
@@ -720,6 +777,36 @@ export interface UnknownFaqKey {
 }
 
 /**
+ * A `faq` or `testimonial` section set to `source: "live"` on a page whose
+ * business is not the platform (G35).
+ *
+ * `faqs` and `testimonials` have no `business_id` column, so every row either
+ * live feed can show is the PLATFORM's own. The live islands therefore render
+ * nothing on any other business's page (FaqIsland.tsx / TestimonialsIsland.tsx,
+ * keyed on the route's tenant) — and a section that renders nothing is exactly
+ * the silent absence `UnknownFaqKey` above exists to stop: a heading over an
+ * empty band on a page the owner has already approved.
+ *
+ * A SEPARATE ENTRY, NOT AN `UnknownFaqKey`, and the difference is what the
+ * owner is told. That type's wording is "no FAQs are filed under X — no page
+ * has FAQs yet", which sends the owner to add rows that would STILL not
+ * appear: the rows are not missing, they belong to someone else.
+ *
+ * IT BLOCKS, for `UnknownFaqKey`'s reason: the owner cannot see the damage.
+ * The island guarantees no visitor sees the platform's rows; this stops a new
+ * page from publishing with a band that will be empty.
+ *
+ * NOT REWRITTEN. Converting the section to inline FAQs or authored quotes
+ * needs content only the owner has.
+ */
+export interface UnavailableLiveFeed {
+  /** The section carrying it. */
+  sectionId: string
+  /** Which feed — the section's own kind. */
+  kind: "faq" | "testimonial"
+}
+
+/**
  * A form whose `successMode` is "checkout" and whose camp cannot be paid for.
  *
  * `reason` exists so the owner is told which of three different things to fix.
@@ -772,6 +859,11 @@ export interface ResolveResult {
   brokenStepLinks: BrokenStepLink[]
   /** NON-EMPTY MEANS PUBLISH IS BLOCKED. See `publishGate()`. */
   unknownFaqKeys: UnknownFaqKey[]
+  /**
+   * NON-EMPTY MEANS PUBLISH IS BLOCKED. Live FAQ and live testimonial sections
+   * on a business that cannot use the platform's feeds. See `UnavailableLiveFeed`.
+   */
+  unavailableLiveFeeds: UnavailableLiveFeed[]
   /**
    * NON-EMPTY MEANS PUBLISH IS BLOCKED. A page that asks twelve questions and
    * then cannot score them is worse than a page that never asked.
@@ -1136,6 +1228,7 @@ export function resolveDoc(doc: SectionDoc, catalogues: Catalogues, steps: Funne
   const danglingAnchors: DanglingAnchor[] = []
   const brokenStepLinks: BrokenStepLink[] = []
   const unknownFaqKeys: UnknownFaqKey[] = []
+  const unavailableLiveFeeds: UnavailableLiveFeed[] = []
   const unresolvedQuizzes: UnresolvedQuiz[] = []
   const unsellableCheckouts: UnsellableCheckout[] = []
   const soldOutCheckouts: SoldOutCheckout[] = []
@@ -1164,7 +1257,14 @@ export function resolveDoc(doc: SectionDoc, catalogues: Catalogues, steps: Funne
     // function, so this parse cannot fail — it is a narrowing, not a check.
     if (section.kind === "faq") {
       const faqProps = faqPropsSchema.parse(section.props)
-      if (faqProps.source === "live" && !catalogues.faqPageKeys.includes(faqProps.pageKey)) {
+      // CHECKED FIRST, AND INSTEAD OF the key check, not as well as it (G35).
+      // On a business without the platform's feeds `faqPageKeys` is `[]`, so
+      // the key check would report every live section as an unknown key — and
+      // tell the owner "no page has FAQs yet", which sends them off to add rows
+      // that would still never appear. One entry, with the true reason.
+      if (faqProps.source === "live" && !catalogues.liveFeedsAvailable) {
+        unavailableLiveFeeds.push({ sectionId: section.id, kind: "faq" })
+      } else if (faqProps.source === "live" && !catalogues.faqPageKeys.includes(faqProps.pageKey)) {
         const pageKey = faqProps.pageKey
         unknownFaqKeys.push({
           sectionId: section.id,
@@ -1175,6 +1275,21 @@ export function resolveDoc(doc: SectionDoc, catalogues: Catalogues, steps: Funne
           // caller.
           candidates: catalogues.faqPageKeys,
         })
+      }
+    }
+
+    // LIVE TESTIMONIALS, the FAQ branch's sibling (G35). Until now nothing here
+    // looked at a testimonial section at all: its live feed takes no key, so
+    // nothing could fail to resolve. Now something can — the feed itself, on a
+    // business that is not the platform. `source: "quote"` is the owner's own
+    // authored content and is never reported.
+    //
+    // Narrowed through the registry's own schema, never a cast — same rule the
+    // FAQ branch follows.
+    if (section.kind === "testimonial") {
+      const testimonialProps = testimonialPropsSchema.parse(section.props)
+      if (testimonialProps.source === "live" && !catalogues.liveFeedsAvailable) {
+        unavailableLiveFeeds.push({ sectionId: section.id, kind: "testimonial" })
       }
     }
 
@@ -1337,6 +1452,7 @@ export function resolveDoc(doc: SectionDoc, catalogues: Catalogues, steps: Funne
     danglingAnchors,
     brokenStepLinks,
     unknownFaqKeys,
+    unavailableLiveFeeds,
     unresolvedQuizzes,
     unsellableCheckouts,
     soldOutCheckouts,
@@ -1379,6 +1495,22 @@ function describeUnknownFaqKey(entry: UnknownFaqKey): string {
   return (
     `Section "${entry.sectionId}" (${entry.field}): no FAQs are filed under ` +
     `"${entry.pageKey}", so that section would show nothing at all — ${known}.`
+  )
+}
+
+/**
+ * Plain words, with the fix in them (G35). Written to Controller ruling R4:
+ * no platform brand literal in coach-facing copy — the owner picked "Live"
+ * under "Content source" in the builder and has never seen a table name or
+ * the platform's own name, and naming another tenant's business here would be
+ * exactly the cross-tenant leak this check exists to prevent.
+ */
+function describeUnavailableLiveFeed(entry: UnavailableLiveFeed): string {
+  const what = entry.kind === "faq" ? "FAQs" : "testimonials"
+  const fix = entry.kind === "faq" ? "FAQs (Inline)" : "quotes"
+  return (
+    `Section "${entry.sectionId}" uses live ${what}. Live ${what} are not available for this business, ` +
+    `so the section would show nothing. Switch it to your own ${fix}.`
   )
 }
 
@@ -1464,6 +1596,10 @@ export function publishGate(result: ResolveResult): PublishGate {
   const blockers = [
     ...result.unresolved.map(describeUnresolved),
     ...result.unknownFaqKeys.map(describeUnknownFaqKey),
+    // BLOCKS, beside the unknown key it would otherwise be mistaken for (G35):
+    // a live feed this business cannot use renders as nothing, exactly like a
+    // key with no rows.
+    ...result.unavailableLiveFeeds.map(describeUnavailableLiveFeed),
     // BLOCKS. A page that collects twelve answers it cannot score fails the
     // visitor at the last step, after they have spent the three minutes.
     ...result.unresolvedQuizzes.map(describeUnresolvedQuiz),
