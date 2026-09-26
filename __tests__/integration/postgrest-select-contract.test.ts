@@ -15,8 +15,14 @@
 // refund lookup had it in both, and its fake stamped the missing column on
 // every row.
 //
-// WHAT IT DOES NOT COVER: rpc() calls, filters (.eq/.in on a missing column),
-// and insert/update payload columns. What it cannot resolve statically is on
+// FILTERS TOO, SINCE G41. The strategy critic filtered marketing_attribution
+// on a column that never existed, under `select("*")`; every filter column in
+// a select's chain is now probed as `is.null`, which PostgREST refuses with
+// 42703 for a missing column.
+//
+// WHAT IT DOES NOT COVER: rpc() calls, `.or()`/`.match()` expressions, a
+// filter applied to a builder in a later statement, and insert/update payload
+// columns. What it cannot resolve statically is on
 // KNOWN_UNRESOLVED below, so a new one fails until someone looks at it.
 //
 // RUN IT before merging to main, and after applying a migration to the clone.
@@ -44,8 +50,9 @@ const CLONE_HOST = "anjvztjiokcgiyhobknq.supabase.co"
 const DEPLOYED_DIRS = ["lib", "app", "components", "functions/src", "render-worker/src"]
 
 /**
- * What the extractor cannot resolve without guessing — today, only `.order()`
- * calls on a builder that went through a helper or a ternary first. Matched on
+ * What the extractor cannot resolve without guessing — today, `.order()` calls
+ * on a builder that went through a helper or a ternary first, and (G41) filter
+ * columns passed in as a variable. Matched on
  * file, reason and how many times it occurs, never on line, so unrelated edits
  * do not churn this list and a new site with the same shape still fails.
  * `checkedAs` is the table and order column(s) a human read off the code, and
@@ -55,7 +62,8 @@ const KNOWN_UNRESOLVED: {
   file: string
   reason: string
   count: number
-  checkedAs: { table: string; orders: string[] }
+  /** `filters`: G41, for a filter column the extractor cannot resolve. */
+  checkedAs: { table: string; orders: string[]; filters?: string[] }
 }[] = [
   {
     file: "lib/db/bookkeeping.ts",
@@ -86,6 +94,22 @@ const KNOWN_UNRESOLVED: {
     reason: "order receiver is not a from() chain: applyFilters(base, businessId, filters)",
     count: 1,
     checkedAs: { table: "funnel_submissions", orders: ["created_at"] },
+  },
+  // G41: filter columns passed in as a variable. Each lists every value its
+  // type allows, and the probe checks them all live.
+  {
+    file: "lib/bookings/ingest.ts",
+    reason: "filter column is not a constant: key.column",
+    count: 2,
+    // `BookingKeyColumn` = "ghl_appointment_id" | "calendly_event_uri".
+    checkedAs: { table: "bookings", orders: [], filters: ["ghl_appointment_id", "calendly_event_uri"] },
+  },
+  {
+    file: "lib/db/contacts.ts",
+    reason: "filter column is not a constant: column",
+    count: 1,
+    // findContactWithBusinessByIdentifiers' `pick(column: "user_id" | "email")`.
+    checkedAs: { table: "contacts", orders: ["created_at"], filters: ["user_id", "email"] },
   },
 ]
 
@@ -151,10 +175,16 @@ async function probe(
   table: string,
   select: string,
   orders: OrderColumn[] = [],
+  filters: string[] = [],
 ): Promise<ProbeResult> {
   for (let attempt = 0; ; attempt++) {
     const base = schema ? client.schema(schema) : client
     let query = base.from(table).select(select)
+    // G41. `is.null` is accepted for a column of any type, an embedded
+    // column (`embed.col`, when the select embeds it) and a JSON path, and
+    // refused with 42703 when the column does not exist — which is what the
+    // critic's `.gte("occurred_at", ...)` would have answered.
+    for (const f of filters) query = query.filter(f, "is", null)
     for (const o of orders)
       query = query.order(o.column, o.referencedTable ? { referencedTable: o.referencedTable } : {})
     const { error } = await query.limit(0)
@@ -173,10 +203,10 @@ async function probe(
   }
 }
 
-function key(c: Pick<SelectCall, "schema" | "table" | "select" | "orders">): string {
+function key(c: Pick<SelectCall, "schema" | "table" | "select" | "orders" | "filters">): string {
   // supabase-js strips whitespace outside quotes before sending, so two
   // selects that differ only in spacing are the same request.
-  return `${c.schema ?? ""}|${c.table}|${normalise(c.select)}|${JSON.stringify(c.orders)}`
+  return `${c.schema ?? ""}|${c.table}|${normalise(c.select)}|${JSON.stringify(c.orders)}|${JSON.stringify(c.filters)}`
 }
 
 async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -231,6 +261,15 @@ describe("PostgREST select contract (dev clone, live)", () => {
       expect(r?.code).toBe("42703")
     })
 
+    it("a filter column that does not exist is refused (42703) — the strategy critic's read (G41)", async () => {
+      const r = await probe(client, null, "marketing_attribution", "*", [], ["occurred_at"])
+      expect(r?.code).toBe("42703")
+    })
+
+    it("a filter column that DOES exist answers without an error (the probe is not refusing everything)", async () => {
+      expect(await probe(client, null, "marketing_attribution", "*", [], ["first_seen_at"])).toBeNull()
+    })
+
     it("a table that does not exist is refused (PGRST205)", async () => {
       const r = await probe(client, null, "not_a_table_control", "id")
       expect(r?.code).toBe("PGRST205")
@@ -253,6 +292,15 @@ describe("PostgREST select contract (dev clone, live)", () => {
       const r = await probe(client, null, table, "business_id")
       expect(r?.code).toBe("42703")
     })
+  })
+
+  it("collected the strategy critic's attribution read WITH its filter column (G41)", () => {
+    // functions/src is deployed, so the critic's read must be probed, and
+    // probed with its filter: a select-only probe passed while it was broken.
+    const critic = collected.calls.find(
+      (c) => c.file === "functions/src/strategy/critic-signals.ts" && c.table === "marketing_attribution",
+    )
+    expect(critic?.filters).toContain("first_seen_at")
   })
 
   it("collected the leads-inbox select that G31 broke", () => {
@@ -291,7 +339,14 @@ describe("PostgREST select contract (dev clone, live)", () => {
   })
 
   describe("probing every collected select", () => {
-    type Probed = { schema: string | null; table: string; select: string; orders: OrderColumn[]; sites: string[] }
+    type Probed = {
+      schema: string | null
+      table: string
+      select: string
+      orders: OrderColumn[]
+      filters: string[]
+      sites: string[]
+    }
     let refused: (Probed & { code: string; message: string; files: string[] })[] = []
     let infra: string[] = []
     let probed = 0
@@ -312,6 +367,7 @@ describe("PostgREST select contract (dev clone, live)", () => {
             table: k.checkedAs.table,
             select: "*",
             orders: k.checkedAs.orders.map((column) => ({ column, referencedTable: null })),
+            filters: k.checkedAs.filters ?? [],
           },
           `${k.file} (KNOWN_UNRESOLVED, checked by hand)`,
           k.file,
@@ -319,7 +375,9 @@ describe("PostgREST select contract (dev clone, live)", () => {
       }
       const unique = [...groups.values()]
       probed = unique.length
-      const results = await pool(unique, CONCURRENCY, (g) => probe(client, g.schema, g.table, g.select, g.orders))
+      const results = await pool(unique, CONCURRENCY, (g) =>
+        probe(client, g.schema, g.table, g.select, g.orders, g.filters),
+      )
       unique.forEach((g, i) => {
         const r = results[i]
         if (r?.kind === "refused") refused.push({ ...g, code: r.code, message: r.message })
@@ -346,7 +404,8 @@ describe("PostgREST select contract (dev clone, live)", () => {
             const orders = r.orders.length
               ? ` order ${r.orders.map((o) => (o.referencedTable ? `${o.referencedTable}.` : "") + o.column).join(", ")}`
               : ""
-            return `${r.code} at ${site} — ${table} select "${r.select.replace(/\s+/g, " ")}"${orders} — ${r.message}`
+            const filters = r.filters.length ? ` filter ${r.filters.join(", ")}` : ""
+            return `${r.code} at ${site} — ${table} select "${r.select.replace(/\s+/g, " ")}"${orders}${filters} — ${r.message}`
           }),
       )
       expect(unknown, `${unknown.length} site(s) refused by the dev clone (${probed} distinct probes)`).toEqual([])

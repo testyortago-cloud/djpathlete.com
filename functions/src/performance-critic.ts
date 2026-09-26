@@ -32,7 +32,18 @@ export interface PerformanceCriticResult {
 
 export async function runPerformanceCritic(): Promise<PerformanceCriticResult> {
   const supabase = getSupabase()
-  const inputs = await gatherCriticInputs(supabase)
+  // G41. A read the critic depends on failing is an ERROR outcome, returned so
+  // the ai_jobs document records why, and NO signal row is written: a signal
+  // built on a failed read says "nothing happened", and the Chief Strategist
+  // reads the latest signal as fact.
+  let inputs: Awaited<ReturnType<typeof gatherCriticInputs>>
+  try {
+    inputs = await gatherCriticInputs(supabase)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    console.error("[performance-critic] could not gather inputs; no signal written:", reason)
+    return { outcome: "error", reasons: [reason] }
+  }
   const preflight = criticPreflight(inputs)
 
   if (!preflight.ok) {

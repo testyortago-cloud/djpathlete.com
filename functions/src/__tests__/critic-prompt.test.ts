@@ -13,14 +13,25 @@ describe("critic prompt", () => {
       seoMemos: [{ id: "s1" } as never],
       adsMemos: [],
       socialMemos: [{ id: "x1" } as never, { id: "x2" } as never],
-      attribution: { seo: { bookings: 3 } },
-      funnel: { visits: 100, signups: 12, bookings: 4, payments: 3 },
+      attribution: { newsletter: { sessions: 30, leads: 3 } },
+      funnel: { sessions: 100, leads: 12 },
       priorSignals: [],
       voiceFlags: [],
     })
     expect(msg).toContain("Week of: 2026-05-09")
     expect(msg).toContain("SEO memos: 1")
     expect(msg).toContain("Social memos: 2")
-    expect(msg).toContain("seo")
+    expect(msg).toContain("newsletter")
+  })
+
+  // G41. The attribution the critic receives is sessions and leads per
+  // first-touch channel. A prompt that still told the model to read bookings
+  // and revenue "via marketing_attribution" invites it to invent them.
+  it("says what the attribution measures and what it does not", () => {
+    expect(CRITIC_SYSTEM_PROMPT).not.toMatch(/bookings \+ revenue via marketing_attribution/i)
+    expect(CRITIC_SYSTEM_PROMPT).toMatch(/sessions/i)
+    expect(CRITIC_SYSTEM_PROMPT).toMatch(/leads/i)
+    expect(CRITIC_SYSTEM_PROMPT).toMatch(/does not measure bookings or revenue/i)
+    expect(CRITIC_SYSTEM_PROMPT).not.toMatch(/"bookings": <int>, "revenue": <num>/)
   })
 })

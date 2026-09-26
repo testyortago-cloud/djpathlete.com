@@ -4,13 +4,36 @@ const LOOKBACK_DAYS = 28
 const SIGNAL_LOOKBACK = 4
 const MIN_CHANNELS_WITH_MEMO = 2
 
+/**
+ * What the critic can honestly say about each first-touch channel.
+ *
+ * G41. This used to promise `bookings` and `revenue` per channel, read from
+ * `marketing_attribution` columns (`channel`, `event_type`, `occurred_at`,
+ * `revenue_cents`) that have never existed: not in 00101, which creates the
+ * table, nor in any later migration. PostgREST refused the read with 42703,
+ * the error was never looked at, and `data ?? []` turned it into "no
+ * attribution". The critic has never seen a single row.
+ *
+ * `marketing_attribution` is one row per visitor SESSION, stamped with how the
+ * visitor first arrived (click ids, UTM tags, referrer) and, once they became
+ * a known person, `claimed_at`. So what it can answer is how many sessions
+ * each channel brought, and how many of those became a lead. Bookings and
+ * revenue are not in it, and are left out rather than reported as zero.
+ */
+export interface ChannelAttribution {
+  sessions: number
+  leads: number
+}
+
 export interface CriticInputs {
   weekOf: string
   seoMemos: unknown[]
   adsMemos: unknown[]
   socialMemos: unknown[]
-  attribution: Record<string, { bookings: number; revenue?: number; sessions?: number }>
-  funnel: { visits: number; signups: number; bookings: number; payments: number }
+  /** Keyed by first-touch channel (see `channelOf`). */
+  attribution: Record<string, ChannelAttribution>
+  /** Every channel together: sessions in the window, and how many became a lead. */
+  funnel: { sessions: number; leads: number }
   priorSignals: unknown[]
   voiceFlags: unknown[]
 }
@@ -22,33 +45,57 @@ function isoWeekOf(d = new Date()): string {
   return monday.toISOString().slice(0, 10)
 }
 
-interface AttrRow {
-  channel: string | null
-  event_type: string | null
-  revenue_cents?: number | null
+/** The columns the attribution read names, all of which exist (00101, 00211). */
+const ATTRIBUTION_COLUMNS = "gclid, gbraid, wbraid, fbclid, utm_source, referrer, claimed_at"
+
+export interface AttributionRow {
+  gclid: string | null
+  gbraid: string | null
+  wbraid: string | null
+  fbclid: string | null
+  utm_source: string | null
+  referrer: string | null
+  claimed_at: string | null
 }
 
-function aggregateAttribution(rows: AttrRow[]) {
-  const out: CriticInputs["attribution"] = {}
-  for (const r of rows) {
-    const c = r.channel ?? "unknown"
-    if (!out[c]) out[c] = { bookings: 0, revenue: 0, sessions: 0 }
-    if (r.event_type === "booking") out[c].bookings += 1
-    if (r.event_type === "payment") out[c].revenue = (out[c].revenue ?? 0) + (r.revenue_cents ?? 0) / 100
-    if (r.event_type === "session") out[c].sessions = (out[c].sessions ?? 0) + 1
+/**
+ * The channel a session FIRST arrived through. A paid click id outranks a UTM
+ * tag, because an ad click carries both and the click id is the one the ad
+ * platform set; then the UTM source as tagged; then any referrer; then
+ * direct.
+ */
+export function channelOf(row: AttributionRow): string {
+  if (row.gclid || row.gbraid || row.wbraid) return "google_ads"
+  if (row.fbclid) return "meta_ads"
+  const source = row.utm_source?.trim().toLowerCase()
+  if (source) return source
+  if (row.referrer?.trim()) return "referral"
+  return "direct"
+}
+
+export function aggregateAttribution(rows: AttributionRow[]): Record<string, ChannelAttribution> {
+  const out: Record<string, ChannelAttribution> = {}
+  for (const row of rows) {
+    const channel = channelOf(row)
+    const entry = (out[channel] ??= { sessions: 0, leads: 0 })
+    entry.sessions += 1
+    if (row.claimed_at) entry.leads += 1
   }
   return out
 }
 
-function aggregateFunnel(rows: AttrRow[]) {
-  const f = { visits: 0, signups: 0, bookings: 0, payments: 0 }
-  for (const r of rows) {
-    if (r.event_type === "visit") f.visits += 1
-    else if (r.event_type === "signup") f.signups += 1
-    else if (r.event_type === "booking") f.bookings += 1
-    else if (r.event_type === "payment") f.payments += 1
-  }
-  return f
+export function aggregateFunnel(rows: AttributionRow[]): CriticInputs["funnel"] {
+  return { sessions: rows.length, leads: rows.filter((row) => row.claimed_at).length }
+}
+
+/**
+ * A read the critic depends on, or a thrown error that names it. G41: an error
+ * is not an empty list. Turned into one, a failed read reads to the model as
+ * "nothing happened this month", and the signal it writes says so.
+ */
+function rowsOf<T>(label: string, res: { data: unknown; error: { message: string } | null }): T[] {
+  if (res.error) throw new Error(`[critic-signals] could not read ${label}: ${res.error.message}`)
+  return (res.data as T[] | null) ?? []
 }
 
 export async function gatherCriticInputs(supabase: SupabaseClient): Promise<CriticInputs> {
@@ -57,20 +104,23 @@ export async function gatherCriticInputs(supabase: SupabaseClient): Promise<Crit
     supabase.from("seo_agent_memos").select("*").gte("created_at", cutoff).order("created_at", { ascending: false }),
     supabase.from("google_ads_agent_memos").select("*").gte("created_at", cutoff).order("created_at", { ascending: false }),
     supabase.from("social_agent_memos").select("*").gte("created_at", cutoff).order("created_at", { ascending: false }),
-    supabase.from("marketing_attribution").select("*").gte("occurred_at", cutoff),
+    // Sessions that ARRIVED in the window. No tenant predicate, because the
+    // table has no business_id (ledger G42, an owner decision): this counts
+    // every business's sessions, like the memo reads beside it.
+    supabase.from("marketing_attribution").select(ATTRIBUTION_COLUMNS).gte("first_seen_at", cutoff),
     supabase.from("cross_channel_signals").select("*").order("created_at", { ascending: false }).limit(SIGNAL_LOOKBACK),
     supabase.from("voice_drift_flags").select("*").gte("created_at", cutoff),
   ])
-  const attrRows = (attrRes.data as AttrRow[] | null) ?? []
+  const attrRows = rowsOf<AttributionRow>("marketing_attribution", attrRes)
   return {
     weekOf: isoWeekOf(),
-    seoMemos: (seoRes.data as unknown[]) ?? [],
-    adsMemos: (adsRes.data as unknown[]) ?? [],
-    socialMemos: (socialRes.data as unknown[]) ?? [],
+    seoMemos: rowsOf("seo_agent_memos", seoRes),
+    adsMemos: rowsOf("google_ads_agent_memos", adsRes),
+    socialMemos: rowsOf("social_agent_memos", socialRes),
     attribution: aggregateAttribution(attrRows),
     funnel: aggregateFunnel(attrRows),
-    priorSignals: (signalRes.data as unknown[]) ?? [],
-    voiceFlags: (voiceRes.data as unknown[]) ?? [],
+    priorSignals: rowsOf("cross_channel_signals", signalRes),
+    voiceFlags: rowsOf("voice_drift_flags", voiceRes),
   }
 }
 

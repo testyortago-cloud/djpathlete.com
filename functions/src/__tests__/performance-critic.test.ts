@@ -99,4 +99,41 @@ describe("runPerformanceCritic", () => {
     expect(result.outcome).toBe("ok")
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({ preflight_status: "ok" }))
   })
+
+  // G41. A failed read used to become an empty list, so the critic wrote a
+  // signal saying nothing happened, and the Chief Strategist read it as fact.
+  it("answers outcome 'error' with the reason, and writes NO signal, when an input cannot be read", async () => {
+    vi.mocked(callAgent).mockClear()
+    const insert = vi.fn().mockReturnThis()
+    const sb = {
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === "marketing_attribution") {
+          const chain: Record<string, unknown> = {
+            select: vi.fn(() => chain),
+            gte: vi.fn(() => chain),
+            then: (resolve: (v: { data: null; error: { message: string } }) => unknown) =>
+              resolve({ data: null, error: { message: 'column "first_seen_at" does not exist' } }),
+          }
+          return chain
+        }
+        if (table === "cross_channel_signals") {
+          return {
+            insert,
+            select: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+          }
+        }
+        return makeReadChain([{ id: `m-${table}` }])
+      }),
+    }
+    ;(getSupabase as unknown as ReturnType<typeof vi.fn>).mockReturnValue(sb)
+
+    const result = await runPerformanceCritic()
+
+    expect(result.outcome).toBe("error")
+    expect(result.reasons?.join(" ")).toMatch(/marketing_attribution/)
+    expect(insert).not.toHaveBeenCalled()
+    expect(callAgent).not.toHaveBeenCalled()
+  })
 })
