@@ -11,10 +11,20 @@
 // The blockers are LISTED, never a silent disable. A greyed-out button with no
 // reason is a support ticket.
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { quizGate } from "@/lib/quizzes/gate"
-import type { QuizDefinition, QuizOption, QuizQuestion } from "@/lib/quizzes/types"
+import { BUTTON_LABEL_MAX, BUTTON_LINK_RULE, isAllowedButtonLabel, isAllowedButtonLink } from "@/lib/quizzes/button-link"
+import type { QuizDefinition, QuizOption, QuizQuestion, QuizTier } from "@/lib/quizzes/types"
+
+/** A band's button text or link as it is stored: trimmed, and blank means null. */
+function blankToNull(value: string | null | undefined): string | null {
+  return value?.trim() ? value.trim() : null
+}
+
+function buttonsOf(tiers: QuizTier[]): Map<string, { label: string | null; href: string | null }> {
+  return new Map(tiers.map((t) => [t.id, { label: blankToNull(t.ctaLabel), href: blankToNull(t.ctaHref) }]))
+}
 
 type Panel = "details" | "branches" | "questions" | "tiers" | "profiles"
 
@@ -41,6 +51,8 @@ export function QuizEditor({
 }) {
   const router = useRouter()
   const [quiz, setQuiz] = useState<QuizDefinition>(initial)
+  // Each band's button as last saved (or as loaded), so Save sends only the ones that changed.
+  const savedButtons = useRef(buttonsOf(initial.tiers))
   const [panel, setPanel] = useState<Panel>("details")
   const [branchTab, setBranchTab] = useState<string>(EVERYONE)
   const [busy, setBusy] = useState(false)
@@ -266,6 +278,33 @@ export function QuizEditor({
   }
 
   async function save(nextStatus?: QuizDefinition["status"]) {
+    // G47. Only a band whose button CHANGED is sent, so a link stored before the
+    // button-link rule existed cannot make every later save of this quiz fail.
+    // A changed one is checked here first, so the coach is told which band and
+    // why; the route's refusal is the backstop and says only "Invalid save."
+    const changedButtons = new Set(
+      quiz.tiers
+        .filter((t) => {
+          const was = savedButtons.current.get(t.id)
+          return !was || was.label !== blankToNull(t.ctaLabel) || was.href !== blankToNull(t.ctaHref)
+        })
+        .map((t) => t.id),
+    )
+    for (const t of quiz.tiers) {
+      if (!changedButtons.has(t.id)) continue
+      const label = blankToNull(t.ctaLabel)
+      const href = blankToNull(t.ctaHref)
+      if (label !== null && !isAllowedButtonLabel(label)) {
+        setMessage(`Band "${t.key}": the button text can be at most ${BUTTON_LABEL_MAX} characters.`)
+        return
+      }
+      if (href !== null && !isAllowedButtonLink(href)) {
+        setMessage(`Band "${t.key}": ${BUTTON_LINK_RULE}`)
+        return
+      }
+    }
+    const sentButtons = buttonsOf(quiz.tiers)
+
     setBusy(true)
     setMessage(null)
     setServerBlockers(null)
@@ -355,6 +394,8 @@ export function QuizEditor({
             maxScore: t.maxScore,
             headline: t.headline,
             body: t.body,
+            // Blank is "no button", stored as NULL, never as an empty string.
+            ...(changedButtons.has(t.id) ? { ctaLabel: blankToNull(t.ctaLabel), ctaHref: blankToNull(t.ctaHref) } : {}),
           })),
           profiles: quiz.profiles.map((p) => ({ id: p.id, name: p.name, description: p.description, position: p.position })),
           branches: quiz.branches.map((b) => ({ id: b.id, name: b.name, description: b.description, position: b.position })),
@@ -381,6 +422,7 @@ export function QuizEditor({
         blockers?: string[]
       }
       if (saved.quiz) setQuiz(saved.quiz)
+      savedButtons.current = saved.quiz ? buttonsOf(saved.quiz.tiers) : sentButtons
       if (saved.answeredQuestionIds) setAnsweredQuestionIds(new Set(saved.answeredQuestionIds))
       else if (nextStatus) setQuiz((q) => ({ ...q, status: nextStatus }))
 
@@ -825,8 +867,30 @@ export function QuizEditor({
                     setQuiz((q) => ({ ...q, tiers: q.tiers.map((t) => (t.id === tier.id ? { ...t, headline: v } : t)) }))
                   }
                 />
+                {/* G47: the result page's only way onward. A clone of the built-in quiz arrives with
+                    these empty on purpose, and the gate's "has no button" warning points here. */}
+                <div className="grid gap-2 sm:col-span-3 sm:grid-cols-2">
+                  <Field
+                    label={`${tier.key} button text`}
+                    value={tier.ctaLabel ?? ""}
+                    maxLength={BUTTON_LABEL_MAX}
+                    onChange={(v) =>
+                      setQuiz((q) => ({ ...q, tiers: q.tiers.map((t) => (t.id === tier.id ? { ...t, ctaLabel: v } : t)) }))
+                    }
+                  />
+                  <Field
+                    label={`${tier.key} button link`}
+                    value={tier.ctaHref ?? ""}
+                    onChange={(v) =>
+                      setQuiz((q) => ({ ...q, tiers: q.tiers.map((t) => (t.id === tier.id ? { ...t, ctaHref: v } : t)) }))
+                    }
+                  />
+                </div>
               </div>
             ))}
+          <p className="text-xs text-muted-foreground">
+            A band shows its button only when it has both text and a link. {BUTTON_LINK_RULE}
+          </p>
         </section>
       ) : null}
 
@@ -866,13 +930,24 @@ export function QuizEditor({
   )
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function Field({
+  label,
+  value,
+  onChange,
+  maxLength,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  maxLength?: number
+}) {
   return (
     <label className="block w-full">
       <span className="mb-1 block text-xs font-medium text-muted-foreground">{label}</span>
       <input
         className="w-full rounded border border-border px-3 py-2 text-sm"
         value={value}
+        maxLength={maxLength}
         onChange={(e) => onChange(e.target.value)}
       />
     </label>

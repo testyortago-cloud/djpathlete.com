@@ -207,6 +207,56 @@ describe("PATCH /api/admin/quizzes/[id]", () => {
     expect(saveQuizDefinition).not.toHaveBeenCalled()
   })
 
+  // G47: the editor now lets a coach set a band's button, and the link lands in
+  // a public result page's <a href>.
+  const TIER = "7d6c1f4e-2a4b-4c8e-9f10-3b2a1c0d9e8f"
+
+  it.each(["/go/my-quiz/offer", "/contact", "https://example.com/book", "HTTP://example.com"])(
+    "saves a band's button with the link %s",
+    async (href) => {
+      const res = await patch({ tiers: [{ id: TIER, ctaLabel: "Book a call", ctaHref: href }] })
+      expect(res.status).toBe(200)
+      expect(saveQuizDefinition).toHaveBeenCalledWith(
+        BUSINESS_ID,
+        expect.objectContaining({ tiers: [{ id: TIER, ctaLabel: "Book a call", ctaHref: href }] }),
+      )
+    },
+  )
+
+  it("saves an emptied button as null", async () => {
+    expect((await patch({ tiers: [{ id: TIER, ctaLabel: null, ctaHref: null }] })).status).toBe(200)
+    expect(saveQuizDefinition).toHaveBeenCalledWith(
+      BUSINESS_ID,
+      expect.objectContaining({ tiers: [{ id: TIER, ctaLabel: null, ctaHref: null }] }),
+    )
+  })
+
+  it.each(["   ", "x".repeat(61)])("refuses the button text %j and writes nothing", async (label) => {
+    const res = await patch({ tiers: [{ id: TIER, ctaLabel: label, ctaHref: "/contact" }] })
+    expect(res.status).toBe(400)
+    expect(saveQuizDefinition).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    "javascript:alert(1)",
+    "//evil.example/x",
+    "/\\evil.example/x",
+    "/go/my page",
+    " /go/page",
+    "example.com/book",
+    "mailto:a@b.c",
+    "https:// x",
+    "https:evil.example",
+    "",
+  ])(
+    "refuses the link %j and writes nothing",
+    async (href) => {
+      const res = await patch({ tiers: [{ id: TIER, ctaLabel: "Book a call", ctaHref: href }] })
+      expect(res.status).toBe(400)
+      expect(saveQuizDefinition).not.toHaveBeenCalled()
+    },
+  )
+
   it("404s a quiz that does not exist", async () => {
     getQuizDefinition.mockResolvedValue(null)
     expect((await patch({ quiz: { name: "x" } })).status).toBe(404)

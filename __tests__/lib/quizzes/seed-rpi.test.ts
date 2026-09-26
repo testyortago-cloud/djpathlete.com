@@ -42,8 +42,33 @@ describe("the seeded RPI quiz", () => {
     expect(result.ok).toBe(true)
   })
 
-  it("1b. raises no warnings either", () => {
-    expect(quizGate(DEF).warnings).toEqual([])
+  // Retargeted for G47. The built-in now carries no buttons, so it warns once per
+  // band, which is how a coach who clones it is told to write their own. The
+  // original intent ("nothing else is wrong with it") is kept exactly by the
+  // second half: with buttons filled in, there is not one warning.
+  it("1b. warns only that its four bands have no button", () => {
+    const warnings = quizGate(DEF).warnings
+    expect(warnings).toHaveLength(4)
+    for (const key of ["red", "orange", "yellow", "green"]) {
+      expect(warnings.filter((w) => w.startsWith(`Band "${key}"`) && w.includes("has no button"))).toHaveLength(1)
+    }
+    const withButtons = toDefinition({
+      ...RPI_ATHLETE_QUIZ,
+      tiers: RPI_ATHLETE_QUIZ.tiers.map((t) => ({ ...t, ctaLabel: "Next", ctaHref: "/next" })),
+    })
+    expect(quizGate(withButtons).warnings).toEqual([])
+  })
+
+  it("1c. gives no band a button, because any business can clone it (G47)", () => {
+    // A button here would be this platform's copy on another coach's quiz: its
+    // label named the operator, and every relative link is this platform's own
+    // page, whose form files the lead under the Host's business.
+    expect(RPI_ATHLETE_QUIZ.tiers.map((t) => [t.key, t.ctaLabel, t.ctaHref])).toEqual([
+      ["red", null, null],
+      ["orange", null, null],
+      ["yellow", null, null],
+      ["green", null, null],
+    ])
   })
 
   it("2. makes every branch reachable from the router", () => {

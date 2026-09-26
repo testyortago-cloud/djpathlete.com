@@ -89,6 +89,15 @@ const ROOTS = [
   // migration is exactly where a brand word left in by mistake would reach
   // every future tenant's drafts.
   "supabase/migrations/00279_business_starter_set.sql",
+  // G47 -- the built-in quiz, "Athlete Quiz — the original", which any business
+  // can clone into its own quiz funnel (`copyFrom: "builtin:rpi"`). Two of its
+  // result buttons named the operator until 2026-09-26. The platform's own
+  // buttons now live in scripts/seed-athlete-quiz.ts, which is not swept: it
+  // seeds only this platform's quiz.
+  "lib/quizzes/seed/rpi-athlete-quiz.ts",
+  // ...and the page every quiz funnel is created with, whose footer carried the
+  // operator's name for every business until the same day.
+  "lib/funnels/quiz-funnel-doc.ts",
 ]
 
 function filesUnder(p: string): string[] {

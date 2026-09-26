@@ -45,6 +45,57 @@ import { quizGate } from "@/lib/quizzes/gate"
 const CLONE_REF = "anjvztjiokcgiyhobknq"
 const SINGLETON_BUSINESS_ID = "00000000-0000-0000-0000-000000000001"
 
+/**
+ * THIS PLATFORM'S OWN BUTTONS on its own quiz's result bands, keyed on tier.
+ *
+ * They used to sit in the seed module, which is also what any business clones
+ * with `copyFrom: "builtin:rpi"` — so another coach's quiz said "Book a call
+ * with Darren" and linked to this site's /contact, whose form files the lead
+ * under this platform's business (G47). The module is neutral now; the copy
+ * that is only true of this platform lives here, in the script that only ever
+ * seeds this platform's quiz.
+ *
+ * Until G47 this script wrote NO button at all (the insert below carried no
+ * cta_label / cta_href), so a fresh seed gave every band a dead-end result.
+ * The rows on the dev clone got theirs by hand on 2026-08-24 (dd62470b). The
+ * script is still additive: an existing tier row is never updated, so running
+ * it cannot overwrite a button someone has since edited.
+ */
+export const PLATFORM_TIER_CTAS: Record<string, { ctaLabel: string; ctaHref: string }> = {
+  red: { ctaLabel: "Book a call with Darren", ctaHref: "/contact" },
+  orange: { ctaLabel: "Book a call with Darren", ctaHref: "/contact" },
+  yellow: { ctaLabel: "See the training options", ctaHref: "/online" },
+  green: { ctaLabel: "See what an assessment covers", ctaHref: "/assessment" },
+}
+
+function platformButton(tierKey: string): { ctaLabel: string; ctaHref: string } {
+  const cta = PLATFORM_TIER_CTAS[tierKey]
+  if (!cta) throw new Error(`no platform button for tier "${tierKey}"; add it to PLATFORM_TIER_CTAS`)
+  return cta
+}
+
+/** The seed with this platform's buttons on every band: what this script actually writes. */
+export function platformQuiz(quiz: SeedQuiz): SeedQuiz {
+  return { ...quiz, tiers: quiz.tiers.map((t) => ({ ...t, ...platformButton(t.key) })) }
+}
+
+/** The quiz_tiers rows this script inserts: the seed's bands, with this platform's buttons. */
+export function platformTierRows(quiz: SeedQuiz): Record<string, unknown>[] {
+  return quiz.tiers.map((t) => {
+    const cta = platformButton(t.key)
+    return {
+      key: t.key,
+      position: t.position,
+      min_score: t.minScore,
+      max_score: t.maxScore,
+      headline: t.headline,
+      body: t.body,
+      cta_label: cta.ctaLabel,
+      cta_href: cta.ctaHref,
+    }
+  })
+}
+
 interface Tally {
   inserted: number
   skipped: number
@@ -90,7 +141,9 @@ async function main(): Promise<void> {
   // THE GATE RUNS BEFORE ANYTHING IS WRITTEN. The seed is a typed module
   // precisely so this is possible; a quiz that could not go active has no
   // business being inserted.
-  const gate = quizGate(toDefinition(RPI_ATHLETE_QUIZ))
+  // Gated WITH this platform's buttons, since those are the rows it writes: the
+  // neutral module alone would warn four times about buttons it then inserts.
+  const gate = quizGate(toDefinition(platformQuiz(RPI_ATHLETE_QUIZ)))
   console.log(`gate     : ${gate.ok ? "ok" : "FAILED"}${gate.warnings.length ? ` (${gate.warnings.length} warning(s))` : ""}`)
   for (const warning of gate.warnings) console.log(`  warn: ${warning}`)
   if (!gate.ok) {
@@ -185,18 +238,7 @@ async function seed(sb: SupabaseClient, quiz: SeedQuiz, execute: boolean): Promi
     quiz.profiles.map((p) => ({ key: p.key, name: p.name, description: p.description, position: p.position })),
     counts.profiles,
   )
-  await keyed(
-    "quiz_tiers",
-    quiz.tiers.map((t) => ({
-      key: t.key,
-      position: t.position,
-      min_score: t.minScore,
-      max_score: t.maxScore,
-      headline: t.headline,
-      body: t.body,
-    })),
-    counts.tiers,
-  )
+  await keyed("quiz_tiers", platformTierRows(quiz), counts.tiers)
 
   // ---- questions and options, matched on position -------------------------
   const { data: existingQuestions, error: questionReadError } = await sb

@@ -58,6 +58,13 @@ vi.mock("@/lib/db/quizzes", () => ({
   assertQuizInBusiness: (...args: unknown[]) => assertQuizInBusinessMock(...args),
   QuizNotInBusinessError,
 }))
+// G47: the page's footer names the creating business. Mocked so no test here
+// reaches a real database; the real module's other exports stay real.
+const getBusinessSettingsMock = vi.fn()
+vi.mock("@/lib/db/businesses", async () => ({
+  ...(await vi.importActual<typeof import("@/lib/db/businesses")>("@/lib/db/businesses")),
+  getBusinessSettings: (...args: unknown[]) => getBusinessSettingsMock(...args),
+}))
 class NoAccessibleBusinessError extends Error {}
 vi.mock("@/lib/tenancy/resolve", () => ({
   resolveAdminTenantForRequest: () => Promise.resolve({ businessId: BUSINESS_ID, choices: [], isOperator: true }),
@@ -104,6 +111,7 @@ beforeEach(() => {
   // the failure to whichever test runs next.
   vi.resetAllMocks()
   authMock.mockResolvedValue({ user: { id: "u1", role: "admin" } })
+  getBusinessSettingsMock.mockResolvedValue({ business_id: BUSINESS_ID, display_name: "  Trailhead Strength " })
   canAccessMock.mockResolvedValue(true)
   createFunnelMock.mockResolvedValue({ id: "f1", slug: "rotational-reboot-check", entryStepId: "s1" })
   createQuizFromMock.mockResolvedValue({ id: CLONE_ID, key: "rotational-reboot-check" })
@@ -132,6 +140,31 @@ describe("POST /api/admin/funnels — the quiz template", () => {
     const doc = sectionDocSchema.parse(plannedSteps()[0].projectData)
     const section = doc.sections.find((s) => s.kind === "quiz")!
     expect((section.props as { quizId: string }).quizId).toBe(CLONE_ID)
+  })
+
+  it("names the creating business in the page's footer, read under that business (G47)", async () => {
+    const { POST } = await import("@/app/api/admin/funnels/route")
+    await POST(post(quizBody), NO_PARAMS)
+    expect(getBusinessSettingsMock).toHaveBeenCalledWith(BUSINESS_ID)
+    const doc = sectionDocSchema.parse(plannedSteps()[0].projectData)
+    const footer = doc.sections.find((s) => s.kind === "footer")!
+    expect((footer.props as { businessName: string }).businessName).toBe("Trailhead Strength")
+  })
+
+  it.each([
+    ["the name cannot be read", () => getBusinessSettingsMock.mockRejectedValue(new Error("settings read failed"))],
+    ["the display name is blank", () => getBusinessSettingsMock.mockResolvedValue({ business_id: BUSINESS_ID, display_name: "  " })],
+  ])("still creates a valid page, footed with the funnel's own name, when %s", async (_why, arrange) => {
+    arrange()
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const { POST } = await import("@/app/api/admin/funnels/route")
+    const res = await POST(post(quizBody), NO_PARAMS)
+    expect(res.status).toBe(201)
+    // .parse, not a property read: the footer's schema refuses an empty name,
+    // which is what the first version of this fallback produced.
+    const doc = sectionDocSchema.parse(plannedSteps()[0].projectData)
+    const footer = doc.sections.find((s) => s.kind === "footer")!
+    expect((footer.props as { businessName: string }).businessName).toBe("Rotational Reboot Check")
   })
 
   it("names the clone after the funnel", async () => {

@@ -75,7 +75,9 @@ async function main() {
   if (!quiz) throw new Error("rpi_athlete_quiz is not seeded — run scripts/seed-athlete-quiz.ts first")
   console.log(`quiz    : ${quiz.id} (${quiz.status})`)
 
-  const built = buildQuizFunnelDoc({ quizId: quiz.id as string })
+  // This script publishes only this platform's own quiz page, so the footer
+  // names this platform. The shared builder no longer does (G47).
+  const built = buildQuizFunnelDoc({ quizId: quiz.id as string, businessName: "DJP Athlete" })
   const { html, css } = reassemble(built)
   const compiled = compileFunnelStep({ html, css })
   // CompileResult is a discriminated union: `ok: false` carries only fatal

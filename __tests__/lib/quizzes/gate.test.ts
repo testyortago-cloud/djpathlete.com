@@ -191,4 +191,41 @@ describe("quizGate — warnings do not block", () => {
     expect(result.ok).toBe(true)
     expect(result.warnings.join(" | ")).toMatch(/orphan|no option votes/i)
   })
+
+  // G47. QuizRunner shows a band's button only when it has BOTH text and a link.
+  const noButton = (warnings: string[]) => warnings.filter((w) => w.includes("has no button"))
+  const withButtons = () =>
+    derive((x) => {
+      for (const t of x.tiers) {
+        t.ctaLabel = "Next"
+        t.ctaHref = "/next"
+      }
+    })
+
+  it("11. warns, without blocking, about each band with no button, naming it and its range", () => {
+    const d = withButtons()
+    d.tiers[0].ctaLabel = null
+    d.tiers[0].ctaHref = null
+    const result = quizGate(d)
+    expect(result.ok).toBe(true)
+    expect(noButton(result.warnings)).toEqual([
+      `Band "red" (0-39) has no button. It needs both button text and a link, or a visitor who scores there sees their result with nothing to click next.`,
+    ])
+  })
+
+  it("12. counts text with no link, a link with no text, and blank text as no button", () => {
+    const d = withButtons()
+    d.tiers[0].ctaHref = null
+    d.tiers[1].ctaLabel = null
+    d.tiers[2].ctaLabel = "   "
+    expect(noButton(quizGate(d).warnings).map((w) => w.slice(0, 14))).toEqual([
+      `Band "red" (0-`,
+      `Band "orange" `,
+      `Band "green" (`,
+    ])
+  })
+
+  it("13. says nothing when every band has both text and a link", () => {
+    expect(noButton(quizGate(withButtons()).warnings)).toEqual([])
+  })
 })

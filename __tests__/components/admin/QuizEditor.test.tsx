@@ -162,6 +162,67 @@ describe("QuizEditor", () => {
     expect(body.questions.find((q) => q.id === "q-router")?.position).toBe(20)
   })
 
+  // G47. A clone of the built-in quiz arrives with no buttons; this is where a
+  // coach writes their own, and the gate's warning is what sends them here.
+  const savedTiers = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(globalThis.fetch as unknown as ReturnType<typeof vi.fn>).toHaveBeenCalled())
+    const body = JSON.parse(
+      ((globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as { body: string }).body,
+    ) as { tiers: { id: string; ctaLabel: string | null; ctaHref: string | null }[] }
+    return body.tiers
+  }
+
+  it("5. lets a band's button be written, clears the warning, and saves it trimmed", async () => {
+    render(<QuizEditor initial={healthy()} />)
+    expect(screen.getByText(/Band "red" \(0-100\) has no button/)).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Tiers" }))
+    fireEvent.change(screen.getByLabelText("red button text"), { target: { value: "  Book a call  " } })
+    fireEvent.change(screen.getByLabelText("red button link"), { target: { value: " /go/my-page " } })
+    expect(screen.queryByText(/has no button/)).toBeNull()
+    expect(await savedTiers()).toEqual([
+      expect.objectContaining({ id: "t1", ctaLabel: "Book a call", ctaHref: "/go/my-page" }),
+    ])
+  })
+
+  it("5b. does not resend an unchanged button, so a stored link the rule refuses cannot block a save", async () => {
+    const legacy = healthy()
+    legacy.tiers[0].ctaLabel = "Book now"
+    legacy.tiers[0].ctaHref = "calendly.com/someone"
+    render(<QuizEditor initial={legacy} />)
+    const [tier] = await savedTiers()
+    expect(tier.id).toBe("t1")
+    expect(tier).not.toHaveProperty("ctaLabel")
+    expect(tier).not.toHaveProperty("ctaHref")
+  })
+
+  it("5d. refuses a changed link before sending, naming the band and the rule", async () => {
+    render(<QuizEditor initial={healthy()} />)
+    fireEvent.click(screen.getByRole("button", { name: "Tiers" }))
+    fireEvent.change(screen.getByLabelText("red button text"), { target: { value: "Book a call" } })
+    fireEvent.change(screen.getByLabelText("red button link"), { target: { value: "www.mysite.com/book" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    expect(await screen.findByText(/Band "red": A button link must start with \//)).toBeTruthy()
+    expect(globalThis.fetch as unknown as ReturnType<typeof vi.fn>).not.toHaveBeenCalled()
+  })
+
+  it("5e. caps the button text at the length the server accepts", () => {
+    render(<QuizEditor initial={healthy()} />)
+    fireEvent.click(screen.getByRole("button", { name: "Tiers" }))
+    expect((screen.getByLabelText("red button text") as HTMLInputElement).maxLength).toBe(60)
+  })
+
+  it("5c. saves a blanked button as null, not as an empty string", async () => {
+    const withButton = healthy()
+    withButton.tiers[0].ctaLabel = "See the options"
+    withButton.tiers[0].ctaHref = "/online"
+    render(<QuizEditor initial={withButton} />)
+    fireEvent.click(screen.getByRole("button", { name: "Tiers" }))
+    fireEvent.change(screen.getByLabelText("red button text"), { target: { value: "   " } })
+    fireEvent.change(screen.getByLabelText("red button link"), { target: { value: "" } })
+    expect(await savedTiers()).toEqual([expect.objectContaining({ id: "t1", ctaLabel: null, ctaHref: null })])
+  })
+
   it("shows the unverified banner while the seed marker is present", () => {
     render(<QuizEditor initial={{ ...healthy(), seedMarker: "reconstructed-from-ghl-export-2026-08-23" }} />)
     expect(screen.getByText(/reconstructed scoring/)).toBeTruthy()

@@ -40,8 +40,13 @@ import type { SectionDoc } from "@/lib/funnels/sections/registry"
  * The island already renders a complete opening: a headline, a sub, and a
  * button that works. Putting a second one above it was the error. So the page
  * is the quiz and a footer, and the only button on it is the one that starts.
+ *
+ * `businessName` IS THE FOOTER'S, AND THE CALLER'S TO GIVE (G47). It was a
+ * literal: every business that created a quiz funnel got this platform's name
+ * in its footer. The create route passes the creating business's own
+ * `display_name`; the platform's own seed script passes the platform's.
  */
-export function buildQuizFunnelDoc(input: { quizId: string }): SectionDoc {
+export function buildQuizFunnelDoc(input: { quizId: string; businessName: string }): SectionDoc {
   return {
     v: 1,
     engine: "sections",
@@ -72,7 +77,7 @@ export function buildQuizFunnelDoc(input: { quizId: string }): SectionDoc {
         variant: "simple",
         style: {},
         props: {
-          businessName: "DJP Athlete",
+          businessName: input.businessName,
           lines: [],
           links: [],
           legal: "All rights reserved.",
