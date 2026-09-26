@@ -28,9 +28,27 @@ import {
   SECTION_REVIEW_MAX_SUMMARY_LENGTH,
   SECTION_REVIEW_REVISER_MAX_TOKENS,
 } from "@/lib/funnels/sections/builder-config"
-import { SECTION_BUILDER_BLOCK_A } from "@/lib/funnels/sections/prompt"
+import { LIVE_FEEDS_UNAVAILABLE, SECTION_BUILDER_BLOCK_A } from "@/lib/funnels/sections/prompt"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 import type { Finding } from "@/lib/funnels/sections/review/findings"
+
+/**
+ * What the reviser must know about the business whose page it is editing.
+ *
+ * `liveFeedsAvailable` is `Catalogues.liveFeedsAvailable`'s question, answered
+ * by the build route (G35). The builder learns it from Block B; the reviser
+ * never sees Block B — its system string is Block A, which tells every model to
+ * PREFER `source: "live"`, plus this module's own tail. Without the flag, a
+ * reviser "fixing" a finding on a coach's page could switch a section to a
+ * live feed that shows that coach nothing and that the publish gate refuses.
+ *
+ * REQUIRED, following `BuilderCatalogueInput`'s reasoning: neither default is
+ * safe. `true` is the bug; `false` tells the platform's reviser its own feeds
+ * are off-limits. A forgotten argument has to be a compile error.
+ */
+export interface ReviserOptions {
+  liveFeedsAvailable: boolean
+}
 
 export const reviseResultSchema = z.object({
   /**
@@ -134,14 +152,28 @@ function findingsBlock(findings: Finding[]): string {
 export async function runReviser(
   doc: SectionDoc,
   findings: Finding[],
+  options: ReviserOptions,
 ): Promise<ReviseResult & { tokensUsed: number }> {
+  // The business's rule goes in the MESSAGE, never in `REVISER_SYSTEM`: that
+  // string is the same for every business, and the note on `callAgent` below
+  // says why interpolating into it is a trap. The line is Block B's own
+  // constant, so the builder and the reviser cannot be told two different
+  // things (G35).
+  const businessRule = options.liveFeedsAvailable
+    ? ""
+    : `
+
+## What this business's pages cannot use
+
+${LIVE_FEEDS_UNAVAILABLE}`
+
   const message = `## The page as it stands
 
 ${JSON.stringify(doc, null, 2)}
 
 ## What the reviewers found
 
-${findingsBlock(findings)}
+${findingsBlock(findings)}${businessRule}
 
 Emit the ops that fix these. Return JSON only.`
 

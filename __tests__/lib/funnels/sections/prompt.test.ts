@@ -921,8 +921,17 @@ describe("Block B on a business that cannot use the platform's live feeds (G35)"
     expect(block).toContain(LIVE_FEEDS_UNAVAILABLE)
     // The line itself, not only its presence: an emptied constant would
     // satisfy `toContain` above.
-    expect(LIVE_FEEDS_UNAVAILABLE).toMatch(/inline FAQs/)
-    expect(LIVE_FEEDS_UNAVAILABLE).toMatch(/quoted testimonials/)
+    expect(LIVE_FEEDS_UNAVAILABLE).toBe(
+      "Live FAQs and live testimonials are NOT available on this business's pages. For FAQs, use inline FAQs. " +
+        'For testimonials, use `source: "quote"` ONLY for quotes the owner has given you word for word, with the ' +
+        "name they gave; if they have given none, leave testimonials out. Never write a quote or a name yourself.",
+    )
+    // The model has no real quotes of this business's clients. A line that
+    // only said "use quoted testimonials" invited it to write endorsements
+    // and put invented names on them (G35 final review, F1). The prohibition
+    // is the part that must never be edited away.
+    expect(LIVE_FEEDS_UNAVAILABLE).toContain("Never write a quote or a name yourself")
+    expect(LIVE_FEEDS_UNAVAILABLE).not.toMatch(/quoted testimonials written for this business/)
     // Ruling R4: no platform brand literal in coach-facing copy.
     expect(LIVE_FEEDS_UNAVAILABLE).not.toContain("DJP")
   })

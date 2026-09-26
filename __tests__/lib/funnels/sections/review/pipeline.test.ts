@@ -101,7 +101,7 @@ describe("the happy path, end to end", () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "Retoned two seams.", ops: RETONE_OPS, tokensUsed: 900 })
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.error).toBeNull()
     expect(out.changed).toBe(true)
@@ -119,7 +119,7 @@ describe("the happy path, end to end", () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "Retoned two seams.", ops: SEAM_SHUFFLING_OPS, tokensUsed: 900 })
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.changed).toBe(true)
     const stillThere = out.surviving.filter((f) => f.code === "tone-run")
@@ -130,7 +130,7 @@ describe("the happy path, end to end", () => {
   it("returns the receipt from the real applier, not the model's claim", async () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS, tokensUsed: 900 })
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
     expect(out.receipt).not.toBeNull()
     expect(out.receipt?.isRewrite).toBe(false)
   })
@@ -138,7 +138,7 @@ describe("the happy path, end to end", () => {
   it("merges critic findings in with the deterministic ones", async () => {
     runCritics.mockResolvedValue({ findings: [CRITIC_FINDING], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS, tokensUsed: 900 })
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
     expect(out.findings.map((f) => f.code)).toContain("vague-headline")
     expect(out.findings.map((f) => f.code)).toContain("tone-run")
   })
@@ -146,7 +146,7 @@ describe("the happy path, end to end", () => {
   it("hands the reviser the merged list, high severity first", async () => {
     runCritics.mockResolvedValue({ findings: [CRITIC_FINDING], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS, tokensUsed: 900 })
-    await reviewDoc({ doc: PROD })
+    await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
     const passed = runReviser.mock.calls[0][1] as Finding[]
     expect(passed[0].severity).toBe("high")
   })
@@ -157,7 +157,7 @@ describe("failure containment", () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockRejectedValue(new Error("model down"))
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.changed).toBe(false)
     expect(out.doc).toBe(PROD)
@@ -168,7 +168,7 @@ describe("failure containment", () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "s", ops: [{ op: "remove_section", id: "does-not-exist" }] })
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.changed).toBe(false)
     expect(out.doc).toBe(PROD)
@@ -181,7 +181,7 @@ describe("failure containment", () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "s", ops: [{ op: "update_section", id: "hero" }] })
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.changed).toBe(false)
     expect(out.doc).toBe(PROD)
@@ -191,7 +191,7 @@ describe("failure containment", () => {
     runCritics.mockRejectedValue(new Error("all three failed"))
     runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS, tokensUsed: 900 })
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(runReviser).toHaveBeenCalled()
     const passed = runReviser.mock.calls[0][1] as Finding[]
@@ -202,7 +202,7 @@ describe("failure containment", () => {
   it("never throws, whatever fails", async () => {
     runCritics.mockRejectedValue(new Error("boom"))
     runReviser.mockRejectedValue(new Error("boom"))
-    await expect(reviewDoc({ doc: PROD })).resolves.toBeDefined()
+    await expect(reviewDoc({ doc: PROD, liveFeedsAvailable: true })).resolves.toBeDefined()
   })
 
   it("degrades to the deterministic findings when the panel returns garbage", async () => {
@@ -212,7 +212,7 @@ describe("failure containment", () => {
     runCritics.mockResolvedValue(undefined)
     runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS, tokensUsed: 900 })
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.error).toBeNull()
     expect(out.changed).toBe(true)
@@ -227,7 +227,7 @@ describe("restraint", () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "The page reads well.", ops: [], tokensUsed: 900 })
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.changed).toBe(false)
     expect(out.error).toBeNull()
@@ -301,7 +301,7 @@ describe("restraint", () => {
     })
 
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
-    const out = await reviewDoc({ doc: clean as SectionDoc })
+    const out = await reviewDoc({ doc: clean as SectionDoc, liveFeedsAvailable: true })
 
     expect(out.changed).toBe(false)
     expect(out.error).toBeNull()
@@ -315,7 +315,7 @@ describe("streaming", () => {
     runReviser.mockResolvedValue({ summary: "s", ops: [], tokensUsed: 900 })
 
     const seen: string[] = []
-    await reviewDoc({ doc: PROD, onFinding: (finding) => seen.push(finding.code) })
+    await reviewDoc({ doc: PROD, liveFeedsAvailable: true, onFinding: (finding) => seen.push(finding.code) })
 
     expect(seen).toContain("tone-run")
     expect(seen).toContain("pad-monotony")
@@ -326,7 +326,7 @@ describe("streaming", () => {
     runReviser.mockResolvedValue({ summary: "s", ops: [], tokensUsed: 900 })
 
     const seen: string[] = []
-    await reviewDoc({ doc: PROD, onFinding: (finding) => seen.push(finding.code) })
+    await reviewDoc({ doc: PROD, liveFeedsAvailable: true, onFinding: (finding) => seen.push(finding.code) })
 
     expect(seen).toContain("vague-headline")
   })
@@ -334,7 +334,7 @@ describe("streaming", () => {
   it("does not require an onFinding callback", async () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "s", ops: [], tokensUsed: 900 })
-    await expect(reviewDoc({ doc: PROD })).resolves.toBeDefined()
+    await expect(reviewDoc({ doc: PROD, liveFeedsAvailable: true })).resolves.toBeDefined()
   })
 })
 
@@ -351,7 +351,7 @@ describe("threading the render to the critic panel", () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 0 })
     runReviser.mockResolvedValue({ summary: "", ops: [], tokensUsed: 0 })
 
-    await reviewDoc({ doc: PROD, render })
+    await reviewDoc({ doc: PROD, liveFeedsAvailable: true, render })
 
     expect(runCritics).toHaveBeenCalledWith(PROD, expect.anything(), render)
   })
@@ -360,7 +360,7 @@ describe("threading the render to the critic panel", () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 0 })
     runReviser.mockResolvedValue({ summary: "", ops: [], tokensUsed: 0 })
 
-    await reviewDoc({ doc: PROD })
+    await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(runCritics).toHaveBeenCalledWith(PROD, expect.anything(), undefined)
   })
@@ -380,7 +380,7 @@ describe("token accounting", () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS, tokensUsed: 900 })
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.tokensUsed).toBe(1020)
   })
@@ -391,7 +391,7 @@ describe("token accounting", () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "Reads well.", ops: [], tokensUsed: 300 })
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.changed).toBe(false)
     expect(out.tokensUsed).toBe(420)
@@ -401,9 +401,41 @@ describe("token accounting", () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockRejectedValue(new Error("model down"))
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.error).toContain("model down")
     expect(out.tokensUsed).toBe(120)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G35: whether this business may use the platform's live feeds reaches the
+// reviser. The reviser's own test pins what it DOES with the flag; this pins
+// that the pipeline does not drop it on the way.
+// ---------------------------------------------------------------------------
+
+describe("threading the live-feeds flag to the reviser (G35)", () => {
+  it("tells the reviser a business that is not the platform has no live feeds", async () => {
+    // MUTANT: `runReviser(workingDoc, outstanding, { liveFeedsAvailable: true })`
+    // — or any hard-coded value — which puts the coach's reviser back on
+    // Block A's "prefer live".
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 0 })
+    runReviser.mockResolvedValue({ summary: "s", ops: [], tokensUsed: 0 })
+
+    await reviewDoc({ doc: PROD, liveFeedsAvailable: false })
+
+    expect(runReviser).toHaveBeenCalled()
+    for (const call of runReviser.mock.calls) expect(call[2]).toEqual({ liveFeedsAvailable: false })
+  })
+
+  it("(control) tells the platform's reviser its feeds are available", async () => {
+    // MUTANT: the flag inverted, or hard-coded `false`.
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 0 })
+    runReviser.mockResolvedValue({ summary: "s", ops: [], tokensUsed: 0 })
+
+    await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
+
+    expect(runReviser).toHaveBeenCalled()
+    for (const call of runReviser.mock.calls) expect(call[2]).toEqual({ liveFeedsAvailable: true })
   })
 })

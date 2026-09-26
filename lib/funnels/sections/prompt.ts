@@ -1035,11 +1035,23 @@ export interface BuilderCatalogueInput {
  * Written to Controller ruling R4: no platform brand literal in coach-facing
  * copy, including this prompt text the model reads.
  *
+ * The testimonial half is a prohibition, not a substitute. The model has no
+ * real quotes from this business's clients, so an earlier wording ("use ...
+ * quoted testimonials written for this business instead") asked it to write
+ * endorsements and put names on them: invented testimonials, published under
+ * the coach's brand. A `source: "quote"` section is allowed only for words the
+ * owner supplied verbatim, and otherwise the page has no testimonial section
+ * at all (G35 final review, F1).
+ *
+ * The automatic reviser reads this line too (`runReviser`'s user message),
+ * because it can switch a section back to `source: "live"` on its own.
+ *
  * Exported so the tests assert the exact line rather than a paraphrase of it.
  */
 export const LIVE_FEEDS_UNAVAILABLE =
-  "Live FAQs and live testimonials are NOT available on this business's pages. Use inline FAQs and quoted " +
-  "testimonials written for this business instead."
+  "Live FAQs and live testimonials are NOT available on this business's pages. For FAQs, use inline FAQs. " +
+  'For testimonials, use `source: "quote"` ONLY for quotes the owner has given you word for word, with the ' +
+  "name they gave; if they have given none, leave testimonials out. Never write a quote or a name yourself."
 
 function nameList(names: string[]): string {
   if (names.length === 0) return "  (none)"

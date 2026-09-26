@@ -13,8 +13,16 @@ vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), 
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
+// The quiz reads `loadCatalogues` makes. Unmocked they reached the dev clone
+// through `.env.local` — harmless for `BUSINESS_ID`, which owns no quizzes
+// there, but the G35 control below renders as the PLATFORM, which does, and a
+// unit test must not depend on what the dev database holds today. Plain
+// `vi.fn(async ...)` so `vi.resetAllMocks()` below leaves them callable: a
+// reset `vi.fn()` returns `undefined`, and `loadCatalogues` maps over it.
+vi.mock("@/lib/db/quizzes", () => ({ listQuizzes: async () => [], getQuizDefinition: async () => null }))
 
 import { renderDraftPreview } from "@/lib/funnels/preview-render"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { listSteps } from "@/lib/db/funnels"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
@@ -263,5 +271,70 @@ describe("renderDraftPreview — the tenant brand kit", () => {
     expect(normalise(fullScreen.css)).toBe(iframe.css)
     expect(iframe.css).toContain("--primary: #6d28d9")
     expect(iframe.css).toContain("--accent: #f59e0b")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G35: the canvas note on a live FAQ or testimonial section. The builder's
+// iframe is the only render that shows it, and for a business that is not the
+// platform it must not send the coach to the admin's FAQ and Testimonials
+// lists — those are the platform's rows, which that coach's page never shows.
+// `BUSINESS_ID` is not the platform's.
+// ---------------------------------------------------------------------------
+
+const LIVE_FEEDS_DOC: SectionDoc = {
+  v: 1,
+  engine: "sections",
+  theme: { tone: "light", accent: "accent", radius: "soft" },
+  sections: [
+    { id: "voices", kind: "testimonial", variant: "grid", style: {}, props: { source: "live", limit: 3, featuredOnly: false } },
+    { id: "questions", kind: "faq", variant: "stack", style: {}, props: { heading: "Questions", source: "live", pageKey: "camps" } },
+  ],
+} as unknown as SectionDoc
+
+async function editableRender(businessId: string) {
+  mock(getDraft).mockResolvedValue({ doc: LIVE_FEEDS_DOC, docInvalid: false, revision: 3 })
+  const result = await renderDraftPreview({
+    stepId: STEP_ID,
+    funnelId: FUNNEL_ID,
+    funnelBasePath: "/go/summer-camp",
+    businessId,
+    editable: true,
+  })
+  if (result.kind !== "ok") throw new Error(`expected the draft to render, got ${result.kind}`)
+  return JSON.stringify(result.nodes)
+}
+
+describe("renderDraftPreview — the canvas note on a live feed (G35)", () => {
+  it("tells a business off the platform to switch the section to its own content", async () => {
+    // MUTANT: `renderDraftPreview` not passing the flag to `reassemble`, or
+    // passing `true`. The canvas then points a coach at the platform's lists.
+    const nodes = await editableRender(BUSINESS_ID)
+
+    expect(nodes).toContain("Live testimonials are not available for this business. Switch this section to your own quotes.")
+    expect(nodes).toContain("Live FAQs are not available for this business. Switch this section to your own FAQs.")
+    expect(nodes).not.toMatch(/in the admin/)
+  })
+
+  it("still tells the truth when the catalogue could not be read", async () => {
+    // MUTANT: the flag read off the loaded catalogue, with a guess in the
+    // catch. Whether this business may use the platform's feeds is a pure
+    // function of the business, so the degraded render says the same thing.
+    mock(getPrograms).mockRejectedValue(new Error("catalogue unreadable"))
+    mock(getAllPrograms).mockRejectedValue(new Error("catalogue unreadable"))
+
+    const nodes = await editableRender(BUSINESS_ID)
+
+    expect(nodes).toContain("Live FAQs are not available for this business. Switch this section to your own FAQs.")
+    expect(nodes).not.toMatch(/in the admin/)
+  })
+
+  it("(control) points the platform's own canvas at its lists", async () => {
+    // MUTANT: `false` passed for everyone.
+    const nodes = await editableRender(platformBusinessId())
+
+    expect(nodes).toMatch(/change them under Testimonials in the admin/)
+    expect(nodes).toMatch(/change them under FAQs in the admin/)
+    expect(nodes).not.toMatch(/not available for this business/)
   })
 })

@@ -740,6 +740,44 @@ describe("POST .../build — the platform's live feeds (G35)", () => {
     expect(system).toContain('"coaching"')
     expect(system).not.toContain(LIVE_FEEDS_UNAVAILABLE)
   })
+
+  // The review stage. Its reviser never sees Block B, so the route has to
+  // hand it the same answer, on both of the paths that run it.
+  it("tells the automatic review of a first draft that this business has no live feeds", async () => {
+    // MUTANT: `runReviewStage` not passing `context.liveFeedsAvailable` to
+    // `reviewDoc`, or passing a constant. The reviser then follows Block A's
+    // "prefer live" and can undo what Block B told the builder.
+    mock(streamAgent).mockImplementation(() => agentResult(setPageResult()))
+    mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 4 })
+
+    await runTurn({ message: "build me a page", revision: 4 })
+
+    expect(reviewDoc).toHaveBeenCalledTimes(1)
+    expect(reviewDoc).toHaveBeenCalledWith(expect.objectContaining({ liveFeedsAvailable: false }))
+  })
+
+  it("tells the Polish review the same", async () => {
+    // MUTANT: the Polish path building its review input separately and
+    // leaving the flag out. `handlePolish` loads its own `PageContext`.
+    await runTurn({ action: "polish", revision: 4 })
+
+    expect(reviewDoc).toHaveBeenCalledTimes(1)
+    expect(reviewDoc).toHaveBeenCalledWith(expect.objectContaining({ liveFeedsAvailable: false }))
+  })
+
+  it("(control) tells the platform's own review its feeds are available", async () => {
+    mock(resolveAdminTenantForRequest).mockResolvedValue({
+      businessId: platformBusinessId(),
+      choices: [{ id: platformBusinessId(), name: "DJP Athlete", slug: "djp-athlete" }],
+      isOperator: true,
+    })
+    mock(streamAgent).mockImplementation(() => agentResult(setPageResult()))
+    mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 4 })
+
+    await runTurn({ message: "build me a page", revision: 4 })
+
+    expect(reviewDoc).toHaveBeenCalledWith(expect.objectContaining({ liveFeedsAvailable: true }))
+  })
 })
 
 // ---------------------------------------------------------------------------

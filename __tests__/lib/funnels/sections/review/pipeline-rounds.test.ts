@@ -67,7 +67,7 @@ describe("with the round count raised", () => {
       .mockResolvedValueOnce({ summary: "Retoned one seam.", ops: ROUND_ONE_OPS })
       .mockResolvedValueOnce({ summary: "Fixed the seam that made.", ops: ROUND_TWO_OPS })
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(runReviser).toHaveBeenCalledTimes(2)
     expect(out.changed).toBe(true)
@@ -84,7 +84,7 @@ describe("with the round count raised", () => {
       .mockResolvedValueOnce({ summary: "one", ops: ROUND_ONE_OPS })
       .mockResolvedValueOnce({ summary: "two", ops: ROUND_TWO_OPS })
 
-    await reviewDoc({ doc: PROD })
+    await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     const secondBrief = runReviser.mock.calls[1][1] as Finding[]
     const seams = secondBrief.filter((finding) => finding.code === "tone-run").map((finding) => finding.sectionIds)
@@ -104,11 +104,26 @@ describe("with the round count raised", () => {
       .mockResolvedValueOnce({ summary: "one", ops: ROUND_ONE_OPS })
       .mockResolvedValueOnce({ summary: "two", ops: ROUND_TWO_OPS })
 
-    await reviewDoc({ doc: PROD })
+    await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     const secondDoc = runReviser.mock.calls[1][0] as SectionDoc
     const whatYouGet = secondDoc.sections.find((section) => section.id === "what-you-get")
     expect(whatYouGet?.style.tone).toBe("muted")
+  })
+
+  it("tells round two, too, that a business off the platform has no live feeds (G35)", async () => {
+    // MUTANT: the flag passed on round one only. Round two is the round most
+    // likely to rewrite a section outright, and it would meet Block A's
+    // "prefer live" with nothing to say otherwise.
+    runReviser
+      .mockResolvedValueOnce({ summary: "one", ops: ROUND_ONE_OPS })
+      .mockResolvedValueOnce({ summary: "two", ops: ROUND_TWO_OPS })
+
+    await reviewDoc({ doc: PROD, liveFeedsAvailable: false })
+
+    expect(runReviser).toHaveBeenCalledTimes(2)
+    expect(runReviser.mock.calls[0][2]).toEqual({ liveFeedsAvailable: false })
+    expect(runReviser.mock.calls[1][2]).toEqual({ liveFeedsAvailable: false })
   })
 
   it("stops after one round when nothing high-severity survives", async () => {
@@ -123,7 +138,7 @@ describe("with the round count raised", () => {
       ],
     })
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(runReviser).toHaveBeenCalledTimes(1)
     expect(auditDoc(out.doc).filter((finding) => finding.severity === "high")).toEqual([])
@@ -137,7 +152,7 @@ describe("with the round count raised", () => {
       .mockResolvedValueOnce({ summary: "Retoned one seam.", ops: ROUND_ONE_OPS })
       .mockRejectedValueOnce(new Error("provider down"))
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.changed).toBe(true)
     expect(out.error).toBeNull()
@@ -149,7 +164,7 @@ describe("with the round count raised", () => {
       .mockResolvedValueOnce({ summary: "Retoned one seam.", ops: ROUND_ONE_OPS })
       .mockResolvedValueOnce({ summary: "two", ops: [{ op: "remove_section", id: "does-not-exist" }] })
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.changed).toBe(true)
     expect(out.ops).toEqual(ROUND_ONE_OPS)
@@ -158,7 +173,7 @@ describe("with the round count raised", () => {
   it("still reports UNCHANGED when the very first round fails", async () => {
     runReviser.mockRejectedValue(new Error("provider down"))
 
-    const out = await reviewDoc({ doc: PROD })
+    const out = await reviewDoc({ doc: PROD, liveFeedsAvailable: true })
 
     expect(out.changed).toBe(false)
     expect(out.doc).toBe(PROD)

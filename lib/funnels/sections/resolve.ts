@@ -449,6 +449,26 @@ function unionCatalogues(recognition: Catalogue, offer: Catalogue): Catalogue {
 }
 
 /**
+ * Whether `businessId` may use the platform's live FAQ list and live
+ * testimonial feed — `Catalogues.liveFeedsAvailable`'s answer, without the
+ * reads.
+ *
+ * THE ONE PLACE THIS FILE ASKS WHO THE PLATFORM IS (G35). The business is
+ * already in hand; the seam is consulted only to decide whether it is the
+ * business the `faqs` and `testimonials` rows describe. Not a fallback: a
+ * business that is not the platform gets no live feeds, never the platform's.
+ * lib/tenancy/platform.ts lists this file for that reason.
+ *
+ * Exported, and pure, because the draft preview needs the answer even when
+ * `loadCatalogues` throws: its canvas note must still tell a coach the truth
+ * on the render that fails soft. One rule, asked in one place, so the canvas
+ * and the publish gate cannot disagree about a business.
+ */
+export function liveFeedsAvailableFor(businessId: string): boolean {
+  return businessId === platformBusinessId()
+}
+
+/**
  * Loads BOTH sets. Deliberately trivial — every ounce of logic lives in
  * `resolveDoc`/`toCatalogue` so it can be tested without mocks. The only thing
  * this function decides is WHICH FETCHER FEEDS WHICH SET, and that decision is
@@ -509,12 +529,7 @@ function unionCatalogues(recognition: Catalogue, offer: Catalogue): Catalogue {
  * unhandled 500.
  */
 export async function loadCatalogues(businessId: string): Promise<Catalogues> {
-  // THE ONE PLACE THIS FILE ASKS WHO THE PLATFORM IS (G35). The business is
-  // already in hand; the seam is consulted only to decide whether it is the
-  // business the `faqs` and `testimonials` rows describe. Not a fallback: a
-  // business that is not the platform gets no live feeds, never the
-  // platform's. lib/tenancy/platform.ts lists this file for that reason.
-  const liveFeedsAvailable = businessId === platformBusinessId()
+  const liveFeedsAvailable = liveFeedsAvailableFor(businessId)
   const [allPrograms, offerPrograms, allPacks, offerPacks, allEvents, offerEvents, faqCounts] = await Promise.all([
     // `programs` has no `business_id` column at all -- unconverted, not
     // frozen. There is no per-tenant predicate to add without inventing a

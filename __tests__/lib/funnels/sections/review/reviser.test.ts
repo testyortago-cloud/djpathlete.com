@@ -20,12 +20,17 @@ import {
   SECTION_REVIEW_MAX_SUMMARY_LENGTH,
   SECTION_REVIEW_REVISER_MAX_TOKENS,
 } from "@/lib/funnels/sections/builder-config"
-import { SECTION_BUILDER_BLOCK_A } from "@/lib/funnels/sections/prompt"
+import { LIVE_FEEDS_UNAVAILABLE, SECTION_BUILDER_BLOCK_A } from "@/lib/funnels/sections/prompt"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { Finding } from "@/lib/funnels/sections/review/findings"
 import fixture from "./fixtures/production-consultation-page.json"
 
 const PROD: SectionDoc = sectionDocSchema.parse(fixture) as SectionDoc
+
+/** The platform's own page: the live feeds are its rows (G35). What every test predating G35 reviewed. */
+const PLATFORM_FEEDS = { liveFeedsAvailable: true }
+/** Any other business's page: the live feeds show it nothing, and the gate refuses them (G35). */
+const NO_FEEDS = { liveFeedsAvailable: false }
 
 const FINDING: Finding = {
   code: "tone-run",
@@ -191,7 +196,7 @@ describe("the reviser prompt", () => {
 describe("runReviser", () => {
   it("passes the findings to the model, with their suggestions", async () => {
     callAgent.mockResolvedValue({ content: { summary: "s", ops: [] }, usage: {} })
-    await runReviser(PROD, [FINDING])
+    await runReviser(PROD, [FINDING], PLATFORM_FEEDS)
     const message = callAgent.mock.calls[0][1] as string
     expect(message).toContain("both render at the default tone")
     expect(message).toContain("retone one of them")
@@ -200,13 +205,13 @@ describe("runReviser", () => {
 
   it("sends the whole document, so ops can target ids it did not mention", async () => {
     callAgent.mockResolvedValue({ content: { summary: "s", ops: [] }, usage: {} })
-    await runReviser(PROD, [FINDING])
+    await runReviser(PROD, [FINDING], PLATFORM_FEEDS)
     expect(callAgent.mock.calls[0][1]).toContain('"questions"')
   })
 
   it("asks for the reviser budget and the builder's model", async () => {
     callAgent.mockResolvedValue({ content: { summary: "s", ops: [] }, usage: {} })
-    await runReviser(PROD, [])
+    await runReviser(PROD, [], PLATFORM_FEEDS)
     expect(callAgent.mock.calls[0][3]).toMatchObject({
       model: SECTION_BUILDER_MODEL,
       maxTokens: SECTION_REVIEW_REVISER_MAX_TOKENS,
@@ -215,19 +220,56 @@ describe("runReviser", () => {
 
   it("does not enable prompt caching on a system string with a live tail", async () => {
     callAgent.mockResolvedValue({ content: { summary: "s", ops: [] }, usage: {} })
-    await runReviser(PROD, [])
+    await runReviser(PROD, [], PLATFORM_FEEDS)
     expect(callAgent.mock.calls[0][3]).not.toMatchObject({ cacheSystemPrompt: true })
   })
 
   it("says plainly when there is nothing to fix", async () => {
     callAgent.mockResolvedValue({ content: { summary: "s", ops: [] }, usage: {} })
-    await runReviser(PROD, [])
+    await runReviser(PROD, [], PLATFORM_FEEDS)
     expect(callAgent.mock.calls[0][1]).toContain("Return an empty ops array")
   })
 
   it("throws when the provider does — the pipeline needs to tell that apart from 'no change'", async () => {
     callAgent.mockRejectedValue(new Error("provider down"))
-    await expect(runReviser(PROD, [FINDING])).rejects.toThrow("provider down")
+    await expect(runReviser(PROD, [FINDING], PLATFORM_FEEDS)).rejects.toThrow("provider down")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G35: the reviser can undo the builder's Block B line.
+//
+// The builder is told, in Block B, that this business cannot use the
+// platform's live FAQ list or testimonial feed. The reviser is not the builder:
+// its system string is Block A — which tells every model to PREFER
+// `source: "live"` — plus its own tail, and it never sees Block B. Left alone,
+// it can switch a coach's inline FAQ section to a live one while "fixing" a
+// finding, and the owner meets a publish blocker on a page the review just
+// polished.
+// ---------------------------------------------------------------------------
+describe("runReviser on a business that cannot use the platform's live feeds (G35)", () => {
+  it("tells the reviser, in the turn's message, that the live feeds are unavailable", async () => {
+    // MUTANT: the flag accepted and ignored — no line, and the reviser follows
+    // Block A's "prefer live".
+    callAgent.mockResolvedValue({ content: { summary: "s", ops: [] }, usage: {} })
+    await runReviser(PROD, [FINDING], NO_FEEDS)
+
+    const [system, message] = callAgent.mock.calls[0] as [string, string]
+    expect(message).toContain(LIVE_FEEDS_UNAVAILABLE)
+    // In the MESSAGE, never the system string. MUTANT: the line interpolated
+    // into `REVISER_SYSTEM`, which would make that string differ per business
+    // — the silent cache write the note on `callAgent`'s options warns of.
+    expect(system).toBe(REVISER_SYSTEM)
+    expect(system).not.toContain(LIVE_FEEDS_UNAVAILABLE)
+  })
+
+  it("(control) says nothing of the kind on the platform's own page", async () => {
+    // MUTANT: the line appended unconditionally, telling the platform's
+    // reviser its own feeds are off-limits.
+    callAgent.mockResolvedValue({ content: { summary: "s", ops: [] }, usage: {} })
+    await runReviser(PROD, [FINDING], PLATFORM_FEEDS)
+
+    expect(callAgent.mock.calls[0][1]).not.toContain(LIVE_FEEDS_UNAVAILABLE)
   })
 })
 
@@ -239,7 +281,7 @@ describe("ops the reviser produces reach the REAL applier", () => {
     ]
     callAgent.mockResolvedValue({ content: { summary: "Retoned two seams.", ops }, usage: {} })
 
-    const result = await runReviser(PROD, [FINDING])
+    const result = await runReviser(PROD, [FINDING], PLATFORM_FEEDS)
     // Not a stub: `applyOps` is the same transactional applier the builder
     // uses, and it is the only thing that can say these ops are really valid.
     const applied = applyOps(PROD, result.ops)
@@ -254,7 +296,7 @@ describe("ops the reviser produces reach the REAL applier", () => {
     const long = "Retoned the seam between the proof and the offer. ".repeat(22)
     callAgent.mockResolvedValue({ content: { summary: long, ops }, usage: {} })
 
-    const result = await runReviser(PROD, [FINDING])
+    const result = await runReviser(PROD, [FINDING], PLATFORM_FEEDS)
     expect(result.ops).toHaveLength(9)
     expect(result.summary.length).toBeLessThanOrEqual(SECTION_REVIEW_MAX_SUMMARY_LENGTH)
     expect(result.summary.length).toBeGreaterThan(0)
@@ -265,7 +307,7 @@ describe("ops the reviser produces reach the REAL applier", () => {
     callAgent.mockResolvedValue({ content: { summary: "x", ops }, usage: {} })
 
     // Schema-valid — the id is a legal string — so only the applier catches it.
-    const result = await runReviser(PROD, [FINDING])
+    const result = await runReviser(PROD, [FINDING], PLATFORM_FEEDS)
     expect(reviseResultSchema.safeParse({ summary: "x", ops }).success).toBe(true)
     expect(applyOps(PROD, result.ops).ok).toBe(false)
   })

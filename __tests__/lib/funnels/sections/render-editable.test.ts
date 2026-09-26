@@ -222,20 +222,20 @@ describe("editable render mode", () => {
   })
 
   it.each(SECTION_KINDS)("marks the %s section wrapper with its id", (kind) => {
-    expect(renderSection(FIXTURES[kind], { editable: true })).toContain(
+    expect(renderSection(FIXTURES[kind], { editable: true, liveFeedsAvailable: true })).toContain(
       `data-sec="${FIXTURES[kind].id}"`,
     )
   })
 
   it.each(SECTION_KINDS)("anchors every text prop of a %s", (kind) => {
-    const html = renderSection(FIXTURES[kind], { editable: true })
+    const html = renderSection(FIXTURES[kind], { editable: true, liveFeedsAvailable: true })
     for (const path of TEXT_PATHS[kind]) {
       expect(html, `missing anchor for ${kind}.${path}`).toContain(`data-edit="${path}"`)
     }
   })
 
   it("wraps each repeating item so the toolbar knows which one it is", () => {
-    const html = renderSection(FIXTURES.bullets, { editable: true })
+    const html = renderSection(FIXTURES.bullets, { editable: true, liveFeedsAvailable: true })
     expect(html).toContain('data-item="0"')
     expect(html).toContain('data-item="1"')
   })
@@ -247,7 +247,7 @@ describe("editable render mode", () => {
       ...FIXTURES.hero,
       props: { ...FIXTURES.hero.props, sub: undefined, eyebrow: undefined },
     }
-    const html = renderSection(hero, { editable: true })
+    const html = renderSection(hero, { editable: true, liveFeedsAvailable: true })
     expect(html).toContain('data-edit="sub"')
     expect(html).toContain('data-edit="eyebrow"')
     expect(html).toContain("data-edit-empty")
@@ -285,7 +285,7 @@ describe("editable render mode", () => {
   }
 
   it.each(ISLAND_TARGETS)("anchors a $name CTA's label through a wrapper", ({ target }) => {
-    const html = renderSection(ctaWith(target), { editable: true })
+    const html = renderSection(ctaWith(target), { editable: true, liveFeedsAvailable: true })
     expect(html).toContain("data-djp-island")
     expect(html).toContain('data-edit="cta.label"')
     // The anchor must be OUTSIDE the island element, or the compiler eats it.
@@ -307,7 +307,7 @@ describe("editable render mode", () => {
     // the owner most needs to reach the label — the same rule the image slot
     // follows for an unrenderable src. A `program` ref that is not a valid uuid
     // cannot reach the island, so this is the degraded branch.
-    const html = renderSection(ctaWith({ kind: "program", ref: "Comeback Code" }), { editable: true })
+    const html = renderSection(ctaWith({ kind: "program", ref: "Comeback Code" }), { editable: true, liveFeedsAvailable: true })
     expect(html).toContain("djp-btn-disabled")
     expect(html).toContain('data-edit="cta.label"')
   })
@@ -317,7 +317,7 @@ describe("editable render mode", () => {
     // asserted: `filterAttrs` strips `data-djp-*` silently and `convertIsland`
     // consumes the island element whole, so the only proof that this anchor is
     // clickable is that it is still there after compiling.
-    const { html, css } = reassemble(docWith(ctaWith({ kind: "booking" })), { editable: true })
+    const { html, css } = reassemble(docWith(ctaWith({ kind: "booking" })), { editable: true, liveFeedsAvailable: true })
     const compiled = compileFunnelStep({ html, css })
     if (!compiled.ok) throw new Error(compiled.errors.map((e) => e.message).join("; "))
     expect(JSON.stringify(compiled.nodes)).toContain('"data-edit":"cta.label"')
@@ -360,12 +360,75 @@ describe("editable render mode", () => {
         ? { ...FIXTURES.testimonial, props: { source: "live", limit: 3, featuredOnly: false } }
         : { ...FIXTURES.faq, props: { heading: "Questions", source: "live", pageKey: "camps" } }
 
-    const editing = renderSection(section, { editable: true })
+    const editing = renderSection(section, { editable: true, liveFeedsAvailable: true })
     expect(editing).toContain("djp-edit-note")
     expect(editing).toMatch(/cannot be retyped here/)
 
     // MUTANT KILLED: editor chrome shipped to a visitor.
     expect(renderSection(section, {})).not.toContain("djp-edit-note")
+  })
+
+  // -------------------------------------------------------------------------
+  // G35: on a business that is not the platform, the note must not send the
+  // coach to the admin's FAQ and Testimonials lists. Those lists are the
+  // platform's own rows (`faqs` and `testimonials` have no `business_id`), the
+  // live islands show them to nobody else, and the publish gate refuses the
+  // section. Editing them would change the platform's pages, not the coach's.
+  // -------------------------------------------------------------------------
+
+  const LIVE_TESTIMONIAL: Section = {
+    ...FIXTURES.testimonial,
+    props: { source: "live", limit: 3, featuredOnly: false },
+  }
+  const LIVE_FAQ: Section = { ...FIXTURES.faq, props: { heading: "Questions", source: "live", pageKey: "camps" } }
+
+  it("tells a business off the platform to switch a live testimonial section to its own quotes (G35)", () => {
+    // MUTANT: the note ignoring `liveFeedsAvailable`, which points a coach at
+    // the platform's Testimonials list.
+    const editing = renderSection(LIVE_TESTIMONIAL, { editable: true, liveFeedsAvailable: false })
+
+    expect(editing).toContain(
+      "Live testimonials are not available for this business. Switch this section to your own quotes.",
+    )
+    expect(editing).not.toMatch(/Testimonials in the admin/)
+    expect(editing).not.toMatch(/Testimonials list/)
+  })
+
+  it("tells a business off the platform to switch a live FAQ section to its own FAQs (G35)", () => {
+    const editing = renderSection(LIVE_FAQ, { editable: true, liveFeedsAvailable: false })
+
+    expect(editing).toContain("Live FAQs are not available for this business. Switch this section to your own FAQs.")
+    expect(editing).not.toMatch(/FAQs in the admin/)
+    expect(editing).not.toMatch(/FAQ list/)
+  })
+
+  it("(control) still points the platform's own canvas at its lists (G35)", () => {
+    // MUTANT: the new wording printed for everyone, telling the platform its
+    // own feeds are unavailable.
+    const testimonial = renderSection(LIVE_TESTIMONIAL, { editable: true, liveFeedsAvailable: true })
+    const faq = renderSection(LIVE_FAQ, { editable: true, liveFeedsAvailable: true })
+
+    expect(testimonial).toMatch(/change them under Testimonials in the admin/)
+    expect(testimonial).not.toMatch(/not available for this business/)
+    expect(faq).toMatch(/change them under FAQs in the admin/)
+    expect(faq).not.toMatch(/not available for this business/)
+  })
+
+  it("still ships no note to a visitor, whatever the business (G35)", () => {
+    // MUTANT: the business check placed ahead of the edit-mode check, so a
+    // coach's PUBLISHED page carries the canvas sentence.
+    expect(renderSection(LIVE_FAQ, { liveFeedsAvailable: false })).not.toContain("djp-edit-note")
+    expect(renderSection(LIVE_TESTIMONIAL, { liveFeedsAvailable: false })).not.toContain("djp-edit-note")
+  })
+
+  it("will not compile an edit render that does not say whether the live feeds are available (G35)", () => {
+    // A TYPE-LEVEL guard, enforced by `tsc`, not by this runtime assertion.
+    // The flag is REQUIRED whenever `editable: true` — the only render that
+    // reads it — so the one caller that renders the canvas cannot forget it.
+    // Loosen the type and this directive is unused, which tsc reports.
+    // @ts-expect-error — `liveFeedsAvailable` is required with `editable: true`
+    const html = renderSection(LIVE_FAQ, { editable: true })
+    expect(html).toContain("djp-edit-note")
   })
 
   it("marks a hero's media as an image slot", () => {
@@ -376,7 +439,7 @@ describe("editable render mode", () => {
         media: { kind: "image", src: "https://cdn.example.com/a.jpg", alt: "Athlete", w: 1200, h: 800 },
       },
     }
-    expect(renderSection(hero, { editable: true })).toContain('data-edit-image="media"')
+    expect(renderSection(hero, { editable: true, liveFeedsAvailable: true })).toContain('data-edit-image="media"')
     // MUTANT KILLED: shipping the editor's slot marker to visitors.
     expect(renderSection(hero, {})).not.toContain("data-edit-image")
   })
@@ -385,7 +448,7 @@ describe("editable render mode", () => {
     // The image twin of the placeholder rule. `renderMedia` is only called when
     // `props.media` exists, so without this an image-less hero has no pixel
     // that opens the picker and can never gain an image from the canvas.
-    const html = renderSection(FIXTURES.hero, { editable: true })
+    const html = renderSection(FIXTURES.hero, { editable: true, liveFeedsAvailable: true })
     expect(FIXTURES.hero.props.media).toBeUndefined()
     expect(html).toContain('data-edit-image="media"')
     expect(html).toContain("data-edit-empty")
@@ -401,7 +464,7 @@ describe("editable render mode", () => {
       ...FIXTURES.hero,
       props: { ...FIXTURES.hero.props, media: { kind: "youtube", src: "dQw4w9WgXcQ", alt: "Intro", w: 16, h: 9 } },
     }
-    expect(renderSection(hero, { editable: true })).toContain('data-edit-image="media"')
+    expect(renderSection(hero, { editable: true, liveFeedsAvailable: true })).toContain('data-edit-image="media"')
   })
 
   it("marks the slot even when the media is unrenderable", () => {
@@ -412,13 +475,13 @@ describe("editable render mode", () => {
       ...FIXTURES.hero,
       props: { ...FIXTURES.hero.props, media: { kind: "image", src: "not-a-url", alt: "Broken", w: 10, h: 10 } },
     }
-    const html = renderSection(hero, { editable: true })
+    const html = renderSection(hero, { editable: true, liveFeedsAvailable: true })
     expect(html).toContain("djp-media-invalid")
     expect(html).toContain('data-edit-image="media"')
   })
 
   it("survives the compiler, which strips data-djp-* silently", () => {
-    const { html, css } = reassemble(docWith(FIXTURES.hero), { editable: true })
+    const { html, css } = reassemble(docWith(FIXTURES.hero), { editable: true, liveFeedsAvailable: true })
     const compiled = compileFunnelStep({ html, css })
     if (!compiled.ok) throw new Error(compiled.errors.map((e) => e.message).join("; "))
     const serialized = JSON.stringify(compiled.nodes)
@@ -427,7 +490,7 @@ describe("editable render mode", () => {
   })
 
   it("reassembles without anchors by default, exactly as publish does", () => {
-    const editable = reassemble(docWith(FIXTURES.hero), { editable: true })
+    const editable = reassemble(docWith(FIXTURES.hero), { editable: true, liveFeedsAvailable: true })
     const published = reassemble(docWith(FIXTURES.hero), {})
     expect(published.html).not.toContain("data-edit")
     // The stylesheet is not a function of edit mode.

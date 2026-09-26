@@ -88,17 +88,9 @@ export interface BrandKit {
   accent?: string
 }
 
-export interface RenderContext {
+interface RenderContextBase {
   /** e.g. "/go/summer-camp" — no trailing slash. */
   funnelBasePath?: string
-  /**
-   * Stamp editing anchors onto the markup. DEFAULTS TO FALSE, AND THAT DEFAULT
-   * IS LOAD-BEARING: publish, `/go` and every stored version row render through
-   * this same function, so an anchor emitted unconditionally would be editor
-   * scaffolding shipped to visitors. `render-editable.test.ts` asserts byte
-   * identity between `{}` and `{ editable: false }` for all ten kinds.
-   */
-  editable?: boolean
   /**
    * The tenant's brand kit, used by `doc.ts`'s `themeCss` as the palette
    * fallback when the document itself carries no `theme.palette`. Unused by
@@ -107,6 +99,35 @@ export interface RenderContext {
    */
   brandKit?: BrandKit | null
 }
+
+/**
+ * `editable` — stamp editing anchors onto the markup. DEFAULTS TO FALSE, AND
+ * THAT DEFAULT IS LOAD-BEARING: publish, `/go` and every stored version row
+ * render through this same function, so an anchor emitted unconditionally
+ * would be editor scaffolding shipped to visitors. `render-editable.test.ts`
+ * asserts byte identity between `{}` and `{ editable: false }` for all ten
+ * kinds.
+ *
+ * `liveFeedsAvailable` — whether this business may use the platform's live FAQ
+ * list and live testimonial feed (G35; `Catalogues.liveFeedsAvailable`'s
+ * question). Read ONLY by the canvas note on a live FAQ or testimonial
+ * section (`liveFeedNote`), which exists only in edit mode: the platform's own
+ * canvas is pointed at its FAQ and Testimonials lists, any other business's is
+ * told to switch the section to its own content, because those lists are the
+ * platform's rows and that business's page never shows them.
+ *
+ * REQUIRED WHENEVER `editable: true`, and only then — the union below says so.
+ * Not required everywhere: publish, the build route, the review render, the
+ * edit screen's own compile and the scripts never render edit mode, so the
+ * flag would be an argument nothing reads (and the review render and the
+ * browser-side publish check have no tenant to decide it from). Not
+ * optional-with-a-default either: the one caller that renders the canvas,
+ * `renderDraftPreview`, knows the answer, and a default would let a new
+ * canvas caller forget it silently. So an edit render that leaves it out does
+ * not compile.
+ */
+export type RenderContext = RenderContextBase &
+  ({ editable?: false; liveFeedsAvailable?: boolean } | { editable: true; liveFeedsAvailable: boolean })
 
 // ---------------------------------------------------------------------------
 // Editing anchors — the attributes the click-to-edit canvas reads.
@@ -231,6 +252,29 @@ function anchoredIsland(ctx: RenderContext, path: string | undefined, markup: st
 function liveFeedNote(ctx: RenderContext, text: string): string {
   if (!ctx.editable) return ""
   return `<p class="djp-edit-note">${escapeHtml(text)}</p>`
+}
+
+/**
+ * The canvas note for a live FAQ or live testimonial section, by business
+ * (G35). The platform's canvas is sent to its own lists; any other business's
+ * is told the feed is not available and to switch to its own content. The
+ * publish gate says the same thing as a blocker, in its own words.
+ *
+ * Anything but an explicit `true` gets the "not available" wording: pointing a
+ * coach at the platform's lists is the one outcome this must never produce.
+ * No platform brand literal (Controller ruling R4): this is coach-facing copy.
+ */
+function liveFeedCanvasNote(ctx: RenderContext, feed: "faq" | "testimonial"): string {
+  if (ctx.liveFeedsAvailable === true) {
+    return feed === "testimonial"
+      ? "These quotes are pulled live from your Testimonials list, so they cannot be retyped here — " +
+          "change them under Testimonials in the admin. This section chooses how many to show."
+      : "These questions are pulled live from your FAQ list, so they cannot be retyped here — " +
+          "change them under FAQs in the admin. This section chooses which set to show."
+  }
+  return feed === "testimonial"
+    ? "Live testimonials are not available for this business. Switch this section to your own quotes."
+    : "Live FAQs are not available for this business. Switch this section to your own FAQs."
 }
 
 /**
@@ -757,13 +801,7 @@ function renderTestimonialSection(section: Section, ctx: RenderContext): string 
     // A live feed has no authored copy to anchor — the section is selectable
     // and its `limit`/`featuredOnly` knobs belong to the inspector. The note
     // is what stops "no anchor" from reading as "this bit is broken".
-    parts.push(
-      liveFeedNote(
-        ctx,
-        "These quotes are pulled live from your Testimonials list, so they cannot be retyped here — " +
-          "change them under Testimonials in the admin. This section chooses how many to show.",
-      ),
-    )
+    parts.push(liveFeedNote(ctx, liveFeedCanvasNote(ctx, "testimonial")))
     parts.push(renderIsland("testimonials", { limit: props.limit, featuredOnly: props.featuredOnly }))
   } else {
     parts.push(`<div class="djp-testimonial-grid">`)
@@ -834,13 +872,7 @@ function renderFaqSection(section: Section, ctx: RenderContext): string {
   const parts: string[] = [sectionOpenTag(section, ctx)]
   parts.push(optionalText(ctx, "h2", "djp-hd", "heading", props.heading, "Add a heading"))
   if (props.source === "live") {
-    parts.push(
-      liveFeedNote(
-        ctx,
-        "These questions are pulled live from your FAQ list, so they cannot be retyped here — " +
-          "change them under FAQs in the admin. This section chooses which set to show.",
-      ),
-    )
+    parts.push(liveFeedNote(ctx, liveFeedCanvasNote(ctx, "faq")))
     parts.push(renderIsland("faq", { pageKey: props.pageKey }))
   } else {
     parts.push(`<dl class="djp-faq-list">`)

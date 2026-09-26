@@ -1919,6 +1919,11 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
 
   const review = await reviewDoc({
     doc,
+    // G35. The reviser never sees Block B, so it is told here what Block B
+    // told the builder — on BOTH paths that reach this stage (first draft and
+    // Polish), which is why it is read off `context` inside this function
+    // rather than passed by each caller.
+    liveFeedsAvailable: context.liveFeedsAvailable,
     ...(render ? { render } : {}),
     onFinding: (finding) => emit({ type: "finding", finding }),
   })
