@@ -461,8 +461,12 @@ function unionCatalogues(recognition: Catalogue, offer: Catalogue): Catalogue {
  *
  * Exported, and pure, because the draft preview needs the answer even when
  * `loadCatalogues` throws: its canvas note must still tell a coach the truth
- * on the render that fails soft. One rule, asked in one place, so the canvas
- * and the publish gate cannot disagree about a business.
+ * on the render that fails soft. The canvas and the publish gate ask this one
+ * function, so they cannot disagree about a business. The build route asks
+ * the same question inline (`loadPageContext`), as its own entry on
+ * lib/tenancy/platform.ts's NARROWER VARIANT shelf says; the comparison is
+ * one line, and routing it through here would take that route off the seam's
+ * caller list.
  */
 export function liveFeedsAvailableFor(businessId: string): boolean {
   return businessId === platformBusinessId()

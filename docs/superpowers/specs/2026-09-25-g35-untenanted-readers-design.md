@@ -319,7 +319,8 @@ Each row carries its evidence and, where it needs one, the owner's question. Non
 Composite foreign keys and dropping the platform `DEFAULT` (G44); converting any subsystem named in G36-G39;
 the checkout binding (G40); the marketing site served on a coach's host (it is the platform's own site in
 full; the "output keyed to one host" shelf); hard-bounce and shared-sender suppression policy (per-business
-suppression is already correct for STOP and unsubscribe; both points are recorded with G38/G44 context).
+suppression is already correct for STOP and unsubscribe). Both points are recorded in the ledger's G35 row under
+"Deliberately not built"; neither G38 nor G44 covers them, although an earlier draft of this section said so.
 
 ## 7. Testing and verification
 

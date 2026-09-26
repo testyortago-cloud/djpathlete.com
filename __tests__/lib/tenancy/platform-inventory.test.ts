@@ -310,6 +310,13 @@ describe("lib/tenancy/platform.ts — the UNTENANTED BY SCHEMA shelf", () => {
   // one row of a multi-row file (`getAllPrograms` out of lib/db/programs.ts)
   // left the prose describing a read that nothing checked. The control that
   // proves this can fail is in "controls" below.
+  //
+  // WHAT IT STILL CANNOT SEE, so nobody reads more into a green run: a dropped
+  // TABLE row of an entry whose function keeps other rows (`loadCatalogues` ·
+  // `session_pack_products`, the copy-sources `GET` · `users`); route-handler
+  // entries (`GET`/`POST` are not camelCase); and a function written with its
+  // parentheses (`getFoo()`). Each would need the prose to name tables per
+  // function in a parseable form, which it does not.
   it("names no function in its entries that is not an entry's function or a stated context name", () => {
     const { shelf } = inventoryParts()
     // Presence: the scan finds the functions the entries name at all.

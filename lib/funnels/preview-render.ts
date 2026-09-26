@@ -122,10 +122,6 @@ export async function renderDraftPreview({
     ]
   }
 
-  // `reassemble` re-parses the document and throws on a bad one. `getDraft` has
-  // already parsed it with the same schema, so this cannot legitimately fire —
-  // but an uncaught throw is a 500 for an owner who only wanted to look at their
-  // draft, and "here is what is wrong with it" is strictly more useful.
   // G35: what the canvas note on a live FAQ or testimonial section says —
   // the platform's canvas is sent to its own lists, any other business's is
   // told to switch to its own content. Asked of the business, not read off
@@ -134,6 +130,10 @@ export async function renderDraftPreview({
   // function, so the canvas and the gate cannot disagree.
   const liveFeedsAvailable = liveFeedsAvailableFor(businessId)
 
+  // `reassemble` re-parses the document and throws on a bad one. `getDraft` has
+  // already parsed it with the same schema, so this cannot legitimately fire —
+  // but an uncaught throw is a 500 for an owner who only wanted to look at their
+  // draft, and "here is what is wrong with it" is strictly more useful.
   let rendered
   try {
     rendered = reassemble(docToRender, { funnelBasePath, editable, brandKit, liveFeedsAvailable })
