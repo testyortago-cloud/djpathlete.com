@@ -44,8 +44,10 @@
       never clicks a sequence's on/off switch, never drags a pipeline card, and never submits a form.</li>
     <li><strong>Light only.</strong> The admin screens have no working dark mode, so there is no dark shot.</li>
     <li><strong>Proven, not assumed, that this is Trailhead's screen and not the platform's own.</strong>
-      The platform's business ("Primary") was also backfilled by the same migration and ended up with the
-      same three board names, also all active, also Coaching first — a wrong-tenant pipeline shot would
+      The platform's business ("Primary") has the same three board names, also all active, also Coaching
+      first — but not because 00279 backfilled it. Primary has had Coaching since migration 00219 and
+      gained Assessment and Camps &amp; Clinics from 00257; 00279's insert is a no-op for a board key that
+      already exists, so it left Primary's three untouched. Either way, a wrong-tenant pipeline shot would
       look almost identical at a glance. The capture script instead reads the page's own sentence, which
       the server builds from Trailhead's own business name ("Trailhead Strength &amp; Conditioning —
       Personal Training's Coaching pipeline") — a sentence Primary's page can never produce. For the
@@ -62,20 +64,20 @@
 <figure>
   <img src="01-eleven-sequences-never-turned-on.png" alt="The Sequences list for Trailhead, showing eleven rows all marked Never turned on">
   <figcaption>
-    <h2>1 · Eleven follow-up sequences, all switched off</h2>
-    <p>A new business now starts with eleven follow-up sequences, all switched off until the coach turns
-      them on. Every row reads "Never turned on" and shows zero people in it — nobody built any of these
-      by hand, and nothing has gone out to anybody yet.</p>
+    <h2>1 · Every business now has eleven follow-up sequences</h2>
+    <p>They start switched off. Nothing is sent until the coach turns one on. A business created from
+      today gets them the moment it is made; Trailhead is an existing business, and it got them when the
+      update ran — that is why every row here still shows zero people, since none has been turned on yet.</p>
   </figcaption>
 </figure>
 
 <figure>
   <img src="02-three-boards-coaching-first.png" alt="The Pipeline page for Trailhead, showing three board pills: Coaching, Assessment, Camps and Clinics, with Coaching selected">
   <figcaption>
-    <h2>2 · All three pipeline boards, Coaching first</h2>
-    <p>It also starts with all three boards, Coaching first. A coach who wants to track assessments or
-      camps separately from ongoing coaching does not have to build those boards — they are already
-      there, empty and ready.</p>
+    <h2>2 · …and all three boards, with Coaching first</h2>
+    <p>A coach who wants to track assessments or camps and clinics separately from day-to-day coaching
+      does not have to build these boards — they already exist, empty, ready to use, the same way the
+      eleven sequences above did.</p>
   </figcaption>
 </figure>
 

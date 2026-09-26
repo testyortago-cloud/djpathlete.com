@@ -17,10 +17,13 @@
 //
 // WHY THE GUARD CANNOT TRUST BOARD NAMES ALONE. The platform's own business,
 // "Primary" (00000000-0000-0000-0000-000000000001), has the SAME three board
-// names, also all active, also Coaching first — 00279 backfilled it too. A
-// script that fell back to Primary because the tenant cookie was ignored would
-// still show three pills named Coaching / Assessment / Camps & Clinics and
-// pass a names-only check. The pipeline guard therefore reads the page's own
+// names, also all active, also Coaching first — but not from 00279. Primary
+// has had Coaching since migration 00219 and gained Assessment and Camps &
+// Clinics from 00257; 00279's insert is a no-op for a key that already
+// exists, so it left Primary's three untouched. A script that fell back to
+// Primary because the tenant cookie was ignored would still show three pills
+// named Coaching / Assessment / Camps & Clinics and pass a names-only check.
+// The pipeline guard therefore reads the page's own
 // sentence, which the server renders from THIS business's display name
 // (`possessiveName(business.display_name)` in app/(admin)/admin/pipeline/
 // page.tsx): "Trailhead Strength & Conditioning's Coaching pipeline." Primary
@@ -94,6 +97,33 @@ async function markerOn(locator, caption, { dx = 0, dy = 0, place = "left" } = {
   }
   if (place === "center") cx = box.x + box.width / 2
   return { x: Math.round((cx + dx) * DSF), y: Math.round((cy + dy) * DSF), caption }
+}
+
+/** A marker at an absolute CSS-pixel position, for spots with no single
+ * element to anchor to (e.g. the open background beside a row of pills). */
+function markerAt(cx, cy, caption) {
+  return { x: Math.round(cx * DSF), y: Math.round(cy * DSF), caption }
+}
+
+/**
+ * A marker beside a crowded table row, guaranteed clear of every line of text
+ * passed in `boxes` — not just the one target box.
+ *
+ * Fix round 1 found that placing a marker 22px to the right of just the
+ * badge (the usual `markerOn(..., {place:"right"})` convention) clipped the
+ * SEQUENCE NAME on the line above it: this cell stacks three lines (the
+ * sequence name, its status badge, and a muted note), and the name line is
+ * often wider than the badge. Verified empirically with
+ * `document.elementFromPoint` + a text-node range check at 9 sample points
+ * around the candidate disc (center + 8 points on its circumference) before
+ * trusting any position — see task-5-report.md's fix-round-1 section. The
+ * safe formula: past the RIGHTMOST edge of every text box in the cell, with
+ * extra clearance (30px, not the usual 22) because the disc's vertical reach
+ * still crosses the other lines' row-bands even when centered on one of them.
+ */
+function markerBesideRow(boxes, targetBox, caption) {
+  const rightMost = Math.max(...boxes.filter(Boolean).map((b) => b.x + b.width))
+  return markerAt(rightMost + 30, targetBox.y + targetBox.height / 2, caption)
 }
 
 async function hideDevChrome(page) {
@@ -184,18 +214,32 @@ try {
   const lastRowName = (await lastRow.locator("a").first().textContent())?.trim()
   console.log(`   last row (11 of 11): ${lastRowName}`)
 
+  // Fix round 1: a naive `place:"right"` off just the badge (22px gap) clipped
+  // the sequence-name line above it. Compute a position clear of every line in
+  // the cell instead — see markerBesideRow's doc comment.
+  const row0 = rows.nth(0)
+  const row0Link = row0.locator("a").first()
+  const row0Badge = row0.getByText("Never turned on", { exact: true })
+  const row0Muted = row0.getByText("Not switched on yet.", { exact: true })
+  const [row0LinkBox, row0BadgeBox, row0MutedBox] = await Promise.all([
+    row0Link.boundingBox(),
+    row0Badge.boundingBox(),
+    row0Muted.boundingBox(),
+  ])
+
   await shot(
     page,
     "01-eleven-sequences-never-turned-on",
-    "A new business now starts with eleven follow-up sequences",
-    "A new business now starts with eleven follow-up sequences, all switched off until the coach turns them on.",
+    "Every business now has eleven follow-up sequences",
+    "They start switched off. Nothing is sent until the coach turns one on. A business created from today gets them the moment it is made; this one got them when the update ran.",
     async () => [
       await markerOn(
         lastRow.locator("a").first(),
-        `This is row 11 of 11, "${lastRowName}" — the last one. This business starts with all eleven of these automatic follow-ups already set up, without anyone building one by hand.`,
+        `This is row 11 of 11, "${lastRowName}" — the last one. All eleven are already set up, without anyone building one by hand.`,
       ),
-      await markerOn(
-        rows.nth(0).getByText("Never turned on", { exact: true }),
+      markerBesideRow(
+        [row0LinkBox, row0BadgeBox, row0MutedBox],
+        row0BadgeBox,
         'Every one of the eleven starts in this state, "Never turned on". Nothing is sent to anybody until the coach switches one on.',
       ),
     ],
@@ -239,19 +283,37 @@ try {
   console.log(`   active pill: ${activeName}`)
   must(activeName === "Coaching", `expected "Coaching" to be the selected board, found "${activeName}"`)
 
-  const coachingPill = pillsNav.getByText("Coaching", { exact: true })
-  const assessmentPill = pillsNav.getByText("Assessment", { exact: true })
-  const campsPill = pillsNav.getByText("Camps & Clinics", { exact: true })
+  // Fix round 1: markers "above" the pills sat on the paragraph's own second
+  // line (there is only ~29px of clearance there, less than the disc's own
+  // ~38px diameter — no vertical position in that gap can avoid touching
+  // either the paragraph above or the board below it). The verified-clear
+  // spot is the open background to the right of the whole pill group, at the
+  // same height as the pills, spaced out left to right in the same order as
+  // the pills themselves so the numbering reads unambiguously.
+  const navBox = await pillsNav.boundingBox()
+  const pillBoxes = await pills.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON()))
 
   await shot(
     page,
     "02-three-boards-coaching-first",
-    "It also starts with all three boards, Coaching first",
-    "It also starts with all three boards, Coaching first.",
+    "…and all three boards, with Coaching first",
+    "A coach who wants to track assessments or camps and clinics separately from day-to-day coaching does not have to build these boards — they already exist, empty, ready to use.",
     async () => [
-      await markerOn(coachingPill, 'This one is highlighted — it is the board showing right now. New businesses land here first.', { place: "above" }),
-      await markerOn(assessmentPill, "The second board, ready to use whenever the coach needs it.", { place: "above" }),
-      await markerOn(campsPill, "The third board, also already set up.", { place: "above" }),
+      markerAt(
+        navBox.x + navBox.width + 40,
+        pillBoxes[0].y + pillBoxes[0].height / 2,
+        '"Coaching," highlighted — this is the board showing right now.',
+      ),
+      markerAt(
+        navBox.x + navBox.width + 40 + 130,
+        pillBoxes[1].y + pillBoxes[1].height / 2,
+        '"Assessment," the second board, ready to use whenever the coach needs it.',
+      ),
+      markerAt(
+        navBox.x + navBox.width + 40 + 260,
+        pillBoxes[2].y + pillBoxes[2].height / 2,
+        '"Camps & Clinics," the third board, also already set up.',
+      ),
     ],
   )
 
