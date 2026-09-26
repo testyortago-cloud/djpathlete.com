@@ -14,25 +14,19 @@
 // the two drift, and the drift shows up as a merge field that renders blank
 // forever because nothing writes the key.
 //
-// WHY `{{sport}}` AND `{{goals}}` ARE NOT HERE. The row that asked for this
-// feature named both, and neither has anywhere to come from:
+// `{{sport}}` IS HERE SINCE G16 (2026-09-27), and only by way of that array:
+// the inquiry route now passes the application form's "Sport / Activity"
+// answer into the event metadata, so `sport` became an ENROLMENT_METADATA_KEYS
+// entry, which is also what made it a branchable key in the editor. It is
+// blank for anyone who came in through a door that does not ask it.
 //
-//   * `sport` IS collected — app/api/inquiry/route.ts reads it off the
-//     application form — but that route passes `metadata: { service }` to
-//     `recordContactEvent` and nothing else, so it never reaches
-//     `enrolment_metadata`. Adding it means adding a key to
-//     ENROLMENT_METADATA_KEYS, which also widens `branchConditionSchema` and
-//     the editor's branch dropdown. That is a deliberate decision with its own
-//     test surface, not a side effect of a rendering change.
-//   * `goals` is FREE PROSE, and enrolment-metadata.ts says in as many words
-//     that its 120-character cap exists so "nothing resembling prose (or a
-//     pasted note) can land in a column a branch compares with `=`". A
-//     paragraph about somebody's ambitions is exactly what that cap refuses,
-//     so wiring it through would produce a merge field that silently renders
-//     blank for the answers people actually write.
-//
-// Both render blank today rather than shipping visible braces to a real
-// person, which is the behaviour that matters most.
+// WHY `{{goals}}` IS NOT. It is FREE PROSE, and enrolment-metadata.ts says in
+// as many words that its 120-character cap exists so "nothing resembling prose
+// (or a pasted note) can land in a column a branch compares with `=`". A
+// paragraph about somebody's ambitions is exactly what that cap refuses, so
+// wiring it through would produce a merge field that silently renders blank
+// for the answers people actually write. It renders blank rather than shipping
+// visible braces to a real person, and the editor warns about it.
 
 import { ENROLMENT_METADATA_KEYS, type EnrolmentMetadata } from "@/lib/lead-engine/enrolment-metadata"
 

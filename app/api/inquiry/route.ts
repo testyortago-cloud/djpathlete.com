@@ -12,6 +12,7 @@ import { generateLeadAnalysis, type LeadAnalysisResult } from "@/lib/ai/lead-ana
 import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation-log"
 import { MODEL_SONNET } from "@/lib/ai/anthropic"
 import { captureLead } from "@/lib/lead-engine/capture"
+import { pickEnrolmentMetadata } from "@/lib/lead-engine/enrolment-metadata"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
 import { recordConsent } from "@/lib/db/contact-consents"
@@ -182,7 +183,14 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       // `enrolled_metadata_is` branch predicate reads it. It ALSO becomes
       // matchable by a sequence's `trigger_filter`, which is how a
       // camp-only sequence could be keyed later without new code.
-      metadata: { service },
+      //
+      // G16: `sport` rides along too, as `{{sport}}` and as a branchable key.
+      // Unlike `service` it is FREE TEXT a stranger typed, and this bag is
+      // written to the contact's timeline and matched against trigger filters
+      // BEFORE the run's allow-list sees it. So the allow-list's value checks
+      // (trimmed, capped, nothing shaped like a phone number or an email) are
+      // applied here first: an answer that fails them never leaves the route.
+      metadata: { service, ...pickEnrolmentMetadata({ sport }) },
     })
 
     // Lead Engine pipeline (gap #8 phase 1.5, spec

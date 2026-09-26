@@ -20,7 +20,7 @@
 // `payload` straight through as `metadata`. Funnel field names are chosen by
 // the owner and validated only as `^[a-z][a-z0-9_]{0,39}$` — so an owner CAN
 // name a field `service` or `camp_name`, and a visitor can then type anything
-// at all into it. Copying "only the seven keys" would, on that path, copy
+// at all into it. Copying "only the allow-listed keys" would, on that path, copy
 // whatever a stranger typed.
 //
 // So the value is guarded too: scalars only, trimmed, length-capped, and
@@ -51,6 +51,13 @@
  *   branch      — `app/api/quiz/submit/route.ts` (the quiz's own parent /
  *                 athlete split rides here: `parent_coach` is a branch key)
  *   tier        — `app/api/quiz/submit/route.ts`
+ *   sport       — `app/api/inquiry/route.ts` (G16, 2026-09-27): the
+ *                 application form's optional "Sport / Activity" box. FREE
+ *                 TEXT a stranger types ("Soccer", "CrossFit"), at most 100
+ *                 characters by `inquiryFormSchema`. It takes the strict
+ *                 digit rule below, and `enrolled_metadata_is` compares
+ *                 ignoring case and spaces, so "Soccer" matches a coach's
+ *                 "soccer". It is also the `{{sport}}` merge field.
  *
  * Adding a key here widens what a coach can branch on — see
  * `branchConditionSchema` (lib/validators/sequence-admin.ts), which takes its
@@ -66,6 +73,8 @@ export const ENROLMENT_METADATA_KEYS = [
   "tier",
   "quiz_key",
   "camp_name",
+  // Last, so every run that already carries metadata serialises as before.
+  "sport",
 ] as const
 
 export type EnrolmentMetadataKey = (typeof ENROLMENT_METADATA_KEYS)[number]
@@ -105,11 +114,11 @@ const IS_ONLY_A_PHONE = /^\d{7,}$/
 /**
  * THE PHONE RULE IS PER KEY, because the keys are not the same kind of thing.
  *
- * Six of the seven — `service`, `role`, `event_kind`, `branch`, `tier`,
- * `quiz_key` — are machine-written enum-ish tokens (`camp`, `parent`,
- * `in_person`, `aspiring_pro`). No legitimate value has seven consecutive
- * digits in it, so those take the STRICT rule: a long digit run anywhere is
- * refused. That matters because an owner may name a funnel field `service`,
+ * Seven of the eight — `service`, `role`, `event_kind`, `branch`, `tier`,
+ * `quiz_key` (machine-written enum-ish tokens: `camp`, `parent`, `in_person`,
+ * `aspiring_pro`) and `sport` (a sport's name, typed by the applicant) — have
+ * no legitimate value with seven consecutive digits in it, so those take the
+ * STRICT rule: a long digit run anywhere is refused. That matters because an owner may name a funnel field `service`,
  * and a visitor may then type `camp - best on 0412 345 678 after 6pm` into
  * it. Under an all-digits rule that whole string, phone included, is stored.
  *

@@ -243,6 +243,36 @@ describe("POST /api/inquiry — joins the contact spine", () => {
     )
   })
 
+  // G16 {{sport}}. The form collected "Sport / Activity" and the route threw
+  // it away, so `{{sport}}` rendered blank for every applicant.
+  it("carries the sport the applicant typed, trimmed", async () => {
+    await post({ ...VALID_BODY, sport: "  Soccer " })
+
+    expect(mocks.recordContactEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ service: "in_person", sport: "Soccer" }) }),
+    )
+  })
+
+  it("leaves sport out when the applicant left the box empty", async () => {
+    await post(VALID_BODY)
+
+    const metadata = mocks.recordContactEvent.mock.calls[0][0].metadata as Record<string, unknown>
+    expect(metadata).not.toHaveProperty("sport")
+    expect(metadata.service).toBe("in_person") // presence control: the bag itself was sent
+  })
+
+  it("does not pass a sport answer carrying a phone number anywhere into the engine", async () => {
+    // The box is free text a stranger fills in. The event metadata is written
+    // to the contact's timeline and matched against trigger filters before the
+    // run's own allow-list ever sees it, so the route applies that allow-list
+    // itself: what fails it never leaves the route.
+    await post({ ...VALID_BODY, sport: "Soccer, text me on 0412 345 678" })
+
+    const metadata = mocks.recordContactEvent.mock.calls[0][0].metadata as Record<string, unknown>
+    expect(metadata).not.toHaveProperty("sport")
+    expect(metadata.service).toBe("in_person")
+  })
+
   it("passes null for every attribution field when there is nothing to resolve — never invents a value", async () => {
     mocks.getAttributionBySession.mockResolvedValue(null)
 

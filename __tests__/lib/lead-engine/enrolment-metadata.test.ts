@@ -170,3 +170,30 @@ describe("pickEnrolmentMetadata", () => {
     expect(pickEnrolmentMetadata({})).toEqual({})
   })
 })
+
+// G16 {{sport}}. `sport` is the application form's optional "Sport /
+// Activity" box: FREE TEXT a stranger types (placeholder "e.g. Tennis,
+// CrossFit, Soccer"), capped at 100 characters by inquiryFormSchema. It takes
+// the STRICT identifier rule the enum-ish keys use, not camp_name's loose one:
+// no sport name has seven digits in a row, and "Soccer, text me on 0412 345
+// 678" must not be remembered, merged into an email or branched on.
+describe("sport (G16)", () => {
+  it("is a key a run may remember", () => {
+    expect(ENROLMENT_METADATA_KEYS).toContain("sport")
+  })
+
+  it.each(["Soccer", "CrossFit", "Track & Field (400m)", "U-14 basketball"])("keeps %j as typed, trimmed", (value) => {
+    expect(pickEnrolmentMetadata({ sport: `  ${value} ` })).toEqual({ sport: value })
+  })
+
+  it.each([
+    ["a phone number inside it", "Soccer, text me on 0412 345 678"],
+    ["an email address", "tennis coach@example.com"],
+  ])("refuses a value with %s", (_label, value) => {
+    expect(pickEnrolmentMetadata({ sport: value })).toEqual({})
+  })
+
+  it("leaves a blank answer out rather than storing an empty string", () => {
+    expect(pickEnrolmentMetadata({ service: "online", sport: "   " })).toEqual({ service: "online" })
+  })
+})

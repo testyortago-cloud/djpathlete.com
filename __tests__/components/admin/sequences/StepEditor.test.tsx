@@ -688,7 +688,32 @@ describe("<StepEditor> — the enrolment-metadata split (G10)", () => {
       .getAllByRole("option")
       .map((o) => (o as HTMLOptionElement).value)
 
-    expect(keys.sort()).toEqual(["branch", "camp_name", "event_kind", "quiz_key", "role", "service", "tier"].sort())
+    // G16: `sport` joined once the application form started writing it.
+    expect(keys.sort()).toEqual(
+      ["branch", "camp_name", "event_kind", "quiz_key", "role", "service", "sport", "tier"].sort(),
+    )
+  })
+
+  it("lets a coach split on the sport the applicant typed, in words, and saves it (G16)", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, plan: { repoint: [], exit: [], unchanged: [] } }),
+    }) as unknown as typeof fetch
+
+    renderEditor({ initialSteps: unsetBranchSteps() })
+    fireEvent.change(screen.getByLabelText(/step 1 split rule/i), { target: { value: "enrolled_metadata_is" } })
+
+    const keyPicker = within(screen.getByLabelText(/step 1 what to check/i))
+    expect(keyPicker.getByRole("option", { name: /sport they wrote/i })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/step 1 what to check/i), { target: { value: "sport" } })
+    fireEvent.change(screen.getByLabelText(/step 1 answer to look for/i), { target: { value: "soccer" } })
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }))
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string) as { steps: StepDraft[] }
+    expect(body.steps[0].branch_condition).toEqual({ kind: "enrolled_metadata_is", key: "sport", value: "soccer" })
   })
 
   it("explains each rule in words a coach can act on, never the stored key", () => {
