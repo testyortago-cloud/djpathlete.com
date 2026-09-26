@@ -84,6 +84,11 @@ const ROOTS = [
   // The quiz alert's caller. In the sweep because it decides what the
   // operator is told and used to choose the recipient itself.
   "lib/quizzes/alert.ts",
+  // G32 -- the starter set of eleven draft sequences every business gets.
+  // The eleven JSON literals are the platform's own approved copy, so this
+  // migration is exactly where a brand word left in by mistake would reach
+  // every future tenant's drafts.
+  "supabase/migrations/00279_business_starter_set.sql",
 ]
 
 function filesUnder(p: string): string[] {
