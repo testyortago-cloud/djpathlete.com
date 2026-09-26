@@ -1,5 +1,15 @@
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
-import { getClient, MODEL_OPUS, MODEL_SONNET, MODEL_HAIKU, Anthropic } from "./ai/anthropic.js"
+import { MODEL_OPUS, MODEL_SONNET, MODEL_HAIKU } from "./ai/anthropic.js"
+import { createMessageCompat } from "./ai/openrouter-message.js"
+import type {
+  AnthropicBlock,
+  CompatContent,
+  CompatMessage,
+  CompatMessageParams,
+  CompatResponseBlock,
+  CompatTool,
+} from "./ai/openrouter-message.js"
+import { ProviderFallbackError } from "./ai/openrouter.js"
 import { getProgramChatSystemPrompt } from "./ai/program-chat-prompt.js"
 import { listClients, lookupClientProfile, getExercisesForAI } from "./ai/program-chat-tools.js"
 import { generateProgramSync } from "./ai/orchestrator.js"
@@ -11,7 +21,7 @@ import {
   embedConversationMessage,
 } from "./ai/rag.js"
 import { getSupabase } from "./lib/supabase.js"
-import { createDeadline } from "./lib/deadline.js"
+import { createDeadline, type Deadline } from "./lib/deadline.js"
 import pRetry from "p-retry"
 
 /**
@@ -27,12 +37,104 @@ import pRetry from "p-retry"
  */
 const PROGRAM_CHAT_BUDGET_MS = 450_000 // 7.5 min
 
+/**
+ * The function's `timeoutSeconds` (index.ts programChat), in milliseconds. The
+ * platform hard-kills the turn here and nothing after it runs.
+ */
+const PROGRAM_CHAT_HARD_KILL_MS = 540_000
+
+/**
+ * Kept free at the end of the hard-kill window for what the turn still does
+ * after its last model call: the history insert, the chat-state save, and the
+ * done/completed writes (or the error/failed ones).
+ */
+const CLOSING_CALL_MARGIN_MS = 30_000
+
+/** The most a closing reply gets: it only relays a result the coach already has on screen. */
+const CLOSING_CALL_MAX_MS = 60_000
+
+/**
+ * Below this a closing call is not started. One reply plus a single 3s retry
+ * backoff does not fit, and a reply cut off halfway only spends tokens.
+ */
+const CLOSING_CALL_MIN_MS = 15_000
+
+/** What the coach is told when the closing call is skipped or cut off after a complete program was saved. */
+const PROGRAM_SAVED_CLOSING = "Your program is built and saved. Open it to review the weeks."
+
+export type ClosingCallBudget = { kind: "turn" } | { kind: "own"; budgetMs: number } | { kind: "skip" }
+
+/**
+ * The deadline for a model call made AFTER generate_program ran in this turn.
+ *
+ * WHY NOT SIMPLY THE TURN'S. generate_program runs on the turn's own 450s
+ * deadline, and a long program is EXPECTED to spend it: generation stops before
+ * a week it cannot finish, saves what it built and queues the rest. The next
+ * model call, the one that tells the coach, then started on a deadline that had
+ * already fired. p-retry's throwIfAborted threw before any request went out,
+ * and a turn that had just put a saved program on the coach's screen ended
+ * "failed" with a DeadlineExceededError.
+ *
+ * So the closing call keeps the turn's deadline while that still gives it at
+ * least as long as it would get on its own (this never shortens it). Otherwise
+ * it gets its own deadline, measured against the hard kill rather than the spent
+ * budget. When even that would be too short to finish, the call is skipped.
+ *
+ * @param elapsedMs        Time since the turn started.
+ * @param turnRemainingMs  What the turn's deadline still has (0 once it fired).
+ */
+export function closingCallBudget(elapsedMs: number, turnRemainingMs: number): ClosingCallBudget {
+  const ownMs = Math.min(CLOSING_CALL_MAX_MS, PROGRAM_CHAT_HARD_KILL_MS - CLOSING_CALL_MARGIN_MS - elapsedMs)
+  if (turnRemainingMs >= CLOSING_CALL_MIN_MS && turnRemainingMs >= ownMs) return { kind: "turn" }
+  if (ownMs < CLOSING_CALL_MIN_MS) return { kind: "skip" }
+  return { kind: "own", budgetMs: ownMs }
+}
+
+/**
+ * Has this deadline fired? Asked of the deadline itself, never inferred from the
+ * error a cut-off request threw. Neither SDK sets `.name` on its
+ * APIUserAbortError, and a request cut off mid-flight can just as well surface
+ * as a connection error, a timeout, or the compat shim's ProviderFallbackError
+ * around an aborted Anthropic fallback. None of those says "the budget ran out".
+ */
+function deadlineFired(deadline: Deadline): boolean {
+  return deadline.expired() || deadline.signal.aborted
+}
+
+/**
+ * One turn of the API history. It is persisted to Firestore (`ai_chat_state`)
+ * after every turn and reloaded on the next, so it stays ANTHROPIC-shaped
+ * (text / tool_use / tool_result blocks) whichever provider answered: the
+ * compat shim returns Anthropic-shaped content and converts history to
+ * OpenRouter's schema on the way out. Sessions saved before the OpenRouter move
+ * hold raw Anthropic SDK blocks with extra fields (`citations: null`), which
+ * that conversion ignores.
+ */
+type ChatTurn = { role: "user" | "assistant"; content: CompatContent }
+type ToolUseBlock = Extract<CompatResponseBlock, { type: "tool_use" }>
+type ToolResultBlock = Extract<AnthropicBlock, { type: "tool_result" }>
+
 // ─── Transient error detection ────────────────────────────────────────────────
 
-function isTransientError(error: unknown): boolean {
-  const statusCode = (error as { status?: number }).status
+/**
+ * Is this failure worth another attempt?
+ *
+ * A ProviderFallbackError is judged ENTIRELY by OpenRouter's half. Its `status`
+ * is already OpenRouter's, but when OpenRouter's error had none (a dropped
+ * connection) the only thing left to read would be the combined message — and
+ * that carries Anthropic's text, whose "529 Overloaded", or a request id such
+ * as "req_011CT5009", would match the substring checks below. The unfunded
+ * Anthropic account must never decide whether an OpenRouter fault is retried.
+ *
+ * Then a numeric `.status` (the OpenAI SDK's errors carry one, as do
+ * OpenRouter's mid-stream errors): 429 and 5xx are transient, every other code
+ * is final. Only status-less errors fall through to the message checks.
+ */
+export function isTransientError(error: unknown): boolean {
+  if (error instanceof ProviderFallbackError) return isTransientError(error.openRouterError)
+  const statusCode = (error as { status?: unknown } | null | undefined)?.status
   if (typeof statusCode === "number") {
-    return statusCode === 429 || statusCode === 529 || statusCode >= 500
+    return statusCode === 429 || statusCode >= 500
   }
   if (error instanceof Error) {
     const msg = error.message.toLowerCase()
@@ -50,28 +152,64 @@ function isTransientError(error: unknown): boolean {
   return false
 }
 
-// ─── Retry-wrapped messages.create with Haiku fallback ────────────────────────
+// ─── Retried model call with Haiku fallback ───────────────────────────────────
 
-async function createWithRetry(
-  client: Anthropic,
-  params: Omit<Anthropic.Messages.MessageCreateParamsNonStreaming, "model">,
+/**
+ * One program-chat model call: OpenRouter first through the compat shim, with
+ * direct Anthropic only as the shim's own provider-fault fallback.
+ *
+ * WHY THE SHIM. This used to stream straight to the Anthropic SDK. When the
+ * owner moved every model call to OpenRouter and the Anthropic account ran out
+ * of credit, every program-chat turn failed with "Your credit balance is too
+ * low" — the one-shot migration had moved callers of `messages.create`, and
+ * this caller used `messages.stream`. The shim returns an Anthropic-shaped
+ * {content, usage, stop_reason}, so the tool loop below is unchanged, and its
+ * Anthropic fallback streams internally, so the 32k budget can still be sent.
+ *
+ * Every attempt is a fresh `createMessageCompat` call, so each retry tries
+ * OpenRouter first again: one fallback does not pin the rest of the turn to
+ * Anthropic, and an OpenRouter 429 stays retryable on OpenRouter.
+ *
+ * THE TURN'S DEADLINE BOUNDS THE RETRIES, NOT ONLY THE WORK. Once retries
+ * actually ran (see the RetryContext note below), one turn could make 4 Opus
+ * and 3 Haiku attempts with up to 27s of backoff between them — enough for a
+ * slowly failing provider to carry the turn past the 540s hard kill, where the
+ * catch block never runs and the job sits in "streaming" (the 2026-08-24
+ * incident). The deadline's signal cuts off the in-flight request AND stops
+ * p-retry waiting for the next one; once the deadline has fired, whatever the
+ * call threw is reported as the DeadlineExceededError the job records, not as
+ * a bare "aborted".
+ */
+export async function createWithRetry(
+  params: Omit<CompatMessageParams, "model" | "signal">,
   primaryModel: string = MODEL_OPUS,
-): Promise<Anthropic.Messages.Message> {
-  // Stream + finalMessage() instead of a non-streaming messages.create():
-  // with max_tokens this large (32k), the Anthropic SDK rejects non-streaming
-  // requests outright — "Streaming is required for operations that may take
-  // longer than 10 minutes." stream().finalMessage() still resolves to a
-  // complete Message, so every downstream consumer (response.content/usage/
-  // stop_reason) is unchanged. Same pattern as functions/src/ai/anthropic.ts.
-  const runStreaming = (model: string) =>
-    client.messages.stream({ ...params, model }).finalMessage()
+  deadline?: Deadline,
+): Promise<CompatMessage> {
+  const callModel = (model: string) =>
+    createMessageCompat({ ...params, model, ...(deadline ? { signal: deadline.signal } : {}) })
+  const stopAtDeadline = deadline ? { signal: deadline.signal } : {}
+  // Decided by the deadline's own state, whatever was thrown. This used to
+  // require isAbortError(error) as well, which reads `.name`, and a real
+  // in-flight OpenAI APIUserAbortError has the name "Error": the turn failed
+  // with "Request was aborted." instead of the time budget the job records.
+  const reportDeadline = (error: unknown): never => {
+    if (deadline && deadlineFired(deadline)) deadline.assertLive(`model call (${primaryModel})`)
+    throw error
+  }
 
+  // p-retry 7 calls `shouldRetry` with a RetryContext ({error, attemptNumber,
+  // retriesLeft}), NOT the error. The old `shouldRetry: (err) =>
+  // isTransientError(err)` read `.status` off the context — always undefined —
+  // so nothing was ever retried: a 429 on Opus went straight to Haiku on its
+  // first failure, and a 429 on Haiku failed the turn. It type-checked because
+  // isTransientError takes `unknown`. Destructure `error`.
   try {
-    return await pRetry(() => runStreaming(primaryModel), {
+    return await pRetry(() => callModel(primaryModel), {
       retries: 3,
       minTimeout: 3_000,
       maxTimeout: 15_000,
-      shouldRetry: (err) => isTransientError(err),
+      ...stopAtDeadline,
+      shouldRetry: ({ error }) => isTransientError(error),
       onFailedAttempt: (ctx) => {
         console.warn(
           `[program-chat] Attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} left, model: ${primaryModel}): ${ctx.error.message}`,
@@ -79,27 +217,32 @@ async function createWithRetry(
       },
     })
   } catch (error) {
+    // Out of time: no Haiku attempt either — it would start past the budget.
+    if (deadline && deadlineFired(deadline)) reportDeadline(error)
     // If primary model exhausted retries on transient error, fall back to Haiku
     if (primaryModel !== MODEL_HAIKU && isTransientError(error)) {
       console.warn(`[program-chat] ${primaryModel} exhausted retries — falling back to ${MODEL_HAIKU}`)
-      return await pRetry(() => runStreaming(MODEL_HAIKU), {
+      return await pRetry(() => callModel(MODEL_HAIKU), {
         retries: 2,
         minTimeout: 2_000,
         maxTimeout: 10_000,
-        shouldRetry: (err) => isTransientError(err),
+        ...stopAtDeadline,
+        shouldRetry: ({ error }) => isTransientError(error),
         onFailedAttempt: (ctx) => {
           console.warn(
             `[program-chat] Haiku attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} left): ${ctx.error.message}`,
           )
         },
-      })
+      }).catch(reportDeadline)
     }
     throw error
   }
 }
 
-// Tool definitions for Anthropic API
-const TOOL_DEFINITIONS: Anthropic.Messages.Tool[] = [
+// Tool definitions, in Anthropic's shape — the compat shim converts them for
+// OpenRouter. Exported so a live probe of this chat sends the real definitions
+// rather than a hand-copied one that can drift.
+export const TOOL_DEFINITIONS: CompatTool[] = [
   {
     name: "list_clients",
     description:
@@ -213,20 +356,15 @@ function compressToolResult(toolName: string, raw: string): string {
   }
 }
 
-function compressApiMessages(messages: Anthropic.Messages.MessageParam[]): Anthropic.Messages.MessageParam[] {
+function compressApiMessages(messages: ChatTurn[]): ChatTurn[] {
   return messages.map((msg) => {
     if (msg.role !== "user" || !Array.isArray(msg.content)) return msg
 
     const compressed = msg.content.map((block) => {
-      if (
-        typeof block === "object" &&
-        "type" in block &&
-        block.type === "tool_result" &&
-        typeof (block as Anthropic.Messages.ToolResultBlockParam).content === "string"
-      ) {
-        const tr = block as Anthropic.Messages.ToolResultBlockParam
+      if (block.type === "tool_result" && typeof block.content === "string") {
+        const tr = block
         // Find the tool name from the tool_use_id — we tag it during execution
-        const content = tr.content as string
+        const content = tr.content
         // Try to detect tool name from the content shape
         let toolName = "unknown"
         if (content.includes('"clients"')) toolName = "list_clients"
@@ -285,6 +423,11 @@ function buildConversationSummary(
 }
 
 export async function handleProgramChat(jobId: string): Promise<void> {
+  // Measured as early as this handler can: before the job reads below, so those
+  // are counted. The platform's 540s clock started EARLIER still — cold start
+  // and the dynamic import in index.ts run first — so this UNDERSTATES elapsed
+  // time by that much; CLOSING_CALL_MARGIN_MS is what absorbs the difference.
+  const turnStartedAt = Date.now()
   const db = getFirestore()
   const jobRef = db.collection("ai_jobs").doc(jobId)
   const chunksRef = jobRef.collection("chunks")
@@ -335,20 +478,19 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       }
     }
 
-    const client = getClient()
     let accumulatedText = ""
     const toolCalls: { tool: string; result: unknown }[] = []
     let tokensInput = 0
     let tokensOutput = 0
 
     // Load previous API state (includes tool_use/tool_result blocks) or start fresh
-    let apiMessages: Anthropic.Messages.MessageParam[]
+    let apiMessages: ChatTurn[]
     const stateRef = db.collection("ai_chat_state").doc(sessionId)
     const stateSnap = await stateRef.get()
 
     if (stateSnap.exists) {
       // Resume from stored state — append only the latest user message
-      apiMessages = stateSnap.data()!.apiMessages as Anthropic.Messages.MessageParam[]
+      apiMessages = stateSnap.data()!.apiMessages as ChatTurn[]
       const latestUserMsg = recentMessages.filter((m) => m.role === "user").pop()
       if (latestUserMsg) {
         apiMessages.push({ role: "user", content: latestUserMsg.content })
@@ -388,9 +530,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
     for (const msg of apiMessages) {
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
         for (const block of msg.content) {
-          if (typeof block === "object" && "type" in block && block.type === "tool_use") {
-            calledTools.add((block as Anthropic.Messages.ToolUseBlock).name)
-          }
+          if (block.type === "tool_use") calledTools.add(block.name)
         }
       }
     }
@@ -404,6 +544,31 @@ export async function handleProgramChat(jobId: string): Promise<void> {
 
     if (calledTools.size > 0) {
       console.log(`[program-chat] Tools already called: ${[...calledTools].join(", ")}`)
+    }
+
+    // What the coach is told if the turn has to close without the model after
+    // generate_program ran (see closingCallBudget). Set only once generate_program
+    // has run in THIS turn, so a plain chat turn that runs out of time still fails.
+    let closingAfterGeneration: string | null = null
+
+    // Every piece of assistant text reaches the coach the same way: a delta
+    // chunk, plus the running text saved to the conversation history.
+    async function sendAssistantText(text: string): Promise<void> {
+      accumulatedText += text
+      await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
+        index: chunkIndex - 1,
+        type: "delta",
+        data: { text },
+        createdAt: FieldValue.serverTimestamp(),
+      })
+    }
+
+    // The fixed closing also becomes the assistant's turn in the saved history,
+    // so the next turn resumes from a conversation that does not end on a
+    // tool result nobody answered.
+    async function closeWithoutModel(text: string): Promise<void> {
+      await sendAssistantText(text)
+      apiMessages.push({ role: "assistant", content: text })
     }
 
     // Tool use loop
@@ -424,29 +589,64 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       // (generate_program is always allowed since it's the terminal action)
       const availableTools = TOOL_DEFINITIONS.filter((t) => t.name === "generate_program" || !calledTools.has(t.name))
 
-      const response = await createWithRetry(client, {
-        max_tokens: 32000,
-        system: systemPrompt,
-        messages: apiMessages,
-        tools: availableTools,
-      })
+      // Once generate_program has run, the closing call must not inherit the
+      // budget the generation was entitled to spend. See closingCallBudget.
+      let callDeadline = deadline
+      let closingDeadline: Deadline | null = null
+      if (closingAfterGeneration !== null) {
+        const budget = closingCallBudget(Date.now() - turnStartedAt, deadline.remainingMs())
+        if (budget.kind === "skip") {
+          console.warn(
+            `[program-chat] Job ${jobId}: too little time left for a closing reply — closing with a fixed message`,
+          )
+          await closeWithoutModel(closingAfterGeneration)
+          break
+        }
+        if (budget.kind === "own") {
+          closingDeadline = createDeadline(budget.budgetMs, "Program chat closing reply")
+          callDeadline = closingDeadline
+        }
+      }
+
+      let response: CompatMessage
+      try {
+        response = await createWithRetry(
+          {
+            max_tokens: 32000,
+            system: systemPrompt,
+            messages: apiMessages,
+            tools: availableTools,
+          },
+          MODEL_OPUS,
+          callDeadline,
+        )
+      } catch (error) {
+        // The closing reply ran out of time, but what the coach needed to hear
+        // (the program card, or the generation's error) is already on screen.
+        // Say it in fixed words and complete the turn: a saved program must
+        // never be reported as a failed turn because of the clock. Any other
+        // failure, or a turn that never ran generate_program, fails as before.
+        if (closingAfterGeneration === null || !deadlineFired(callDeadline)) throw error
+        console.warn(
+          `[program-chat] Job ${jobId}: closing reply ran out of time — closing with a fixed message (${error instanceof Error ? error.message : error})`,
+        )
+        await closeWithoutModel(closingAfterGeneration)
+        break
+      } finally {
+        // A live timer could otherwise abort a reused container's next invocation.
+        closingDeadline?.dispose()
+      }
 
       tokensInput += response.usage?.input_tokens ?? 0
       tokensOutput += response.usage?.output_tokens ?? 0
 
       // Process response content blocks
-      const assistantContent: Anthropic.Messages.ContentBlock[] = response.content
-      const toolUseBlocks: Anthropic.Messages.ToolUseBlock[] = []
+      const assistantContent: CompatResponseBlock[] = response.content
+      const toolUseBlocks: ToolUseBlock[] = []
 
       for (const block of assistantContent) {
         if (block.type === "text" && block.text) {
-          accumulatedText += block.text
-          await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
-            index: chunkIndex - 1,
-            type: "delta",
-            data: { text: block.text },
-            createdAt: FieldValue.serverTimestamp(),
-          })
+          await sendAssistantText(block.text)
         } else if (block.type === "tool_use") {
           toolUseBlocks.push(block)
 
@@ -469,27 +669,22 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       // Execute tools and build tool results
       apiMessages.push({ role: "assistant", content: assistantContent })
 
-      const toolResults: Anthropic.Messages.ToolResultBlockParam[] = []
+      const toolResults: ToolResultBlock[] = []
 
       // Build a cache of previous tool results from apiMessages to avoid re-calling
       const previousToolResults = new Map<string, string>()
       for (const msg of apiMessages) {
         if (msg.role === "user" && Array.isArray(msg.content)) {
           for (const block of msg.content) {
-            if (typeof block === "object" && "type" in block && block.type === "tool_result") {
-              const toolResult = block as Anthropic.Messages.ToolResultBlockParam
+            if (block.type === "tool_result") {
+              const toolResult = block
               if (typeof toolResult.content === "string") {
                 // Find the matching tool_use to get the tool name + args
                 for (const prevMsg of apiMessages) {
                   if (prevMsg.role === "assistant" && Array.isArray(prevMsg.content)) {
                     for (const aBlock of prevMsg.content) {
-                      if (
-                        typeof aBlock === "object" &&
-                        "type" in aBlock &&
-                        aBlock.type === "tool_use" &&
-                        (aBlock as Anthropic.Messages.ToolUseBlock).id === toolResult.tool_use_id
-                      ) {
-                        const tu = aBlock as Anthropic.Messages.ToolUseBlock
+                      if (aBlock.type === "tool_use" && aBlock.id === toolResult.tool_use_id) {
+                        const tu = aBlock
                         const cacheKey = `${tu.name}:${JSON.stringify(tu.input)}`
                         previousToolResults.set(cacheKey, toolResult.content)
                       }
@@ -606,6 +801,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
                       : {}),
                     summary: partialSummary ?? `Program created successfully (${genResult.duration_ms}ms).`,
                   }
+                  closingAfterGeneration = partialSummary ?? PROGRAM_SAVED_CLOSING
 
                   await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
                     index: chunkIndex - 1,
@@ -621,6 +817,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
                 } catch (genError) {
                   const errMsg = genError instanceof Error ? genError.message : "Generation failed"
                   toolResult = { success: false, summary: errMsg }
+                  closingAfterGeneration = `The program could not be built: ${errMsg}`
 
                   await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
                     index: chunkIndex - 1,

@@ -23,7 +23,8 @@
 import { describe, it, expect } from "vitest"
 
 import { streamAgent } from "@/lib/ai/anthropic"
-import { recoverObjectFromError, recoverObjectFromValue } from "@/lib/ai/recover-object"
+import type { FinishReason } from "ai"
+import { recoverFinishedAnswer } from "@/lib/ai/recover-object"
 import { buildResultSchema, buildSystemPrompt, buildTurnMessage } from "@/lib/funnels/sections/prompt"
 import { SECTION_BUILDER_EDIT_MAX_TOKENS, SECTION_BUILDER_MODEL } from "@/lib/funnels/sections/builder-config"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
@@ -90,14 +91,17 @@ async function runTurn(message: string) {
   objectPromise.catch(() => {})
 
   let lastPartial: unknown = undefined
+  let finishReason: FinishReason | undefined = undefined
   try {
     for await (const part of stream.fullStream) {
       if (part.type === "object") lastPartial = (part as { object?: unknown }).object
+      if (part.type === "finish") finishReason = (part as { finishReason?: FinishReason }).finishReason
     }
     return await objectPromise
   } catch (error) {
-    const recovered =
-      recoverObjectFromError(error, buildResultSchema) ?? recoverObjectFromValue(lastPartial, buildResultSchema)
+    // The route's own rule, not a copy of it: a probe that recovered a
+    // truncated prefix the route refuses would pass while the product fails.
+    const recovered = recoverFinishedAnswer(error, finishReason, lastPartial, buildResultSchema)
     if (recovered === null) throw error
     return recovered
   }

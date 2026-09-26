@@ -5,10 +5,12 @@
 // owner asked for a green background, captured by a probe against the real
 // model. Three turns failed that way and the answer inside each was complete.
 import { describe, it, expect } from "vitest"
+import { NoObjectGeneratedError } from "ai"
 import { z } from "zod"
 
 import {
   describeModelError,
+  recoverFinishedAnswer,
   recoverObjectFromError,
   recoverObjectFromValue,
   unwrapCandidates,
@@ -148,5 +150,43 @@ describe("an unwrapped response still works", () => {
     const good = { reply: "fine", blocked: false, ops: [{ op: "update_section" }] }
     const error = noObjectError(JSON.stringify(good), good, [])
     expect(recoverObjectFromError(error, schema)).toEqual(good)
+  })
+})
+
+describe("recoverFinishedAnswer — only an answer the model finished", () => {
+  const good = { reply: "Done.", blocked: false, ops: [{ op: "update_section" }] }
+  const doubleEncoded = JSON.stringify({ params: JSON.stringify(good) })
+  const usage = { inputTokens: 1, outputTokens: 1, totalTokens: 2 } as never
+  const response = { id: "gen-1", timestamp: new Date(0), modelId: "anthropic/claude-opus-5" }
+  const realNoObject = (finishReason: string) =>
+    new NoObjectGeneratedError({
+      message: "No object generated: response did not match schema.",
+      text: doubleEncoded,
+      response,
+      usage,
+      finishReason: finishReason as never,
+    })
+
+  it("recovers a double-encoded answer whose stream finished normally", () => {
+    expect(recoverFinishedAnswer(realNoObject("tool-calls"), "tool-calls", undefined, schema)).toEqual(good)
+    expect(recoverFinishedAnswer(realNoObject("stop"), undefined, undefined, schema)).toEqual(good)
+  })
+
+  it("refuses an answer cut off by max_tokens, even when its text would parse", () => {
+    expect(recoverFinishedAnswer(realNoObject("length"), "length", undefined, schema)).toBeNull()
+  })
+
+  it("refuses a transport fault, however valid the last partial looks", () => {
+    // The reproduced page-builder defect: a mid-stream 502 left a repaired
+    // prefix that passed the schema and was saved as the owner's edit.
+    const midStream = Object.assign(new Error("502 Provider returned error"), { status: 502 })
+    expect(recoverFinishedAnswer(midStream, undefined, good, schema)).toBeNull()
+  })
+
+  it("recovers from the last partial only for a bare ZodError from a stream with a normal finish part", () => {
+    const zod = Object.assign(new Error("invalid"), { name: "ZodError" })
+    expect(recoverFinishedAnswer(zod, "stop", good, schema)).toEqual(good)
+    expect(recoverFinishedAnswer(zod, undefined, good, schema)).toBeNull()
+    expect(recoverFinishedAnswer(zod, "length", good, schema)).toBeNull()
   })
 })

@@ -74,7 +74,9 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
 if (!supabaseUrl || !serviceKey) throw new Error("NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing")
 const ref = new URL(supabaseUrl).host.split(".")[0]
 if (ref !== DEV_REF) throw new Error(`DEV CLONE ONLY; refusing — env points at ${ref}`)
-if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY missing — the critics are real model calls")
+if (!process.env.OPENROUTER_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+  throw new Error("No model provider key — set OPENROUTER_API_KEY (or ANTHROPIC_API_KEY): the critics are real model calls")
+}
 
 const argOf = (name: string): string | null => {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`))

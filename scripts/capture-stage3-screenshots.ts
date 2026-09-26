@@ -4,7 +4,7 @@
 //   npm run dev              # in another terminal, port 3050
 //   npx tsx scripts/capture-stage3-screenshots.ts .env.local
 //
-// THE REAL MODEL ANSWERS EVERY TURN. `ANTHROPIC_API_KEY` is present in
+// THE REAL MODEL ANSWERS EVERY TURN. A model key (`OPENROUTER_API_KEY`) is present in
 // .env.local and nothing here stubs, seeds or replays a reply -- every
 // sentence in every screenshot was written by the model this feature ships
 // with, in response to a question typed into the real composer. That is the
@@ -123,8 +123,12 @@ for (const line of readFileSync(envPath, "utf8").split("\n")) {
   const m = line.match(/^([A-Z0-9_]+)=(.*)$/)
   if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, "")
 }
-for (const k of ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ANTHROPIC_API_KEY", "CHAT_IP_SALT"]) {
+for (const k of ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "CHAT_IP_SALT"]) {
   if (!env[k]) throw new Error(`${k} missing from ${envPath}`)
+}
+// The dev server's /api/ask answers through OpenRouter; Anthropic is only its fallback.
+if (!env.OPENROUTER_API_KEY && !env.ANTHROPIC_API_KEY) {
+  throw new Error(`OPENROUTER_API_KEY (or ANTHROPIC_API_KEY) missing from ${envPath}`)
 }
 
 const U = env.NEXT_PUBLIC_SUPABASE_URL

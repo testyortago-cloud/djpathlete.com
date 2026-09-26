@@ -52,14 +52,11 @@ export type ToolLoopResult = {
   stoppedOnRoundLimit: boolean
 }
 
-// Same lazy singleton as `getClient()` in lib/ai/anthropic.ts, kept local so a
-// public unauthenticated route does not drag `@ai-sdk/anthropic`, `ai` and
-// `p-retry` into its bundle for one constructor. No key check of our own: the
-// SDK's own "ANTHROPIC_API_KEY is missing" error says it better than we would.
-// The transport now lives in createMessageCompat (OpenRouter first, direct
-// Anthropic as the fallback), so this module no longer builds a client of its
-// own. `Anthropic` is still imported for its Tool type, which is the shape the
-// callers already pass in.
+// No client of this module's own. The transport lives in createMessageCompat
+// (OpenRouter first, direct Anthropic as the fallback), not in
+// lib/ai/anthropic.ts, so a public unauthenticated route still does not drag
+// `@ai-sdk/anthropic`, `ai` and `p-retry` into its bundle. `Anthropic` is still
+// imported for its Tool type, which is the shape the callers already pass in.
 
 /**
  * What a failed lookup tells the model. Fixed wording, never the thrown error:

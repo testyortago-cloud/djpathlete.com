@@ -36,6 +36,10 @@ const brollWebhookSecret = defineSecret("BROLL_WEBHOOK_SECRET")
 // `secrets` is simply absent from process.env inside it, so
 // isOpenRouterConfigured() would read false and every call would silently go
 // to direct Anthropic — the migration would look deployed and do nothing.
+// That is not hypothetical: it shipped with fourteen functions binding
+// anthropicApiKey in a hand-written list and not this. The rule is now
+// "every secrets array that carries anthropicApiKey carries openrouterApiKey
+// too", pinned by functions/src/__tests__/secrets-binding.test.ts.
 const openrouterApiKey = defineSecret("OPENROUTER_API_KEY")
 
 const googleAdsSecrets = [
@@ -331,7 +335,16 @@ export const brollGeneration = onDocumentCreated(
     timeoutSeconds: 540,
     memory: "1GiB",
     region: "us-central1",
-    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, falKey, assemblyAiApiKey, appUrl, brollWebhookSecret],
+    secrets: [
+      anthropicApiKey,
+      openrouterApiKey,
+      supabaseUrl,
+      supabaseServiceRoleKey,
+      falKey,
+      assemblyAiApiKey,
+      appUrl,
+      brollWebhookSecret,
+    ],
   },
   async (event) => {
     const data = event.data?.data()
@@ -537,7 +550,7 @@ export const videoVision = onDocumentCreated(
     timeoutSeconds: 540,
     memory: "2GiB", // ffmpeg + video buffer can be memory-hungry
     region: "us-central1",
-    secrets: [supabaseUrl, supabaseServiceRoleKey, anthropicApiKey],
+    secrets: [supabaseUrl, supabaseServiceRoleKey, anthropicApiKey, openrouterApiKey],
   },
   async (event) => {
     const data = event.data?.data()
@@ -623,7 +636,7 @@ export const imageVision = onDocumentCreated(
     timeoutSeconds: 120,
     memory: "512MiB",
     region: "us-central1",
-    secrets: [supabaseUrl, supabaseServiceRoleKey, anthropicApiKey],
+    secrets: [supabaseUrl, supabaseServiceRoleKey, anthropicApiKey, openrouterApiKey],
   },
   async (event) => {
     const data = event.data?.data()
@@ -643,7 +656,7 @@ export const imageCaptionGeneration = onDocumentCreated(
     timeoutSeconds: 300,
     memory: "1GiB",
     region: "us-central1",
-    secrets: [supabaseUrl, supabaseServiceRoleKey, anthropicApiKey],
+    secrets: [supabaseUrl, supabaseServiceRoleKey, anthropicApiKey, openrouterApiKey],
   },
   async (event) => {
     const data = event.data?.data()
@@ -686,7 +699,7 @@ export const topicResearchScan = onDocumentCreated(
     timeoutSeconds: 120,
     memory: "512MiB",
     region: "us-central1",
-    secrets: [anthropicApiKey, tavilyApiKey],
+    secrets: [anthropicApiKey, openrouterApiKey, tavilyApiKey],
   },
   async (event) => {
     const data = event.data?.data()
@@ -706,7 +719,7 @@ export const tavilyFactCheck = onDocumentCreated(
     timeoutSeconds: 180,
     memory: "512MiB",
     region: "us-central1",
-    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+    secrets: [anthropicApiKey, openrouterApiKey, supabaseUrl, supabaseServiceRoleKey],
   },
   async (event) => {
     const data = event.data?.data()
@@ -726,7 +739,7 @@ export const socialFanout = onDocumentCreated(
     timeoutSeconds: 540,
     memory: "1GiB",
     region: "us-central1",
-    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+    secrets: [anthropicApiKey, openrouterApiKey, supabaseUrl, supabaseServiceRoleKey],
   },
   async (event) => {
     const data = event.data?.data()
@@ -748,7 +761,7 @@ export const socialAgent = onDocumentCreated(
     timeoutSeconds: 540,
     memory: "1GiB",
     region: "us-central1",
-    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+    secrets: [anthropicApiKey, openrouterApiKey, supabaseUrl, supabaseServiceRoleKey],
   },
   async (event) => {
     const data = event.data?.data()
@@ -768,7 +781,7 @@ export const blogFromVideo = onDocumentCreated(
     timeoutSeconds: 540,
     memory: "1GiB",
     region: "us-central1",
-    secrets: [anthropicApiKey, tavilyApiKey, supabaseUrl, supabaseServiceRoleKey],
+    secrets: [anthropicApiKey, openrouterApiKey, tavilyApiKey, supabaseUrl, supabaseServiceRoleKey],
   },
   async (event) => {
     const data = event.data?.data()
@@ -788,7 +801,7 @@ export const newsletterFromBlog = onDocumentCreated(
     timeoutSeconds: 300,
     memory: "512MiB",
     region: "us-central1",
-    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+    secrets: [anthropicApiKey, openrouterApiKey, supabaseUrl, supabaseServiceRoleKey],
   },
   async (event) => {
     const data = event.data?.data()
@@ -808,7 +821,7 @@ export const tavilyTrendingScan = onDocumentCreated(
     timeoutSeconds: 300,
     memory: "512MiB",
     region: "us-central1",
-    secrets: [anthropicApiKey, tavilyApiKey, supabaseUrl, supabaseServiceRoleKey],
+    secrets: [anthropicApiKey, openrouterApiKey, tavilyApiKey, supabaseUrl, supabaseServiceRoleKey],
   },
   async (event) => {
     const data = event.data?.data()
@@ -828,7 +841,7 @@ export const seoEnhance = onDocumentCreated(
     timeoutSeconds: 300,
     memory: "512MiB",
     region: "us-central1",
-    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+    secrets: [anthropicApiKey, openrouterApiKey, supabaseUrl, supabaseServiceRoleKey],
   },
   async (event) => {
     const data = event.data?.data()
@@ -915,7 +928,7 @@ export const voiceDriftMonitor = onSchedule(
     timeoutSeconds: 540,
     memory: "512MiB",
     region: "us-central1",
-    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+    secrets: [anthropicApiKey, openrouterApiKey, supabaseUrl, supabaseServiceRoleKey],
   },
   async () => {
     const { runVoiceDriftMonitor } = await import("./voice-drift-monitor.js")
@@ -946,12 +959,6 @@ export const performanceLearningLoop = onSchedule(
     console.log("[performanceLearningLoop]", result)
   },
 )
-
-// ─── runJob (Phase 6 HTTPS dispatcher) ───────────────────────────────────────
-// Manual-trigger endpoint hit by the admin's "Run now" buttons via the
-// Next.js /api/admin/automation/trigger route. Dispatches to the same pure
-// runners the scheduled functions use. All secrets included so any runner
-// can fire here.
 
 // ─── Google Ads Sync (Nightly 06:00 UTC) ─────────────────────────────────────
 // Walks each active row in google_ads_accounts and mirrors its campaigns,
@@ -1508,12 +1515,29 @@ export const gscSyncCron = onSchedule(
   },
 )
 
+// ─── runJob (Phase 6 HTTPS dispatcher) ───────────────────────────────────────
+// Manual-trigger endpoint hit by the admin's "Run now" buttons via the
+// Next.js /api/admin/automation/trigger route. Dispatches to the same pure
+// runners the scheduled functions use.
+//
+// Its secrets are a HAND-WRITTEN list, not allSecrets. A header here used to
+// say "all secrets included", which is how runJob shipped without
+// OPENROUTER_API_KEY and ran every "Run now" model call on direct Anthropic.
+// A runner that needs a new secret has to be added to this list as well.
 export const runJob = onRequest(
   {
     region: "us-central1",
     timeoutSeconds: 540,
     memory: "512MiB",
-    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, internalCronToken, appUrl, resendApiKey],
+    secrets: [
+      anthropicApiKey,
+      openrouterApiKey,
+      supabaseUrl,
+      supabaseServiceRoleKey,
+      internalCronToken,
+      appUrl,
+      resendApiKey,
+    ],
   },
   async (req, res) => {
     const { handleRunJob } = await import("./run-job.js")

@@ -81,12 +81,13 @@
 // ---------------------------------------------------------------------------
 
 import { NextResponse } from "next/server"
+import type { FinishReason } from "ai"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { buildRequestSchema } from "@/lib/validators/funnel"
 import { streamAgent } from "@/lib/ai/anthropic"
-import { describeModelError, recoverObjectFromError, recoverObjectFromValue } from "@/lib/ai/recover-object"
+import { describeModelError, recoverFinishedAnswer } from "@/lib/ai/recover-object"
 import {
   BUILD_STREAM_HEARTBEAT,
   encodeBuildStreamEvent,
@@ -1325,9 +1326,10 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
  * `.object` is awaited AFTER the iteration and rejects on a refusal, a
  * truncated response or a schema violation — the same three failures
  * `generateObject` used to throw, so the caller's existing catch still catches
- * exactly what it did before. Its handler is attached BEFORE the loop, because
- * a rejection with no handler yet attached is an unhandled rejection even when
- * the caller goes on to await it.
+ * exactly what it did before — and on a provider fault mid-stream, which is
+ * rethrown untouched for that catch to retry. Its handler is attached BEFORE
+ * the loop, because a rejection with no handler yet attached is an unhandled
+ * rejection even when the caller goes on to await it.
  */
 async function streamOneAttempt(opts: {
   emit: (event: BuildStreamEvent) => void
@@ -1353,10 +1355,15 @@ async function streamOneAttempt(opts: {
 
   let seen: StreamedSection[] = []
   // The last partial object the stream emitted, kept ONLY as a recovery source:
-  // when the SDK rejects inside the stream transform, the error is a bare
-  // ZodError carrying neither `.text` nor `.value`, and this is the last
-  // surviving copy of what the model actually sent.
+  // when an SDK rejects inside the stream transform (the one installed on
+  // 2026-09-08 did; see the catch below), the error is a bare ZodError carrying
+  // neither `.text` nor `.value`, and this is the last surviving copy of what
+  // the model actually sent.
   let lastPartial: unknown = undefined
+  // How the stream ended, from its `finish` part. Left undefined when there
+  // was none — a transport fault ends the stream without one — and read by
+  // `recoverFinishedAnswer`, which will not rescue an answer that was cut off.
+  let finishReason: FinishReason | undefined = undefined
   let deltas = 0
   let lastMeterAt = 0
   let announcedWriting = false
@@ -1389,6 +1396,7 @@ async function streamOneAttempt(opts: {
     }
 
     if (part.type === "finish") {
+      finishReason = part.finishReason
       const usage = part.usage
       opts.emit({ type: "usage", outputTokens: usage.outputTokens ?? deltas, exact: true })
       opts.onUsage({
@@ -1418,13 +1426,19 @@ async function streamOneAttempt(opts: {
     // The recovery re-validates against `buildResultSchema`, so it can only
     // return something this function would already have returned. Anything
     // else rethrows and the existing retry runs exactly as before.
-    // Two sources, because the SDK raises this failure in two places and only
-    // one of them carries the text (measured against the live model, not
-    // assumed): a final-parse rejection is an `AI_NoObjectGeneratedError` with
-    // `.text`, while a stream-transform rejection is a bare `ZodError` whose
-    // only surviving copy of the payload is the last partial object.
-    const recovered =
-      recoverObjectFromError(error, buildResultSchema) ?? recoverObjectFromValue(lastPartial, buildResultSchema)
+    // Two sources, because on 2026-09-08 the SDK then installed raised this
+    // failure in two places and only one carried the text: a final-parse
+    // `AI_NoObjectGeneratedError` with `.text`, and a stream-transform bare
+    // `ZodError` whose only surviving copy was the last partial object. With
+    // ai 6.0.97, and with lib/ai/openrouter-object-stream.ts, every schema
+    // rejection is a NoObjectGeneratedError carrying its text; the ZodError
+    // branch stays for an SDK that raises inside the transform again.
+    //
+    // And ONLY for an answer the model finished. A transport fault or a
+    // truncation leaves a last partial that is a prefix of the answer, and a
+    // prefix can pass the schema — see `recoverFinishedAnswer` for the
+    // reproduction. Those rethrow into the retry, which is what it is for.
+    const recovered = recoverFinishedAnswer(error, finishReason, lastPartial, buildResultSchema)
     if (recovered === null) throw error
     console.warn("[funnels/build] recovered a double-encoded model response")
     return recovered

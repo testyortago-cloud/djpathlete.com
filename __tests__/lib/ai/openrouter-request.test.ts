@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest"
+import OpenAI from "openai"
+import Anthropic from "@anthropic-ai/sdk"
 import {
   buildChatRequest,
   buildSystemMessage,
@@ -8,7 +10,13 @@ import {
   normalizeUsage,
   STRUCTURED_OUTPUT_NAME,
 } from "@/lib/ai/openrouter-request"
-import { toOpenRouterModel, toReasoningEffort, shouldFallBackToAnthropic } from "@/lib/ai/openrouter"
+import {
+  toOpenRouterModel,
+  toReasoningEffort,
+  shouldFallBackToAnthropic,
+  canFallBackToAnthropic,
+  ProviderFallbackError,
+} from "@/lib/ai/openrouter"
 
 const SCHEMA = { type: "object", properties: { a: { type: "string" } } } as Record<string, unknown>
 
@@ -202,7 +210,24 @@ describe("shouldFallBackToAnthropic", () => {
   })
 
   it("does NOT fall back on an abort — that is the caller's deadline", () => {
-    expect(shouldFallBackToAnthropic({ name: "AbortError" })).toBe(false)
+    expect(shouldFallBackToAnthropic(new DOMException("This operation was aborted", "AbortError"))).toBe(false)
+  })
+
+  it("does NOT fall back on either SDK's REAL APIUserAbortError, whose .name is only 'Error'", () => {
+    const openaiAbort = new OpenAI.APIUserAbortError()
+    const anthropicAbort = new Anthropic.APIUserAbortError()
+    expect(openaiAbort.name).toBe("Error")
+    expect(shouldFallBackToAnthropic(openaiAbort)).toBe(false)
+    expect(shouldFallBackToAnthropic(anthropicAbort)).toBe(false)
+  })
+
+  it("does NOT fall back on an abort even when its cause chain carries a socket errno", () => {
+    // The caller's deadline wins over whatever the socket was doing when it
+    // was cut: an abort is never a reason to spend more time on another provider.
+    const abort = Object.assign(new OpenAI.APIUserAbortError(), {
+      cause: Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }),
+    })
+    expect(shouldFallBackToAnthropic(abort)).toBe(false)
   })
 
   it("falls back on a socket-level errno", () => {
@@ -210,9 +235,60 @@ describe("shouldFallBackToAnthropic", () => {
     expect(shouldFallBackToAnthropic({ code: "UND_ERR_CONNECT_TIMEOUT" })).toBe(true)
   })
 
-  it("falls back on the SDK's connection error classes", () => {
-    expect(shouldFallBackToAnthropic({ name: "APIConnectionError" })).toBe(true)
-    expect(shouldFallBackToAnthropic({ name: "APIConnectionTimeoutError" })).toBe(true)
+  // The SDK's connection classes never set `.name` (it reads "Error"), and
+  // carry neither `.status` nor `.code`. The first version of these tests faked
+  // `{ name: "APIConnectionError" }`, which is not what production throws — so
+  // a real unreachable OpenRouter never fell back while the suite stayed green.
+  it("falls back on the REAL OpenAI APIConnectionError, which has no name, status or code of its own", () => {
+    const err = new OpenAI.APIConnectionError({ cause: Object.assign(new Error("x"), { code: "ECONNREFUSED" }) })
+    expect(err.name).toBe("Error")
+    expect(err.status).toBeUndefined()
+    expect(err.code).toBeUndefined()
+    expect(shouldFallBackToAnthropic(err)).toBe(true)
+  })
+
+  it("falls back on the REAL OpenAI APIConnectionTimeoutError, which has no cause at all", () => {
+    const err = new OpenAI.APIConnectionTimeoutError()
+    expect(err.name).toBe("Error")
+    expect(err.cause).toBeUndefined()
+    expect(shouldFallBackToAnthropic(err)).toBe(true)
+  })
+
+  it("recognises the classes from ANOTHER copy of the SDK, where instanceof is false", async () => {
+    // functions/ installs its own openai, so the same class exists twice. An
+    // error from the other copy fails `instanceof` against this one, which is
+    // why the class NAME is read as well.
+    const other = await import("../../../functions/node_modules/openai/index.mjs")
+    const timeout = new other.APIConnectionTimeoutError()
+    const abort = new other.APIUserAbortError()
+    expect(timeout).not.toBeInstanceOf(OpenAI.APIConnectionError)
+    expect(abort).not.toBeInstanceOf(OpenAI.APIUserAbortError)
+
+    expect(shouldFallBackToAnthropic(timeout)).toBe(true)
+    expect(shouldFallBackToAnthropic(Object.assign(abort, { cause: { code: "ECONNRESET" } }))).toBe(false)
+  })
+
+  it("reads the errno from the cause chain — undici's 'fetch failed' carries it one level down", () => {
+    // What a raw fetch (or the SDK's connection error) actually looks like:
+    // TypeError("fetch failed") whose .cause is the socket error with the code.
+    const socket = Object.assign(new Error("connect ECONNREFUSED 104.18.2.115:443"), { code: "ECONNREFUSED" })
+    const fetchFailed = new TypeError("fetch failed", { cause: socket })
+    expect(shouldFallBackToAnthropic(fetchFailed)).toBe(true)
+    expect(shouldFallBackToAnthropic(new Error("wrapped", { cause: fetchFailed }))).toBe(true)
+  })
+
+  it("does not follow a cause chain forever", () => {
+    const a = new Error("a") as Error & { cause?: unknown }
+    const b = new Error("b", { cause: a })
+    a.cause = b
+    expect(shouldFallBackToAnthropic(a)).toBe(false)
+  })
+
+  it("does NOT fall back on a status-less error whose cause is not a socket errno", () => {
+    const ours = new TypeError("Cannot read properties of undefined", {
+      cause: Object.assign(new Error("bad arg"), { code: "ERR_INVALID_ARG_TYPE" }),
+    })
+    expect(shouldFallBackToAnthropic(ours)).toBe(false)
   })
 
   it("does NOT fall back on OUR OWN bug that happens to carry no status", () => {
@@ -223,5 +299,78 @@ describe("shouldFallBackToAnthropic", () => {
     // the bill moves, and nothing says why.
     expect(shouldFallBackToAnthropic(new TypeError("x is not a function"))).toBe(false)
     expect(shouldFallBackToAnthropic(new Error('No OpenRouter slug for model "claude-sonnet-9"'))).toBe(false)
+  })
+})
+
+describe("canFallBackToAnthropic", () => {
+  it.each(["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-5", "claude-fable-5-1"])(
+    "lets the Claude model %s fall back",
+    (model) => {
+      expect(canFallBackToAnthropic(model)).toBe(true)
+    },
+  )
+
+  it.each(["gpt-6-astra", "gpt-6-astra-pro"])("refuses %s, which only OpenRouter can serve", (model) => {
+    // gpt-6-astra is the program architect and exercise selector default. Sent
+    // to Anthropic it answers a 404, and THAT error would replace the
+    // OpenRouter fault the owner actually needed to see.
+    expect(canFallBackToAnthropic(model)).toBe(false)
+  })
+})
+
+describe("ProviderFallbackError", () => {
+  const openRouter = Object.assign(new Error("429 Rate limit exceeded"), { status: 429 })
+  const anthropic = Object.assign(
+    new Error('400 {"type":"error","error":{"message":"Your credit balance is too low to access the Anthropic API."}}'),
+    { status: 400 },
+  )
+
+  it("LEADS with the OpenRouter error, so a dead fallback cannot hide it", () => {
+    // The owner saw only Anthropic's credit-balance message and concluded the
+    // migration had never happened. When both providers fail, the primary one
+    // is the story; the fallback's failure is a footnote.
+    const err = new ProviderFallbackError(openRouter, anthropic)
+    expect(err.message.indexOf("OpenRouter")).toBe(0)
+    expect(err.message).toContain("429 Rate limit exceeded")
+    expect(err.message.indexOf("429 Rate limit exceeded")).toBeLessThan(err.message.indexOf("credit balance"))
+  })
+
+  it("still says the fallback failed, and why", () => {
+    const err = new ProviderFallbackError(openRouter, anthropic)
+    expect(err.message).toMatch(/Anthropic fallback also failed/)
+    expect(err.message).toContain("credit balance is too low")
+  })
+
+  it("carries the OpenRouter status, so retry logic classifies the PRIMARY fault", () => {
+    // A 429 must stay retryable. Carrying Anthropic's 400 instead would end the
+    // retry loop on a fault that was never about our request.
+    expect(new ProviderFallbackError(openRouter, anthropic).status).toBe(429)
+  })
+
+  it("has no status when the OpenRouter error had none (a socket error)", () => {
+    const socket = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" })
+    expect(new ProviderFallbackError(socket, anthropic).status).toBeUndefined()
+  })
+
+  it("keeps both originals for logging", () => {
+    const err = new ProviderFallbackError(openRouter, anthropic)
+    expect(err.openRouterError).toBe(openRouter)
+    expect(err.anthropicError).toBe(anthropic)
+    expect(err.cause).toBe(openRouter)
+  })
+
+  it("does not double the period when OpenRouter's own message already ends in one", () => {
+    // Measured live: an invalid key answers "401 User not found." — and the
+    // owner reads this message in the chat bubble.
+    const err = new ProviderFallbackError(Object.assign(new Error("401 User not found."), { status: 401 }), anthropic)
+    expect(err.message).toMatch(/^OpenRouter failed: 401 User not found\. The Anthropic fallback also failed: /)
+    expect(err.message).not.toContain("..")
+  })
+
+  it("describes non-Error throwables without crashing", () => {
+    const err = new ProviderFallbackError({ status: 503 }, "boom")
+    expect(err.message).toMatch(/^OpenRouter failed/)
+    expect(err.message).toContain("boom")
+    expect(err.status).toBe(503)
   })
 })

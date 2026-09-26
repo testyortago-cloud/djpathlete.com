@@ -1,15 +1,28 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 const create = vi.fn()
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
-    messages = { create }
+    // The compat shim's Anthropic path streams (max_tokens above ~21k is refused
+    // by the non-streaming create); finalMessage() resolves to the same Message.
+    messages = { create, stream: (body: unknown) => ({ finalMessage: () => create(body) }) }
   },
 }))
 
 beforeEach(() => {
   create.mockReset()
+  // This suite drives the loop through the mocked Anthropic SDK, i.e. the
+  // shim's no-OpenRouter path. vitest.config.ts loads .env.local, so on any
+  // machine with a real OPENROUTER_API_KEY every test here went to OpenRouter
+  // with the fake model "m" and died on "No OpenRouter slug" — red locally,
+  // green in CI. Stubbed inside the test because dotenv-expand overrides an
+  // empty value set from outside.
+  vi.stubEnv("OPENROUTER_API_KEY", "")
+})
+
+afterEach(() => {
+  vi.unstubAllEnvs()
 })
 
 const usage = { input_tokens: 10, output_tokens: 5 }

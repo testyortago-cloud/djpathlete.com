@@ -34,6 +34,7 @@
 // which would be discarding data rather than unwrapping it.
 // ---------------------------------------------------------------------------
 
+import { NoObjectGeneratedError, type FinishReason } from "ai"
 import type { ZodType } from "zod"
 
 /** Guards against a pathological chain of wrappers. Two is already unheard of. */
@@ -132,6 +133,77 @@ export function recoverObjectFromError<T>(error: unknown, schema: ZodType<T>): T
     for (const value of offendingValues(error)) {
       const recovered = recoverObjectFromValue(value, schema)
       if (recovered !== null) return recovered
+    }
+  } catch {
+    // Deliberately swallowed — see the contract above.
+  }
+  return null
+}
+
+/**
+ * The finish reasons of a stream the model actually FINISHED. Anything else
+ * ("length", "content-filter", "error", and "other" — which is what the
+ * OpenRouter stream reports when the body closed before the provider sent any
+ * finish_reason) means the answer was cut off, and its last partial object is
+ * a prefix. An allow-list rather than a deny-list so that a finish reason
+ * nobody has seen yet costs one retry instead of applying half an edit.
+ */
+const FINISHED_NORMALLY: ReadonlySet<FinishReason> = new Set<FinishReason>(["stop", "tool-calls"])
+
+/** Zod 4 names its classic error "ZodError" and its core one "$ZodError". */
+function isZodError(error: unknown): boolean {
+  const name = (error as { name?: unknown } | null)?.name
+  return name === "ZodError" || name === "$ZodError"
+}
+
+/**
+ * A double-encoded answer rescued from a failed STREAMED call, or `null` to
+ * rethrow.
+ *
+ * ONLY A MODEL-OUTPUT FAILURE OF A STREAM THAT FINISHED NORMALLY QUALIFIES.
+ * The whole-branch review of the OpenRouter move (2026-09-26) reproduced the
+ * alternative on the page builder: an OpenRouter 502 mid-stream rejected
+ * `.object` with a transport error, the old catch fell through to the last
+ * partial object, and that partial — a repaired PREFIX of the tool arguments —
+ * passed `buildResultSchema`, because `update_section` needs only `op` and
+ * `id`. The headline was saved cut off mid-word, the second change the owner
+ * asked for was silently dropped, the reply claimed both were done, and the
+ * route's two-attempt retry never ran. A `finish_reason: "length"` truncation
+ * took the same path. So:
+ *
+ *   - a transport or API error, an abort, anything that is not a
+ *     NoObjectGeneratedError or a ZodError: `null`. The SDK error classes
+ *     never set `.name`, so nothing here keys on one.
+ *   - a NoObjectGeneratedError: recovered from the COMPLETE text it carries
+ *     (`.text` / `.cause.value`), never from the last partial, and only when
+ *     its finish reason (or, if it carries none, the stream's) is a normal one.
+ *     A normally finished answer whose JSON broke halfway has a last partial
+ *     that is a prefix too.
+ *   - a bare ZodError, which carries no text: recovered from the last partial,
+ *     its only surviving copy, and only when the stream emitted a `finish`
+ *     part with a normal reason. No finish part means no evidence it finished.
+ *
+ * Shared, not inlined in the route: the live-model probe in
+ * __tests__/integration/builder-colour-live.test.ts must apply the SAME rule,
+ * or it can pass on a repaired prefix the route would refuse.
+ *
+ * NEVER THROWS — see the contract on `recoverObjectFromError`.
+ */
+export function recoverFinishedAnswer<T>(
+  error: unknown,
+  streamFinish: FinishReason | undefined,
+  lastPartial: unknown,
+  schema: ZodType<T>,
+): T | null {
+  try {
+    if (NoObjectGeneratedError.isInstance(error)) {
+      const finish = error.finishReason ?? streamFinish
+      if (finish === undefined || !FINISHED_NORMALLY.has(finish)) return null
+      return recoverObjectFromError(error, schema)
+    }
+    if (isZodError(error)) {
+      if (streamFinish === undefined || !FINISHED_NORMALLY.has(streamFinish)) return null
+      return recoverObjectFromValue(lastPartial, schema)
     }
   } catch {
     // Deliberately swallowed — see the contract above.
