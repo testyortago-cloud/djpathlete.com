@@ -16,6 +16,7 @@ npm run test:run     # Vitest single run
 npm run test:coverage # Coverage report (v8)
 npm run test:e2e     # Playwright e2e (Chromium, Firefox, WebKit)
 npm run test:integration:selects # Every PostgREST select vs the dev clone's LIVE schema (~15s, read-only)
+npm run test:integration:drift   # Dev clone's functions, RLS flags and policies vs the migrations (~1s, read-only)
 ```
 
 Test files live in `__tests__/` with setup in `__tests__/setup.tsx`. E2E tests in `__tests__/e2e/`.
@@ -33,6 +34,17 @@ and `KNOWN_UNRESOLVED` (orders it cannot trace through a helper, each with the t
 is probed too). A new entry in either fails the run, and so does an entry that has since been fixed. The
 GitHub workflow of the same name reruns it on push to `main`; that is a backstop, since it runs alongside the
 deploy, and it needs the `DEV_CLONE_SERVICE_ROLE_KEY` repository secret.
+
+**Run `npm run test:integration:drift` after applying a migration to the dev clone.** The clone is written to by
+hand and its `supabase_migrations` ledger does not say what ran: in G46 it listed `00256` while the clone ran
+the body from before 00256's review fix, and `00231`'s RLS was simply off. This compares the clone's catalogs
+with the migrations (`scripts/lib/migration-state.ts`): each function's code (comments and layout ignored)
+and SECURITY DEFINER flag; each RLS flag a plain `ALTER TABLE` sets; and that each policy the migrations
+create exists, **by name only** (not its roles or expressions, and not that a dropped one is gone). Dynamic
+SQL is invisible to it, so a migration that sets RLS or policies through `EXECUTE` must be declared in
+`DYNAMIC` with the tables a human read off it (today: `00274`). `DYNAMIC` and `KNOWN_ABSENT` are ratchets
+like the two above. It is read-only and fixed to the clone's project ref, and it needs
+`SUPABASE_ACCESS_TOKEN`. No workflow runs it; run it locally.
 
 ## Architecture
 
