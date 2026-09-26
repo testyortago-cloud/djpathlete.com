@@ -776,24 +776,24 @@ Ten rows the G35 sweep and its critic found. None is built. Each carries its evi
 
 #### Found by G32's discovery (2026-09-26) — recorded, not built
 
-### G46 · The dev clone has drifted from the migrations · **S** · **no owner**
+### G46 · The dev clone has drifted from the migrations · **S** · **DONE (merged + pushed 2026-09-26, `6a2a6def`)**
 - Its `save_sequence_steps` runs e8a10efb's body, not the one in `00256` on `main`. It lacks the `GET DIAGNOSTICS ... ROW_COUNT` check 375b3375 added, which refuses a save whose step ids did not all match (without it a bad id punches a gap in the positions, and the tick reports the run as finished). Measured with `pg_get_functiondef`: neither `GET DIAGNOSTICS` nor `v_updated` is present.
 - `00231`'s RLS is not on its pipeline tables. `pipelines`, `pipeline_stages`, `opportunities` and `opportunity_stage_events` have RLS off there, and anon has SELECT and INSERT. `00231` is not in the dev clone's migration ledger.
 - Also missing from that ledger: `00249` (its body is live, applied outside the ledger).
 - **Production is not known to share this.** It was measured locked down on 2026-09-21 (S01: 0 tables with RLS off) and was not re-read. Fix: apply the two current bodies to the dev clone and read them back. Every test that runs live against the dev clone is testing the older `save_sequence_steps` until then.
-- **2026-09-26: the dev clone is fixed; a repeatable check is built on branch `worktree-g46-dev-clone-drift`, NOT merged.**
+- **2026-09-26: the dev clone is fixed; a repeatable check was built on branch `worktree-g46-dev-clone-drift` and MERGED on the owner's "merge" (`6a2a6def`, pushed as part of `main@c6440766`).**
   - **What was changed on the dev clone.** `00256_sequence_management.sql` was re-sent whole and `00231_pipeline_rls.sql` sent whole, each byte for byte through the Management API `/database/query`, from a scratch script fixed to the clone's ref. `00256` holds only two `CREATE OR REPLACE FUNCTION`s and no grants, so re-running it is safe. Two ledger rows were added by hand, as G32 did: `00256_sequence_management_g46_reapply` and `00231_pipeline_rls`. `00249` was not touched.
   - **Read back on the clone.** `save_sequence_steps` now contains `GET DIAGNOSTICS` and `v_updated`. Its `prosrc` is the file's body exactly (md5 `cb35aabb…`), and so is `claim_sequence_runs`'s (`2c7cd2c9…`). The four tables have `relrowsecurity = true`, each with its "Service role full access" policy (`{service_role}`, `ALL`). Through PostgREST, the anon key now reads 0 rows from each table, and the service role still reads rows. anon and authenticated keep their table GRANTs, as on production: RLS is the gate.
   - **Production, one read-only check (allowed).** Both function bodies are md5-identical to the clone's new ones. RLS is on for the four tables with the same four policies. Both `realtime.messages` policies exist. Production did not drift.
   - **The first full sweep found two things this row had not recorded.** (1) Nine more function bodies differ from their latest migration: `merge_contacts`, `save_pipeline_stages`, five `*_updated_at` triggers, `consume_shop_download` and `compute_injury_days_lost`. They differ **only in comments and whitespace**: the code is identical once comments are stripped, so they behave the same. They were left alone. (2) `00199`'s two `realtime.messages` policies are missing, because **the clone's `realtime` schema has no tables at all**: Supabase Realtime never created them there. No migration can fix that. It is recorded in the check's `KNOWN_ABSENT` ratchet.
   - **The check.** `npm run test:integration:drift` (`__tests__/integration/dev-clone-drift.test.ts`, parser in `scripts/lib/migration-state.ts`). It replays every `.sql` migration in the order `apply.mjs` uses and compares the result with the clone's catalogs. It checks each function's code (comments and layout ignored; literals kept byte for byte) and SECURITY DEFINER flag. It checks each RLS flag a plain `ALTER TABLE` sets. It checks that each policy the migrations create exists, **by name only**: it does not check roles or expressions, or that a dropped policy is gone. Dynamic SQL is invisible to it, so a ratchet, `DYNAMIC`, must name every migration that sets RLS or policies through `EXECUTE`, with the tables a human read off it. Today that is `00274` (12 tables; `repo_migrations` is absent on the clone). It sends queries only to the clone's fixed project ref, refuses to start unless `.env.local` points at that clone, and runs every query in a `READ ONLY` transaction (checked: a `CREATE TEMP TABLE` is refused). It needs `SUPABASE_ACCESS_TOKEN`. That token is a repository secret for `apply-migrations.yml`, but no workflow runs this check. It cannot see grants, columns, argument lists, `search_path` or overloads, and it says so. Documented in CLAUDE.md next to the select contract.
   - **Verified:** parser unit tests 17/17. Live check 2/2 on the fixed clone. Before the fix, a scratch version of the same comparison reported `save_sequence_steps` and the four tables' RLS and policies; the committed test was written afterwards, so its own red on the drifted clone was shown only through the mutants below. Mutants, each restored from git or from a byte-checked copy: a code change in `00256`'s body turns it red, naming the function; a comment-only change stays green; a renamed `00231` policy turns it red; a wrong `KNOWN_ABSENT` entry turns both tests red; two parser mutants (ignore SECURITY DEFINER, stop masking comments) turn 1 and 9 unit tests red. An independent review found no Critical issue. It found two Important ones, both fixed in the second commit: 00274's dynamic RLS was invisible (now `DYNAMIC`), and the docs overstated policy coverage. Its Minor findings were also fixed there: whitespace inside literals, `E''` strings, `--` inside quoted identifiers or data dollar-strings, `00142b_` skipped by the file filter, and a false claim that CI lacks the token. After that round: unit tests 22/22, live check 3/3, and two more mutants (a wrong `DYNAMIC` table, a wrong `DYNAMIC` file) each turn one test red. tsc 238/54, identical per file to the baseline.
-  - **Not done:** nothing is merged. The comment-only bodies were not re-applied (no behaviour to fix, and re-running those whole files would re-run their `CREATE TABLE`s and seeds). `00249`'s ledger row is still missing.
+  - **Not done:** the comment-only bodies were not re-applied (no behaviour to fix, and re-running those whole files would re-run their `CREATE TABLE`s and seeds). `00249`'s ledger row is still missing.
 
-### G47 · Cloning the built-in quiz copies "Book a call with Darren" · **S** · **no owner**
+### G47 · Cloning the built-in quiz copies "Book a call with Darren" · **S** · **DONE (merged + pushed + deployed 2026-09-26, `f628c859`)**
 - `lib/quizzes/seed/rpi-athlete-quiz.ts` (about lines 183-184): two result bands carry `ctaLabel: "Book a call with Darren"`. A business that creates a quiz funnel with `copyFrom: builtin:rpi` gets the platform owner's name on its own quiz's call-to-action.
 - Found by G32's critic. It matters to G32 because the four `quiz_*` starter sequences only fire for a quiz cloned this way.
-- **2026-09-26: built on branch `worktree-g47-neutral-builtin-quiz`, NOT merged.**
+- **2026-09-26: built on branch `worktree-g47-neutral-builtin-quiz`; MERGED on the owner's "merge" (`f628c859`), pushed as `main@c6440766` and deployed (Vercel "Deployment has completed"; select-contract backstop green). No migration.**
   - **It was bigger than the label.** The two bands' button linked to `/contact`, the platform's own page on the platform's host. `/api/contact` files the lead under the Host's business (`resolvePublicTenant()`), so a coach's quiz lead who clicked it would have become a platform lead. None has: a non-platform business's quiz cannot take an answer yet, because `/api/quiz/progress` reads the quiz under the Host's tenant and nothing writes `business_domains` (see G48). The fix is groundwork for that day, and it also changes what a coach sees in the editor and in preview today. The other two bands linked to `/online` and `/assessment`, also platform pages. No link is neutral: every relative path is the platform's site until coaches have hosts.
   - **Decision: a neutral built-in, not substitution at clone time.** All four bands in `lib/quizzes/seed/rpi-athlete-quiz.ts` now have `ctaLabel: null, ctaHref: null`, and the file is in the brand sweep's ROOTS; its line-18 comment no longer names the owner. Substituting at clone time was rejected because there is nothing neutral to substitute.
   - **The platform's own quiz is untouched.** `scripts/seed-athlete-quiz.ts` is additive, and it never wrote `cta_label`/`cta_href` at all. The platform quiz's buttons on the dev clone were set by hand on 2026-08-24 (`dd62470b`). The four buttons now live in that script as `PLATFORM_TIER_CTAS`, and it writes them. So a fresh seed no longer gives the platform dead-end results, and re-running it still updates no existing row.
@@ -831,6 +831,11 @@ Ten rows the G35 sweep and its critic found. None is built. Each carries its evi
 ### G49 · A tenant's unsubscribe and consent links land on the platform's branded pages · **M** · **later, with coach domains**
 - `appOrigin()` is deployment-wide (`lib/automation/sequence-tick-runner.ts`, ~464-477). The unsubscribe and `{{sms_consent_url}}` pages sit under `app/(marketing)`, whose navbar is the platform's (`SiteNavbar.tsx`). A coach's lead who unsubscribes lands on the platform's site.
 - It needs per-business hosts (nothing writes `business_domains` yet) or a neutral, unbranded page for these two routes.
+- **2026-09-26: the buildable part was designed (bounded path, in chat) and waits on ONE owner choice; nothing built.**
+  - Move `app/(marketing)/unsubscribe/[token]` and `app/(marketing)/sms-consent/[token]` into their own route group with a layout that has no platform navbar, footer or `StickyApplyCTA`. The URLs do not change. The no-token newsletter `/unsubscribe` stays where it is (one platform list, G38).
+  - Both token readers already return the token's `businessId` (`processUnsubscribe`, `readSmsConsentState`). `getBusinessSettings(businessId)` supplies the identity. The page title overrides the root's `%s | <platform>` template.
+  - **The choice:** (1, recommended) the business's own chrome, matching the email the person clicked from: `logo_url` or `display_name`, `brand_color` through the emails' `paletteFor` (exported from `lib/lead-engine/email.ts` so page and email share one rule), and "Sent by <sender_name> · <postal_address>"; or (2) the business's name in plain text and nothing else.
+  - The brand sweep's ROOTS must follow the moved files; its "every root still resolves" guard fails the run if they do not. Three tests import the page paths (`__tests__/app/sms-consent-page.test.ts`, `sms-consent-agree-button.test.tsx`, `unsubscribe-token-route.test.ts`). The address bar still shows the platform's domain until coaches have hosts.
 
 ---
 
@@ -965,9 +970,11 @@ nothing — read production back; every new column needs a named reader.
 
 ### Finished vs not — the one-screen answer
 
-**36 of 51 rows are finished, merged, pushed and deployed. 15 are not.** Five of the 15 need
-no owner and can be built now: G40, G41, G45, G46 and G47. G44 and G49 are recorded for later, and
-G48 waits on G37. The other seven wait on the owner: G34 is parked by ruling, and G36, G37, G38, G39,
+**38 of 51 rows are finished, merged, pushed and deployed. 13 are not.** Three of the 13 need
+no owner and can be built now: G40, G41 and G45. G44 is recorded for later; G49's buildable part
+(a neutral page for the two token routes) was designed on 2026-09-26 and waits on the owner's choice
+between the business's own branding and its name alone; G48 waits on G37 and on the owner's A/B/C
+answer. *(Updated 2026-09-26: G46 and G47 merged, `main@c6440766`.)* The other seven wait on the owner: G34 is parked by ruling, and G36, G37, G38, G39,
 G42 and G43 are decisions only the owner can take. *(Updated 2026-09-26: G32 merged and applied to
 production, and the four rows its discovery found added as G46-G49, so the count went from 47 to 51.)* Separately, some finished rows still need wording only the owner
 can write (below). *(Corrected 2026-09-26 by the G35 final review: this sentence said everything not
@@ -1004,10 +1011,10 @@ scoreboard below moved on.)*
 | G43 | Every business's customers accept the platform's waiver | — | **Owner / legal decision** |
 | G44 | Schema guards for tenancy | **M** | Not started; later |
 | G45 | Small ownership checks | **S** | Not started; needs no owner |
-| G46 | The dev clone has drifted from the migrations | **S** | Dev clone fixed and read back 2026-09-26; drift check built on `worktree-g46-dev-clone-drift`, awaiting merge |
-| G47 | Cloning the built-in quiz copies "Book a call with Darren" | **S** | Built on `worktree-g47-neutral-builtin-quiz` 2026-09-26, awaiting merge |
+| G46 | The dev clone has drifted from the migrations | **S** | **Done** 2026-09-26: dev clone fixed; drift check merged (`6a2a6def`) |
+| G47 | Cloning the built-in quiz copies "Book a call with Darren" | **S** | **Done** 2026-09-26: merged and deployed (`f628c859`) |
 | G48 | The `has_user` branch crosses businesses | **S** | Blocked on G37; investigated 2026-09-26, owner asked A/B/C |
-| G49 | Unsubscribe and consent links land on the platform's pages | **M** | Later, with coach domains |
+| G49 | Unsubscribe and consent links land on the platform's pages | **M** | Design ready 2026-09-26; waits on the owner: own branding (1) or name only (2) |
 
 **FINISHED IN CODE, NOT FINISHED IN WORDS — these need the owner, not a developer:**
 - **G18's `ai_chat` sequence** — the consent half is live; the follow-up sequence a chat lead enters
@@ -1091,9 +1098,9 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, re-measured 2026-09-26 on `main@a04f2603` (G32 merged and applied to production): 51 rows · 36 done · 15 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29** **G30** **G30b** **G31** **G32** **G33** **G35**.
-Open: G34 G36 G37 G38 G39 G40 G41 G42 G43 G44 G45 G46 G47 G48 G49.
+**Scoreboard, re-measured 2026-09-26 on `main@c6440766` (G46 and G47 merged): 51 rows · 38 done · 13 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29** **G30** **G30b** **G31** **G32** **G33** **G35** **G46** **G47**.
+Open: G34 G36 G37 G38 G39 G40 G41 G42 G43 G44 G45 G48 G49.
 *(G46-G49 are the four rows G32's discovery added.)*
 
 **G35 is Done: merged, pushed and deployed on 2026-09-26.** *(This paragraph was written on
@@ -1142,7 +1149,7 @@ production. G18's `ai_chat` follow-up sequence is NOT built and is blocked on th
 "every row is built" was an overclaim; it is counted under Done in the scoreboard because that list
 means FINISHED IN CODE, and G18's outstanding half is in the owner section below. G21 and G28, the two rows that were
 blocked on an owner decision, were ruled on and built the same day. G29, the last Phase 3 row and the one deliberately deferred until Phases 0-2 were done, was
-built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the first two Phase 4 rows, were merged and pushed on 2026-09-23 and 2026-09-25. G33 was built on 2026-09-25. G35 was merged, pushed and deployed on 2026-09-26. G32 was merged, pushed and applied to production on 2026-09-26. What remains is G34 (a decision, not work), **the ten rows G35's sweep found, G36-G45**, and **the four G32's discovery found, G46-G49**: six wait on an owner decision (G36-G39, G42, G43), five are small fixes that need no owner (G40, G41, G45, G46, G47), G48 waits on G37, and G44 and G49 are for later.
+built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the first two Phase 4 rows, were merged and pushed on 2026-09-23 and 2026-09-25. G33 was built on 2026-09-25. G35 was merged, pushed and deployed on 2026-09-26. G32 was merged, pushed and applied to production on 2026-09-26, and G46 and G47 were merged and pushed on 2026-09-26. What remains is G34 (a decision, not work), **the ten rows G35's sweep found, G36-G45**, and **two of the four G32's discovery found, G48 and G49**: six wait on an owner decision (G36-G39, G42, G43), three are small fixes that need no owner (G40, G41, G45), G48 waits on G37 and the owner's A/B/C answer, G49 waits on the owner's design choice, and G44 is for later.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
@@ -1187,12 +1194,12 @@ built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the fir
   or does each business need its own first? A legal decision before a code one.
 - **The decisions in §Decisions** that Phase 3 rows still name (G21, G28, G34).
 
-**G32 is done** (merged and applied to production 2026-09-26). **Next unblocked:** the five **S** rows that need no
-owner: **G40** (bind the funnel checkout's product to the published page's offers), **G41** (the
-strategy critic's attribution read, and the select contract's blindness to filter columns), **G45**
-(small ownership checks), **G46** (bring the dev clone's drifted functions and RLS back in line with
-the migrations — worth doing first, since every live test runs against it) and **G47** (the quiz
-clone's "Book a call with Darren"). **G35 is done** (merged 2026-09-26).
+**G46 and G47 are done** (merged 2026-09-26, `main@c6440766`). **G32 is done** (merged and applied to
+production 2026-09-26). **Next unblocked:** the three **S** rows that need no owner: **G40** (bind the
+funnel checkout's product to the published page's offers), **G41** (the strategy critic's attribution
+read, and the select contract's blindness to filter columns) and **G45** (small ownership checks).
+G47 left one follow-up with no row yet: the quiz gate's "no button" warning does not reach the funnel
+publish review. **G35 is done** (merged 2026-09-26).
 **G33 is done.** **G34 is not work**: decision 11 ruled record it, write no code. G36-G39, G42 and
 G43 wait on the questions above, and G44 is schema work for later.
 
