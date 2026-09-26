@@ -25,6 +25,7 @@ import {
   STRUCTURED_OUTPUT_NAME,
   type OpenRouterUsage,
 } from "@/lib/ai/openrouter-request"
+import { liftStreamStatus } from "@/lib/ai/openrouter-stream"
 
 /**
  * A structured object streamed from OpenRouter, in the shape AI SDK
@@ -50,11 +51,15 @@ import {
  *   .object      the validated answer, or a NoObjectGeneratedError carrying
  *                `.text` (raw arguments) and `.cause` (the ZodError), which is
  *                what `recoverObjectFromError` digs a double-encoded answer
- *                out of
+ *                out of, and `.finishReason`, which the route reads to refuse
+ *                recovering anything from a stream that did not finish
+ *                normally ("length" above all)
  *
  * FAILURES ARE PARTS, NOT THROWS. A transport or API error becomes one
  * `{type:"error"}` part, the iteration then ends normally, and `.object`
- * rejects with the SAME error. That is `streamObject`'s contract, and the
+ * rejects with the SAME error — a mid-stream one with OpenRouter's status
+ * lifted onto it (`liftStreamStatus`), and never dressed as a
+ * NoObjectGeneratedError. That is `streamObject`'s contract, and the
  * route depends on it: it has no `error` branch, because "the same failure
  * comes back out of `await objectPromise`". A stream that threw out of the
  * `for await` instead would skip the route's recovery and its retry entirely.
@@ -327,8 +332,18 @@ async function produce<T>(
       }
     }
   } catch (error) {
-    emit({ type: "error", error })
-    throw error
+    // A fault mid-stream is the openai SDK's own `APIError(undefined,
+    // data.error)`: status undefined, OpenRouter's number only in `.code`, and
+    // `.name` plain "Error". Unlifted, `shouldFallBackToAnthropic` read a 502
+    // as a status-less bug of our own and would not switch even when it was
+    // the very first part (the whole-branch review, 2026-09-26). Lifted, it is
+    // the provider fault it is, and the message the route logs and feeds its
+    // retry names OpenRouter and the model. It stays a transport error, never
+    // a NoObjectGeneratedError: the route rescues only the latter, because
+    // this stream's last partial is then a prefix of an unfinished answer.
+    const lifted = liftStreamStatus(error, slug)
+    emit({ type: "error", error: lifted })
+    throw lifted
   }
 
   const usage = toLanguageModelUsage(rawUsage)

@@ -18,6 +18,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { z } from "zod"
 import { NoObjectGeneratedError } from "ai"
+import OpenAI from "openai"
 
 const createMock = vi.fn()
 
@@ -29,7 +30,8 @@ vi.mock("@/lib/ai/openrouter", async (importOriginal) => {
   }
 })
 
-import { streamObjectViaOpenRouter } from "@/lib/ai/openrouter-object-stream"
+import { streamObjectViaOpenRouter, streamWithAnthropicFallback } from "@/lib/ai/openrouter-object-stream"
+import { shouldFallBackToAnthropic } from "@/lib/ai/openrouter"
 import { describeModelError, recoverObjectFromError, recoverObjectFromValue } from "@/lib/ai/recover-object"
 
 const schema = z.object({
@@ -263,9 +265,14 @@ describe("streamObjectViaOpenRouter — failures the route recovers from or retr
     expect(NoObjectGeneratedError.isInstance(error)).toBe(true)
     expect(error.message).toContain("structured_output")
     expect(error.text).toBe("I would rather not write that page.")
+    expect(error.finishReason).toBe("stop")
   })
 
-  it("rejects a truncated tool call and says it was truncated", async () => {
+  it("rejects a truncated tool call, says it was truncated, and REPORTS finishReason length", async () => {
+    // The finish reason is what the route reads to refuse recovery. The last
+    // partial of a truncated call is a repaired PREFIX that can still pass the
+    // schema, so a truncation reported as anything but "length" is an edit cut
+    // off mid-headline and applied as a success.
     createMock.mockResolvedValue(fromChunks(toolCallChunks(['{"headline":"Bu', "ild"], { finish: "length" })))
     const stream = start()
     await drain(stream)
@@ -274,6 +281,22 @@ describe("streamObjectViaOpenRouter — failures the route recovers from or retr
     expect(error.message).toMatch(/truncated/)
     expect(error.message).toContain("2000")
     expect(error.text).toBe('{"headline":"Build')
+    expect(error.finishReason).toBe("length")
+  })
+
+  it("reports finishReason other, not a normal finish, when the stream closed before the provider sent one", async () => {
+    // The openai SDK's SSE reader ends QUIETLY when the body closes without
+    // `[DONE]`, so a connection dropped cleanly mid-answer looks like a stream
+    // that ended. Reporting "stop" here would make half a tool call look like
+    // a finished one.
+    const chunks = toolCallChunks(['{"headline":"Bu', "ild"]).slice(0, 3)
+    createMock.mockResolvedValue(fromChunks(chunks))
+    const stream = start()
+    const parts = await drain(stream)
+    expect(parts.at(-1)).toMatchObject({ type: "finish", finishReason: "other" })
+    const error = (await stream.object.catch((e: unknown) => e)) as NoObjectGeneratedError
+    expect(NoObjectGeneratedError.isInstance(error)).toBe(true)
+    expect(error.finishReason).toBe("other")
   })
 
   it("turns a request that fails outright into an error PART, and rejects .object with the same error", async () => {
@@ -294,6 +317,66 @@ describe("streamObjectViaOpenRouter — failures the route recovers from or retr
     const stream = start()
     const parts = await drain(stream)
     expect(parts.map((p) => p.type)).toEqual(["text-delta", "object", "text-delta", "object", "error"])
+    expect(parts.at(-1)).toEqual({ type: "error", error: failure })
+    await expect(stream.object).rejects.toBe(failure)
+  })
+
+  // THE REAL SHAPE OF A MID-STREAM FAULT. The openai SDK checks every SSE
+  // payload for `error` itself and throws `new APIError(undefined, data.error)`
+  // (node_modules/openai/core/streaming.js): `.status` undefined, OpenRouter's
+  // number only in `.code`, and `.name` plain "Error" — the SDK never sets one.
+  // A test that faked `{status: 502}` (above) or `name: "APIConnectionError"`
+  // proves nothing about this path, which is why the whole-branch review found
+  // the builder treating a 502 as a status-less bug of our own.
+  function sseError(code: number, message: string) {
+    return new OpenAI.APIError(undefined, { code, message }, undefined, undefined)
+  }
+
+  it("lifts a mid-stream SDK APIError's numeric code onto .status, keeping the original as .cause", async () => {
+    const raw = sseError(502, "Provider returned error")
+    expect(raw.status).toBeUndefined() // the premise: the SDK leaves it off
+    createMock.mockResolvedValue(fromChunks(toolCallChunks(['{"headline":"Bu', "ild"]).slice(0, 3), raw))
+    const stream = start()
+    const parts = await drain(stream)
+
+    const errorPart = parts.at(-1) as { type: string; error: Error & { status?: number } }
+    expect(errorPart.type).toBe("error")
+    expect(errorPart.error.status).toBe(502)
+    expect(errorPart.error.cause).toBe(raw)
+    expect(errorPart.error.message).toContain("Provider returned error")
+    expect(shouldFallBackToAnthropic(errorPart.error)).toBe(true)
+
+    // The SAME error rejects `.object`, and it is a transport fault, never a
+    // NoObjectGeneratedError — the route recovers only from the latter.
+    const rejection = await stream.object.catch((e: unknown) => e)
+    expect(rejection).toBe(errorPart.error)
+    expect(NoObjectGeneratedError.isInstance(rejection)).toBe(false)
+  })
+
+  it("lets streamWithAnthropicFallback switch on an SSE 502 that arrives before any part", async () => {
+    // The moment the lift is FOR: OpenRouter answers 200, then its first SSE
+    // payload is an error. Unlifted, `shouldFallBackToAnthropic` saw a
+    // status-less error, called it our own bug, and never switched.
+    createMock.mockResolvedValue(fromChunks([], sseError(502, "Provider returned error")))
+    const fallback = vi.fn(() => ({
+      fullStream: (async function* () {
+        yield { type: "finish" as const, finishReason: "stop" as const, usage: {} as never, response: {} as never }
+      })(),
+      object: Promise.resolve({ headline: "From Anthropic", bullets: ["a", "b", "c"] }),
+    }))
+    const stream = streamWithAnthropicFallback({ modelId: "claude-opus-5", primary: start(), fallback })
+    await drain(stream)
+    expect(fallback).toHaveBeenCalledTimes(1)
+    await expect(stream.object).resolves.toEqual({ headline: "From Anthropic", bullets: ["a", "b", "c"] })
+  })
+
+  it("passes a mid-stream error that already carries a status through untouched", async () => {
+    // liftStreamStatus returns an error with a numeric status as-is, so the
+    // error part and the rejection are the provider's own object.
+    const failure = new OpenAI.InternalServerError(503, { message: "overloaded" }, undefined, new Headers())
+    createMock.mockResolvedValue(fromChunks(toolCallChunks(['{"headline":"Bu']).slice(0, 2), failure))
+    const stream = start()
+    const parts = await drain(stream)
     expect(parts.at(-1)).toEqual({ type: "error", error: failure })
     await expect(stream.object).rejects.toBe(failure)
   })
