@@ -99,7 +99,7 @@ sentence appended. The four older texts from 00222 predate them.
 
 **Descriptions** (all eleven rewritten for a coach; none names internal code, Stripe, GHL, a platform page or
 a platform programme). The four quiz descriptions gain: "It only runs for a quiz copied from the built-in
-athlete quiz, whose results carry these names." The full before/after list is in the plan's Task 1 data.
+quiz, whose results carry these names." The full before/after list is in the plan's Task 1 data.
 
 **Kept on purpose:** names (the quiz ones are the built-in quiz's own result names); every structural field
 (kinds, waits, the camp countdown anchors, the tag, both branches and their targets) is identical to the
