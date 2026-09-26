@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from "vitest"
+import OpenAI from "openai"
+import Anthropic from "@anthropic-ai/sdk"
 import { createDeadline, DeadlineExceededError, isAbortError } from "../lib/deadline.js"
 
 /** Controllable clock so budget expiry is deterministic (no real waiting). */
@@ -77,6 +79,28 @@ describe("createDeadline", () => {
     }
   })
 
+  it("counts as spent the moment its signal aborts, even while its clock reads a moment short", () => {
+    // Node can fire the timer before `now - startedAt` reaches the budget
+    // (libuv arms timers from its cached loop time): 2 of 600 real deadlines
+    // in the 2026-09-26 program-chat review. In that window assertLive did not
+    // throw, so an aborted request surfaced as the SDK's raw "Request was
+    // aborted." instead of the DeadlineExceededError the job records.
+    vi.useFakeTimers()
+    try {
+      const clock = fakeClock()
+      const d = createDeadline(5_000, "Program chat", clock.now)
+      clock.advance(4_999)
+      vi.advanceTimersByTime(5_000)
+      expect(d.signal.aborted).toBe(true)
+      expect(d.expired()).toBe(true)
+      expect(d.remainingMs()).toBe(0)
+      expect(() => d.assertLive("closing reply")).toThrow(DeadlineExceededError)
+      d.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("dispose cancels the timer so the signal never aborts afterwards", () => {
     vi.useFakeTimers()
     try {
@@ -92,7 +116,23 @@ describe("createDeadline", () => {
 })
 
 describe("isAbortError", () => {
-  it("recognizes the Anthropic SDK user-abort error by name", () => {
+  // Both SDKs' APIUserAbortError classes never set `.name`, so a real one reads
+  // "Error" there. The first version of this suite faked the error as
+  // `{ name: "APIUserAbortError" }`, which passed while every REAL abort went
+  // unrecognized: callAgent retried past its deadline and fell back to Haiku.
+  it("recognizes the REAL Anthropic SDK APIUserAbortError, whose .name is only 'Error'", () => {
+    const err = new Anthropic.APIUserAbortError()
+    expect(err.name).toBe("Error")
+    expect(isAbortError(err)).toBe(true)
+  })
+
+  it("recognizes the REAL OpenAI SDK APIUserAbortError — what an OpenRouter call throws on abort", () => {
+    const err = new OpenAI.APIUserAbortError()
+    expect(err.name).toBe("Error")
+    expect(isAbortError(err)).toBe(true)
+  })
+
+  it("still recognizes an error that names itself APIUserAbortError", () => {
     const err = Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" })
     expect(isAbortError(err)).toBe(true)
   })
@@ -111,6 +151,10 @@ describe("isAbortError", () => {
     expect(isAbortError(Object.assign(new Error("overloaded"), { status: 529 }))).toBe(false)
     expect(isAbortError(new Error("boom"))).toBe(false)
     expect(isAbortError(new SyntaxError("bad json"))).toBe(false)
+    // The class check must not collapse into "any SDK error": a real
+    // connection failure is a provider fault, and it has to stay retryable.
+    expect(isAbortError(new OpenAI.APIConnectionError({ message: "Connection error." }))).toBe(false)
+    expect(isAbortError(new Anthropic.APIConnectionTimeoutError())).toBe(false)
     expect(isAbortError(null)).toBe(false)
     expect(isAbortError(undefined)).toBe(false)
   })

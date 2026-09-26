@@ -138,6 +138,75 @@ const NETWORK_ERROR_CODES = new Set([
 ])
 
 /**
+ * How far down `.cause` to look for a socket errno. The SDK's own shape is two
+ * levels deep — APIConnectionError, then undici's TypeError("fetch failed"),
+ * then the socket error that carries `.code` — and a caller wrapping it once
+ * more makes three. The bound is also what stops a cyclic chain from hanging
+ * the classifier inside a catch block.
+ */
+const MAX_CAUSE_DEPTH = 4
+
+type ErrorShape = { name?: unknown; status?: unknown; code?: unknown; cause?: unknown }
+
+/**
+ * `instanceof` that tolerates a stubbed SDK: a suite that mocks the module
+ * leaves these statics undefined, and `x instanceof undefined` THROWS — from
+ * inside the catch block that was classifying the real failure.
+ */
+function isInstance(error: object, cls: unknown): boolean {
+  return typeof cls === "function" && error instanceof cls
+}
+
+function className(error: object): unknown {
+  return (error as { constructor?: { name?: unknown } }).constructor?.name
+}
+
+/**
+ * True when the caller aborted: a DOMException-style AbortError, or either
+ * SDK's APIUserAbortError.
+ *
+ * WHY THE CLASS AND NOT `.name`. Neither the openai nor the Anthropic SDK sets
+ * `.name` on its error classes, so a real APIUserAbortError reads plain "Error"
+ * there. A `.name` check recognised only the fakes the tests used to build.
+ * `instanceof` covers the openai copy this file imports even if a minifier
+ * renames the class; the constructor name covers the Anthropic SDK's class and
+ * any other module copy. The `.name` checks remain for errors that do name
+ * themselves (openrouter-stream's callerAbort sets "AbortError").
+ */
+export function isCallerAbort(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false
+  if (isInstance(error, OpenAI.APIUserAbortError)) return true
+  const name = (error as ErrorShape).name
+  return name === "AbortError" || name === "APIUserAbortError" || className(error) === "APIUserAbortError"
+}
+
+const CONNECTION_ERROR_CLASSES = new Set(["APIConnectionError", "APIConnectionTimeoutError"])
+
+/** The SDK's connection classes, by class (see isCallerAbort for why not `.name` alone). */
+function isConnectionErrorClass(error: object): boolean {
+  // APIConnectionTimeoutError extends APIConnectionError, so one check is both.
+  if (isInstance(error, OpenAI.APIConnectionError)) return true
+  const cls = className(error)
+  const name = (error as ErrorShape).name
+  return (
+    (typeof cls === "string" && CONNECTION_ERROR_CLASSES.has(cls)) ||
+    (typeof name === "string" && CONNECTION_ERROR_CLASSES.has(name))
+  )
+}
+
+/** A socket-level errno on the error itself or anywhere down its (bounded) cause chain. */
+function hasNetworkErrno(error: object): boolean {
+  let current: unknown = error
+  for (let depth = 0; depth <= MAX_CAUSE_DEPTH; depth++) {
+    if (!current || typeof current !== "object") return false
+    const code = (current as ErrorShape).code
+    if (typeof code === "string" && NETWORK_ERROR_CODES.has(code)) return true
+    current = (current as ErrorShape).cause
+  }
+  return false
+}
+
+/**
  * Should a failed OpenRouter call be retried against direct Anthropic?
  *
  * ONLY for faults that are about the provider being unreachable, unpaid or
@@ -150,26 +219,84 @@ const NETWORK_ERROR_CODES = new Set([
  * functions above, would each be read as "provider unreachable" and every
  * affected call would be quietly served by Anthropic. The system looks healthy,
  * the bill moves to the other provider, and nothing says why. So a status-less
- * error now falls back only when it names itself as a connection failure —
- * either the SDK's connection error classes or a socket-level errno.
+ * error falls back only when it is a connection failure — the SDK's
+ * APIConnectionError / APIConnectionTimeoutError, or a socket-level errno on
+ * the error or down its cause chain.
+ *
+ * Those classes are recognised by CLASS, not by `.name`. The SDK never sets
+ * `.name` (it reads "Error"), and they carry neither `.status` nor `.code`: the
+ * errno, when there is one, sits on `.cause.cause`. The previous version
+ * matched `.name` and the top-level `.code` only, so a real unreachable
+ * OpenRouter was classified as our own bug and never fell back, while tests
+ * that faked `{ name: "APIConnectionError" }` stayed green.
  *
  * A 400 or 404 means WE built a bad request; the same request fails identically
  * on Anthropic, so falling back would double the cost of the bug and hide it
  * behind a working response. An abort is the caller's deadline and is never
- * retried.
+ * retried, whatever its cause chain says the socket was doing.
  */
 export function shouldFallBackToAnthropic(error: unknown): boolean {
-  const e = error as { name?: string; status?: number; code?: string } | null
-  if (!e) return false
-  if (e.name === "AbortError") return false
+  if (!error || typeof error !== "object") return false
+  if (isCallerAbort(error)) return false
 
+  const e = error as ErrorShape
   const status = typeof e.status === "number" ? e.status : undefined
-  if (status === undefined) {
-    if (typeof e.code === "string" && NETWORK_ERROR_CODES.has(e.code)) return true
-    // APIConnectionError / APIConnectionTimeoutError from the OpenAI SDK.
-    return typeof e.name === "string" && /^APIConnection(Timeout)?Error$/.test(e.name)
-  }
+  if (status === undefined) return hasNetworkErrno(error) || isConnectionErrorClass(error)
   if (status === 401 || status === 402 || status === 403) return true // key, credit, permission
   if (status === 408 || status === 429) return true // timeout, rate limit
   return status >= 500
+}
+
+/**
+ * Can direct Anthropic serve this model at all?
+ *
+ * The fallback exists for Claude models only. `gpt-6-astra` (the program
+ * architect and exercise selector default) is an OpenAI model that only
+ * OpenRouter can reach; sent to Anthropic it answers a 404, and that 404 would
+ * then replace the OpenRouter fault the owner actually needed to see.
+ */
+export function canFallBackToAnthropic(modelId: string): boolean {
+  return modelId.startsWith("claude-")
+}
+
+function describeProviderError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === "string") return error
+  const status = (error as { status?: unknown } | null)?.status
+  return typeof status === "number" ? `status ${status}` : String(error)
+}
+
+/**
+ * Thrown when OpenRouter failed AND the Anthropic fallback failed too.
+ *
+ * WHY IT EXISTS. Before this, the fallback's error was the only one that
+ * surfaced. With the Anthropic account unfunded, every OpenRouter hiccup — a
+ * 429, a 5xx, a missing key — reached the owner as Anthropic's "Your credit
+ * balance is too low", which reads exactly like "this feature was never moved
+ * to OpenRouter". The primary provider's failure is the story; the fallback's
+ * is a footnote, so the message leads with OpenRouter's.
+ *
+ * `status` is OpenRouter's, not Anthropic's, so retry logic classifies the
+ * PRIMARY fault: an OpenRouter 429 stays retryable instead of being ended by
+ * Anthropic's 400.
+ */
+export class ProviderFallbackError extends Error {
+  readonly status: number | undefined
+  readonly openRouterError: unknown
+  readonly anthropicError: unknown
+
+  constructor(openRouterError: unknown, anthropicError: unknown) {
+    // One trailing period off OpenRouter's text: its messages usually end in
+    // one ("401 User not found."), and the owner reads this in the chat.
+    super(
+      `OpenRouter failed: ${describeProviderError(openRouterError).replace(/\.$/, "")}. ` +
+        `The Anthropic fallback also failed: ${describeProviderError(anthropicError)}`,
+      { cause: openRouterError },
+    )
+    this.name = "ProviderFallbackError"
+    const status = (openRouterError as { status?: unknown } | null)?.status
+    this.status = typeof status === "number" ? status : undefined
+    this.openRouterError = openRouterError
+    this.anthropicError = anthropicError
+  }
 }

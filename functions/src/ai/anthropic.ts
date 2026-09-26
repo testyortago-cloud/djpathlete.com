@@ -2,10 +2,16 @@ import Anthropic from "@anthropic-ai/sdk"
 import { toJSONSchema, type ZodSchema } from "zod"
 import type { AgentCallResult } from "./types.js"
 import pRetry from "p-retry"
-import { jsonrepair } from "jsonrepair"
+import { jsonrepair, JSONRepairError } from "jsonrepair"
 import { isAbortError } from "../lib/deadline.js"
-import { isOpenRouterConfigured, shouldFallBackToAnthropic } from "./openrouter.js"
+import {
+  canFallBackToAnthropic,
+  isOpenRouterConfigured,
+  ProviderFallbackError,
+  shouldFallBackToAnthropic,
+} from "./openrouter.js"
 import { callAgentViaOpenRouter } from "./openrouter-agent.js"
+import { streamTextViaOpenRouter, streamWithToolsViaOpenRouter } from "./openrouter-stream.js"
 
 export { Anthropic }
 
@@ -98,8 +104,11 @@ export const MODEL_PROGRAM_ARCHITECT = process.env.PROGRAM_ARCHITECT_MODEL || MO
 export const MODEL_EXERCISE_SELECTOR = process.env.EXERCISE_SELECTOR_MODEL || MODEL_GPT6_ASTRA
 
 /**
- * Thinking depth for the two agents above. Only reaches the wire on the
- * structured-outputs branch, which is the only branch these models take.
+ * Thinking depth for the two agents above. gpt-6-astra takes the forced-tool
+ * branch (it does not reject forced tool choice), and through OpenRouter
+ * `buildChatRequest` sends effort as `reasoning` on that branch too — so this
+ * does reach the wire. It would not on direct Anthropic, where only the
+ * structured-outputs branch sends it, but astra never goes there.
  */
 export const PROGRAM_AGENT_EFFORT = "medium" as const
 
@@ -238,31 +247,59 @@ export function stripUnsupportedSchemaKeywords(node: unknown, depth = 0): unknow
 
 // ─── Transient error detection ───────────────────────────────────────────────
 
+/**
+ * Worth another attempt? A 429 or a 5xx is; anything else fails the same way
+ * every time.
+ *
+ * A `ProviderFallbackError` is classified by its OPENROUTER half, because the
+ * next attempt goes to OpenRouter first (see callAgentWithModel). An OpenRouter
+ * 429 whose unfunded Anthropic fallback then answered 400 "credit balance is
+ * too low" is still a rate limit, and worth retrying. Classifying the wrapper
+ * by its message instead would read ANTHROPIC's words — a "529" or an
+ * "overloaded" in the fallback's footnote — as a verdict on OpenRouter.
+ *
+ * The numeric status is read from any SDK, not only `Anthropic.APIError`:
+ * OpenRouter's errors come from the OpenAI SDK and carry the same `.status`.
+ *
+ * A MALFORMED ANSWER IS NEVER TRANSIENT, and is ruled out before the message
+ * is read. The message fallback used to match SUBSTRINGS, so the digits inside
+ * a validation message set the policy: a jsonrepair failure "at position 1502"
+ * read as a 502 and a `.max(500)` Zod miss ("<=500 characters") as a 500. Both
+ * are still retried — see `shouldRetry`, which retries malformed output on
+ * purpose — but as what they are, so an exhausted run no longer takes callAgent's
+ * Haiku last resort, five more paid calls for an answer that was the wrong shape.
+ *
+ * What remains of the message fallback is for provider faults that lost their
+ * numeric field: a status-shaped TOKEN (429 or 5xx standing alone, not inside a
+ * longer number) or the word "overloaded", which is how a mid-stream Anthropic
+ * overloaded_error arrives — as an SSE error event with no HTTP status at all.
+ */
 function isTransientError(error: unknown): boolean {
-  // Check via instanceof (may fail across module boundaries in Cloud Functions)
-  if (error instanceof Anthropic.APIError) {
-    return error.status === 429 || error.status === 529 || error.status >= 500
-  }
-  // Duck-type check: Anthropic SDK errors have a numeric `status` property
-  const statusCode = (error as { status?: number }).status
+  if (error instanceof ProviderFallbackError) return isTransientError(error.openRouterError)
+  if (isMalformedOutput(error)) return false
+  const statusCode = (error as { status?: unknown } | null)?.status
   if (typeof statusCode === "number") {
-    return statusCode === 429 || statusCode === 529 || statusCode >= 500
+    return statusCode === 429 || statusCode >= 500
   }
-  // Fallback: check error message string for known transient codes/keywords
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase()
-    if (
-      msg.includes("429") ||
-      msg.includes("529") ||
-      msg.includes("overloaded") ||
-      msg.includes("500") ||
-      msg.includes("502") ||
-      msg.includes("503")
-    ) {
-      return true
-    }
-  }
-  return false
+  if (!(error instanceof Error)) return false
+  return /(^|\D)(429|5\d\d)(\D|$)/.test(error.message) || /overloaded/i.test(error.message)
+}
+
+/**
+ * The model answered, and the answer was not the shape asked for: unparseable
+ * JSON (`JSON.parse` throws a SyntaxError; `jsonrepair` throws its own
+ * JSONRepairError, which is NOT a SyntaxError and names itself only "Error"),
+ * or a Zod miss from `schema.parse`.
+ *
+ * Zod is matched by NAME — classic "ZodError" and core "$ZodError" — and by
+ * constructor name, because an `instanceof` against one zod copy is false for
+ * an error thrown by another.
+ */
+function isMalformedOutput(error: unknown): boolean {
+  if (error instanceof SyntaxError || error instanceof JSONRepairError) return true
+  const e = error as { name?: unknown; constructor?: { name?: unknown } } | null
+  const name = e?.name
+  return name === "ZodError" || name === "$ZodError" || e?.constructor?.name === "ZodError"
 }
 
 // ─── callAgent: structured output via raw Anthropic SDK ─────────────────────
@@ -331,9 +368,11 @@ function callAgentWithModel<T>(
      */
     images?: Array<{ media_type: string; data: string }>
     /**
-     * Thinking depth / token spend, for models that support it. Only sent on
-     * the structured-outputs path; the tool path's models are tuned without it
-     * and adding it there would change behaviour for every existing agent.
+     * Thinking depth / token spend, for models that support it. Direct
+     * Anthropic sends it only on the structured-outputs path
+     * (`output_config.effort`). Through OpenRouter, `buildChatRequest` sends it
+     * as `reasoning` on EVERY path, the forced-tool path included — which is
+     * why callAgent's Haiku fallback does not pass it on.
      */
     effort?: "low" | "medium" | "high" | "max"
     /**
@@ -351,7 +390,6 @@ function callAgentWithModel<T>(
   },
 ): Promise<AgentCallResult<T>> {
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
-  const client = getClient()
   const toolSchema = toToolInputSchema(schema)
   // Name the branch, not just the intent. This used to print "tool_use" for
   // every schema-bearing call, including the Fable/Mythos ones that never take
@@ -361,216 +399,239 @@ function callAgentWithModel<T>(
     console.log(`[callAgent] Structured output via ${branch} (model: ${modelId})`)
   }
 
-  // OpenRouter is the primary provider; the Anthropic implementation below is
-  // the fallback. `useOpenRouter` is hoisted OUT of the retry callback on
-  // purpose: once a call has fallen back for a provider-level reason (no
-  // credit, bad key, outage), every later attempt in THIS call goes straight to
-  // Anthropic instead of paying another failed round-trip to OpenRouter first.
-  let useOpenRouter = isOpenRouterConfigured()
+  const viaOpenRouter = () =>
+    callAgentViaOpenRouter(modelId, systemPrompt, userMessage, schema, toolSchema, normalizeEnumFields, {
+      maxTokens,
+      cacheSystemPrompt: options?.cacheSystemPrompt,
+      cachedUserPrefix: options?.cachedUserPrefix,
+      images: options?.images,
+      documents: options?.documents,
+      effort: options?.effort,
+      signal: options?.signal,
+      useResponseFormat: modelRejectsForcedToolChoice(modelId),
+    })
+
+  // The direct-Anthropic implementation, unchanged. It is the whole call when
+  // OpenRouter is not configured, and one attempt's fallback when it is.
+  const viaAnthropic = async (): Promise<AgentCallResult<T>> => {
+    const client = getClient()
+    const systemContent: Anthropic.Messages.TextBlockParam[] = [
+      {
+        type: "text" as const,
+        text: systemPrompt,
+        ...(options?.cacheSystemPrompt ? { cache_control: { type: "ephemeral" as const } } : {}),
+      },
+    ]
+
+    let parsed: unknown
+    let tokens_used: number
+    let cache_creation_tokens = 0
+    let cache_read_tokens = 0
+
+    const userContent = buildUserContent(userMessage, options?.cachedUserPrefix, options?.images, options?.documents)
+
+    if (toolSchema && modelRejectsForcedToolChoice(modelId)) {
+      // ── Structured-outputs path (Fable / Mythos) ──────────────────────────
+      // These models 400 on forced tool choice, so the schema goes in
+      // `output_config.format` instead and the answer comes back as a text
+      // block of schema-valid JSON rather than a tool_use block. Same Zod
+      // validation downstream, so callers see no difference.
+      const stream = client.messages.stream(
+        {
+          model: modelId,
+          max_tokens: maxTokens,
+          system: systemContent,
+          output_config: {
+            format: {
+              type: "json_schema" as const,
+              schema: stripUnsupportedSchemaKeywords(toolSchema) as Record<string, unknown>,
+            },
+            ...(options?.effort ? { effort: options.effort } : {}),
+          },
+          messages: [{ role: "user", content: userContent }],
+        },
+        { signal: options?.signal },
+      )
+
+      const response = await stream.finalMessage()
+
+      // Thinking is always on for this family, so a refusal is a real
+      // possibility on a 200. Checked BEFORE reading content, because the
+      // content of a refused turn is not the answer.
+      if (response.stop_reason === "refusal") {
+        // `stop_details` is on the wire but not in @anthropic-ai/sdk 0.77's
+        // Message type, hence the cast. Read it anyway — without the category
+        // a refusal is indistinguishable from a bug in our own prompt.
+        const details = (response as { stop_details?: unknown }).stop_details ?? null
+        throw new Error(`Model declined the request (${modelId}); stop_details: ${JSON.stringify(details)}`)
+      }
+      if (response.stop_reason === "max_tokens") {
+        throw new Error(
+          `Response truncated (hit ${maxTokens} max_tokens). Output is incomplete — increase maxTokens or reduce input size.`,
+        )
+      }
+
+      // Thinking blocks come first in content; take the text block, not [0].
+      const textBlock = response.content.find((b) => b.type === "text")
+      if (!textBlock || textBlock.type !== "text") {
+        throw new Error("No text content in structured-outputs response")
+      }
+      try {
+        parsed = JSON.parse(textBlock.text)
+      } catch {
+        parsed = JSON.parse(jsonrepair(textBlock.text))
+      }
+
+      tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
+      cache_creation_tokens = response.usage?.cache_creation_input_tokens ?? 0
+      cache_read_tokens = response.usage?.cache_read_input_tokens ?? 0
+    } else if (toolSchema) {
+      // ── Primary path: structured output via tool_use (streaming to avoid 10min timeout) ──
+      const stream = client.messages.stream(
+        {
+          model: modelId,
+          max_tokens: maxTokens,
+          system: systemContent,
+          tools: [
+            {
+              name: "structured_output",
+              description: "Output the structured result matching the required schema",
+              input_schema: toolSchema,
+            },
+          ],
+          tool_choice: { type: "tool" as const, name: "structured_output" },
+          messages: [{ role: "user", content: userContent }],
+        },
+        { signal: options?.signal },
+      )
+
+      const response = await stream.finalMessage()
+
+      // Check for truncation — if max_tokens was hit, the output is incomplete
+      if (response.stop_reason === "max_tokens") {
+        throw new Error(
+          `Response truncated (hit ${maxTokens} max_tokens). Output is incomplete — increase maxTokens or reduce input size.`,
+        )
+      }
+
+      const toolBlock = response.content.find((b) => b.type === "tool_use")
+      if (!toolBlock || toolBlock.type !== "tool_use") {
+        throw new Error("No tool_use block in Anthropic response")
+      }
+
+      parsed = toolBlock.input
+      tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
+      cache_creation_tokens = response.usage?.cache_creation_input_tokens ?? 0
+      cache_read_tokens = response.usage?.cache_read_input_tokens ?? 0
+    } else {
+      // ── Fallback: text-based JSON parsing (streaming to avoid 10min timeout) ──
+      console.warn(`[callAgent] Falling back to text JSON parsing (model: ${modelId})`)
+
+      const fallbackUserText =
+        userMessage + "\n\nYou MUST respond with valid JSON matching this schema. Output ONLY the JSON object."
+      // options.documents MUST be threaded here too. Omitting it sends the
+      // retry with no PDF attached, and the model answers confidently from
+      // the prompt alone instead of erroring — a silent wrong result.
+      const fallbackUserContent = buildUserContent(
+        fallbackUserText,
+        options?.cachedUserPrefix,
+        options?.images,
+        options?.documents,
+      )
+
+      const stream = client.messages.stream(
+        {
+          model: modelId,
+          max_tokens: maxTokens,
+          system: systemContent,
+          messages: [{ role: "user", content: fallbackUserContent }],
+        },
+        { signal: options?.signal },
+      )
+
+      const response = await stream.finalMessage()
+
+      const textBlock = response.content.find((b) => b.type === "text")
+      if (!textBlock || textBlock.type !== "text") {
+        throw new Error("No text content in Anthropic response")
+      }
+
+      const jsonStr = textBlock.text.trim()
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        throw new SyntaxError("No JSON object found in response")
+      }
+
+      try {
+        parsed = JSON.parse(jsonMatch[0])
+      } catch {
+        const repaired = jsonrepair(jsonMatch[0])
+        parsed = JSON.parse(repaired)
+      }
+
+      tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
+      cache_creation_tokens = response.usage?.cache_creation_input_tokens ?? 0
+      cache_read_tokens = response.usage?.cache_read_input_tokens ?? 0
+    }
+
+    // Normalize enum fields before Zod validation (model may use spaces/dashes/mixed case)
+    const normalized = normalizeEnumFields(parsed)
+    const validated = schema.parse(normalized)
+    return { content: validated as T, tokens_used, cache_creation_tokens, cache_read_tokens }
+  }
+
+  // OpenRouter first, direct Anthropic as the fallback — decided PER ATTEMPT.
+  //
+  // It used to be decided once per call: the first fallback-class OpenRouter
+  // error set `useOpenRouter = false` for every remaining attempt. With the
+  // Anthropic account unfunded, one retryable OpenRouter 429 therefore became a
+  // certain failure reading "Your credit balance is too low" — every retry went
+  // to the provider that could not answer. Now each attempt tries OpenRouter,
+  // a fallback serves THAT attempt only, and when both fail the attempt throws
+  // a ProviderFallbackError that leads with OpenRouter's fault and carries its
+  // status, so isTransientError judges the provider the next attempt goes to.
+  const useOpenRouter = isOpenRouterConfigured()
 
   return pRetry(
     async () => {
-      if (useOpenRouter) {
+      if (!useOpenRouter) return viaAnthropic()
+      try {
+        return await viaOpenRouter()
+      } catch (e) {
+        // Only provider-availability faults fall back. A 400 or a bad model
+        // slug is OUR bug and fails identically on Anthropic, so falling back
+        // would double its cost and hide it behind a working response. An
+        // abort is the caller's deadline. A non-Claude id (gpt-6-astra, the
+        // architect and selector default) has nowhere else to go: Anthropic
+        // would 404 it, and that 404 would replace the fault worth seeing.
+        if (isAbortError(e) || !shouldFallBackToAnthropic(e) || !canFallBackToAnthropic(modelId)) throw e
+        console.warn(
+          `[callAgent] OpenRouter unavailable (${e instanceof Error ? e.message.slice(0, 160) : e}) — ` +
+            `falling back to direct Anthropic for this attempt (model: ${modelId})`,
+        )
         try {
-          return await callAgentViaOpenRouter(
-            modelId,
-            systemPrompt,
-            userMessage,
-            schema,
-            toolSchema,
-            normalizeEnumFields,
-            {
-              maxTokens,
-              cacheSystemPrompt: options?.cacheSystemPrompt,
-              cachedUserPrefix: options?.cachedUserPrefix,
-              images: options?.images,
-              documents: options?.documents,
-              effort: options?.effort,
-              signal: options?.signal,
-              useResponseFormat: modelRejectsForcedToolChoice(modelId),
-            },
-          )
-        } catch (e) {
-          // Only provider-availability faults fall back. A 400 or a bad model
-          // slug is OUR bug and fails identically on Anthropic, so falling back
-          // would double its cost and hide it behind a working response.
-          if (!shouldFallBackToAnthropic(e)) throw e
-          useOpenRouter = false
-          console.warn(
-            `[callAgent] OpenRouter unavailable (${e instanceof Error ? e.message.slice(0, 160) : e}) — ` +
-              `falling back to direct Anthropic for the rest of this call (model: ${modelId})`,
-          )
+          return await viaAnthropic()
+        } catch (anthropicError) {
+          // The deadline firing DURING the fallback must stay an abort.
+          // Wrapped, it would carry OpenRouter's status — a 503 reads as
+          // transient — and pRetry would start another attempt past the budget.
+          if (isAbortError(anthropicError)) throw anthropicError
+          throw new ProviderFallbackError(e, anthropicError)
         }
       }
-
-      const systemContent: Anthropic.Messages.TextBlockParam[] = [
-        {
-          type: "text" as const,
-          text: systemPrompt,
-          ...(options?.cacheSystemPrompt ? { cache_control: { type: "ephemeral" as const } } : {}),
-        },
-      ]
-
-      let parsed: unknown
-      let tokens_used: number
-      let cache_creation_tokens = 0
-      let cache_read_tokens = 0
-
-      const userContent = buildUserContent(userMessage, options?.cachedUserPrefix, options?.images, options?.documents)
-
-      if (toolSchema && modelRejectsForcedToolChoice(modelId)) {
-        // ── Structured-outputs path (Fable / Mythos) ──────────────────────────
-        // These models 400 on forced tool choice, so the schema goes in
-        // `output_config.format` instead and the answer comes back as a text
-        // block of schema-valid JSON rather than a tool_use block. Same Zod
-        // validation downstream, so callers see no difference.
-        const stream = client.messages.stream(
-          {
-            model: modelId,
-            max_tokens: maxTokens,
-            system: systemContent,
-            output_config: {
-              format: {
-                type: "json_schema" as const,
-                schema: stripUnsupportedSchemaKeywords(toolSchema) as Record<string, unknown>,
-              },
-              ...(options?.effort ? { effort: options.effort } : {}),
-            },
-            messages: [{ role: "user", content: userContent }],
-          },
-          { signal: options?.signal },
-        )
-
-        const response = await stream.finalMessage()
-
-        // Thinking is always on for this family, so a refusal is a real
-        // possibility on a 200. Checked BEFORE reading content, because the
-        // content of a refused turn is not the answer.
-        if (response.stop_reason === "refusal") {
-          // `stop_details` is on the wire but not in @anthropic-ai/sdk 0.77's
-          // Message type, hence the cast. Read it anyway — without the category
-          // a refusal is indistinguishable from a bug in our own prompt.
-          const details = (response as { stop_details?: unknown }).stop_details ?? null
-          throw new Error(`Model declined the request (${modelId}); stop_details: ${JSON.stringify(details)}`)
-        }
-        if (response.stop_reason === "max_tokens") {
-          throw new Error(
-            `Response truncated (hit ${maxTokens} max_tokens). Output is incomplete — increase maxTokens or reduce input size.`,
-          )
-        }
-
-        // Thinking blocks come first in content; take the text block, not [0].
-        const textBlock = response.content.find((b) => b.type === "text")
-        if (!textBlock || textBlock.type !== "text") {
-          throw new Error("No text content in structured-outputs response")
-        }
-        try {
-          parsed = JSON.parse(textBlock.text)
-        } catch {
-          parsed = JSON.parse(jsonrepair(textBlock.text))
-        }
-
-        tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
-        cache_creation_tokens = response.usage?.cache_creation_input_tokens ?? 0
-        cache_read_tokens = response.usage?.cache_read_input_tokens ?? 0
-      } else if (toolSchema) {
-        // ── Primary path: structured output via tool_use (streaming to avoid 10min timeout) ──
-        const stream = client.messages.stream(
-          {
-            model: modelId,
-            max_tokens: maxTokens,
-            system: systemContent,
-            tools: [
-              {
-                name: "structured_output",
-                description: "Output the structured result matching the required schema",
-                input_schema: toolSchema,
-              },
-            ],
-            tool_choice: { type: "tool" as const, name: "structured_output" },
-            messages: [{ role: "user", content: userContent }],
-          },
-          { signal: options?.signal },
-        )
-
-        const response = await stream.finalMessage()
-
-        // Check for truncation — if max_tokens was hit, the output is incomplete
-        if (response.stop_reason === "max_tokens") {
-          throw new Error(
-            `Response truncated (hit ${maxTokens} max_tokens). Output is incomplete — increase maxTokens or reduce input size.`,
-          )
-        }
-
-        const toolBlock = response.content.find((b) => b.type === "tool_use")
-        if (!toolBlock || toolBlock.type !== "tool_use") {
-          throw new Error("No tool_use block in Anthropic response")
-        }
-
-        parsed = toolBlock.input
-        tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
-        cache_creation_tokens = response.usage?.cache_creation_input_tokens ?? 0
-        cache_read_tokens = response.usage?.cache_read_input_tokens ?? 0
-      } else {
-        // ── Fallback: text-based JSON parsing (streaming to avoid 10min timeout) ──
-        console.warn(`[callAgent] Falling back to text JSON parsing (model: ${modelId})`)
-
-        const fallbackUserText =
-          userMessage + "\n\nYou MUST respond with valid JSON matching this schema. Output ONLY the JSON object."
-        // options.documents MUST be threaded here too. Omitting it sends the
-        // retry with no PDF attached, and the model answers confidently from
-        // the prompt alone instead of erroring — a silent wrong result.
-        const fallbackUserContent = buildUserContent(
-          fallbackUserText,
-          options?.cachedUserPrefix,
-          options?.images,
-          options?.documents,
-        )
-
-        const stream = client.messages.stream(
-          {
-            model: modelId,
-            max_tokens: maxTokens,
-            system: systemContent,
-            messages: [{ role: "user", content: fallbackUserContent }],
-          },
-          { signal: options?.signal },
-        )
-
-        const response = await stream.finalMessage()
-
-        const textBlock = response.content.find((b) => b.type === "text")
-        if (!textBlock || textBlock.type !== "text") {
-          throw new Error("No text content in Anthropic response")
-        }
-
-        const jsonStr = textBlock.text.trim()
-        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
-        if (!jsonMatch) {
-          throw new SyntaxError("No JSON object found in response")
-        }
-
-        try {
-          parsed = JSON.parse(jsonMatch[0])
-        } catch {
-          const repaired = jsonrepair(jsonMatch[0])
-          parsed = JSON.parse(repaired)
-        }
-
-        tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
-        cache_creation_tokens = response.usage?.cache_creation_input_tokens ?? 0
-        cache_read_tokens = response.usage?.cache_read_input_tokens ?? 0
-      }
-
-      // Normalize enum fields before Zod validation (model may use spaces/dashes/mixed case)
-      const normalized = normalizeEnumFields(parsed)
-      const validated = schema.parse(normalized)
-      return { content: validated as T, tokens_used, cache_creation_tokens, cache_read_tokens }
     },
     {
       retries: 4,
       minTimeout: 5_000,
       maxTimeout: 30_000,
+      // The backoff sleeps are 5s, 10s, 20s and 30s. Without the caller's
+      // signal, a deadline that fired mid-sleep was only noticed after the
+      // sleep: up to 30s the budget no longer had, then one more attempt that
+      // failed at once on the aborted signal (the SDK checks it before any
+      // request goes out). With it, pRetry ends the sleep and throws the
+      // signal's reason (an AbortError) at once. The isAbortError checks below
+      // stay: they cover an abort thrown by the request itself.
+      signal: options?.signal,
       shouldRetry: (ctx) => {
         const err = ctx.error
         // The caller's time budget is gone — retrying spends wall-clock we do
@@ -581,10 +642,18 @@ function callAgentWithModel<T>(
         }
         // Retry on transient API errors (429, 529, 5xx)
         if (isTransientError(err)) return true
-        // Retry on JSON parse errors (model produced malformed JSON)
-        if (err instanceof SyntaxError) return true
-        // Retry on Zod validation errors (model output didn't match schema)
-        if (err?.constructor?.name === "ZodError") return true
+        // The two checks below are about the MODEL'S ANSWER, so they read the
+        // error of whichever provider answered. When the fallback answered and
+        // its output was malformed, that error sits inside the wrapper; judging
+        // the wrapper alone would stop on OpenRouter's non-transient 402 and
+        // never retry a funded Anthropic's recoverable bad answer.
+        const answerError = err instanceof ProviderFallbackError ? err.anthropicError : err
+        // Retry malformed JSON (JSON.parse's SyntaxError, or jsonrepair's
+        // JSONRepairError when even the repair failed) and Zod misses. This is
+        // deliberate for long-running jobs, and it is the ONLY route by which a
+        // malformed answer is retried: isTransientError refuses it, so an
+        // exhausted run does not go on to the Haiku last resort.
+        if (isMalformedOutput(answerError)) return true
         console.log(`[callAgent] NOT retrying: ${err?.constructor?.name} (model: ${modelId})`)
         return false
       },
@@ -612,10 +681,14 @@ export async function callAgent<T>(
     /**
      * Thinking depth for models that support it.
      *
-     * Safe to leave set across the Haiku fallback below: `effort` is only put
-     * on the wire by the structured-outputs branch, which Haiku never takes
-     * (it does not reject forced tool choice), and Haiku 4.5 would 400 on the
-     * parameter. Do not "simplify" this by sending effort on the tool path.
+     * NOT carried into the Haiku fallback below. It used to be, on the grounds
+     * that only the structured-outputs branch puts effort on the wire — true of
+     * direct Anthropic, false through OpenRouter: `buildChatRequest` sends it
+     * as `reasoning` on every branch, including the forced tool choice Haiku
+     * is asked with. For a Claude model that reasoning is extended thinking,
+     * which Anthropic refuses alongside a forced tool choice. So a Fable blog
+     * draft (effort "medium") that exhausted its retries handed Haiku a request
+     * built to 400, and that 400 replaced the fault worth seeing.
      */
     effort?: "low" | "medium" | "high" | "max"
     signal?: AbortSignal
@@ -629,23 +702,121 @@ export async function callAgent<T>(
     // An aborted call means the caller is out of time. A Haiku fallback here
     // would start a WHOLE NEW request (up to 5 more attempts) past the budget.
     if (isAbortError(error)) throw error
-    // If primary model exhausted all retries on a transient error, fall back to Haiku
-    if (modelId !== MODEL_HAIKU && isTransientError(error)) {
+    // The Haiku last resort is for CLAUDE primaries only. A gpt-6-astra
+    // failure (the architect and selector default) used to be rerouted here
+    // too, astra's options and all: either Haiku silently wrote the training
+    // program the owner chose astra for, or the effort it inherited made it
+    // 400 and that 400 replaced astra's 503. A non-Claude primary's own error
+    // is the one worth seeing.
+    if (modelId !== MODEL_HAIKU && canFallBackToAnthropic(modelId) && isTransientError(error)) {
       console.warn(`[callAgent] ${modelId} exhausted all retries — falling back to ${MODEL_HAIKU}`)
-      return callAgentWithModel(MODEL_HAIKU, systemPrompt, userMessage, schema, options)
+      return callAgentWithModel(MODEL_HAIKU, systemPrompt, userMessage, schema, { ...options, effort: undefined })
     }
     throw error
   }
 }
 
-// ─── streamRaw: raw Anthropic streaming for Firebase Functions ──────────────
+// ─── OpenRouter-first streaming ─────────────────────────────────────────────
 
+/**
+ * Stream from OpenRouter; switch to direct Anthropic only if OpenRouter failed
+ * BEFORE the consumer received a single event.
+ *
+ * WHY THIS EXISTS. The first OpenRouter migration moved only the one-shot
+ * calls. streamRaw and streamWithTools kept calling Anthropic directly, so with
+ * the Anthropic account unfunded the admin "DJP Assistant" chat answered "Your
+ * credit balance is too low" — which reads exactly like "this feature was never
+ * moved to OpenRouter", because it hadn't been.
+ *
+ * WHY THE "EMITTED ANYTHING YET?" GATE. Both consumers write every event to
+ * Firestore the moment it arrives (admin-chat.ts, ai-coach.ts), and
+ * streamWithTools runs the tools between events. Once one event is out, a
+ * second provider would repeat text the chat already shows and run the tools a
+ * second time; there is no "unsay" event. So a fault after the first event is
+ * rethrown exactly as it arrived.
+ *
+ * WHY THE WRAPPED ERROR. When both providers fail before anything was emitted,
+ * admin-chat.ts's catch shows `error.message` to the owner. A
+ * ProviderFallbackError leads with OpenRouter's fault — the story — and keeps
+ * Anthropic's as the footnote. ai-coach.ts deliberately does NOT: its reader is
+ * an athlete, so it logs this error and shows athleteFacingCoachError's fixed
+ * "try again" text instead. Do not reword this error for athletes; it is not
+ * shown to them. If the fallback had already emitted something,
+ * its own error is rethrown as-is: by then it IS the stream being read.
+ *
+ * An abort is the caller's decision and never falls back, and a non-Claude id
+ * never does either (Anthropic would 404 it and bury the real fault).
+ */
+async function* openRouterFirst<E>(args: {
+  label: string
+  modelId: string
+  openRouter: () => AsyncGenerator<E>
+  anthropic: () => AsyncGenerator<E>
+}): AsyncGenerator<E> {
+  let emitted = false
+  let openRouterError: unknown
+  try {
+    for await (const event of args.openRouter()) {
+      // Set BEFORE the yield: the consumer has the event the moment it is
+      // yielded, whatever it then does with it.
+      emitted = true
+      yield event
+    }
+    return
+  } catch (e) {
+    if (emitted || isAbortError(e) || !shouldFallBackToAnthropic(e) || !canFallBackToAnthropic(args.modelId)) throw e
+    openRouterError = e
+  }
+
+  console.warn(
+    `[${args.label}] OpenRouter unavailable (${
+      openRouterError instanceof Error ? openRouterError.message.slice(0, 160) : String(openRouterError)
+    }) — falling back to direct Anthropic for this turn (model: ${args.modelId})`,
+  )
+
+  let fallbackEmitted = false
+  try {
+    for await (const event of args.anthropic()) {
+      fallbackEmitted = true
+      yield event
+    }
+  } catch (anthropicError) {
+    if (fallbackEmitted || isAbortError(anthropicError)) throw anthropicError
+    throw new ProviderFallbackError(openRouterError, anthropicError)
+  }
+}
+
+// ─── streamRaw: plain text streaming for Firebase Functions ─────────────────
+
+/**
+ * OpenRouter first, direct Anthropic as the fallback — see openRouterFirst.
+ * The event contract is the Anthropic implementation's, which ai-coach.ts
+ * consumes; streamTextViaOpenRouter emits the same shapes in the same order.
+ */
 export async function* streamRaw(opts: {
   system: string | Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }>
   messages: Array<{ role: "user" | "assistant"; content: string }>
   maxTokens?: number
   model?: string
 }): AsyncGenerator<{ type: "text"; text: string } | { type: "usage"; input_tokens: number; output_tokens: number }> {
+  if (!isOpenRouterConfigured()) {
+    yield* streamRawViaAnthropic(opts)
+    return
+  }
+  const modelId = opts.model ?? MODEL_SONNET
+  const maxTokens = opts.maxTokens ?? 16384
+  yield* openRouterFirst({
+    label: "streamRaw",
+    modelId,
+    openRouter: () =>
+      streamTextViaOpenRouter({ model: modelId, system: opts.system, messages: opts.messages, maxTokens }),
+    anthropic: () => streamRawViaAnthropic(opts),
+  })
+}
+
+async function* streamRawViaAnthropic(
+  opts: Parameters<typeof streamRaw>[0],
+): AsyncGenerator<{ type: "text"; text: string } | { type: "usage"; input_tokens: number; output_tokens: number }> {
   const client = getClient()
   const modelId = opts.model ?? MODEL_SONNET
   const maxTokens = opts.maxTokens ?? 16384
@@ -698,6 +869,12 @@ export type ToolStreamEvent =
   | { type: "tool_result"; name: string }
   | { type: "usage"; input_tokens: number; output_tokens: number }
 
+/**
+ * OpenRouter first, direct Anthropic as the fallback — see openRouterFirst.
+ * The event contract is the Anthropic implementation's, which admin-chat.ts
+ * consumes; streamWithToolsViaOpenRouter emits the same shapes in the same
+ * order, and runs the tool loop itself.
+ */
 export async function* streamWithTools(opts: {
   system: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }>
   messages: Array<{ role: "user" | "assistant"; content: string }>
@@ -708,6 +885,34 @@ export async function* streamWithTools(opts: {
   model?: string
   maxToolRounds?: number
 }): AsyncGenerator<ToolStreamEvent> {
+  if (!isOpenRouterConfigured()) {
+    yield* streamWithToolsViaAnthropic(opts)
+    return
+  }
+  const modelId = opts.model ?? MODEL_SONNET
+  yield* openRouterFirst({
+    label: "streamWithTools",
+    modelId,
+    openRouter: () =>
+      streamWithToolsViaOpenRouter({
+        model: modelId,
+        system: opts.system,
+        messages: opts.messages,
+        // An Anthropic.Tool may also carry `cache_control` or `type`, which an
+        // OpenAI function definition has no slot for; these three are the tool.
+        tools: opts.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
+        executeTool: opts.executeTool,
+        toolLabels: opts.toolLabels,
+        maxTokens: opts.maxTokens ?? 16384,
+        maxToolRounds: opts.maxToolRounds ?? 5,
+      }),
+    anthropic: () => streamWithToolsViaAnthropic(opts),
+  })
+}
+
+async function* streamWithToolsViaAnthropic(
+  opts: Parameters<typeof streamWithTools>[0],
+): AsyncGenerator<ToolStreamEvent> {
   const client = getClient()
   const modelId = opts.model ?? MODEL_SONNET
   const maxTokens = opts.maxTokens ?? 16384

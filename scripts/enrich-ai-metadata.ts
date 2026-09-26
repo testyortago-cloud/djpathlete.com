@@ -11,7 +11,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import * as dotenv from "dotenv"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
-import { createMessageCompat, type CompatMessage } from "@/lib/ai/openrouter-message"
+import { assertModelProvider, createMessageCompat, type CompatMessage } from "@/lib/ai/openrouter-message"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -242,7 +242,10 @@ async function callWithRetry(userMessage: string): Promise<CompatMessage> {
         tool_choice: { type: "tool", name: "set_exercise_metadata" },
       })
     } catch (err: unknown) {
-      const isRateLimit = err instanceof Anthropic.APIError && err.status === 429
+      // By status, not by class: createMessageCompat fails with the OpenAI SDK's
+      // error (OpenRouter) or a ProviderFallbackError carrying OpenRouter's
+      // status — never an Anthropic.APIError, so a class check never retries.
+      const isRateLimit = (err as { status?: unknown } | null)?.status === 429
       if (isRateLimit && attempt < MAX_RETRIES) {
         const delay = Math.pow(2, attempt) * 2000 // 4s, 8s, 16s
         await new Promise((resolve) => setTimeout(resolve, delay))
@@ -379,9 +382,7 @@ async function main() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set")
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error("ANTHROPIC_API_KEY is not set")
-  }
+  assertModelProvider()
 
   // Fetch exercises
   console.log("Fetching exercises from Supabase...")

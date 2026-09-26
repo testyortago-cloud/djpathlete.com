@@ -90,6 +90,38 @@ Rules:
 - deload_recommended: true ONLY if performance is clearly declining across sessions OR RPE has been consistently 9-10. For first-ever sessions, always false.
 - key_observations: 2-4 brief bullet points about their training patterns. For first sessions, focus on readiness indicators from profile/assessment (e.g., "Intermediate-level squatter", "First time with this exercise").`
 
+// ─── Athlete-facing failure text ──────────────────────────────────────────────
+
+/**
+ * The only failure text an athlete ever reads from this coach.
+ *
+ * It names no brand either: the panel's own title already says who is
+ * speaking, and a white-labelled coach's athletes must not read ours here.
+ */
+export const COACH_UNAVAILABLE_MESSAGE = "We couldn't get your coaching tip just now. Please try again in a moment."
+
+/**
+ * What the athlete is told when handleAiCoach fails, whatever the fault.
+ *
+ * WHY IT IGNORES THE ERROR. The catch used to write `error.message` into the
+ * error chunk and the job doc, and CoachDjpPanel shows that text verbatim. After
+ * the OpenRouter move, a rate limit with the unfunded Anthropic account behind
+ * it reached an athlete as "OpenRouter failed: 429 ... The Anthropic fallback
+ * also failed: 400 {"type":"error",...credit balance...,"request_id":...}":
+ * provider names, raw JSON and our billing state, in front of a client. The
+ * admin DJP Assistant keeps that detail on purpose, because the owner is the
+ * one who can act on it; an athlete cannot.
+ *
+ * Nothing the handler throws today is worth passing through. Its one message of
+ * its own, "Exercise not found", is a plain Error that shares this catch with
+ * every provider fault, the same null also comes back when the lookup itself
+ * failed, and the athlete opened the panel from that very exercise, so it
+ * tells them nothing they can act on. The full error goes to the server log.
+ */
+export function athleteFacingCoachError(_error: unknown): string {
+  return COACH_UNAVAILABLE_MESSAGE
+}
+
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function handleAiCoach(jobId: string): Promise<void> {
@@ -447,19 +479,25 @@ export async function handleAiCoach(jobId: string): Promise<void> {
       updatedAt: FieldValue.serverTimestamp(),
     })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error"
-    console.error(`[ai-coach] Job ${jobId} failed:`, errorMessage)
+    // The error object itself, not its message: a ProviderFallbackError keeps
+    // OpenRouter's fault as its cause, and a thrown PostgREST error is a plain
+    // object whose message would otherwise be lost as "Unknown error".
+    console.error(`[ai-coach] Job ${jobId} failed:`, error)
+
+    // Both writes are athlete-visible (the chunk streams into CoachDjpPanel,
+    // and the panel also reads the job's `error`), so neither gets the detail.
+    const athleteMessage = athleteFacingCoachError(error)
 
     await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
       index: chunkIndex - 1,
       type: "error",
-      data: { message: errorMessage },
+      data: { message: athleteMessage },
       createdAt: FieldValue.serverTimestamp(),
     })
 
     await jobRef.update({
       status: "failed",
-      error: errorMessage,
+      error: athleteMessage,
       updatedAt: FieldValue.serverTimestamp(),
     })
   }

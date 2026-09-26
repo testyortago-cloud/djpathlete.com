@@ -61,7 +61,12 @@ vi.mock("../lib/image-alt-text.js", () => ({
 const anthropicCreateMock = vi.fn()
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
-    messages = { create: anthropicCreateMock }
+    // The compat shim's Anthropic path streams (max_tokens above ~21k is refused
+    // by the non-streaming create); finalMessage() resolves to the same Message.
+    messages = {
+      create: anthropicCreateMock,
+      stream: (body: unknown) => ({ finalMessage: () => anthropicCreateMock(body) }),
+    }
   },
 }))
 
