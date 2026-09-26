@@ -23,14 +23,23 @@ function fakeSupabase(
   const sb = {
     from: vi.fn().mockImplementation((table: string) => {
       const chain: Record<string, unknown> = {}
-      for (const method of ["select", "gte", "order", "limit"]) {
+      // `.range(from, to)` pages the rows the way PostgREST does, so a reader
+      // that stops after the first page is visibly short.
+      let window: [number, number] | null = null
+      for (const method of ["select", "gte", "order", "limit", "not", "range"]) {
         chain[method] = vi.fn((...args: unknown[]) => {
           calls.push({ table, method, args })
+          if (method === "range") window = [args[0] as number, args[1] as number]
           return chain
         })
       }
-      chain.then = (resolve: (v: { data: unknown[] | null; error: { message: string } | null }) => unknown) =>
-        resolve(errors[table] ? { data: null, error: errors[table] } : { data: rows[table] ?? [], error: null })
+      chain.then = (resolve: (v: { data: unknown[] | null; error: { message: string } | null }) => unknown) => {
+        if (errors[table]) return resolve({ data: null, error: errors[table] })
+        const all = rows[table] ?? []
+        // No range: PostgREST's own row cap (max-rows, 1000 here), which is
+        // exactly how an unpaged read comes back short without an error.
+        return resolve({ data: window ? all.slice(window[0], window[1] + 1) : all.slice(0, 1000), error: null })
+      }
       return chain
     }),
   }
@@ -38,6 +47,7 @@ function fakeSupabase(
 }
 
 const EMPTY: AttributionRow = {
+  session_id: "s",
   gclid: null,
   gbraid: null,
   wbraid: null,
@@ -48,7 +58,7 @@ const EMPTY: AttributionRow = {
 }
 
 describe("gatherCriticInputs", () => {
-  it("reads from all six expected tables", async () => {
+  it("reads from all seven expected tables", async () => {
     const { sb } = fakeSupabase()
     const inputs = await gatherCriticInputs(sb as never)
     expect(sb.from.mock.calls.map((c: unknown[]) => c[0])).toEqual(
@@ -57,6 +67,7 @@ describe("gatherCriticInputs", () => {
         "google_ads_agent_memos",
         "social_agent_memos",
         "marketing_attribution",
+        "funnel_submissions",
         "cross_channel_signals",
         "voice_drift_flags",
       ]),
@@ -111,6 +122,36 @@ describe("gatherCriticInputs", () => {
     })
     expect(inputs.funnel).toEqual({ sessions: 4, leads: 1 })
   })
+
+  // G41 review. A funnel form links its session through
+  // funnel_submissions.attribution_session_id and never claims it, so a
+  // claimed_at-only count read every funnel as converting at 0%.
+  it("counts a session that submitted a funnel form as a lead, without double-counting a claimed one", async () => {
+    const { sb, calls } = fakeSupabase({
+      marketing_attribution: [
+        { ...EMPTY, session_id: "s-funnel", fbclid: "f1" },
+        { ...EMPTY, session_id: "s-both", fbclid: "f2", claimed_at: "2026-09-20T00:00:00Z" },
+        { ...EMPTY, session_id: "s-none", fbclid: "f3" },
+      ],
+      funnel_submissions: [{ attribution_session_id: "s-funnel" }, { attribution_session_id: "s-both" }],
+    })
+    const inputs = await gatherCriticInputs(sb as never)
+    expect(inputs.attribution).toEqual({ meta_ads: { sessions: 3, leads: 2 } })
+    const funnelSelect = calls.find((c) => c.table === "funnel_submissions" && c.method === "select")
+    expect(funnelSelect?.args[0]).toBe("attribution_session_id")
+  })
+
+  it("THROWS when the funnel_submissions read fails", async () => {
+    const { sb } = fakeSupabase({}, { funnel_submissions: { message: "timeout" } })
+    await expect(gatherCriticInputs(sb as never)).rejects.toThrow(/funnel_submissions/)
+  })
+
+  it("reads EVERY page, so PostgREST's row cap cannot silently shorten the counts", async () => {
+    const many = Array.from({ length: 2345 }, (_, i) => ({ ...EMPTY, session_id: `s${i}` }))
+    const { sb } = fakeSupabase({ marketing_attribution: many })
+    const inputs = await gatherCriticInputs(sb as never)
+    expect(inputs.funnel.sessions).toBe(2345)
+  })
 })
 
 describe("channelOf", () => {
@@ -134,8 +175,8 @@ describe("channelOf", () => {
 
 describe("aggregateAttribution / aggregateFunnel", () => {
   it("counts nothing for no rows", () => {
-    expect(aggregateAttribution([])).toEqual({})
-    expect(aggregateFunnel([])).toEqual({ sessions: 0, leads: 0 })
+    expect(aggregateAttribution([], new Set())).toEqual({})
+    expect(aggregateFunnel([], new Set())).toEqual({ sessions: 0, leads: 0 })
   })
 })
 

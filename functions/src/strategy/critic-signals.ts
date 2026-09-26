@@ -19,6 +19,19 @@ const MIN_CHANNELS_WITH_MEMO = 2
  * a known person, `claimed_at`. So what it can answer is how many sessions
  * each channel brought, and how many of those became a lead. Bookings and
  * revenue are not in it, and are left out rather than reported as zero.
+ *
+ * WHAT IS AND IS NOT A ROW. A session is recorded only for a TAGGED landing
+ * (click id or UTM) or a `/go/` funnel landing (proxy.ts). An untagged visit to
+ * the blog or the marketing pages is never recorded, so organic search is
+ * mostly invisible here. The prompt says so.
+ *
+ * WHAT A LEAD IS. A session is a lead when it was claimed (the visitor applied,
+ * registered or subscribed: `claimAttribution`) OR a funnel form was submitted
+ * from it. The funnel route links its submission by
+ * `funnel_submissions.attribution_session_id` and never claims, so counting
+ * `claimed_at` alone read every funnel as converting at 0% (G41 review).
+ * Leads are counted per COHORT: sessions first seen in the window, converted
+ * at any time since, so the newest days have had the least time to convert.
  */
 export interface ChannelAttribution {
   sessions: number
@@ -38,7 +51,7 @@ export interface CriticInputs {
   voiceFlags: unknown[]
 }
 
-function isoWeekOf(d = new Date()): string {
+export function isoWeekOf(d = new Date()): string {
   const day = d.getUTCDay()
   const diff = day === 0 ? -6 : 1 - day
   const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + diff))
@@ -46,9 +59,17 @@ function isoWeekOf(d = new Date()): string {
 }
 
 /** The columns the attribution read names, all of which exist (00101, 00211). */
-const ATTRIBUTION_COLUMNS = "gclid, gbraid, wbraid, fbclid, utm_source, referrer, claimed_at"
+const ATTRIBUTION_COLUMNS = "session_id, gclid, gbraid, wbraid, fbclid, utm_source, referrer, claimed_at"
+
+/**
+ * PostgREST answers at most max-rows (1000 by default) per request, without
+ * an error. The attribution and funnel reads are paged with `.range()` so the
+ * counts cannot come back short in silence.
+ */
+const PAGE_SIZE = 1000
 
 export interface AttributionRow {
+  session_id: string
   gclid: string | null
   gbraid: string | null
   wbraid: string | null
@@ -73,19 +94,27 @@ export function channelOf(row: AttributionRow): string {
   return "direct"
 }
 
-export function aggregateAttribution(rows: AttributionRow[]): Record<string, ChannelAttribution> {
+/** Claimed, or a funnel form was submitted from it. See the header. */
+function isLead(row: AttributionRow, funnelSessions: ReadonlySet<string>): boolean {
+  return Boolean(row.claimed_at) || funnelSessions.has(row.session_id)
+}
+
+export function aggregateAttribution(
+  rows: AttributionRow[],
+  funnelSessions: ReadonlySet<string>,
+): Record<string, ChannelAttribution> {
   const out: Record<string, ChannelAttribution> = {}
   for (const row of rows) {
     const channel = channelOf(row)
     const entry = (out[channel] ??= { sessions: 0, leads: 0 })
     entry.sessions += 1
-    if (row.claimed_at) entry.leads += 1
+    if (isLead(row, funnelSessions)) entry.leads += 1
   }
   return out
 }
 
-export function aggregateFunnel(rows: AttributionRow[]): CriticInputs["funnel"] {
-  return { sessions: rows.length, leads: rows.filter((row) => row.claimed_at).length }
+export function aggregateFunnel(rows: AttributionRow[], funnelSessions: ReadonlySet<string>): CriticInputs["funnel"] {
+  return { sessions: rows.length, leads: rows.filter((row) => isLead(row, funnelSessions)).length }
 }
 
 /**
@@ -98,27 +127,64 @@ function rowsOf<T>(label: string, res: { data: unknown; error: { message: string
   return (res.data as T[] | null) ?? []
 }
 
+/** Every page of a read, each checked with `rowsOf`. Stops at the first short page. */
+async function allPages<T>(
+  label: string,
+  page: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<T[]> {
+  const out: T[] = []
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const rows = rowsOf<T>(label, await page(from, from + PAGE_SIZE - 1))
+    out.push(...rows)
+    if (rows.length < PAGE_SIZE) return out
+  }
+}
+
 export async function gatherCriticInputs(supabase: SupabaseClient): Promise<CriticInputs> {
   const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
-  const [seoRes, adsRes, socialRes, attrRes, signalRes, voiceRes] = await Promise.all([
+  const [seoRes, adsRes, socialRes, attrRows, funnelRows, signalRes, voiceRes] = await Promise.all([
     supabase.from("seo_agent_memos").select("*").gte("created_at", cutoff).order("created_at", { ascending: false }),
     supabase.from("google_ads_agent_memos").select("*").gte("created_at", cutoff).order("created_at", { ascending: false }),
     supabase.from("social_agent_memos").select("*").gte("created_at", cutoff).order("created_at", { ascending: false }),
     // Sessions that ARRIVED in the window. No tenant predicate, because the
     // table has no business_id (ledger G42, an owner decision): this counts
-    // every business's sessions, like the memo reads beside it.
-    supabase.from("marketing_attribution").select(ATTRIBUTION_COLUMNS).gte("first_seen_at", cutoff),
+    // every business's sessions, like the memo reads beside it. Ordered by id
+    // so the pages do not overlap or skip.
+    allPages<AttributionRow>("marketing_attribution", (from, to) =>
+      supabase
+        .from("marketing_attribution")
+        .select(ATTRIBUTION_COLUMNS)
+        .gte("first_seen_at", cutoff)
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    // Funnel-form leads, which are linked to their session here and never
+    // claimed. A submission from a window session can only be newer than the
+    // cutoff, so the same cutoff bounds the read. NO business predicate,
+    // deliberately, though this table has one (00278): it is only ever joined
+    // to the untenanted sessions above by session id, so scoping this side
+    // alone would change nothing. It scopes when G42 gives
+    // marketing_attribution a business (an owner decision).
+    allPages<{ attribution_session_id: string }>("funnel_submissions", (from, to) =>
+      supabase
+        .from("funnel_submissions")
+        .select("attribution_session_id")
+        .gte("created_at", cutoff)
+        .not("attribution_session_id", "is", null)
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
     supabase.from("cross_channel_signals").select("*").order("created_at", { ascending: false }).limit(SIGNAL_LOOKBACK),
     supabase.from("voice_drift_flags").select("*").gte("created_at", cutoff),
   ])
-  const attrRows = rowsOf<AttributionRow>("marketing_attribution", attrRes)
+  const funnelSessions = new Set(funnelRows.map((row) => row.attribution_session_id))
   return {
     weekOf: isoWeekOf(),
     seoMemos: rowsOf("seo_agent_memos", seoRes),
     adsMemos: rowsOf("google_ads_agent_memos", adsRes),
     socialMemos: rowsOf("social_agent_memos", socialRes),
-    attribution: aggregateAttribution(attrRows),
-    funnel: aggregateFunnel(attrRows),
+    attribution: aggregateAttribution(attrRows, funnelSessions),
+    funnel: aggregateFunnel(attrRows, funnelSessions),
     priorSignals: rowsOf("cross_channel_signals", signalRes),
     voiceFlags: rowsOf("voice_drift_flags", voiceRes),
   }

@@ -21,6 +21,8 @@ function makeReadChain(data: unknown[]) {
     gte: vi.fn(() => chain),
     order: vi.fn(() => chain),
     limit: vi.fn(() => chain),
+    not: vi.fn(() => chain),
+    range: vi.fn(() => chain),
     then: (resolve: (v: { data: unknown[]; error: null }) => unknown) =>
       resolve({ data, error: null }),
   }
@@ -102,15 +104,22 @@ describe("runPerformanceCritic", () => {
 
   // G41. A failed read used to become an empty list, so the critic wrote a
   // signal saying nothing happened, and the Chief Strategist read it as fact.
-  it("answers outcome 'error' with the reason, and writes NO signal, when an input cannot be read", async () => {
+  // The failed row matters: with NO row, the Chief Strategist (Sunday) takes
+  // last Saturday's signal, 7.9 days old and inside its 8-day window, and
+  // writes a brief from stale data. A preflight_status "failed" row is what it
+  // already treats as stale_signal.
+  it("answers outcome 'error' and writes a FAILED signal carrying the reason when an input cannot be read", async () => {
     vi.mocked(callAgent).mockClear()
     const insert = vi.fn().mockReturnThis()
+    const single = vi.fn().mockResolvedValue({ data: { id: "s-err" }, error: null })
     const sb = {
       from: vi.fn().mockImplementation((table: string) => {
         if (table === "marketing_attribution") {
           const chain: Record<string, unknown> = {
             select: vi.fn(() => chain),
             gte: vi.fn(() => chain),
+            order: vi.fn(() => chain),
+            range: vi.fn(() => chain),
             then: (resolve: (v: { data: null; error: { message: string } }) => unknown) =>
               resolve({ data: null, error: { message: 'column "first_seen_at" does not exist' } }),
           }
@@ -120,6 +129,7 @@ describe("runPerformanceCritic", () => {
           return {
             insert,
             select: vi.fn().mockReturnThis(),
+            single,
             order: vi.fn().mockReturnThis(),
             limit: vi.fn().mockResolvedValue({ data: [], error: null }),
           }
@@ -133,7 +143,10 @@ describe("runPerformanceCritic", () => {
 
     expect(result.outcome).toBe("error")
     expect(result.reasons?.join(" ")).toMatch(/marketing_attribution/)
-    expect(insert).not.toHaveBeenCalled()
+    expect(insert).toHaveBeenCalledTimes(1)
+    const row = insert.mock.calls[0][0] as { preflight_status: string; preflight_reasons: string[] }
+    expect(row.preflight_status).toBe("failed")
+    expect(row.preflight_reasons.join(" ")).toMatch(/marketing_attribution/)
     expect(callAgent).not.toHaveBeenCalled()
   })
 })

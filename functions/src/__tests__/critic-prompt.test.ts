@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { buildCriticUserMessage, CRITIC_SYSTEM_PROMPT } from "../strategy/critic-prompt.js"
+import { CHIEF_SYSTEM_PROMPT } from "../strategy/chief-prompt.js"
 
 describe("critic prompt", () => {
   it("system prompt instructs JSON-only cross-channel synthesis", () => {
@@ -33,5 +34,14 @@ describe("critic prompt", () => {
     expect(CRITIC_SYSTEM_PROMPT).toMatch(/leads/i)
     expect(CRITIC_SYSTEM_PROMPT).toMatch(/does not measure bookings or revenue/i)
     expect(CRITIC_SYSTEM_PROMPT).not.toMatch(/"bookings": <int>, "revenue": <num>/)
+    // G41 review: rows exist only for tagged and /go/ landings, so organic
+    // site traffic is invisible, and CAC cannot be computed from any of it.
+    expect(CRITIC_SYSTEM_PROMPT).toMatch(/untagged/i)
+    expect(CRITIC_SYSTEM_PROMPT).not.toMatch(/CAC/)
+  })
+
+  it("the Chief Strategist's prompt no longer reads attribution_summary as bookings and revenue", () => {
+    expect(CHIEF_SYSTEM_PROMPT).not.toMatch(/Bookings \+ revenue, not vanity engagement\. Use the signal's attribution_summary/)
+    expect(CHIEF_SYSTEM_PROMPT).toMatch(/attribution_summary[^.]*sessions and leads/i)
   })
 })

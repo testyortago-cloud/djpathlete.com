@@ -25,7 +25,7 @@ const STEPS = [
     label: "Performance Critic",
     schedule: "Saturday · 13:00 UTC",
     description:
-      "Reads the last 28 days of agent memos + booking attribution + voice flags. Writes one signal row summarizing winners, losers, anomalies, and recommendations.",
+      "Reads the last 28 days of agent memos, sessions and leads by channel, and voice flags. Writes one signal row summarizing winners, losers, anomalies, and recommendations.",
     icon: Radar,
   },
   {
