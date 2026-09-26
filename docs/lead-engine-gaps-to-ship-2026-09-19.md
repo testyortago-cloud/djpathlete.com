@@ -1,5 +1,7 @@
 # Lead Engine — gaps to ship
 
+**Updated 2026-09-27:** the owner set the product direction (DJP Athlete is a subscriber, not the platform) and chose what to build next. See [Owner direction 2026-09-27](#owner-direction-2026-09-27--djp-athlete-is-a-subscriber-not-the-platform) and [Next build](#next-build-2026-09-27--g40-g45-g16-sport-g41). The paste-able prompt at [§Paste-able prompt](#paste-able-prompt-for-a-fresh-build-session) was rewritten for that build.
+
 **Date:** 2026-09-19 · **Last re-measured against `main` + production:** 2026-09-21 18:00 UTC (`main` @ `7727bc70`) — see [Finished vs not](#finished-vs-not--the-one-screen-answer) · **Source of every gap:** `docs/lead-engine-verification-2026-09-19.md` (measured on production and on `main` @ `10fef0f0`) · **Quotation:** Full Engine, white-label ready.
 
 This is the build ledger. One row per gap, in the order to build. Each row says what the quotation promised, what exists today, what "shipped" means, where the code lives, the test that proves it, a size, and any decision only the owner can make. Sizes: **S** under half a day · **M** one to two days · **L** three to five days · **XL** a week or more.
@@ -969,41 +971,174 @@ Phase 0 today. Phases 1 and 2 are what make the quotation's sentences true. Phas
 
 ---
 
+## Owner direction 2026-09-27 — DJP Athlete is a subscriber, not the platform
+
+**What the owner said:** "treat the current platform or DJP as a subscriber, not a master — in the future
+there will be a separate admin login again." And: **finish the lead engine first.**
+
+**What that means for the design:** DJP Athlete is ONE tenant, in the GoHighLevel shape, of a neutral
+platform. DJP's current login becomes an ordinary owner of DJP's business only. A separate platform-admin
+login, not yet built, will be the master. Today the code does the opposite, and an audit on 2026-09-26 listed
+where:
+
+- `users.role = 'admin'` is an operator over every business (`lib/tenancy/resolve.ts:88-90`,
+  `lib/permissions/guard.ts:52`, `lib/permissions/client-scope.ts:18`). No second coach can ever hold it.
+- Only `role='admin'` can edit, switch on or enrol into a sequence. Settings, team and automation are in
+  `OWNER_ONLY_PREFIXES` (`lib/permissions/registry.ts:381`).
+- 19 `business_id` columns across 9 lead-engine tables DEFAULT to DJP's id (migrations 00213-00259; G44
+  measured 30 of 38 tenanted tables on the dev clone).
+- Unknown hosts, first-time Stripe payers, unclaimed Twilio numbers, the questionnaire and the assessment
+  all fall back to DJP (`lib/tenancy/public.ts`, `lib/tenancy/platform.ts`). Nothing in the app writes
+  `business_domains`.
+- DJP's identity lives in env vars and constants: `COACH_EMAIL`, `CALENDLY_*`, `RESEND_FROM_EMAIL`,
+  the hardcoded `ADMIN_CC` in `lib/email.ts:49`, and `SITE_URL`.
+- One Stripe account with no Connect, one Twilio account under DJP's A2P brand, and one Resend account with
+  only `mail.darrenjpaul.com` verified.
+- Tables with no `business_id` (faqs, testimonials, programs, newsletter_subscribers, legal_documents,
+  marketing_attribution) are "the platform's", which means DJP's.
+
+**Effect on the open decisions.** The direction answers most of them in principle, but none is ruled row
+by row yet. Confirm each one when the subscriber project starts:
+
+| Row | Answer implied by the direction |
+|---|---|
+| G34 | Reopened. A subscriber owner edits their own settings, which reverses Decision 11 and the `CLAUDE.md` "do not elaborate permissions" invariant, as far as it applies across tenants. |
+| G36 | Scope the grantable staff screens per business. |
+| G37 | Programmes, assignments and clients belong to a business. G48 unblocks after it. |
+| G38 | One newsletter list per business. |
+| G42 | `marketing_attribution` gets `business_id`, backfilled from the landing host. |
+| G43 | A waiver and terms per business. This is still a legal call on the wording. |
+| G44 | Drop the DJP default on `business_id`. Fix the seed and capture scripts first (G31). |
+| G39 | Unchanged: frozen. |
+
+**The subscriber project is parked until the lead engine is finished.** It was classified architectural
+and needs its own spec. The first question put to the owner was left unanswered: who holds the platform
+powers (create, pause and see all businesses) once DJP's login is demoted? The options were **A**, build
+the separate admin login now (recommended); **B**, demote DJP now and use a script to create businesses;
+**C**, re-model only, with DJP keeping its powers until the admin login ships. Suggested split:
+(1) roles; (2) remove DJP as the default and fallback; (3) move DJP's identity from env vars into rows;
+(4) per-subscriber Stripe Connect, Twilio brand and sending domain; (5) the untenanted tables.
+
+---
+
+## Next build 2026-09-27 — G40, G45, G16 `{{sport}}`, G41
+
+The owner said "do the recommendation": build the four remaining lead-engine rows that need no owner
+decision, in this order. Each goes on its own branch. Nothing is merged or pushed without the owner's word.
+
+1. **G40: funnel checkout sells any priced programme.** A correctness bug on a public route.
+   `app/api/funnels/checkout/route.ts` checks only that `productId` is a UUID (`:41`) and that its programme
+   has a price (`:99-106`). Bind `productId` to the offers on the **published version** of the page being
+   bought from. Refuse anything else, and refuse an inactive or non-public programme. Find where a
+   published version records its offers before designing: `reassemble`/`compileFunnelStep` output and the
+   version rows. Do not trust this ledger's description of them.
+2. **G45: small ownership checks.** Build these sub-items:
+   - `markAsRead(id)` (`lib/db/notifications.ts:20-25`) updates by id alone. Scope it to the caller's own
+     notification. The caller is `app/api/notifications/route.ts`.
+   - `getLeadInquiryById` (`lib/db/lead-inquiries.ts`) reads by id with no tenant. Add a business predicate
+     and pass the tenant from `app/api/admin/leads/[id]/regenerate-analysis/route.ts`.
+   - `sendManualSms` checks consent on `args.contactId` but sends to `args.phone`, and
+     `app/api/admin/sms/send/route.ts` never checks that the two match. Refuse a mismatch.
+   - `scripts/repair-failed-sequence-runs.mjs` (~122-128) and the two `scripts/smoke-g29-pipeline-settings-prod*.mjs`
+     scripts look up a sequence or board by key with no business. They must take a business.
+
+   **Leave these out:** `/admin/team` invites (that belongs to the subscriber project); the preview-only
+   consent wording in `FormIsland`/`QuizIsland` (Ruling R12 left it on purpose); and the SEO job reporting
+   "completed" (not lead engine; record it only).
+3. **G16 `{{sport}}`.** The owner wants it. `app/api/inquiry/route.ts` reads `sport` but passes only
+   `metadata: { service }`. The fix is adding `sport` to `ENROLMENT_METADATA_KEYS`
+   (`lib/lead-engine/enrolment-metadata.ts:61`) and passing it from the route. **It is not a one-liner**:
+   the key list also feeds `branchConditionSchema` and the step editor's branch dropdown, so "sport"
+   becomes a branchable field. Run the consumer suites of that array. Check what values the form actually
+   sends, and that the 120-character cap and the key's normalisation suit them. `{{goals}}` stays out: it
+   is prose.
+4. **G41: the strategy critic has never seen attribution.** `functions/src/strategy/critic-signals.ts:41`
+   filters `marketing_attribution` on `occurred_at`, and the aggregators group on `channel` and
+   `event_type`. None of the three columns exists, and `attrRes.error` is never read. Read
+   `information_schema.columns` first, then map the read onto real columns (or drop what has no source),
+   and make an error loud rather than an empty list. Second half: the select contract
+   (`scripts/lib/collect-postgrest-selects.ts`) probes selects and `.order()` columns, not filters, so extend
+   it to filter columns or record the blind spot in `CLAUDE.md`. **A push touching `functions/**` deploys
+   every function from CI.** Say so when asking to merge.
+
+**Not in this build, and why:**
+- G18's `ai_chat` sequence, G17's six texts and G12's alert wording need the owner's words.
+- The `cron_pipeline_reconcile_enabled` switch is the owner's click in `/admin/automation`.
+- G34, G36-G39 and G42-G44 are the subscriber project (above).
+- G48 is blocked on G37.
+
+**Uncommitted in the main checkout, and not part of this build:**
+- The 2026-09-24 newsletter batch fix (`functions/src/newsletter-send.ts`, plus the untracked
+  `functions/src/lib/newsletter-recipients.ts`, its test and `scripts/retry-newsletter-send.ts`). It is
+  built and mutation-checked, but never committed or deployed, and the retry has only been dry-run. It is
+  the owner's call.
+- The owner's own deletion of 362 merged-feature screenshots.
+- Both must be left untouched.
+
+---
+
 ## Paste-able prompt for a fresh build session
 
 ```
-Build the Lead Engine gaps in the djpathlete repo, from docs/lead-engine-gaps-to-ship-2026-09-19.md.
+Build the four remaining no-owner Lead Engine rows in the djpathlete repo: G40, G45, G16 {{sport}},
+G41, in that order, one branch each. "Done" = each branch green, reviewed and committed, with a report.
+Nothing merged or pushed.
 
-Read first, in this order: that ledger; docs/lead-engine-verification-2026-09-19.md (the evidence
-behind every row); CLAUDE.md; the top five JOURNAL.md entries. Then RE-MEASURE production through
-the read-only supabase-prod MCP before planning (sequence statuses, run counts, contacts.user_id
-count, checkout_abandoned timeline rows) and say what moved.
+ORIENT FIRST. Read, in order: docs/lead-engine-gaps-to-ship-2026-09-19.md, the sections "Next build
+2026-09-27" (the exact scope of each row, including what to LEAVE OUT of G45) and "Owner direction
+2026-09-27", then the rows G40, G41, G45 and G16 themselves; CLAUDE.md; the top three JOURNAL.md
+entries.
 
-Scope: PHASES 0, 1 AND 2 ARE DONE AND LIVE (except G18's ai_chat half, which needs the owner's
-copy). Start at PHASE 3 in row order — G20 first, then G22-G27 — skipping any row whose owner
-decision (ledger §Decisions) is not yet answered, and list those at the end instead of guessing. Each gap on its own branch off main via EnterWorktree; TDD; the ledger
-names the test that must fail on main first; mutate the guard you add and show the test failing;
-tsc must hold the 238/54 baseline with an identical per-file error set; npm run build exit 0;
-whole-branch review before you call it done. Targeted suites while you work — but run the WHOLE
-suite before calling a row done: a suite selection has hidden a red test three times in this
-ledger's history, once while also making a live network call from a unit test.
+WHERE THINGS ARE (as of 2026-09-27):
+- main = origin/main = 2f88582e. Latest migration on main: 00279_business_starter_set.sql. Re-check
+  with `git ls-tree --name-only main supabase/migrations/ | tail -1` before adding one.
+- The main checkout is DIRTY with work that is NOT yours. Never stage, stash, commit, revert or
+  delete it: functions/src/newsletter-send.ts (modified), functions/src/lib/newsletter-recipients.ts,
+  functions/src/__tests__/newsletter-send.test.ts, scripts/retry-newsletter-send.ts,
+  scripts/verify-week-warnings-job-doc.ts, deliverables/tiktok-app-review/, tmp/, and 362 deleted
+  screenshots/ files (the owner's own cleanup).
+- The ledger edits of 2026-09-27 (docs/lead-engine-gaps-to-ship-2026-09-19.md) are uncommitted in
+  the main checkout. The owner asked for them: commit ONLY that path on main
+  ("docs(lead-engine): owner direction and next build, 2026-09-27"), no push, BEFORE you branch, so
+  your worktrees can see it.
+- Worktrees with unmerged commits that are not yours (leave them): content-scheduling,
+  funnel-step-roles, native-booking-research; branch fix/return-to-sport-back-to-page.
 
-RE-MEASURE THE SCHEMA A ROW ASSERTS, NOT JUST THE COUNTS. Three of the four rows built on
-2026-09-21 named a column, a join or a source that does not exist or is already counted. Before
-building a row: information_schema.columns for the column list, pg_constraint for the FKs
-(information_schema hides them), and grep for the WRITER of any column the row wants to read.
-When the row is wrong, build what the data supports, say so in the code AND in the commit, and
-name what the rest would take.
+HOW TO BUILD EACH ROW: a worktree under .claude/worktrees via EnterWorktree (enter it BEFORE
+launching any workflow; copy .env.local and link or install node_modules). TDD: the test fails on
+main first. Mutate the guard you add and show the test going red. Tests are TARGETED BY FILE: the
+files you wrote or edited plus the existing suites that import a module you changed (grep for the
+module path). Never a whole directory, never the full suite unless the change is cross-cutting.
+The owner's rule overrides the older "run the whole suite" line in this ledger. Gates per branch:
+tsc at the 238-error / 54-file baseline with an identical per-file set (do not run tsc concurrently
+with next build); npm run build exit 0; npm run test:integration:selects (22/22 today) if you touched
+any .from().select(); a whole-branch review. Use `nvm use` (Node 24) first.
 
-Do NOT push, merge to main, apply a migration to production, flip a system_settings flag, send
-an email or text, or run any script against .env.prod. Get each branch green and reviewed, then
-leave a report naming the branch, the commits, the verification you ran, and what you left out.
-Never add Co-Authored-By or any Claude attribution to commits.
+ROW NOTES:
+- G40: bind productId to the PUBLISHED version's offers for the page being bought from. Find where
+  offers live in the published version yourself; do not trust the ledger's description.
+- G45: build only the four sub-items the "Next build" section names.
+- G16: adding "sport" to ENROLMENT_METADATA_KEYS also widens branchConditionSchema and the branch
+  dropdown. Run that array's consumer suites. Check what values the inquiry form actually sends.
+- G41: read information_schema.columns for marketing_attribution on the dev clone before touching
+  critic-signals.ts. Make a read error loud. A push touching functions/** deploys every function
+  from CI; say that in the report.
 
-Traps already paid for: quote every glob in zsh (--include="*.ts"); read information_schema
-before joining a table; a comment describing a bug matches a naive grep; a green test that
-passed first try may pin the wrong mechanism — mutate it; a data migration can succeed and match
-nothing — read production back; every new column needs a named reader.
+DO NOT: push, merge to main, apply a migration to production, flip a system_settings flag, send an
+email or text, run anything against .env.prod, or read production without saying why (production
+reads may be denied in auto mode; if so, classify from the migrations and say what is unconfirmed).
+Do not start the "DJP is a subscriber" project, and do not touch G34/G36-G39/G42-G44/G48. Never add
+Co-Authored-By or any Claude/AI attribution to commits.
+
+TRAPS ALREADY PAID FOR: quote globs in zsh (--include="*.ts"); `npx vitest run` on an integration
+file runs nothing silently, so use its npm script; a mock that ignores its arguments hides a missing
+predicate, so assert WHICH business the query named; PostgREST returns {data:null,error} rather than
+throwing, so check error; a green test that passed on the first try may pin the wrong mechanism, so
+mutate it.
+
+FINISH WITH: per row, the branch, the commits, the exact verification you ran with counts, and what
+you left out. Update the ledger rows and "Finished vs not", and add a dated JOURNAL.md entry
+(JOURNAL.md is gitignored; never commit it). Then ask the owner for the word to merge.
 ```
 
 ---
@@ -1011,6 +1146,11 @@ nothing — read production back; every new column needs a named reader.
 ## Status — PHASES 0-3 COMPLETE AND LIVE (last re-measured 2026-09-23)
 
 ### Finished vs not — the one-screen answer
+
+*(2026-09-27: the owner chose the next build, G40, G45, G16 `{{sport}}` and G41, and set the direction
+that DJP Athlete is a subscriber and not the platform, which parks G34, G36-G39 and G42-G44 as one
+subscriber project. See [Next build](#next-build-2026-09-27--g40-g45-g16-sport-g41). The counts below are
+unchanged.)*
 
 **39 of 51 rows are finished, merged, pushed and deployed. 12 are not.** Three of the 12 need
 no owner and can be built now: G40, G41 and G45. G44 is recorded for later. G48 waits on G37; the
