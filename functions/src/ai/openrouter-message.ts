@@ -3,8 +3,10 @@
 // editing by hand; the two must not drift.
 import Anthropic from "@anthropic-ai/sdk"
 import {
+  canFallBackToAnthropic,
   getOpenRouterClient,
   isOpenRouterConfigured,
+  ProviderFallbackError,
   shouldFallBackToAnthropic,
   toOpenRouterModel,
 } from "./openrouter.js"
@@ -24,7 +26,9 @@ import {
  * choice as structured output and one caller (`lib/ai/tool-loop.ts`) is a real
  * agentic loop that feeds `tool_use` blocks back in as `tool_result`.
  *
- * NOT supported: streaming. Nothing that goes through here streams.
+ * NOT supported: streaming to the caller. Nothing that goes through here
+ * streams. (The Anthropic fallback streams INTERNALLY and returns the final
+ * message — see `viaAnthropic` for why.)
  *
  * Twin: functions/src/ai/openrouter-message.ts.
  */
@@ -243,16 +247,31 @@ function anthropicClient(): Anthropic {
   return _anthropic
 }
 
+/**
+ * Direct Anthropic, via `messages.stream(...).finalMessage()` rather than
+ * `messages.create(...)`.
+ *
+ * WHY STREAM. The SDK refuses a non-streaming request whose max_tokens implies
+ * more than ten minutes of generation (anything above roughly 21k tokens):
+ * "Streaming is required for operations that may take longer than 10 minutes".
+ * It throws locally, before a request is sent. The AI Program Builder chat
+ * sends max_tokens 32000, so with `create` its fallback could never be sent at
+ * all, and a fallback that can never be sent is not a fallback. `finalMessage()`
+ * resolves to the same complete Message `create` returns, so the mapping below
+ * is unchanged.
+ */
 async function viaAnthropic(params: CompatMessageParams): Promise<CompatMessage> {
-  const res = await anthropicClient().messages.create({
-    model: params.model,
-    max_tokens: params.max_tokens,
-    ...(params.system ? { system: params.system } : {}),
-    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
-    ...(params.tools ? { tools: params.tools } : {}),
-    ...(params.tool_choice ? { tool_choice: params.tool_choice } : {}),
-    messages: params.messages,
-  } as never)
+  const res = await anthropicClient()
+    .messages.stream({
+      model: params.model,
+      max_tokens: params.max_tokens,
+      ...(params.system ? { system: params.system } : {}),
+      ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+      ...(params.tools ? { tools: params.tools } : {}),
+      ...(params.tool_choice ? { tool_choice: params.tool_choice } : {}),
+      messages: params.messages,
+    } as never)
+    .finalMessage()
 
   const content: CompatResponseBlock[] = []
   for (const b of res.content) {
@@ -266,18 +285,38 @@ async function viaAnthropic(params: CompatMessageParams): Promise<CompatMessage>
   }
 }
 
+/**
+ * OpenRouter first; direct Anthropic only for a provider fault on a Claude
+ * model.
+ *
+ * WHY THE FALLBACK'S OWN FAILURE IS WRAPPED. With the Anthropic account
+ * unfunded, returning the fallback's error meant every OpenRouter 429 or 5xx
+ * reached the owner as "Your credit balance is too low", which reads exactly
+ * like "this feature was never moved to OpenRouter". ProviderFallbackError
+ * leads with OpenRouter's fault and keeps OpenRouter's `.status`, so a caller's
+ * retry loop still sees a retryable 429 rather than Anthropic's final 400.
+ *
+ * This call is not streamed to its caller, so nothing has been handed over by
+ * the time OpenRouter fails, and a fallback can never duplicate output.
+ */
 export async function createMessageCompat(params: CompatMessageParams): Promise<CompatMessage> {
   if (!isOpenRouterConfigured()) return viaAnthropic(params)
   try {
     return await viaOpenRouter(params)
   } catch (e) {
     // Provider availability only. A 400 is our own malformed request and fails
-    // identically on Anthropic, so re-throw rather than pay for it twice.
-    if (!shouldFallBackToAnthropic(e)) throw e
+    // identically on Anthropic, so re-throw rather than pay for it twice. A
+    // non-Claude model (gpt-6-astra) does not exist on Anthropic: its 404 would
+    // only replace the OpenRouter fault the owner needs to see.
+    if (!shouldFallBackToAnthropic(e) || !canFallBackToAnthropic(params.model)) throw e
     console.warn(
       `[createMessageCompat] OpenRouter unavailable (${e instanceof Error ? e.message.slice(0, 160) : e}) — ` +
         `falling back to direct Anthropic (model: ${params.model})`,
     )
-    return viaAnthropic(params)
+    try {
+      return await viaAnthropic(params)
+    } catch (anthropicError) {
+      throw new ProviderFallbackError(e, anthropicError)
+    }
   }
 }

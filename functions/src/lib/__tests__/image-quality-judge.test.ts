@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const createMock = vi.fn()
 vi.mock("@anthropic-ai/sdk", () => ({
-  default: class { messages = { create: createMock } },
+  // The compat shim's Anthropic path streams (max_tokens above ~21k is refused
+  // by the non-streaming create); finalMessage() resolves to the same Message.
+  default: class {
+    messages = { create: createMock, stream: (body: unknown) => ({ finalMessage: () => createMock(body) }) }
+  },
 }))
 
 import { judgeImageQuality, QUALITY_RETRY_THRESHOLD } from "../image-quality-judge.js"

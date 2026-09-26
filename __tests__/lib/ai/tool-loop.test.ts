@@ -4,7 +4,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const create = vi.fn()
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
-    messages = { create }
+    // The compat shim's Anthropic path streams (max_tokens above ~21k is refused
+    // by the non-streaming create); finalMessage() resolves to the same Message.
+    messages = { create, stream: (body: unknown) => ({ finalMessage: () => create(body) }) }
   },
 }))
 

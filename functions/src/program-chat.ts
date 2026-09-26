@@ -1,5 +1,15 @@
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
-import { getClient, MODEL_OPUS, MODEL_SONNET, MODEL_HAIKU, Anthropic } from "./ai/anthropic.js"
+import { MODEL_OPUS, MODEL_SONNET, MODEL_HAIKU } from "./ai/anthropic.js"
+import { createMessageCompat } from "./ai/openrouter-message.js"
+import type {
+  AnthropicBlock,
+  CompatContent,
+  CompatMessage,
+  CompatMessageParams,
+  CompatResponseBlock,
+  CompatTool,
+} from "./ai/openrouter-message.js"
+import { ProviderFallbackError } from "./ai/openrouter.js"
 import { getProgramChatSystemPrompt } from "./ai/program-chat-prompt.js"
 import { listClients, lookupClientProfile, getExercisesForAI } from "./ai/program-chat-tools.js"
 import { generateProgramSync } from "./ai/orchestrator.js"
@@ -27,12 +37,40 @@ import pRetry from "p-retry"
  */
 const PROGRAM_CHAT_BUDGET_MS = 450_000 // 7.5 min
 
+/**
+ * One turn of the API history. It is persisted to Firestore (`ai_chat_state`)
+ * after every turn and reloaded on the next, so it stays ANTHROPIC-shaped
+ * (text / tool_use / tool_result blocks) whichever provider answered: the
+ * compat shim returns Anthropic-shaped content and converts history to
+ * OpenRouter's schema on the way out. Sessions saved before the OpenRouter move
+ * hold raw Anthropic SDK blocks with extra fields (`citations: null`), which
+ * that conversion ignores.
+ */
+type ChatTurn = { role: "user" | "assistant"; content: CompatContent }
+type ToolUseBlock = Extract<CompatResponseBlock, { type: "tool_use" }>
+type ToolResultBlock = Extract<AnthropicBlock, { type: "tool_result" }>
+
 // ─── Transient error detection ────────────────────────────────────────────────
 
-function isTransientError(error: unknown): boolean {
-  const statusCode = (error as { status?: number }).status
+/**
+ * Is this failure worth another attempt?
+ *
+ * A ProviderFallbackError is judged ENTIRELY by OpenRouter's half. Its `status`
+ * is already OpenRouter's, but when OpenRouter's error had none (a dropped
+ * connection) the only thing left to read would be the combined message — and
+ * that carries Anthropic's text, whose "529 Overloaded", or a request id such
+ * as "req_011CT5009", would match the substring checks below. The unfunded
+ * Anthropic account must never decide whether an OpenRouter fault is retried.
+ *
+ * Then a numeric `.status` (the OpenAI SDK's errors carry one, as do
+ * OpenRouter's mid-stream errors): 429 and 5xx are transient, every other code
+ * is final. Only status-less errors fall through to the message checks.
+ */
+export function isTransientError(error: unknown): boolean {
+  if (error instanceof ProviderFallbackError) return isTransientError(error.openRouterError)
+  const statusCode = (error as { status?: unknown } | null | undefined)?.status
   if (typeof statusCode === "number") {
-    return statusCode === 429 || statusCode === 529 || statusCode >= 500
+    return statusCode === 429 || statusCode >= 500
   }
   if (error instanceof Error) {
     const msg = error.message.toLowerCase()
@@ -50,28 +88,42 @@ function isTransientError(error: unknown): boolean {
   return false
 }
 
-// ─── Retry-wrapped messages.create with Haiku fallback ────────────────────────
+// ─── Retried model call with Haiku fallback ───────────────────────────────────
 
-async function createWithRetry(
-  client: Anthropic,
-  params: Omit<Anthropic.Messages.MessageCreateParamsNonStreaming, "model">,
+/**
+ * One program-chat model call: OpenRouter first through the compat shim, with
+ * direct Anthropic only as the shim's own provider-fault fallback.
+ *
+ * WHY THE SHIM. This used to stream straight to the Anthropic SDK. When the
+ * owner moved every model call to OpenRouter and the Anthropic account ran out
+ * of credit, every program-chat turn failed with "Your credit balance is too
+ * low" — the one-shot migration had moved callers of `messages.create`, and
+ * this caller used `messages.stream`. The shim returns an Anthropic-shaped
+ * {content, usage, stop_reason}, so the tool loop below is unchanged, and its
+ * Anthropic fallback streams internally, so the 32k budget can still be sent.
+ *
+ * Every attempt is a fresh `createMessageCompat` call, so each retry tries
+ * OpenRouter first again: one fallback does not pin the rest of the turn to
+ * Anthropic, and an OpenRouter 429 stays retryable on OpenRouter.
+ */
+export async function createWithRetry(
+  params: Omit<CompatMessageParams, "model">,
   primaryModel: string = MODEL_OPUS,
-): Promise<Anthropic.Messages.Message> {
-  // Stream + finalMessage() instead of a non-streaming messages.create():
-  // with max_tokens this large (32k), the Anthropic SDK rejects non-streaming
-  // requests outright — "Streaming is required for operations that may take
-  // longer than 10 minutes." stream().finalMessage() still resolves to a
-  // complete Message, so every downstream consumer (response.content/usage/
-  // stop_reason) is unchanged. Same pattern as functions/src/ai/anthropic.ts.
-  const runStreaming = (model: string) =>
-    client.messages.stream({ ...params, model }).finalMessage()
+): Promise<CompatMessage> {
+  const callModel = (model: string) => createMessageCompat({ ...params, model })
 
+  // p-retry 7 calls `shouldRetry` with a RetryContext ({error, attemptNumber,
+  // retriesLeft}), NOT the error. The old `shouldRetry: (err) =>
+  // isTransientError(err)` read `.status` off the context — always undefined —
+  // so nothing was ever retried: a 429 on Opus went straight to Haiku on its
+  // first failure, and a 429 on Haiku failed the turn. It type-checked because
+  // isTransientError takes `unknown`. Destructure `error`.
   try {
-    return await pRetry(() => runStreaming(primaryModel), {
+    return await pRetry(() => callModel(primaryModel), {
       retries: 3,
       minTimeout: 3_000,
       maxTimeout: 15_000,
-      shouldRetry: (err) => isTransientError(err),
+      shouldRetry: ({ error }) => isTransientError(error),
       onFailedAttempt: (ctx) => {
         console.warn(
           `[program-chat] Attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} left, model: ${primaryModel}): ${ctx.error.message}`,
@@ -82,11 +134,11 @@ async function createWithRetry(
     // If primary model exhausted retries on transient error, fall back to Haiku
     if (primaryModel !== MODEL_HAIKU && isTransientError(error)) {
       console.warn(`[program-chat] ${primaryModel} exhausted retries — falling back to ${MODEL_HAIKU}`)
-      return await pRetry(() => runStreaming(MODEL_HAIKU), {
+      return await pRetry(() => callModel(MODEL_HAIKU), {
         retries: 2,
         minTimeout: 2_000,
         maxTimeout: 10_000,
-        shouldRetry: (err) => isTransientError(err),
+        shouldRetry: ({ error }) => isTransientError(error),
         onFailedAttempt: (ctx) => {
           console.warn(
             `[program-chat] Haiku attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} left): ${ctx.error.message}`,
@@ -98,8 +150,9 @@ async function createWithRetry(
   }
 }
 
-// Tool definitions for Anthropic API
-const TOOL_DEFINITIONS: Anthropic.Messages.Tool[] = [
+// Tool definitions, in Anthropic's shape — the compat shim converts them for
+// OpenRouter. Exported for tmp/ live probes, which must send the real ones.
+export const TOOL_DEFINITIONS: CompatTool[] = [
   {
     name: "list_clients",
     description:
@@ -213,20 +266,15 @@ function compressToolResult(toolName: string, raw: string): string {
   }
 }
 
-function compressApiMessages(messages: Anthropic.Messages.MessageParam[]): Anthropic.Messages.MessageParam[] {
+function compressApiMessages(messages: ChatTurn[]): ChatTurn[] {
   return messages.map((msg) => {
     if (msg.role !== "user" || !Array.isArray(msg.content)) return msg
 
     const compressed = msg.content.map((block) => {
-      if (
-        typeof block === "object" &&
-        "type" in block &&
-        block.type === "tool_result" &&
-        typeof (block as Anthropic.Messages.ToolResultBlockParam).content === "string"
-      ) {
-        const tr = block as Anthropic.Messages.ToolResultBlockParam
+      if (block.type === "tool_result" && typeof block.content === "string") {
+        const tr = block
         // Find the tool name from the tool_use_id — we tag it during execution
-        const content = tr.content as string
+        const content = tr.content
         // Try to detect tool name from the content shape
         let toolName = "unknown"
         if (content.includes('"clients"')) toolName = "list_clients"
@@ -335,20 +383,19 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       }
     }
 
-    const client = getClient()
     let accumulatedText = ""
     const toolCalls: { tool: string; result: unknown }[] = []
     let tokensInput = 0
     let tokensOutput = 0
 
     // Load previous API state (includes tool_use/tool_result blocks) or start fresh
-    let apiMessages: Anthropic.Messages.MessageParam[]
+    let apiMessages: ChatTurn[]
     const stateRef = db.collection("ai_chat_state").doc(sessionId)
     const stateSnap = await stateRef.get()
 
     if (stateSnap.exists) {
       // Resume from stored state — append only the latest user message
-      apiMessages = stateSnap.data()!.apiMessages as Anthropic.Messages.MessageParam[]
+      apiMessages = stateSnap.data()!.apiMessages as ChatTurn[]
       const latestUserMsg = recentMessages.filter((m) => m.role === "user").pop()
       if (latestUserMsg) {
         apiMessages.push({ role: "user", content: latestUserMsg.content })
@@ -388,9 +435,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
     for (const msg of apiMessages) {
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
         for (const block of msg.content) {
-          if (typeof block === "object" && "type" in block && block.type === "tool_use") {
-            calledTools.add((block as Anthropic.Messages.ToolUseBlock).name)
-          }
+          if (block.type === "tool_use") calledTools.add(block.name)
         }
       }
     }
@@ -424,7 +469,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       // (generate_program is always allowed since it's the terminal action)
       const availableTools = TOOL_DEFINITIONS.filter((t) => t.name === "generate_program" || !calledTools.has(t.name))
 
-      const response = await createWithRetry(client, {
+      const response = await createWithRetry({
         max_tokens: 32000,
         system: systemPrompt,
         messages: apiMessages,
@@ -435,8 +480,8 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       tokensOutput += response.usage?.output_tokens ?? 0
 
       // Process response content blocks
-      const assistantContent: Anthropic.Messages.ContentBlock[] = response.content
-      const toolUseBlocks: Anthropic.Messages.ToolUseBlock[] = []
+      const assistantContent: CompatResponseBlock[] = response.content
+      const toolUseBlocks: ToolUseBlock[] = []
 
       for (const block of assistantContent) {
         if (block.type === "text" && block.text) {
@@ -469,27 +514,22 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       // Execute tools and build tool results
       apiMessages.push({ role: "assistant", content: assistantContent })
 
-      const toolResults: Anthropic.Messages.ToolResultBlockParam[] = []
+      const toolResults: ToolResultBlock[] = []
 
       // Build a cache of previous tool results from apiMessages to avoid re-calling
       const previousToolResults = new Map<string, string>()
       for (const msg of apiMessages) {
         if (msg.role === "user" && Array.isArray(msg.content)) {
           for (const block of msg.content) {
-            if (typeof block === "object" && "type" in block && block.type === "tool_result") {
-              const toolResult = block as Anthropic.Messages.ToolResultBlockParam
+            if (block.type === "tool_result") {
+              const toolResult = block
               if (typeof toolResult.content === "string") {
                 // Find the matching tool_use to get the tool name + args
                 for (const prevMsg of apiMessages) {
                   if (prevMsg.role === "assistant" && Array.isArray(prevMsg.content)) {
                     for (const aBlock of prevMsg.content) {
-                      if (
-                        typeof aBlock === "object" &&
-                        "type" in aBlock &&
-                        aBlock.type === "tool_use" &&
-                        (aBlock as Anthropic.Messages.ToolUseBlock).id === toolResult.tool_use_id
-                      ) {
-                        const tu = aBlock as Anthropic.Messages.ToolUseBlock
+                      if (aBlock.type === "tool_use" && aBlock.id === toolResult.tool_use_id) {
+                        const tu = aBlock
                         const cacheKey = `${tu.name}:${JSON.stringify(tu.input)}`
                         previousToolResults.set(cacheKey, toolResult.content)
                       }
