@@ -197,7 +197,8 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
   - Whole suite 1068 files / 11308 tests with the 7-test red baseline; tsc 238/54 per-file identical; build exit 0; **7 mutants, 7 killed**.
   - **THE LEADS COLUMN WILL READ ~0 FOR A WHILE, and that is the data rather than the code.** Leads are contacts whose `first_touch_session_id` is set, and production holds **1 of 170** (re-measured 2026-09-21). The column is correct and fills as new captures arrive — `captureLead` writes the column when the capture carries an attribution session — but almost every existing contact was imported from GHL or captured before the column existed. Do not read an empty Leads column as a broken page, and do not "fix" it by widening what counts as a lead.
 
-### G16 · Templates fill in the name only; `brand_color` never reaches email · **S** · DONE (merged + pushed 2026-09-21) — `{{sport}}`/`{{goals}}` deliberately not shipped
+### G16 · Templates fill in the name only; `brand_color` never reaches email · **S** · DONE (merged + pushed 2026-09-21) — **`{{sport}}` DONE (merged + pushed 2026-09-27, `main@5e58d648`; built as `54923831` + `5e22fff2`)**; `{{goals}}` stays out
+- **`{{sport}}` (2026-09-27).** `"sport"` appended to `ENROLMENT_METADATA_KEYS`, which makes it a run's memory, the `{{sport}}` merge field, a key `branchConditionSchema` accepts, and a "what to check" option in the step editor (label + hint). The inquiry route passes it through `pickEnrolmentMetadata` first, because the form's box is free text (≤100 chars) and the event metadata reaches the timeline and trigger filters before the run's allow-list does. Strict digit rule; `enrolled_metadata_is` ignores case and outer spaces ("Soccer" matches "soccer"; an inner double space does not). **Review fix with teeth:** every merged value now has its braces stripped, because an applicant typing `{{sms_consent_url}}` as their sport got a live consent link in any email step using `{{sport}}` (`email.ts` fills that token in after the merge). Also produced by a funnel field named `sport` (the whole payload is passed); the event routes collect a sport and do not pass it. Migration 00266's column COMMENT still lists seven keys (documentation only). Verified: 37 consumer files / 944 tests; 3 mutants red; tsc identical; `next build` 0. Opus review: 0 Critical, 0 Important, 6 Minor, acted on.
 - **Shipped when:** merge fields `{{first_name}}` (derived), `{{sport}}`, `{{goals}}`, `{{service}}`, `{{camp_name}}` read from `enrolment_metadata` (G10); an unknown token renders blank and the step editor's placeholder guard flags it at save; the sequence layout in `lib/lead-engine/email.ts:306-357` uses `brand_color` / `accent_color` with the current hexes as the fallback.
 - **Test:** `email.test.ts` renders with metadata; unknown token → blank; brand colour appears in the header band.
 - **BUILT + MERGED + PUSHED 2026-09-21**, commit `c433ca5b`, merged at `bd661516`. No migration. New file: `lib/lead-engine/merge-fields.ts` — pure, because the step editor is a client component and `email.ts` builds a `Resend` client at module scope.
@@ -743,14 +744,22 @@ Ten rows the G35 sweep and its critic found. None is built. Each carries its evi
 - This extends the DELIBERATELY FROZEN shelf in `lib/tenancy/platform.ts`, which already names the ads accounts' readers. `/admin/ads` is owner-only since 2026-09-04, so no teammate reaches it today.
 - **Question:** scope the ads subsystem per business, or keep it the platform's own account and stop feeding it other businesses' bookers, subscribers and events?
 
-### G40 · Funnel checkout sells any priced programme · **S** · **correctness, no owner**
+### G40 · Funnel checkout sells any priced programme · **S** · **DONE (merged + pushed 2026-09-27, `main@5e58d648`; built as `baee1089` + `8667ef43`)**
 - `app/api/funnels/checkout/route.ts` checks only that `productId` is a UUID (`:41`) whose programme has a price (`:99-106`). It does not check that the product is one of the published page's offers, that it is active or public, or that it is this business's. The sale is filed under the Host's business. Shelf entry S8.
 - **Fix:** bind `productId` to the published version's offers.
+- **Built.** The offers live in the served version row's `nodes` tree (`funnel_step_versions.nodes`, the row `funnel_steps.published_version_id` points at) as `{t:"island", name:"checkout", props:{productKind, productId}}`. New `getPublishedCheckoutOffers(businessId, stepId)` (`lib/db/funnels.ts`) reads it under the tenant, requires the version's `step_id` to be the step's, throws on a read error, and shares one served-nodes read with `getPublishedFormConfig`. The route refuses (404) an id the page does not offer, or offers as another kind (id compared case-insensitively), BEFORE the lead write; answers 503 when the offers cannot be read; and refuses an offered programme unless `is_active` AND `is_public`. S8 left the UNTENANTED BY SCHEMA shelf.
+- **Found:** nothing in the app posts to this route. The published `CheckoutIsland` is still a `/login` link, so every sale the route could make was a crafted request. Its header now says what a future client must send.
+- **Left:** a coach can still put another business's programme on a page, through the builder's catalogue (`loadCatalogues`, G31) or a publish request's own html (the publish route does not rebuild it); it must still be active and public. `programs` has no `business_id` (G37).
+- Verified: 22 files / 366 tests; 8/8 mutants red; tsc per-file identical to main; `next build` 0; selects 22/22. Opus review: 0 Critical, 0 Important, 4 Minor, all acted on.
 
-### G41 · The strategy critic's attribution read filters on columns that do not exist, and the select contract cannot see it · **S** · **no owner**
+### G41 · The strategy critic's attribution read filters on columns that do not exist, and the select contract cannot see it · **S** · **DONE (merged + pushed 2026-09-27, `main@5e58d648`; built as `ebe23eda` + `e30a322d`); every function redeployed from CI**
 - `functions/src/strategy/critic-signals.ts:60` reads `marketing_attribution` with `.gte("occurred_at", cutoff)`, and `aggregateAttribution` / `aggregateFunnel` (`:26-49`) group on `channel` and `event_type`. None of the three columns exists: not in `00101`, which creates the table, nor in any later migration, and the dev clone's `information_schema.columns` agrees (re-measured 2026-09-26). PostgREST answers `42703`, the code never reads `attrRes.error`, and `attrRes.data ?? []` turns the error into "no attribution". **The Chief critic has never seen attribution.**
 - `npm run test:integration:selects` cannot see this. It probes select lists and `.order()` columns, not filter columns.
 - **Fix both:** the critic's read and the contract's blind spot.
+- **Built (the read).** `marketing_attribution`'s real columns (dev clone `information_schema`, 2026-09-27): session_id, user_id, the four click ids, five `utm_*`, landing_url, referrer, first/last_seen_at, claimed_at, created_at. It is one row per SESSION, recorded only for tagged or `/go/` landings. The critic now reads real columns filtered on `first_seen_at`, paged with `.range()`, and reports **sessions and leads per first-touch channel** (paid click id, then UTM source, then referral, then direct). A lead is a claimed session or one a funnel form was submitted from (`funnel_submissions.attribution_session_id`). Bookings and revenue have no source here and were dropped, not zeroed. All seven reads throw on error; a failed read writes a `preflight_status:"failed"` signal carrying the reason (the Chief treats it as `stale_signal`; with no row it would have used last week's). Both prompts now say what the data is and is not.
+- **Built (the contract).** `scripts/lib/collect-postgrest-selects.ts` collects every filter method's column in a select's chain and the contract probes it as `is.null` (42703 on a missing column). With the critic's old filter restored, the live run fails naming `marketing_attribution.occurred_at`. **It found no other missing filter column in the code today.** Three non-constant filter columns are on `KNOWN_UNRESOLVED`. `CLAUDE.md` says what it now covers and what it still misses (`.or()`/`.match()`, rpc, write payloads, a filter added to a builder in a later statement).
+- **Left (review Minors, recorded):** a session's referrer can be the site's own host (counts as "referral"); `trend_vs_prior_week` has no week split in code; the `00141` seed prompt still mentions bookings/CAC (nothing reads it as a system prompt that the review found); `index.ts` records `status:"completed"` for an `error` outcome. The funnel_submissions read has no tenant predicate, deliberately: it only joins the untenanted sessions (G42).
+- Verified: 25 critic/prompt/runner tests + 38 with the Chief's suites, 42 collector tests, contract 25/25 on the branch and 24/24 combined (see Next build); 8/8 mutants red; functions tsc 0 errors; root tsc identical to main; `next build` 0. Opus review: 0 Critical, 3 Important (funnel leads uncounted, no row on error, prompts misstating the data), all fixed.
 
 ### G42 · `marketing_attribution` has no tenant · **unsized** · **owner decision**
 - The DAL's reason for no column ("the tenant is not resolved until phase 4") expired with the Host boundary. `landing_url` carries the host on 509 of 512 dev-clone rows (re-measured 2026-09-26), so a backfill is possible. Production was not measured.
@@ -767,7 +776,18 @@ Ten rows the G35 sweep and its critic found. None is built. Each carries its evi
 - `merge_contacts` never checks that the survivor exists in `p_business`.
 - The `lead_magnets` "active lead magnets are public" RLS policy returns every business's magnets to the anon key.
 
-### G45 · Small ownership checks · **S** · **no owner**
+### G45 · Small ownership checks · **S** · **FOUR SUB-ITEMS DONE (merged + pushed 2026-09-27): migration 00280 pushed alone as `63bb1a7e` and applied to production by CI, then the code in `main@5e58d648`**
+
+- **Built (the four "Next build" named):**
+  - `markAsRead(userId, id)`: updates only the caller's own notification; `PATCH /api/notifications` answers 404 for anyone else's (it used to mark it read AND return its title and message).
+  - **`lead_inquiries.business_id`, migration `00280`** (nullable, NO default, backfilled to the platform business; production `business_domains` read 2026-09-27: only the platform's two hosts, so every inquiry so far was the platform's). The inquiry route stamps the Host's business; `getLeadInquiryById(businessId, id)` and `updateLeadInquiryAiFields(businessId, id, …)` filter on it; regenerate-analysis reads under the admin's resolved tenant: 404 for another business's id (before any model call), 403 for no business, 500 (not 404) when the read fails. S12 left the shelf. **Applied to the dev clone 2026-09-27; NOT to production.**
+  - `POST /api/admin/sms/send` refuses (400 `phone_not_contacts`) a number that is not the contact's own (normalised compare), override or not. Dev clone: 11 of 11 linked messages match their contact's number; production not measured.
+  - The repair script and both G29 smoke scripts take a required `--business` (`scripts/_business-scope.mjs`); the repair script stamps `business_id` on its timeline rows (that column defaults to the platform); the smoke scripts send the same business in `djp_business`, so the page they compare or reorder is the board they checked.
+- **Merge order:** push `c69727fa` (00280) alone, wait for `apply-migrations` to go green, then merge `ddce5b6d`, then run 00280's `UPDATE` once more for rows the old bundle wrote in between.
+- **Known gap, recorded:** the admin client page shows a user's inquiry with no business filter (G37), so its "Regenerate" answers "not found" when the admin's selected business is not the row's. Today every row is the platform's.
+- Verified: 47 files / 731 tests; 11/11 mutants red; tsc identical to main; `next build` 0; selects and drift green on the combined tree with 00280 on the clone. Opus review: 0 Critical, 1 Important (migration and code in one commit; split), 4 Minor, acted on.
+
+The row as recorded:
 - `markAsRead(id)` (`lib/db/notifications.ts:20-25`) updates a notification by id without checking who owns it.
 - `getLeadInquiryById` (`lib/db/lead-inquiries.ts`, shelf entry S12) reads by id with no tenant. The regenerate-analysis route reaches it through `leads`.
 - `/admin/team` lists, revokes and resends every business's invites. It is operator-only today.
@@ -1149,11 +1169,20 @@ you left out. Update the ledger rows and "Finished vs not", and add a dated JOUR
 
 *(2026-09-27: the owner chose the next build, G40, G45, G16 `{{sport}}` and G41, and set the direction
 that DJP Athlete is a subscriber and not the platform, which parks G34, G36-G39 and G42-G44 as one
-subscriber project. See [Next build](#next-build-2026-09-27--g40-g45-g16-sport-g41). The counts below are
-unchanged.)*
+subscriber project. See [Next build](#next-build-2026-09-27--g40-g45-g16-sport-g41).)*
 
-**39 of 51 rows are finished, merged, pushed and deployed. 12 are not.** Three of the 12 need
-no owner and can be built now: G40, G41 and G45. G44 is recorded for later. G48 waits on G37; the
+*(Later 2026-09-27: **all four MERGED AND PUSHED on the owner's "merge".** Migration 00280 went first,
+alone (`63bb1a7e`), and was applied to production by `apply-migrations` (read back: column present, 3 of 3
+rows backfilled). Then the four branches were merged `--no-ff` in an integration worktree, one conflict
+(the shelf-size floor, resolved to 10), and gated there: 100 files / 1,885 targeted tests, functions critic
++ Chief suites 38, selects 24/24, drift 3/3, tsc per-file identical, functions tsc 0, `next build` 0.
+`main` fast-forwarded to `5e58d648` and pushed. The select-contract backstop failed on `63bb1a7e` exactly
+once, on "lead_inquiries has no business_id column" (the shelf ratchet seeing the new column before the
+code that removes the entry), and passed on `5e58d648`.)*
+
+**42 of 51 rows are finished, merged, pushed and deployed. 9 are not.** *(Was 39 of 51 until 2026-09-27;
+G40, G41 and G45 closed. G16 was already counted finished; its `{{sport}}` half closed with them.)* No open row can be
+built without the owner now: G40, G41 and G45 were the last three, and are done. G44 is recorded for later. G48 waits on G37; the
 owner ruled that fixing it is a precondition of coach hosts, and a test enforces that. G49 is done
 for the page; its address-bar half waits on coach hosts, which that same test gates. *(Updated
 2026-09-26: G46 and G47 merged, `main@c6440766`; G49 and the G48 ruling merged, `main@14053dea`.)* The other seven wait on the owner: G34 is parked by ruling, and G36, G37, G38, G39,
@@ -1187,12 +1216,12 @@ scoreboard below moved on.)*
 | G37 | Programmes, assignments and client lists are shared across businesses | **M/L** | **Owner decision:** the programs tenancy ruling phase 5a parked |
 | G38 | One newsletter list for every business | **M** | **Owner decision:** one list per business, or one platform list |
 | G39 | The ads subsystem mixes businesses | — | **Frozen; owner decision** |
-| G40 | Funnel checkout sells any priced programme | **S** | Not started; needs no owner |
-| G41 | The strategy critic's attribution read filters on columns that do not exist | **S** | Not started; needs no owner |
+| G40 | Funnel checkout sells any priced programme | **S** | **Done** 2026-09-27: merged + pushed (`main@5e58d648`) |
+| G41 | The strategy critic's attribution read filters on columns that do not exist | **S** | **Done** 2026-09-27: merged + pushed (`main@5e58d648`); functions redeployed |
 | G42 | `marketing_attribution` has no tenant | — | **Owner decision:** a column and a backfill, or one platform table |
 | G43 | Every business's customers accept the platform's waiver | — | **Owner / legal decision** |
 | G44 | Schema guards for tenancy | **M** | Not started; later |
-| G45 | Small ownership checks | **S** | Not started; needs no owner |
+| G45 | Small ownership checks | **S** | **Done** 2026-09-27 for the four sub-items: 00280 live (`63bb1a7e`), code merged (`main@5e58d648`) |
 | G46 | The dev clone has drifted from the migrations | **S** | **Done** 2026-09-26: dev clone fixed; drift check merged (`6a2a6def`) |
 | G47 | Cloning the built-in quiz copies "Book a call with Darren" | **S** | **Done** 2026-09-26: merged and deployed (`f628c859`) |
 | G48 | The `has_user` branch crosses businesses | **S** | Blocked on G37; ruled A 2026-09-26, tripwire merged (`14053dea`) |
@@ -1205,8 +1234,8 @@ scoreboard below moved on.)*
   As of 2026-09-21 they can finally reach somebody: 2 SMS consents exist.
 - **G12's alert wording** — shipped as a question, because nothing in the system can know whether
   the coach replied. Reword in the editor.
-- **G16's `{{sport}}`** — renders blank today; one `ENROLMENT_METADATA_KEYS` entry plus one line in
-  `app/api/inquiry/route.ts`. `{{goals}}` needs a different home entirely.
+- ~~**G16's `{{sport}}`**~~ — **merged 2026-09-27** (see the G16 row). `{{goals}}` still
+  needs a different home entirely.
 - **Decisions 1, 6 and 7** in §Decisions are still untouched.
 
 **FINISHED BUT NOT SWITCHED ON:**
