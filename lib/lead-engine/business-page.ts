@@ -7,9 +7,17 @@
 // `business_settings` row, and `paletteFor` from ./email.ts, so a colour a
 // coach picks reaches the page and the email by one rule.
 //
-// No fallback to anybody else's identity, ever. A business with no name, or a
+// No fallback to anybody else's NAME, ever. A business with no name, or a
 // settings row that cannot be read, gets a page with no identity at all: a
 // plain page is honest, and another business's name is not.
+//
+// COLOURS ARE THE ONE FALLBACK, AND IT IS NOT NEUTRAL. A business that has not
+// picked a brand colour gets `paletteFor`'s DEFAULT_PALETTE, which is this
+// platform's own teal and gold, exactly as its sequence emails do. That keeps
+// page and email matching (the owner's choice for G49), but it is the
+// platform's palette on every business that has not chosen one. A neutral
+// default would have to change the emails too; that is a separate decision,
+// recorded as a follow-up on G49 in the ledger.
 
 import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
 import { paletteFor } from "@/lib/lead-engine/email"
@@ -19,7 +27,11 @@ export interface BusinessPageIdentity {
   /** Who "Sent by" names: the sender name, or the business name when that is blank. */
   senderName: string
   postalAddress: string | null
-  /** Only an http(s) address; anything else is dropped, and the name is shown. */
+  /**
+   * Only an https address; anything else is dropped and the name is shown. Not
+   * plain http: on an https page the browser blocks or rewrites it, and the
+   * header would show a broken image instead of the name.
+   */
   logoUrl: string | null
   palette: { brand: string; brandInk: string; accent: string; strip: string }
 }
@@ -38,7 +50,7 @@ export function businessPageIdentity(settings: BusinessSettings | null): Busines
     displayName,
     senderName: present(settings.sender_name) ?? displayName,
     postalAddress: present(settings.postal_address),
-    logoUrl: logo && /^https?:\/\/\S+$/i.test(logo) ? logo : null,
+    logoUrl: logo && /^https:\/\/\S+$/i.test(logo) ? logo : null,
     palette: paletteFor(settings),
   }
 }

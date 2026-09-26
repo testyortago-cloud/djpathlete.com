@@ -18,11 +18,14 @@ import type { Metadata } from "next"
  * removes a parent's value. These are personal, tokenised links, so they are
  * kept out of search too.
  *
+ * The icon links go too (`icons: null`): the root's are the platform's logo,
+ * as the tab icon and the home-screen icon.
+ *
  * NOT covered, and not solvable here: the address bar shows the platform's
- * domain until coaches have their own hosts (`business_domains`), and the tab
- * icon stays the platform's (public/favicon.ico is fetched by the browser even
- * with no icon link, and naming the business's logo would mean resolving the
- * token in metadata, which the unsubscribe page must not do twice: it writes).
+ * domain until coaches have their own hosts (`business_domains`), and with no
+ * icon link at all a browser still asks for /favicon.ico, which is the
+ * platform's. Naming the business's own logo instead would mean resolving the
+ * token in metadata, which the unsubscribe page must not do twice: it writes.
  */
 export const metadata: Metadata = {
   title: { absolute: "Message settings", template: "%s" },
@@ -30,6 +33,7 @@ export const metadata: Metadata = {
   openGraph: null,
   twitter: null,
   manifest: null,
+  icons: null,
   robots: { index: false, follow: false },
 }
 

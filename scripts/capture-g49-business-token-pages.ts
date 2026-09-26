@@ -153,6 +153,51 @@ async function main(): Promise<void> {
     const unsubUrl = `${APP}/unsubscribe/${encodeURIComponent(signUnsubscribeToken(unsub.id, TRAILHEAD))}`
 
     if (MODE === "after") {
+      // FIRST, Trailhead as it really is: no brand colour chosen. Shot before the
+      // colour is set, so this is the page a real Trailhead contact sees today.
+      const pre = await browser.newContext({
+        viewport: { width: 1280, height: 800 },
+        deviceScaleFactor: DSF,
+        colorScheme: "light",
+      })
+      const pp0 = await pre.newPage()
+      console.log("\n05 no colour chosen")
+      await pp0.goto(consentUrl, { waitUntil: "networkidle", timeout: 120_000 })
+      await pp0.waitForTimeout(1500)
+      must((await pp0.getByText("Can we text you?").count()) === 1, "the consent ask did not render")
+      must(
+        (await pp0.getByRole("banner").textContent())?.trim() === TRAILHEAD_NAME,
+        "the header does not name Trailhead",
+      )
+      await shot(
+        pp0,
+        "05-a-business-with-no-colour-chosen",
+        "A business that has not picked a colour",
+        "This is how Trailhead's page looks today: no brand colour is set, so the page uses the same default colours as the business's emails. Those defaults are the platform's own teal and gold.",
+        async () => [await markerAfterText(pp0, "header p", "Still the business's own name, in the default colours.")],
+      )
+
+      console.log("\n06 a link that does not work")
+      await pp0.goto(`${APP}/unsubscribe/not-a-real-link`, { waitUntil: "networkidle", timeout: 120_000 })
+      await pp0.waitForTimeout(1200)
+      must((await pp0.getByText("This link does not work").count()) === 1, "the business not-found page did not render")
+      must((await pp0.locator("a, nav").count()) === 0, "the not-found page links somewhere")
+      await assertNoPlatformName(pp0, "bad link")
+      await shot(
+        pp0,
+        "06-a-link-that-does-not-work",
+        "A broken or old link",
+        "The link cannot be trusted, so the page names no business and has no way through to the platform's site. It tells the person to reply to the email instead.",
+        async () => [
+          await markerAfterText(
+            pp0,
+            "h1",
+            'No menu and no "Back to home" button. Before this change, this showed the platform\'s own not-found page.',
+          ),
+        ],
+      )
+      await pre.close()
+
       // Set Trailhead's brand colour the way a coach does, through the product's own route.
       const ctx = await browser.newContext()
       const p = await ctx.newPage()
@@ -233,12 +278,17 @@ async function main(): Promise<void> {
         page,
         "01-the-question-comes-from-the-coach",
         "Now the page belongs to the coach who sent the email",
-        "Same link, same question. The page is headed with the coach's business in its brand colour, and the platform's menu is gone. For this picture the colour was set to green in the business's settings.",
+        "Same link, same question. The page is headed with the coach's business in its brand colour, and the platform's menu is gone. For this picture the colour was set to green in the business's settings, and put back afterwards.",
         async () => [
           await markerAfterText(page, "header p", "The coach's business name, where the platform's menu used to be."),
           await markerBefore(page, "form button", "The button takes the coach's colour too."),
           // Past the end of the footer's FIRST line, which is wider than the "Sent by" line under it.
-          await markerAfterText(page, "footer p:first-child", '"Sent by": the business, the same way its emails are signed.', { dy: 8 }),
+          await markerAfterText(
+            page,
+            "footer p:first-child",
+            '"Sent by": the business, the same way its emails are signed.',
+            { dy: 8 },
+          ),
         ],
       )
 
@@ -294,6 +344,8 @@ async function main(): Promise<void> {
         title: "On a phone",
         subtitle:
           "Most people open these links from their phone's email app. The page fits the screen with no sideways scrolling.",
+        // Captured at 3x: without this the caption is drawn for a 1440px desktop shot and is unreadable here.
+        scale: 3,
       })
       console.log(`   wrote ${OUT}/04-on-a-phone.png (${width}x${height})`)
       await phone.close()

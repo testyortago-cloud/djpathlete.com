@@ -847,17 +847,33 @@ Ten rows the G35 sweep and its critic found. None is built. Each carries its evi
   - **Brand sweep:** the root `"app/(marketing)/sms-consent"` became `"app/(business)"`, which now covers both pages and the layout, and the frame was added. The owner's instruction was to keep the consent page swept; the old path would have tripped the sweep's own "every root still resolves" guard.
   - **Screenshots** (`screenshots/g49-business-token-pages/`, `scripts/capture-g49-business-token-pages.ts`, run with `npx tsx`): real signed links for throwaway Trailhead contacts, deleted afterwards with their suppression rows.
     - Before (the old code): 00a and 00b, the platform's logo and menu around a coach's question and a coach's unsubscribe.
-    - After: 01 the ask, 02 the confirmation after "I agree", 03 the unsubscribe, 04 the same page on a phone (no sideways scroll). Trailhead's brand colour was set to green through `POST /api/admin/businesses/brand` for the pictures, then put back to NULL and read back; the captions say so.
-    - The script asserts that no platform name appears in the page's `<head>` or visible text. Dev-mode script bodies are left out, because React's dev stack traces carry this repository's folder path.
+    - After:
+      - 05 Trailhead as it really is: no colour chosen, so the default palette. Shot before any colour was set.
+      - 06 a bad link: the group's own not-found page, with no link anywhere.
+      - Then, with Trailhead's brand colour set to green through `POST /api/admin/businesses/brand`: 01 the ask; 02 the confirmation after "I agree"; 03 the unsubscribe; 04 the same page on a phone (no sideways scroll; its caption drawn at 3x). The colour was put back to NULL afterwards and read back; the captions say so.
+    - The script asserts that no platform name appears in the page's `<head>` or visible text, on 01, 03 and 06. Dev-mode script bodies are left out, because React's dev stack traces carry this repository's folder path.
+  - **Review round** (independent Opus review: 0 Critical, 0 Important, 7 Minor):
+    - The review checked Next 16's own metadata resolver: the `null`s and `title.absolute` do what the comments say, and GET on the consent page still writes nothing.
+    - Acted on:
+      - `icons: null`, so the platform's icon links are gone too.
+      - `app/(business)/not-found.tsx`: a bad or orphaned token used to fall through to the platform's not-found page and its "Back to home".
+      - Logos must be `https` (plain http is blocked on an https page, which would leave a broken image).
+      - The phone caption scale.
+      - Shot 01's caption now says the colour was put back.
+      - Shot 05 was added, because every after-shot had used the temporary colour.
+      - The identity module's comment no longer claims colours never fall back.
   - **Verified:**
-    - 7 G49 test files / 80 tests, plus the 7 suites importing `lib/lead-engine/email.ts` (243 tests), 0 skipped.
+    - 7 G49 test files / 81 tests, plus the 7 suites importing `lib/lead-engine/email.ts` (243 tests), 0 skipped.
     - Seven mutants turned tests red, each restored byte-exact: no re-theme; no sender fallback; any logo URL accepted; the unsubscribe page reads another business; the layout title goes back through the template; the consent page loses its identity; the platform's name put into the frame.
-    - tsc 238/54, identical per file. `next build` exit 0, after `rm -rf .next`: the dev server had left `.next/dev/types` naming the old `(marketing)` path, which broke the first build.
+    - tsc 238/54, identical per file. Select contract 22/22.
+    - `next build` exit 0, after `rm -rf .next`: a dev server leaves `.next/dev/types` naming the old `(marketing)` path, which broke the first build.
   - **Not done, and noted:**
-    - The tab icon is still the platform's: `public/favicon.ico` is fetched even with no icon link, and a business icon would need the token in metadata.
+    - **For the owner:** a business that has not picked a brand colour gets the platform's own teal and gold (`DEFAULT_PALETTE` in `lib/lead-engine/email.ts`) on this page and in its sequence emails alike (shot 05). A neutral default would change both, so it is a separate decision.
+    - With no icon link, browsers still ask for `/favicon.ico`, which is the platform's. A business icon would need the token in metadata, and the unsubscribe page writes when it resolves one.
     - The address bar shows the platform's domain until coaches have hosts.
-    - The root layout's Google Analytics and gclid capture still run on these pages.
-    - The accent `resolvePalette` derives for a brand colour is the emails' rule, unchanged. For the green used here it is a purple, which is visible in the strip and the footer name.
+    - The root layout's Google Analytics and gclid capture still run on these pages, and GA receives the page URL, signed token included. That was true before the move too.
+    - The accent `resolvePalette` derives for a brand colour is the emails' rule, unchanged. For the green used here it is a purple, visible in the strip and the footer name.
+    - The consent page reads the business's settings twice: once for the wording, once for the frame. The two could disagree only if the business is renamed between the reads.
 
 ---
 

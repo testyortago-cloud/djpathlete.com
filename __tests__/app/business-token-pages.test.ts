@@ -42,6 +42,19 @@ describe("the business's own token pages", () => {
     expect(metadata.openGraph).toBeNull()
     expect(metadata.twitter).toBeNull()
     expect(metadata.manifest).toBeNull()
+    expect(metadata.icons).toBeNull()
     expect(metadata.robots).toEqual({ index: false, follow: false })
+  })
+
+  it("answer a bad link inside the group, with no way back to the platform's site", async () => {
+    // Both pages call notFound() for a bad token. Without a not-found here, that
+    // fell through to app/not-found.tsx and its "Back to home".
+    const source = readFileSync("app/(business)/not-found.tsx", "utf8")
+    expect(source).not.toMatch(/href=|homeHref|<Link|SiteNavbar|Footer/)
+    const { renderToStaticMarkup } = await import("react-dom/server")
+    const { default: NotFound } = await import("@/app/(business)/not-found")
+    const html = renderToStaticMarkup(NotFound())
+    expect(html).toContain("This link does not work")
+    expect(html).not.toContain("<a ")
   })
 })

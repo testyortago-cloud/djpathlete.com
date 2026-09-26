@@ -42,11 +42,13 @@ describe("businessPageIdentity", () => {
     expect(id).toMatchObject({ senderName: "Trailhead Strength", postalAddress: null, logoUrl: null })
   })
 
-  it("keeps a logo only when it is an http(s) address", () => {
+  it("keeps a logo only when it is an https address", () => {
     expect(businessPageIdentity(settings({ logo_url: "https://cdn.example.com/logo.png" }))?.logoUrl).toBe(
       "https://cdn.example.com/logo.png",
     )
     expect(businessPageIdentity(settings({ logo_url: "javascript:alert(1)" }))?.logoUrl).toBeNull()
+    // Plain http would be blocked on an https page, leaving a broken image where the name should be.
+    expect(businessPageIdentity(settings({ logo_url: "http://cdn.example.com/logo.png" }))?.logoUrl).toBeNull()
   })
 
   it("uses the business's own brand colour, the same palette its emails use", () => {
