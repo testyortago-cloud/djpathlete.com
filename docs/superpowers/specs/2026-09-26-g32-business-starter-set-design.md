@@ -52,10 +52,13 @@ comments and one error mapping (§3.4).
 2. **`create_business()` is replaced** with the SAME six arguments (so `lib/db/businesses.ts` is unchanged and
    the deploy order does not matter). It calls the helper instead of inserting the coaching board itself, and
    stays one transaction, so a business can never be half-provisioned.
-3. **Grants, restated.** `create or replace` re-fires Supabase's default privileges and hands anon and
-   authenticated EXECUTE back. Both `create_business` and every new function: `revoke all ... from public`,
-   `revoke execute ... from anon, authenticated`; `create_business` alone is granted to `service_role`. The new
-   functions need no grant: nothing calls them over PostgREST.
+3. **Grants, restated.** `create or replace` fires Supabase's default privileges and hands anon and authenticated
+   EXECUTE to the three new functions the moment they are created (an existing function like `create_business`
+   keeps its ACL across a replace, so this only applies to the new ones). Both `create_business` and every new
+   function: `revoke all ... from public`, `revoke execute ... from anon, authenticated`; `create_business`
+   alone is granted to `service_role` explicitly. The new functions get no explicit grant of their own, but
+   service_role keeps EXECUTE on them through that same default privilege, which is deliberately not revoked —
+   the live test's `rpc("seed_business_starter_set")` call depends on it.
 4. **Backfill:** the migration runs the helper for EVERY business. Keyed on absence inside the helper, so it
    changes the 7 dev-clone test businesses (each gains 2 boards, 8 stages, 11 draft sequences) and nothing on
    production, whose one business already has all of it.

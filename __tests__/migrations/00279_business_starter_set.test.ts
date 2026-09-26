@@ -513,7 +513,10 @@ describeIf("00279 on the dev clone -- create_business provisions a whole busines
     db = createClient(url!, key!)
     platformBefore = await counts(PLATFORM_ID)
     const { data, error } = await db.rpc("create_business", {
-      p_name: "G32 Starter Set Test",
+      // Sorts LAST in allBusinesses() (lib/tenancy/resolve.ts orders by name
+      // ascending) so this throwaway row never becomes a cookie-less dev
+      // operator session's default tenant while the test runs.
+      p_name: "zz G32 starter set test (throwaway)",
       p_slug: `g32-starter-${Date.now()}`,
       p_timezone: "UTC",
       p_host_display_name: "Test Coach",

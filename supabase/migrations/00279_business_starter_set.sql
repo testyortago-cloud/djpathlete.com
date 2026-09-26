@@ -30,16 +30,21 @@
 -- business may already have edited its own copy of that draft by the time it
 -- runs. Such a migration must say, in its own header, which businesses it
 -- touches, and if a NEW business should also start with that changed
--- wording, it must update `seed_starter_sequence`'s JSON literal below in
--- the same migration. Nothing enforces that automatically; this paragraph is
--- the only thing that will.
+-- wording, it must `create or replace` the WHOLE `seed_business_starter_set`
+-- function below with the edited JSON literal (and restate its grants,
+-- section 5) -- `seed_starter_sequence` only ever RECEIVES a sequence's JSON
+-- as a parameter; it holds no literal of its own to edit. Nothing enforces
+-- that automatically; this paragraph is the only thing that will.
 --
--- The three boards' keys, names and stages are read back from the
--- migrations that first defined them for the platform (the board-seeding
--- half of `create_business()`, and the migration that added the other two
--- boards), not invented here, because `kind` is load-bearing: the pipeline
--- move route decides whether a move closes a deal from `kind in ('won',
--- 'lost')`, and a board with no `won` stage could never close one.
+-- The three boards' keys, names and stages are read back from the migrations
+-- that first defined them for the platform, not invented here: Coaching from
+-- 00249 (which itself read back the singleton's board first seeded by
+-- 00219), and Assessment and Camps & Clinics from 00257. `kind` is
+-- load-bearing for the same reason 00249 says it is there: resolvePipeline()
+-- looks a board up by (business_id, key), so the key identifies the KIND of
+-- board, not the business, and the pipeline move route decides whether a
+-- move closes a deal from `kind in ('won', 'lost')` -- a board with no `won`
+-- stage could never close one.
 --
 -- WHAT THIS DOES NOT DO. A new business still cannot switch any of these
 -- sequences on and have it actually reach anyone: nothing yet writes the
@@ -876,10 +881,11 @@ end;
 $function$;
 
 -- ---------------------------------------------------------------------------
--- 4. create_business -- same six arguments as before, so lib/db/businesses.ts
---    is unchanged and the deploy order does not matter. It now provisions
---    through the helper above instead of inserting the coaching board
---    itself, so the coaching board is defined in exactly one place.
+-- 4. create_business -- same six arguments as before, so the RPC call in
+--    lib/db/businesses.ts is unchanged and the deploy order does not matter.
+--    It now provisions through the helper above instead of inserting the
+--    coaching board itself, so the coaching board is defined in exactly one
+--    place.
 -- ---------------------------------------------------------------------------
 
 create or replace function public.create_business(
@@ -929,21 +935,30 @@ $function$;
 -- ---------------------------------------------------------------------------
 -- 5. The grants. NOT redundant, and NOT copy-paste noise.
 -- ---------------------------------------------------------------------------
--- `create or replace` above re-fires the per-project default privilege every
--- Supabase project carries (`alter default privileges ... grant execute on
--- functions to anon, authenticated, service_role`), which grants anon and
--- authenticated EXECUTE again on every NEW function even though an earlier
--- migration revoked it from the old one. Privileges do not survive a replace
--- on their own.
+-- The three functions below are created here for the FIRST time, so `create
+-- or replace` fires the per-project default privilege every Supabase project
+-- carries (`alter default privileges ... grant execute on functions to anon,
+-- authenticated, service_role`) on each of them, the moment they are
+-- created -- anon and authenticated get EXECUTE just like service_role does.
+-- That default-privilege grant only fires on a function's first creation:
+-- Postgres keeps a REPLACED function's existing ACL, so re-running `create or
+-- replace` on create_business (which already existed before this migration)
+-- does not touch its grants at all.
 --
 -- create_business is `security definer` and PostgREST auto-exposes anything
--- carrying an EXECUTE grant at /rest/v1/rpc/create_business -- so omitting
--- these lines for it would silently reopen an unauthenticated write path
--- that can create arbitrary tenants and name any existing user id as
--- 'owner'. The three new functions are not `security definer` and nothing
--- calls them over PostgREST, but the same default-privilege re-grant fires
--- for them too, so each is revoked from public/anon/authenticated and given
--- no grant at all.
+-- carrying an EXECUTE grant at /rest/v1/rpc/create_business -- an
+-- unauthenticated write path that can create arbitrary tenants and name any
+-- existing user id as 'owner'. Its revokes below are not new (an earlier
+-- migration already closed that path); they are restated here only so the
+-- grant is explicit in this file and idempotent if this migration is ever
+-- run again. The three new functions ARE new, are not `security definer`,
+-- and nothing calls them over PostgREST, but the same default-privilege
+-- grant fires for them too, so each is revoked from public/anon/authenticated
+-- -- with no EXPLICIT grant of its own. service_role keeps EXECUTE on all
+-- three through that same default privilege, which is deliberately not
+-- revoked here: the dev clone's ACLs read `postgres=X, service_role=X` for
+-- each, and the live test's `rpc("seed_business_starter_set")` call depends
+-- on it -- do not revoke it.
 revoke all      on function public.create_business(text, text, text, text, text, uuid) from public;
 revoke execute  on function public.create_business(text, text, text, text, text, uuid) from anon, authenticated;
 grant  execute  on function public.create_business(text, text, text, text, text, uuid) to service_role;

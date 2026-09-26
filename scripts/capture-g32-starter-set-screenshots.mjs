@@ -31,7 +31,7 @@
 //
 // The sequences guard has a sharper tell: Primary has TWELVE sequences (six
 // draft, four paused, two active) — one more than Trailhead, "SMS
-// Re-permission Ask", that Trailhead does not have at all, plus four
+// Re-permission Ask", that Trailhead does not have at all, plus six
 // non-draft statuses. The guard checks the row count, that every row reads
 // "Never turned on", and that "SMS Re-permission Ask" is not on screen.
 //
