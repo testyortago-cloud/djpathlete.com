@@ -176,3 +176,55 @@ export function shouldFallBackToAnthropic(error: unknown): boolean {
   if (status === 408 || status === 429) return true // timeout, rate limit
   return status >= 500
 }
+
+/**
+ * Can direct Anthropic serve this model at all?
+ *
+ * The fallback exists for Claude models only. `gpt-6-astra` (the program
+ * architect and exercise selector default) is an OpenAI model that only
+ * OpenRouter can reach; sent to Anthropic it answers a 404, and that 404 would
+ * then replace the OpenRouter fault the owner actually needed to see.
+ */
+export function canFallBackToAnthropic(modelId: string): boolean {
+  return modelId.startsWith("claude-")
+}
+
+function describeProviderError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === "string") return error
+  const status = (error as { status?: unknown } | null)?.status
+  return typeof status === "number" ? `status ${status}` : String(error)
+}
+
+/**
+ * Thrown when OpenRouter failed AND the Anthropic fallback failed too.
+ *
+ * WHY IT EXISTS. Before this, the fallback's error was the only one that
+ * surfaced. With the Anthropic account unfunded, every OpenRouter hiccup — a
+ * 429, a 5xx, a missing key — reached the owner as Anthropic's "Your credit
+ * balance is too low", which reads exactly like "this feature was never moved
+ * to OpenRouter". The primary provider's failure is the story; the fallback's
+ * is a footnote, so the message leads with OpenRouter's.
+ *
+ * `status` is OpenRouter's, not Anthropic's, so retry logic classifies the
+ * PRIMARY fault: an OpenRouter 429 stays retryable instead of being ended by
+ * Anthropic's 400.
+ */
+export class ProviderFallbackError extends Error {
+  readonly status: number | undefined
+  readonly openRouterError: unknown
+  readonly anthropicError: unknown
+
+  constructor(openRouterError: unknown, anthropicError: unknown) {
+    super(
+      `OpenRouter failed: ${describeProviderError(openRouterError)}. ` +
+        `The Anthropic fallback also failed: ${describeProviderError(anthropicError)}`,
+      { cause: openRouterError },
+    )
+    this.name = "ProviderFallbackError"
+    const status = (openRouterError as { status?: unknown } | null)?.status
+    this.status = typeof status === "number" ? status : undefined
+    this.openRouterError = openRouterError
+    this.anthropicError = anthropicError
+  }
+}

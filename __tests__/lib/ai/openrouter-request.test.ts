@@ -8,7 +8,13 @@ import {
   normalizeUsage,
   STRUCTURED_OUTPUT_NAME,
 } from "@/lib/ai/openrouter-request"
-import { toOpenRouterModel, toReasoningEffort, shouldFallBackToAnthropic } from "@/lib/ai/openrouter"
+import {
+  toOpenRouterModel,
+  toReasoningEffort,
+  shouldFallBackToAnthropic,
+  canFallBackToAnthropic,
+  ProviderFallbackError,
+} from "@/lib/ai/openrouter"
 
 const SCHEMA = { type: "object", properties: { a: { type: "string" } } } as Record<string, unknown>
 
@@ -223,5 +229,70 @@ describe("shouldFallBackToAnthropic", () => {
     // the bill moves, and nothing says why.
     expect(shouldFallBackToAnthropic(new TypeError("x is not a function"))).toBe(false)
     expect(shouldFallBackToAnthropic(new Error('No OpenRouter slug for model "claude-sonnet-9"'))).toBe(false)
+  })
+})
+
+describe("canFallBackToAnthropic", () => {
+  it.each(["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-5", "claude-fable-5-1"])(
+    "lets the Claude model %s fall back",
+    (model) => {
+      expect(canFallBackToAnthropic(model)).toBe(true)
+    },
+  )
+
+  it.each(["gpt-6-astra", "gpt-6-astra-pro"])("refuses %s, which only OpenRouter can serve", (model) => {
+    // gpt-6-astra is the program architect and exercise selector default. Sent
+    // to Anthropic it answers a 404, and THAT error would replace the
+    // OpenRouter fault the owner actually needed to see.
+    expect(canFallBackToAnthropic(model)).toBe(false)
+  })
+})
+
+describe("ProviderFallbackError", () => {
+  const openRouter = Object.assign(new Error("429 Rate limit exceeded"), { status: 429 })
+  const anthropic = Object.assign(
+    new Error('400 {"type":"error","error":{"message":"Your credit balance is too low to access the Anthropic API."}}'),
+    { status: 400 },
+  )
+
+  it("LEADS with the OpenRouter error, so a dead fallback cannot hide it", () => {
+    // The owner saw only Anthropic's credit-balance message and concluded the
+    // migration had never happened. When both providers fail, the primary one
+    // is the story; the fallback's failure is a footnote.
+    const err = new ProviderFallbackError(openRouter, anthropic)
+    expect(err.message.indexOf("OpenRouter")).toBe(0)
+    expect(err.message).toContain("429 Rate limit exceeded")
+    expect(err.message.indexOf("429 Rate limit exceeded")).toBeLessThan(err.message.indexOf("credit balance"))
+  })
+
+  it("still says the fallback failed, and why", () => {
+    const err = new ProviderFallbackError(openRouter, anthropic)
+    expect(err.message).toMatch(/Anthropic fallback also failed/)
+    expect(err.message).toContain("credit balance is too low")
+  })
+
+  it("carries the OpenRouter status, so retry logic classifies the PRIMARY fault", () => {
+    // A 429 must stay retryable. Carrying Anthropic's 400 instead would end the
+    // retry loop on a fault that was never about our request.
+    expect(new ProviderFallbackError(openRouter, anthropic).status).toBe(429)
+  })
+
+  it("has no status when the OpenRouter error had none (a socket error)", () => {
+    const socket = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" })
+    expect(new ProviderFallbackError(socket, anthropic).status).toBeUndefined()
+  })
+
+  it("keeps both originals for logging", () => {
+    const err = new ProviderFallbackError(openRouter, anthropic)
+    expect(err.openRouterError).toBe(openRouter)
+    expect(err.anthropicError).toBe(anthropic)
+    expect(err.cause).toBe(openRouter)
+  })
+
+  it("describes non-Error throwables without crashing", () => {
+    const err = new ProviderFallbackError({ status: 503 }, "boom")
+    expect(err.message).toMatch(/^OpenRouter failed/)
+    expect(err.message).toContain("boom")
+    expect(err.status).toBe(503)
   })
 })

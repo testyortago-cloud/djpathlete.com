@@ -116,7 +116,7 @@ function sourceToUrl(source: Base64Source | UrlSource): string {
  * a type error — the request is accepted and the model simply loses track of
  * which result answered which call.
  */
-function toOpenAIMessages(
+export function toOpenAIMessages(
   messages: Array<{ role: "user" | "assistant"; content: CompatContent }>,
 ): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = []
@@ -171,7 +171,7 @@ function toOpenAIMessages(
   return out
 }
 
-function toOpenAITools(tools: CompatTool[]) {
+export function toOpenAITools(tools: CompatTool[]) {
   return tools.map((t) => ({
     type: "function" as const,
     function: { name: t.name, description: t.description, parameters: t.input_schema },
