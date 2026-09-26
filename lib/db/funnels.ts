@@ -806,15 +806,18 @@ export async function getSubmissionCountsByFunnel(businessId: string): Promise<R
 // third.
 
 /**
- * Finds the published form island config for a step, so the submission route
- * validates against what was actually published rather than what the browser
- * claims the form contained.
+ * The node tree a step is SERVING: the version its `published_version_id`
+ * points at, never the draft and never "the latest version" the way a preview
+ * falls back. Null when the step does not exist under this business or has
+ * never been published.
+ *
+ * Both reads carry the tenant, so a step id that exists under another business
+ * reads as not found. A read error THROWS, labelled with the caller's name:
+ * PostgREST answers `{data:null, error}` rather than throwing, and each caller
+ * would otherwise turn a timeout into "this page has no such form" or "this
+ * page sells nothing".
  */
-export async function getPublishedFormConfig(
-  businessId: string,
-  stepId: string,
-  formKey: string,
-): Promise<Record<string, unknown> | null> {
+async function getServedNodes(businessId: string, stepId: string, label: string): Promise<FunnelNode[] | null> {
   const supabase = getClient()
   const { data: stepRow, error: stepError } = await supabase
     .from("funnel_steps")
@@ -822,7 +825,7 @@ export async function getPublishedFormConfig(
     .eq("business_id", businessId)
     .eq("id", stepId)
     .maybeSingle()
-  if (stepError) throw new Error(`getPublishedFormConfig(step): ${stepError.message}`)
+  if (stepError) throw new Error(`${label}(step): ${stepError.message}`)
 
   const versionId = (stepRow as { published_version_id: string | null } | null)?.published_version_id
   if (!versionId) return null
@@ -832,12 +835,68 @@ export async function getPublishedFormConfig(
     .select("nodes")
     .eq("business_id", businessId)
     .eq("id", versionId)
+    // The version must be THIS step's. Only publishStep writes the pointer, so
+    // a mismatch is corruption; it reads as "not published", not as another
+    // step's page.
+    .eq("step_id", stepId)
     .maybeSingle()
-  if (versionError) throw new Error(`getPublishedFormConfig(version): ${versionError.message}`)
+  if (versionError) throw new Error(`${label}(version): ${versionError.message}`)
   if (!versionRow) return null
 
-  const nodes = ((versionRow as { nodes: unknown }).nodes as FunnelNode[]) ?? []
+  return ((versionRow as { nodes: unknown }).nodes as FunnelNode[]) ?? []
+}
+
+/**
+ * Finds the published form island config for a step, so the submission route
+ * validates against what was actually published rather than what the browser
+ * claims the form contained.
+ */
+export async function getPublishedFormConfig(
+  businessId: string,
+  stepId: string,
+  formKey: string,
+): Promise<Record<string, unknown> | null> {
+  const nodes = await getServedNodes(businessId, stepId, "getPublishedFormConfig")
+  if (!nodes) return null
   return findFormIsland(nodes, formKey)
+}
+
+/** One thing a published page puts on sale: a `checkout` island's product. */
+export interface CheckoutOffer {
+  productKind: string
+  productId: string
+}
+
+/**
+ * What a step's PUBLISHED version offers for sale: every `checkout` island in
+ * the tree it is serving, with the product each one names. G40.
+ *
+ * `POST /api/funnels/checkout` sells only an id on this list. The request body
+ * chooses among what the page sells; it cannot name something else. An island
+ * whose `productId` is not a non-empty string (a `session_pack` button may
+ * carry none, since `CheckoutIsland` ignores it for that kind) offers nothing.
+ *
+ * An empty list for a step that is missing or was never published. THROWS on
+ * a read error, so a failed read is not mistaken for "not on sale".
+ */
+export async function getPublishedCheckoutOffers(businessId: string, stepId: string): Promise<CheckoutOffer[]> {
+  const nodes = await getServedNodes(businessId, stepId, "getPublishedCheckoutOffers")
+  if (!nodes) return []
+  const offers: CheckoutOffer[] = []
+  collectCheckoutOffers(nodes, offers)
+  return offers
+}
+
+function collectCheckoutOffers(nodes: FunnelNode[], into: CheckoutOffer[]): void {
+  for (const node of nodes) {
+    if (node.t === "island" && node.name === "checkout") {
+      const { productKind, productId } = node.props
+      if (typeof productKind === "string" && typeof productId === "string" && productId.length > 0) {
+        into.push({ productKind, productId })
+      }
+    }
+    if (node.t === "el") collectCheckoutOffers(node.children, into)
+  }
 }
 
 function findFormIsland(nodes: FunnelNode[], formKey: string): Record<string, unknown> | null {

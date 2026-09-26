@@ -18,6 +18,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const getSettingMock = vi.fn()
 const getFunnelByIdMock = vi.fn()
 const getStepMock = vi.fn()
+const getOffersMock = vi.fn()
 const getProgramByIdMock = vi.fn()
 const createSessionMock = vi.fn()
 const insertSingleMock = vi.fn()
@@ -27,6 +28,7 @@ vi.mock("@/lib/db/system-settings", () => ({ getSetting: (...a: unknown[]) => ge
 vi.mock("@/lib/db/funnels", () => ({
   getFunnelById: (...a: unknown[]) => getFunnelByIdMock(...a),
   getStep: (...a: unknown[]) => getStepMock(...a),
+  getPublishedCheckoutOffers: (...a: unknown[]) => getOffersMock(...a),
 }))
 vi.mock("@/lib/db/programs", () => ({ getProgramById: (...a: unknown[]) => getProgramByIdMock(...a) }))
 vi.mock("@/lib/stripe", () => ({
@@ -54,6 +56,8 @@ vi.mock("@/lib/supabase", () => ({
 const FUNNEL_ID = "aaaaaaaa-1111-4222-8333-444444444444"
 const STEP_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 const PROGRAM_ID = "cccccccc-1111-4222-8333-444444444444"
+/** A real, priced, public program that this page does NOT offer. */
+const OTHER_PROGRAM_ID = "dddddddd-1111-4222-8333-444444444444"
 
 function body(overrides: Record<string, unknown> = {}) {
   return {
@@ -81,11 +85,14 @@ beforeEach(() => {
   getSettingMock.mockResolvedValue(true)
   getFunnelByIdMock.mockResolvedValue({ id: FUNNEL_ID, slug: "summer-camp", status: "published" })
   getStepMock.mockResolvedValue({ id: STEP_ID, funnel_id: FUNNEL_ID, slug: "buy" })
+  getOffersMock.mockResolvedValue([{ productKind: "program", productId: PROGRAM_ID }])
   getProgramByIdMock.mockResolvedValue({
     id: PROGRAM_ID,
     name: "Comeback Code",
     description: "8 weeks",
     price_cents: 44900,
+    is_active: true,
+    is_public: true,
   })
   createSessionMock.mockResolvedValue({ id: "cs_1", url: "https://checkout.stripe.com/c/pay/cs_1" })
   maybeSingleMock.mockResolvedValue({ data: null })
@@ -136,10 +143,103 @@ describe("what it refuses to start", () => {
     ["no price", null],
     ["a zero price", 0],
   ])("refuses a program with %s", async (_label, price) => {
-    getProgramByIdMock.mockResolvedValue({ id: PROGRAM_ID, name: "Free thing", price_cents: price })
+    getProgramByIdMock.mockResolvedValue({
+      id: PROGRAM_ID,
+      name: "Free thing",
+      price_cents: price,
+      is_active: true,
+      is_public: true,
+    })
     const { POST } = await import("@/app/api/funnels/checkout/route")
     expect((await POST(post(body()))).status).toBe(400)
     expect(createSessionMock).not.toHaveBeenCalled()
+  })
+
+  // G40. Before it, the route sold ANY priced program whose id a request
+  // named: a client's private plan (priced at what that client paid), a
+  // retired program, another business's. The page is the offer; the request
+  // only chooses among what the page sells.
+  describe("G40: it sells only what the published page offers", () => {
+    it("refuses a real, priced, public program the page does not offer", async () => {
+      getProgramByIdMock.mockResolvedValue({
+        id: OTHER_PROGRAM_ID,
+        name: "Someone else's plan",
+        price_cents: 12000,
+        is_active: true,
+        is_public: true,
+      })
+      const { POST } = await import("@/app/api/funnels/checkout/route")
+      const res = await POST(post(body({ productId: OTHER_PROGRAM_ID })))
+      expect(res.status).toBe(404)
+      expect(createSessionMock).not.toHaveBeenCalled()
+      // Refused BEFORE the lead write and the program read: a crafted id is
+      // not a buyer, and nothing about the program is worth reading for it.
+      expect(insertSingleMock).not.toHaveBeenCalled()
+      expect(getProgramByIdMock).not.toHaveBeenCalled()
+    })
+
+    it("refuses when the page has not been published, so offers nothing", async () => {
+      getOffersMock.mockResolvedValue([])
+      const { POST } = await import("@/app/api/funnels/checkout/route")
+      expect((await POST(post(body()))).status).toBe(404)
+      expect(createSessionMock).not.toHaveBeenCalled()
+    })
+
+    it("refuses an id the page offers as a SESSION PACK, not as a program", async () => {
+      // The kind is part of the offer. A pack id resolving in `programs` is a
+      // coincidence of UUIDs, not something this page put on sale.
+      getOffersMock.mockResolvedValue([{ productKind: "session_pack", productId: PROGRAM_ID }])
+      const { POST } = await import("@/app/api/funnels/checkout/route")
+      expect((await POST(post(body()))).status).toBe(404)
+      expect(createSessionMock).not.toHaveBeenCalled()
+    })
+
+    it("sells an offered program when the page carries several offers", async () => {
+      getOffersMock.mockResolvedValue([
+        { productKind: "program", productId: OTHER_PROGRAM_ID },
+        { productKind: "program", productId: PROGRAM_ID },
+      ])
+      const { POST } = await import("@/app/api/funnels/checkout/route")
+      expect((await POST(post(body()))).status).toBe(200)
+      expect(createSessionMock).toHaveBeenCalledTimes(1)
+    })
+
+    it("matches the offered id whatever its letter case (UUIDs are case-insensitive)", async () => {
+      // The schema accepts an uppercase UUID, and the page keeps whatever case
+      // the owner published. The program read then uses the PAGE's spelling.
+      getOffersMock.mockResolvedValue([{ productKind: "program", productId: PROGRAM_ID.toUpperCase() }])
+      const { POST } = await import("@/app/api/funnels/checkout/route")
+      expect((await POST(post(body()))).status).toBe(200)
+      expect(getProgramByIdMock).toHaveBeenCalledWith(PROGRAM_ID.toUpperCase())
+    })
+
+    it("reads the offers of THIS step, under the request's own tenant", async () => {
+      const { POST } = await import("@/app/api/funnels/checkout/route")
+      await POST(post(body()))
+      expect(getOffersMock).toHaveBeenCalledWith("checkout-biz", STEP_ID)
+    })
+
+    it("answers 503, not 'unavailable', when the offers cannot be read", async () => {
+      // The reader throws on a PostgREST error. A buyer on a page that really
+      // does sell the program must not be told it is not for sale.
+      getOffersMock.mockRejectedValue(new Error("getPublishedCheckoutOffers(version): timeout"))
+      const { POST } = await import("@/app/api/funnels/checkout/route")
+      expect((await POST(post(body()))).status).toBe(503)
+      expect(createSessionMock).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ["inactive", { is_active: false, is_public: true }],
+      ["not public", { is_active: true, is_public: false }],
+    ])("refuses an offered program that is %s", async (_label, flags) => {
+      // A page published last month can still name a program retired or made
+      // private since. The page is not re-checked when a program changes, so
+      // the sale is.
+      getProgramByIdMock.mockResolvedValue({ id: PROGRAM_ID, name: "Comeback Code", price_cents: 44900, ...flags })
+      const { POST } = await import("@/app/api/funnels/checkout/route")
+      expect((await POST(post(body()))).status).toBe(404)
+      expect(createSessionMock).not.toHaveBeenCalled()
+    })
   })
 
   it("refuses a product kind that has no grant path", async () => {

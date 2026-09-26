@@ -392,12 +392,12 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     `funnels`. A second business's builder offers the platform's
  *     programmes and packs, and a page it publishes can sell them. Its FAQ
  *     read is not an entry: that one consults this seam, on the NARROWER
- *     VARIANT shelf. G31.
- *   - the funnel checkout's POST (app/api/funnels/checkout/route.ts) reads
- *     `programs` through `getProgramById`. Public; its tenant comes from the
- *     Host. It checks only that the product id is a UUID with a price -- not
- *     that it is one of the published page's offers, active, public, or this
- *     business's -- and files the sale under the Host's business. G40.
+ *     VARIANT shelf. G31. Since G40 the public funnel checkout sells only a
+ *     product the page's own published version offers, active and public,
+ *     so its `programs` read is no longer an entry of its own: another
+ *     business's programme reaches it only by being put on a page, through
+ *     this catalogue or through a publish request's own html (the publish
+ *     route does not rebuild html from the document).
  *   - `findAttributionForContact` (lib/db/marketing-attribution.ts) reads
  *     `marketing_attribution` by `user_id`. The Stripe webhook
  *     (app/api/stripe/webhook/route.ts; one Stripe account for every
