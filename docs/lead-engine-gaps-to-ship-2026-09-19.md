@@ -818,6 +818,15 @@ Ten rows the G35 sweep and its critic found. None is built. Each carries its evi
 - The `quiz_*` sequences' `{"kind":"has_user"}` branch tests `contacts.user_id IS NOT NULL` (`lib/automation/sequence-tick.ts`, ~166). `linkContactsToUser` sets `user_id` on EVERY business's contact with the same email (`lib/db/contacts.ts`, ~669-681).
 - So a platform client who takes another coach's quiz takes the "you already have an account with us" arm, and is never asked to talk.
 - G32 made the wording say what the branch checks (an account). The check itself needs "a client of THIS business", which the schema cannot express until users or client relationships carry a business (G37).
+- **2026-09-26: investigated, nothing built; the owner has a question (options below).**
+  - **Two writers set `contacts.user_id` across businesses, not one.** `linkContactsToUser` (`lib/db/contacts.ts`, called at registration) fills it on every business's contact with that email. So does `upsertContactIdentity` itself, through `resolveLinkableUserId` (~`:542`), on any write to a contact that has no link yet (fill-only): a brand-new contact under any business is linked on creation to an existing account with the same email. Changing only the register route would not close it.
+  - **What per-business evidence exists today** (the dev clone's `information_schema`, read 2026-09-26). Tables with both a `business_id` and a person: `bookings`, `event_signups`, `funnel_checkout_grants`, `opportunities`, `contact_tags`, `quiz_attempts`, `sequence_runs`, `chat_conversations`, `contact_consents`. Every table that says someone IS a client has no `business_id`: `users`, `payments`, `subscriptions`, `program_assignments`, `client_packages`, `client_memberships`, `scheduled_sessions`, `client_profiles`, `session_fee_charges`. So "a client of THIS business" can only be guessed from lead-side proxies (booked, bought through this business's funnel checkout, signed up for its event). That is the guess this row says not to build.
+  - **It is latent while coaches have no hosts.** `/api/quiz/progress` reads the quiz under the Host's tenant (`resolvePublicTenant()`), and nothing in the app writes `business_domains`. So a non-platform business's quiz, served on a host that resolves to another business, 404s on the first answer, and its `quiz_*` sequences cannot enrol anyone. The wrong arm becomes reachable the day a coach's host resolves to their business. (Production's `business_domains` rows were not read for this.)
+  - **Options put to the owner:**
+    - **(A)** Wait for G37, and make "G48 closes before any coach gets a host" an explicit precondition of coach domains.
+    - **(B)** An interim: take the `has_user` branch out of the four `quiz_*` drafts for every business except the platform, so everyone gets the prospect arm until G37. That needs a migration editing only non-platform drafts, and `seed_business_starter_set` replaced whole.
+    - **(C)** An interim: a new branch condition backed by the lead-side proxies above.
+    - Recommendation: **A**. Nothing is reachable today, and B or C would each be undone by G37.
 
 ### G49 · A tenant's unsubscribe and consent links land on the platform's branded pages · **M** · **later, with coach domains**
 - `appOrigin()` is deployment-wide (`lib/automation/sequence-tick-runner.ts`, ~464-477). The unsubscribe and `{{sms_consent_url}}` pages sit under `app/(marketing)`, whose navbar is the platform's (`SiteNavbar.tsx`). A coach's lead who unsubscribes lands on the platform's site.
@@ -997,7 +1006,7 @@ scoreboard below moved on.)*
 | G45 | Small ownership checks | **S** | Not started; needs no owner |
 | G46 | The dev clone has drifted from the migrations | **S** | Dev clone fixed and read back 2026-09-26; drift check built on `worktree-g46-dev-clone-drift`, awaiting merge |
 | G47 | Cloning the built-in quiz copies "Book a call with Darren" | **S** | Built on `worktree-g47-neutral-builtin-quiz` 2026-09-26, awaiting merge |
-| G48 | The `has_user` branch crosses businesses | **S** | Blocked on G37 |
+| G48 | The `has_user` branch crosses businesses | **S** | Blocked on G37; investigated 2026-09-26, owner asked A/B/C |
 | G49 | Unsubscribe and consent links land on the platform's pages | **M** | Later, with coach domains |
 
 **FINISHED IN CODE, NOT FINISHED IN WORDS — these need the owner, not a developer:**
