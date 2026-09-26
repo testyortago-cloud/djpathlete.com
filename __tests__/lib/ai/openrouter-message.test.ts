@@ -6,7 +6,7 @@
 // decides which provider's error the owner reads, so these tests pin WHICH
 // provider was called and WHICH error came out, not just that something did.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { APIError } from "openai"
+import OpenAI, { APIError } from "openai"
 
 const h = vi.hoisted(() => ({
   orCreate: vi.fn(),
@@ -40,7 +40,17 @@ vi.mock("@anthropic-ai/sdk", () => ({
 }))
 
 import { createMessageCompat, toOpenAIMessages } from "@/lib/ai/openrouter-message"
-import { ProviderFallbackError } from "@/lib/ai/openrouter"
+import { ProviderFallbackError, shouldFallBackToAnthropic } from "@/lib/ai/openrouter"
+
+/**
+ * The SDK module is stubbed above, so its real error class comes from the
+ * actual package. Both SDKs' abort classes leave `.name` as "Error"; a fake
+ * named "APIUserAbortError" is not what production throws.
+ */
+async function realAnthropicAbort() {
+  const { APIUserAbortError } = await vi.importActual<typeof import("@anthropic-ai/sdk")>("@anthropic-ai/sdk")
+  return new APIUserAbortError()
+}
 
 // ─── fixtures ────────────────────────────────────────────────────────────────
 
@@ -176,11 +186,58 @@ describe("createMessageCompat — provider routing", () => {
   })
 
   it("does not fall back when the caller aborted — the deadline is not a provider fault", async () => {
-    const abort = Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" })
+    const abort = new OpenAI.APIUserAbortError()
+    expect(abort.name).toBe("Error")
     h.orCreate.mockRejectedValueOnce(abort)
 
     expect(await failureOf(createMessageCompat(base))).toBe(abort)
     expect(h.anthropicStream).not.toHaveBeenCalled()
+  })
+
+  it("does not fall back once the caller's signal has aborted, whatever OpenRouter threw", async () => {
+    // The signal is the one abort marker no bundler can rename. A 503 that
+    // lands as the deadline fires is still a request the caller has given up
+    // on: falling back would spend the time the deadline exists to protect.
+    const controller = new AbortController()
+    controller.abort()
+    const primary = orError(503, "Upstream overloaded")
+    expect(shouldFallBackToAnthropic(primary)).toBe(true) // it WOULD fall back otherwise
+    h.orCreate.mockRejectedValueOnce(primary)
+
+    expect(await failureOf(createMessageCompat({ ...base, signal: controller.signal }))).toBe(primary)
+    expect(h.anthropicStream).not.toHaveBeenCalled()
+  })
+
+  it("rethrows an abort DURING the Anthropic fallback UNWRAPPED, never as ProviderFallbackError", async () => {
+    // Wrapped, the abort would carry OpenRouter's 429 — which every retry loop
+    // reads as transient — and the caller would start another attempt after
+    // its own deadline had already fired.
+    const abort = await realAnthropicAbort()
+    expect(abort.name).toBe("Error")
+    h.orCreate.mockRejectedValueOnce(orError(429, "Rate limit exceeded"))
+    h.anthropicFinal.mockRejectedValueOnce(abort)
+
+    const error = await failureOf(createMessageCompat(base))
+
+    expect(error).toBe(abort)
+    expect(error).not.toBeInstanceOf(ProviderFallbackError)
+  })
+
+  it("rethrows Anthropic's error unwrapped when the signal aborted during the fallback", async () => {
+    // The class check alone would miss an abort whose class a bundler renamed;
+    // the signal cannot be renamed.
+    const controller = new AbortController()
+    const cut = new Error("Request was aborted.")
+    h.orCreate.mockRejectedValueOnce(orError(429, "Rate limit exceeded"))
+    h.anthropicFinal.mockImplementationOnce(async () => {
+      controller.abort()
+      throw cut
+    })
+
+    const error = await failureOf(createMessageCompat({ ...base, signal: controller.signal }))
+
+    expect(error).toBe(cut)
+    expect(h.anthropicStream).toHaveBeenCalledOnce()
   })
 
   it("falls back to Anthropic on an OpenRouter 429 and returns Anthropic's answer", async () => {
@@ -256,7 +313,10 @@ describe("createMessageCompat — tool history", () => {
             { type: "tool_use", id: "toolu_1", name: "list_clients", input: {} },
           ],
         },
-        { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_1", content: '{"clients":["Ana","Ben"]}' }] },
+        {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "toolu_1", content: '{"clients":["Ana","Ben"]}' }],
+        },
       ],
     })
 
@@ -289,7 +349,12 @@ describe("createMessageCompat — tool history", () => {
         role: "assistant",
         content: [
           { type: "text", text: "Looking her up.", citations: null },
-          { type: "tool_use", id: "toolu_9", name: "lookup_client_profile", input: { client_id: "c1", client_name: "Ana" } },
+          {
+            type: "tool_use",
+            id: "toolu_9",
+            name: "lookup_client_profile",
+            input: { client_id: "c1", client_name: "Ana" },
+          },
         ],
       },
       {

@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from "vitest"
+import OpenAI from "openai"
+import Anthropic from "@anthropic-ai/sdk"
 import { createDeadline, DeadlineExceededError, isAbortError } from "../lib/deadline.js"
 
 /** Controllable clock so budget expiry is deterministic (no real waiting). */
@@ -92,7 +94,23 @@ describe("createDeadline", () => {
 })
 
 describe("isAbortError", () => {
-  it("recognizes the Anthropic SDK user-abort error by name", () => {
+  // Both SDKs' APIUserAbortError classes never set `.name`, so a real one reads
+  // "Error" there. The first version of this suite faked the error as
+  // `{ name: "APIUserAbortError" }`, which passed while every REAL abort went
+  // unrecognized: callAgent retried past its deadline and fell back to Haiku.
+  it("recognizes the REAL Anthropic SDK APIUserAbortError, whose .name is only 'Error'", () => {
+    const err = new Anthropic.APIUserAbortError()
+    expect(err.name).toBe("Error")
+    expect(isAbortError(err)).toBe(true)
+  })
+
+  it("recognizes the REAL OpenAI SDK APIUserAbortError — what an OpenRouter call throws on abort", () => {
+    const err = new OpenAI.APIUserAbortError()
+    expect(err.name).toBe("Error")
+    expect(isAbortError(err)).toBe(true)
+  })
+
+  it("still recognizes an error that names itself APIUserAbortError", () => {
     const err = Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" })
     expect(isAbortError(err)).toBe(true)
   })
@@ -111,6 +129,10 @@ describe("isAbortError", () => {
     expect(isAbortError(Object.assign(new Error("overloaded"), { status: 529 }))).toBe(false)
     expect(isAbortError(new Error("boom"))).toBe(false)
     expect(isAbortError(new SyntaxError("bad json"))).toBe(false)
+    // The class check must not collapse into "any SDK error": a real
+    // connection failure is a provider fault, and it has to stay retryable.
+    expect(isAbortError(new OpenAI.APIConnectionError({ message: "Connection error." }))).toBe(false)
+    expect(isAbortError(new Anthropic.APIConnectionTimeoutError())).toBe(false)
     expect(isAbortError(null)).toBe(false)
     expect(isAbortError(undefined)).toBe(false)
   })

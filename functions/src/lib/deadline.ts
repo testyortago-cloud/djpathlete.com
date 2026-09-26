@@ -79,16 +79,25 @@ export function createDeadline(budgetMs: number, label: string, nowFn: () => num
 }
 
 /**
- * True for "the caller aborted", from either the Anthropic SDK
- * (APIUserAbortError) or a raw fetch/DOMException AbortError.
+ * True for "the caller aborted", from either SDK's APIUserAbortError (the
+ * Anthropic one and the OpenAI one OpenRouter calls throw) or a raw
+ * fetch/DOMException AbortError.
  *
  * Load-bearing: an aborted request must NEVER be retried and must NEVER trigger
  * the Haiku fallback — both would spend more wall-clock time after the budget is
  * already gone, which is the exact failure this module prevents.
+ *
+ * WHY THE CONSTRUCTOR NAME. Neither SDK sets `.name` on its error classes, so
+ * a real APIUserAbortError reads plain "Error" there. Checking `.name` alone
+ * recognised only the fakes this module's tests used to build, and a real
+ * abort was retried and fell back past the deadline. The class name is read
+ * rather than `instanceof` because `functions/` resolves both SDKs, and an
+ * `instanceof` against one module copy is false for an error from another.
  */
 export function isAbortError(error: unknown): boolean {
   if (error instanceof DeadlineExceededError) return true
-  const name = (error as { name?: string } | null)?.name
+  const e = error as { name?: unknown; constructor?: { name?: unknown } } | null
+  const name = e?.name
   if (name === "AbortError" || name === "APIUserAbortError" || name === "DeadlineExceededError") return true
-  return false
+  return e?.constructor?.name === "APIUserAbortError"
 }

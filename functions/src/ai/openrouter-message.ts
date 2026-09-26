@@ -5,6 +5,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import {
   canFallBackToAnthropic,
   getOpenRouterClient,
+  isCallerAbort,
   isOpenRouterConfigured,
   ProviderFallbackError,
   shouldFallBackToAnthropic,
@@ -311,12 +312,22 @@ async function viaAnthropic(params: CompatMessageParams): Promise<CompatMessage>
  *
  * This call is not streamed to its caller, so nothing has been handed over by
  * the time OpenRouter fails, and a fallback can never duplicate output.
+ *
+ * WHY AN ABORT IS NEVER WRAPPED. Program chat passes its turn deadline as
+ * `signal`. An abort during the fallback, wrapped, would carry OpenRouter's
+ * status — a 429 or 503, which every retry loop reads as transient — and the
+ * caller would start another attempt after its own deadline had fired. The
+ * signal is checked as well as the error's class because the signal is the one
+ * abort marker a bundler cannot rename.
  */
 export async function createMessageCompat(params: CompatMessageParams): Promise<CompatMessage> {
   if (!isOpenRouterConfigured()) return viaAnthropic(params)
   try {
     return await viaOpenRouter(params)
   } catch (e) {
+    // The caller gave up: nothing after this point would be read, and a
+    // fallback would spend the time the deadline exists to protect.
+    if (params.signal?.aborted || isCallerAbort(e)) throw e
     // Provider availability only. A 400 is our own malformed request and fails
     // identically on Anthropic, so re-throw rather than pay for it twice. A
     // non-Claude model (gpt-6-astra) does not exist on Anthropic: its 404 would
@@ -329,6 +340,7 @@ export async function createMessageCompat(params: CompatMessageParams): Promise<
     try {
       return await viaAnthropic(params)
     } catch (anthropicError) {
+      if (params.signal?.aborted || isCallerAbort(anthropicError)) throw anthropicError
       throw new ProviderFallbackError(e, anthropicError)
     }
   }

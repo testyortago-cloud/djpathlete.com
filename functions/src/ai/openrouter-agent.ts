@@ -5,6 +5,7 @@ import { jsonrepair } from "jsonrepair"
 import type { ZodSchema } from "zod"
 import { getOpenRouterClient } from "./openrouter.js"
 import { buildChatRequest, normalizeUsage, STRUCTURED_OUTPUT_NAME, type MediaPart } from "./openrouter-request.js"
+import { liftStreamStatus } from "./openrouter-stream.js"
 
 /**
  * One structured-output call against OpenRouter.
@@ -12,7 +13,9 @@ import { buildChatRequest, normalizeUsage, STRUCTURED_OUTPUT_NAME, type MediaPar
  * Deliberately imports NOTHING from ai/anthropic.ts: the schema converter and
  * the enum normalizer are passed in. That keeps the dependency acyclic (the
  * dispatcher lives in anthropic.ts and calls this), and it keeps this file
- * testable without dragging the Anthropic SDK in.
+ * testable without the dispatcher's provider wiring. Importing liftStreamStatus
+ * from openrouter-stream does load the Anthropic SDK module transitively,
+ * through openrouter-message; nothing on this path constructs a client from it.
  *
  * No retry loop here either — each caller already wraps this in pRetry with
  * retry semantics that took real incidents to get right, and they differ on
@@ -79,10 +82,21 @@ export async function callAgentViaOpenRouter<T>(
   // Streamed for the same reason the Anthropic path is: a long generation on a
   // non-streaming connection can be cut by an intermediary well before the
   // model is done, and with a 25-minute budget that is not hypothetical.
+  //
+  // A fault that arrives MID-stream reaches us from the SDK as an APIError
+  // with status undefined and OpenRouter's number only in `.code`. Unlifted, a
+  // mid-stream 502 reads as status-less: shouldFallBackToAnthropic treats that
+  // as our own bug, and callAgent's retry sees no transient status, so one
+  // upstream hiccup ended the whole generation. liftStreamStatus leaves an
+  // error that already has a status — or an abort, which has no code — as is.
+  // The SDK runs the request on a timer inside the stream, so every failure,
+  // at connect or mid-stream, surfaces through finalChatCompletion's promise.
   const stream = client.chat.completions.stream(body as Parameters<typeof client.chat.completions.stream>[0], {
     signal: options.signal,
   })
-  const completion = await stream.finalChatCompletion()
+  const completion = await stream.finalChatCompletion().catch((e: unknown) => {
+    throw liftStreamStatus(e, modelId)
+  })
 
   const choice = completion.choices?.[0]
   if (!choice) throw new Error(`No choices in OpenRouter response (model: ${modelId})`)

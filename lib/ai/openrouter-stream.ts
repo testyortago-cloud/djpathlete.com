@@ -297,10 +297,7 @@ export async function* streamWithToolsViaOpenRouter(opts: {
 }): AsyncGenerator<OpenRouterToolStreamEvent> {
   const model = toOpenRouterModel(opts.model)
   const tools = toOpenAITools(opts.tools)
-  let messages: Array<Record<string, unknown>> = [
-    ...toSystemMessages(opts.system),
-    ...toOpenAIMessages(opts.messages),
-  ]
+  let messages: Array<Record<string, unknown>> = [...toSystemMessages(opts.system), ...toOpenAIMessages(opts.messages)]
 
   // prompt_tokens ALREADY includes cached tokens (see normalizeUsage), so these
   // are read and summed, never topped up with a cache counter.

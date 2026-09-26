@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest"
+import OpenAI from "openai"
+import Anthropic from "@anthropic-ai/sdk"
 import {
   buildChatRequest,
   buildSystemMessage,
@@ -208,7 +210,24 @@ describe("shouldFallBackToAnthropic", () => {
   })
 
   it("does NOT fall back on an abort — that is the caller's deadline", () => {
-    expect(shouldFallBackToAnthropic({ name: "AbortError" })).toBe(false)
+    expect(shouldFallBackToAnthropic(new DOMException("This operation was aborted", "AbortError"))).toBe(false)
+  })
+
+  it("does NOT fall back on either SDK's REAL APIUserAbortError, whose .name is only 'Error'", () => {
+    const openaiAbort = new OpenAI.APIUserAbortError()
+    const anthropicAbort = new Anthropic.APIUserAbortError()
+    expect(openaiAbort.name).toBe("Error")
+    expect(shouldFallBackToAnthropic(openaiAbort)).toBe(false)
+    expect(shouldFallBackToAnthropic(anthropicAbort)).toBe(false)
+  })
+
+  it("does NOT fall back on an abort even when its cause chain carries a socket errno", () => {
+    // The caller's deadline wins over whatever the socket was doing when it
+    // was cut: an abort is never a reason to spend more time on another provider.
+    const abort = Object.assign(new OpenAI.APIUserAbortError(), {
+      cause: Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }),
+    })
+    expect(shouldFallBackToAnthropic(abort)).toBe(false)
   })
 
   it("falls back on a socket-level errno", () => {
@@ -216,9 +235,60 @@ describe("shouldFallBackToAnthropic", () => {
     expect(shouldFallBackToAnthropic({ code: "UND_ERR_CONNECT_TIMEOUT" })).toBe(true)
   })
 
-  it("falls back on the SDK's connection error classes", () => {
-    expect(shouldFallBackToAnthropic({ name: "APIConnectionError" })).toBe(true)
-    expect(shouldFallBackToAnthropic({ name: "APIConnectionTimeoutError" })).toBe(true)
+  // The SDK's connection classes never set `.name` (it reads "Error"), and
+  // carry neither `.status` nor `.code`. The first version of these tests faked
+  // `{ name: "APIConnectionError" }`, which is not what production throws — so
+  // a real unreachable OpenRouter never fell back while the suite stayed green.
+  it("falls back on the REAL OpenAI APIConnectionError, which has no name, status or code of its own", () => {
+    const err = new OpenAI.APIConnectionError({ cause: Object.assign(new Error("x"), { code: "ECONNREFUSED" }) })
+    expect(err.name).toBe("Error")
+    expect(err.status).toBeUndefined()
+    expect(err.code).toBeUndefined()
+    expect(shouldFallBackToAnthropic(err)).toBe(true)
+  })
+
+  it("falls back on the REAL OpenAI APIConnectionTimeoutError, which has no cause at all", () => {
+    const err = new OpenAI.APIConnectionTimeoutError()
+    expect(err.name).toBe("Error")
+    expect(err.cause).toBeUndefined()
+    expect(shouldFallBackToAnthropic(err)).toBe(true)
+  })
+
+  it("recognises the classes from ANOTHER copy of the SDK, where instanceof is false", async () => {
+    // functions/ installs its own openai, so the same class exists twice. An
+    // error from the other copy fails `instanceof` against this one, which is
+    // why the class NAME is read as well.
+    const other = await import("../../../functions/node_modules/openai/index.mjs")
+    const timeout = new other.APIConnectionTimeoutError()
+    const abort = new other.APIUserAbortError()
+    expect(timeout).not.toBeInstanceOf(OpenAI.APIConnectionError)
+    expect(abort).not.toBeInstanceOf(OpenAI.APIUserAbortError)
+
+    expect(shouldFallBackToAnthropic(timeout)).toBe(true)
+    expect(shouldFallBackToAnthropic(Object.assign(abort, { cause: { code: "ECONNRESET" } }))).toBe(false)
+  })
+
+  it("reads the errno from the cause chain — undici's 'fetch failed' carries it one level down", () => {
+    // What a raw fetch (or the SDK's connection error) actually looks like:
+    // TypeError("fetch failed") whose .cause is the socket error with the code.
+    const socket = Object.assign(new Error("connect ECONNREFUSED 104.18.2.115:443"), { code: "ECONNREFUSED" })
+    const fetchFailed = new TypeError("fetch failed", { cause: socket })
+    expect(shouldFallBackToAnthropic(fetchFailed)).toBe(true)
+    expect(shouldFallBackToAnthropic(new Error("wrapped", { cause: fetchFailed }))).toBe(true)
+  })
+
+  it("does not follow a cause chain forever", () => {
+    const a = new Error("a") as Error & { cause?: unknown }
+    const b = new Error("b", { cause: a })
+    a.cause = b
+    expect(shouldFallBackToAnthropic(a)).toBe(false)
+  })
+
+  it("does NOT fall back on a status-less error whose cause is not a socket errno", () => {
+    const ours = new TypeError("Cannot read properties of undefined", {
+      cause: Object.assign(new Error("bad arg"), { code: "ERR_INVALID_ARG_TYPE" }),
+    })
+    expect(shouldFallBackToAnthropic(ours)).toBe(false)
   })
 
   it("does NOT fall back on OUR OWN bug that happens to carry no status", () => {
