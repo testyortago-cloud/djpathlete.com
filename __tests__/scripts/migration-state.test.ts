@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import {
+  dynamicDdlFiles,
   findDrift,
   maskComments,
   normalizeCode,
@@ -52,8 +53,35 @@ describe("normalizeCode", () => {
     expect(normalizeCode(`SELECT 'a -- b';`)).not.toBe(normalizeCode(`SELECT 'a ';`))
   })
 
-  it("strips comments inside a nested dollar-quoted string too", () => {
-    expect(normalizeCode(`EXECUTE $q$ SELECT 1; -- note\n $q$;`)).toBe(normalizeCode(`EXECUTE $q$ SELECT 1; $q$;`))
+  it("keeps a nested dollar-quoted string byte for byte, since it may be data", () => {
+    expect(normalizeCode(`x := $t$a -- b$t$;`)).toBe(`x := $t$a -- b$t$;`)
+    expect(normalizeCode(`x := $t$a -- b$t$;`)).not.toBe(normalizeCode(`x := $t$a $t$;`))
+  })
+
+  it("keeps whitespace inside a string literal", () => {
+    expect(normalizeCode(`SELECT 'a  b';`)).not.toBe(normalizeCode(`SELECT 'a b';`))
+  })
+
+  it("reads an E'' string's backslash escape, so a quote inside it does not end it", () => {
+    const one = `x := E'it\\'s -- x'; RETURN 1;`
+    const two = `x := E'it\\'s -- x'; RETURN 2;`
+    expect(normalizeCode(one)).not.toBe(normalizeCode(two))
+  })
+
+  it("does not treat -- inside a quoted identifier as a comment", () => {
+    expect(normalizeCode(`SELECT "a--b" FROM t;`)).toBe(`SELECT "a--b" FROM t;`)
+  })
+})
+
+describe("dynamicDdlFiles", () => {
+  it("finds a file that builds RLS or policy DDL for EXECUTE, and not one that only mentions it", () => {
+    const files = [
+      { name: "a.sql", sql: `DO $$ BEGIN EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t); END $$;` },
+      { name: "b.sql", sql: `DO $$ BEGIN EXECUTE 'CREATE POLICY p ON t USING (true)'; END $$;` },
+      { name: "c.sql", sql: `-- EXECUTE format('ALTER TABLE x ENABLE ROW LEVEL SECURITY')\nALTER TABLE x ENABLE ROW LEVEL SECURITY;` },
+      { name: "d.sql", sql: `DO $$ BEGIN EXECUTE format('REVOKE ALL ON %I FROM anon', t); END $$;` },
+    ]
+    expect(dynamicDdlFiles(files)).toEqual(["a.sql", "b.sql"])
   })
 })
 
@@ -128,6 +156,18 @@ CREATE POLICY old_one ON p FOR SELECT USING (true);
       },
     ])
     expect(s.rls.size).toBe(0)
+  })
+
+  it("adds declared dynamic RLS as the file's last word, where the replay cannot read it", () => {
+    const files = [
+      { name: "001_a.sql", sql: `ALTER TABLE t DISABLE ROW LEVEL SECURITY;` },
+      { name: "002_b.sql", sql: `DO $$ BEGIN EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', 't'); END $$;` },
+    ]
+    expect(readMigrationState(files).rls.get("public.t")).toEqual({ file: "001_a.sql", enabled: false })
+    expect(readMigrationState(files, { "002_b.sql": { rlsEnabled: ["t"] } }).rls.get("public.t")).toEqual({
+      file: "002_b.sql",
+      enabled: true,
+    })
   })
 
   it("drops a table's policies and RLS flag with DROP TABLE", () => {

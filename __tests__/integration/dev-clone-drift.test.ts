@@ -2,7 +2,9 @@
 //
 // Compares the DEV CLONE's catalogs with the state the migrations describe:
 // every function's code (comments and layout ignored) and SECURITY DEFINER
-// flag, every table's row level security flag, and every policy.
+// flag; every RLS flag a plain ALTER TABLE sets, plus those declared in DYNAMIC
+// below; and that every policy the migrations create exists, BY NAME (not its
+// roles or expressions, and not that a dropped one is gone).
 //
 // WHY THIS EXISTS (G46). The clone is written to by hand — apply.mjs refuses it,
 // so each session POSTs its own migration — and its supabase_migrations ledger
@@ -28,7 +30,15 @@
 import { describe, it, expect, beforeAll } from "vitest"
 import { readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
-import { findDrift, readMigrationState, type Drift, type LiveState } from "@/scripts/lib/migration-state"
+import {
+  dynamicDdlFiles,
+  findDrift,
+  readMigrationState,
+  type DynamicDeclarations,
+  type Drift,
+  type LiveState,
+  type MigrationFile,
+} from "@/scripts/lib/migration-state"
 
 const CLONE_REF = "anjvztjiokcgiyhobknq"
 const MIGRATIONS = path.resolve(__dirname, "../../supabase/migrations")
@@ -48,6 +58,35 @@ const KNOWN_ABSENT: { table: string; why: string }[] = [
       "cannot exist until it does. Production has both (read 2026-09-26).",
   },
 ]
+
+/**
+ * Migrations that set RLS with dynamic SQL, which the replay cannot read, and
+ * the tables a human read off each one. A ratchet like KNOWN_ABSENT: every file
+ * `dynamicDdlFiles` finds must be listed here and every entry must still be
+ * found, so a new dynamic migration fails the run until someone writes down
+ * what it does. The declared tables are then checked live like any other.
+ */
+const DYNAMIC: DynamicDeclarations = {
+  // Its `tables` array, read 2026-09-26. The thirteenth entry, repo_migrations,
+  // is left out: 00274 lists it as may-be-absent, and it is absent on the clone
+  // (that absence is why scripts/migrations/apply.mjs refuses the clone).
+  "00274_enable_rls_on_open_tables.sql": {
+    rlsEnabled: [
+      "agent_tool_baselines",
+      "assessment_questions",
+      "assessment_results",
+      "chief_strategist_memos",
+      "coach_ai_policy",
+      "event_signups",
+      "events",
+      "exercise_blocks",
+      "generated_exercise_usage",
+      "membership_plans",
+      "program_week_access",
+      "program_week_pricing",
+    ],
+  },
+}
 
 async function query<T>(sql: string): Promise<T[]> {
   const res = await fetch(`https://api.supabase.com/v1/projects/${CLONE_REF}/database/query`, {
@@ -79,6 +118,7 @@ function describeDrift(d: Drift): string {
 describe("dev clone matches the migrations", () => {
   let drift: Drift[]
   let liveTables: Set<string>
+  let files: MigrationFile[]
 
   beforeAll(async () => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""
@@ -87,11 +127,13 @@ describe("dev clone matches the migrations", () => {
     }
     if (!process.env.SUPABASE_ACCESS_TOKEN) throw new Error("SUPABASE_ACCESS_TOKEN is not set in .env.local")
 
-    const files = readdirSync(MIGRATIONS)
-      .filter((f) => /^\d+_.*\.sql$/.test(f))
+    // Every .sql, in the order scripts/migrations/apply.mjs applies them
+    // (which includes 00142b_...).
+    files = readdirSync(MIGRATIONS)
+      .filter((f) => f.endsWith(".sql"))
       .sort()
       .map((name) => ({ name, sql: readFileSync(path.join(MIGRATIONS, name), "utf8") }))
-    const expected = readMigrationState(files)
+    const expected = readMigrationState(files, DYNAMIC)
 
     const [functions, tables, policies] = await Promise.all([
       query<LiveState["functions"][number]>(`
@@ -120,5 +162,9 @@ describe("dev clone matches the migrations", () => {
     const reported = new Set(drift.filter((d) => d.kind === "table_missing").map((d) => d.object))
     const stale = KNOWN_ABSENT.filter((k) => liveTables.has(k.table) || !reported.has(k.table)).map((k) => k.table)
     expect(stale).toEqual([])
+  })
+
+  it("DYNAMIC names exactly the migrations that set RLS or policies with dynamic SQL", () => {
+    expect(dynamicDdlFiles(files)).toEqual(Object.keys(DYNAMIC).sort())
   })
 })

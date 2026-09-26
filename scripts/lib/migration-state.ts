@@ -12,14 +12,19 @@
 // that touches it:
 //   - functions: the body between the dollar quotes, and SECURITY DEFINER or not.
 //     A later DROP FUNCTION removes the expectation.
-//   - row level security: the last ENABLE / DISABLE ROW LEVEL SECURITY per table.
-//   - policies: every CREATE POLICY not later dropped (DROP POLICY, or DROP TABLE).
+//   - row level security: the last plain ALTER TABLE ... ENABLE / DISABLE ROW
+//     LEVEL SECURITY per table, plus what a caller declares for a migration that
+//     does it with dynamic SQL (`dynamic`, below).
+//   - policies: that every CREATE POLICY not later dropped EXISTS, BY NAME. Not
+//     its roles, command, USING or WITH CHECK; not that a dropped one is gone;
+//     not that the table has no extra policy.
 //
-// WHAT IT CANNOT SEE: anything created with dynamic SQL (EXECUTE format(...)),
-// grants, columns, indexes, triggers, a function's argument list or its
-// search_path, and overloads (functions are keyed on schema.name, so only the
-// last definition of a name is expected). Statements inside a DO block are read
-// as if unconditional.
+// WHAT IT CANNOT SEE: grants, columns, indexes, triggers, a function's argument
+// list or its search_path, and overloads (functions are keyed on schema.name,
+// so only the last definition of a name is expected, and any live overload
+// matching it passes). Dynamic SQL is invisible unless declared; `dynamicDdlFiles`
+// finds the files that use it so the caller can be made to declare them.
+// Statements inside a DO block are read as if unconditional.
 
 export interface MigrationFile {
   name: string
@@ -40,104 +45,116 @@ export interface MigrationState {
   policies: Map<string, { file: string }>
 }
 
+/** What a human read off a migration whose RLS statements are dynamic SQL. */
+export type DynamicDeclarations = Record<string, { rlsEnabled: string[] }>
+
+const DOLLAR_TAG = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/
+
 /**
- * Replaces every comment with spaces of the same length, leaving string
- * literals and dollar-quoted bodies intact, so offsets into the result are
+ * If a literal or quoted identifier starts at `i`, the index just past it.
+ * Handles '...' (with '' escapes), E'...' (with backslash escapes), "..." (with
+ * "" escapes) and $tag$...$tag$. Returns -1 when nothing starts at `i`.
+ */
+function literalEnd(sql: string, i: number): number {
+  const c = sql[i]
+  const isEString = (c === "E" || c === "e") && sql[i + 1] === "'" && !/[A-Za-z0-9_]/.test(sql[i - 1] ?? "")
+  if (c === "'" || c === '"' || isEString) {
+    const quote = isEString ? "'" : c
+    let j = isEString ? i + 2 : i + 1
+    while (j < sql.length) {
+      if (isEString && sql[j] === "\\") j += 2
+      else if (sql[j] === quote && sql[j + 1] === quote) j += 2
+      else if (sql[j] === quote) return j + 1
+      else j++
+    }
+    return sql.length
+  }
+  if (c === "$") {
+    const tag = sql.slice(i).match(DOLLAR_TAG)
+    if (!tag) return -1
+    const end = sql.indexOf(tag[0], i + tag[0].length)
+    return end === -1 ? sql.length : end + tag[0].length
+  }
+  return -1
+}
+
+/** If a comment starts at `i`, the index just past it; otherwise -1. */
+function commentEnd(sql: string, i: number): number {
+  if (sql[i] === "-" && sql[i + 1] === "-") {
+    const end = sql.indexOf("\n", i)
+    return end === -1 ? sql.length : end
+  }
+  if (sql[i] === "/" && sql[i + 1] === "*") {
+    const end = sql.indexOf("*/", i + 2)
+    return end === -1 ? sql.length : end + 2
+  }
+  return -1
+}
+
+/**
+ * Replaces every comment with spaces (newlines kept), leaving literals, quoted
+ * identifiers and dollar-quoted bodies intact, so offsets into the result are
  * offsets into the input.
  */
 export function maskComments(sql: string): string {
   let out = ""
   let i = 0
   while (i < sql.length) {
-    const c = sql[i]
-    if (c === "-" && sql[i + 1] === "-") {
-      const end = sql.indexOf("\n", i)
-      const stop = end === -1 ? sql.length : end
-      out += " ".repeat(stop - i)
-      i = stop
-    } else if (c === "/" && sql[i + 1] === "*") {
-      const end = sql.indexOf("*/", i + 2)
-      const stop = end === -1 ? sql.length : end + 2
-      out += sql.slice(i, stop).replace(/[^\n]/g, " ")
-      i = stop
-    } else if (c === "'") {
-      let j = i + 1
-      while (j < sql.length) {
-        if (sql[j] === "'" && sql[j + 1] === "'") j += 2
-        else if (sql[j] === "'") break
-        else j++
-      }
-      out += sql.slice(i, j + 1)
-      i = j + 1
-    } else if (c === "$") {
-      const tag = sql.slice(i).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/)
-      if (!tag) {
-        out += c
-        i++
-        continue
-      }
-      // A dollar-quoted string: copy it verbatim, comments inside included.
-      // Masking inside it is the caller's business (normalizeCode recurses).
-      const end = sql.indexOf(tag[0], i + tag[0].length)
-      const stop = end === -1 ? sql.length : end + tag[0].length
-      out += sql.slice(i, stop)
-      i = stop
-    } else {
-      out += c
-      i++
+    const lit = literalEnd(sql, i)
+    if (lit !== -1) {
+      out += sql.slice(i, lit)
+      i = lit
+      continue
     }
+    const com = commentEnd(sql, i)
+    if (com !== -1) {
+      out += sql.slice(i, com).replace(/[^\n]/g, " ")
+      i = com
+      continue
+    }
+    out += sql[i]
+    i++
   }
   return out
 }
 
 /**
- * A function body reduced to its code: comments removed (outside string
- * literals, and inside nested dollar quotes too), whitespace collapsed. Two
- * bodies that differ only in comments or layout normalise to the same string.
+ * A function body reduced to its code: comments removed and whitespace between
+ * tokens collapsed to one space. Literals, quoted identifiers and nested
+ * dollar-quoted strings are kept byte for byte, so two bodies normalise to the
+ * same string only if they differ in comments or layout and nothing else.
  */
 export function normalizeCode(body: string): string {
   let out = ""
+  let pendingSpace = false
+  const emit = (text: string) => {
+    if (pendingSpace && out.length > 0) out += " "
+    pendingSpace = false
+    out += text
+  }
   let i = 0
   while (i < body.length) {
-    const c = body[i]
-    if (c === "-" && body[i + 1] === "-") {
-      const end = body.indexOf("\n", i)
-      i = end === -1 ? body.length : end
-      out += " "
-    } else if (c === "/" && body[i + 1] === "*") {
-      const end = body.indexOf("*/", i + 2)
-      i = end === -1 ? body.length : end + 2
-      out += " "
-    } else if (c === "'") {
-      let j = i + 1
-      while (j < body.length) {
-        if (body[j] === "'" && body[j + 1] === "'") j += 2
-        else if (body[j] === "'") break
-        else j++
-      }
-      out += body.slice(i, j + 1)
-      i = j + 1
-    } else if (c === "$") {
-      const tag = body.slice(i).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/)
-      if (!tag) {
-        out += c
-        i++
-        continue
-      }
-      const start = i + tag[0].length
-      const end = body.indexOf(tag[0], start)
-      const inner = end === -1 ? body.slice(start) : body.slice(start, end)
-      out += `${tag[0]}${normalizeCode(inner)}${tag[0]}`
-      i = end === -1 ? body.length : end + tag[0].length
-    } else if (/\s/.test(c)) {
-      while (i < body.length && /\s/.test(body[i])) i++
-      out += " "
-    } else {
-      out += c
-      i++
+    const lit = literalEnd(body, i)
+    if (lit !== -1) {
+      emit(body.slice(i, lit))
+      i = lit
+      continue
     }
+    const com = commentEnd(body, i)
+    if (com !== -1) {
+      pendingSpace = true
+      i = com
+      continue
+    }
+    if (/\s/.test(body[i])) {
+      pendingSpace = true
+      i++
+      continue
+    }
+    emit(body[i])
+    i++
   }
-  return out.replace(/\s+/g, " ").trim()
+  return out
 }
 
 const IDENT = String.raw`(?:"[^"]+"|[A-Za-z_][A-Za-z0-9_]*)`
@@ -153,6 +170,16 @@ export function qualify(name: string): string {
   return second === undefined ? `public.${unquote(first)}` : `${unquote(first)}.${unquote(second)}`
 }
 
+/**
+ * The files that build RLS or policy statements as strings for EXECUTE, which
+ * the replay cannot read. Matched on the masked text, so a comment mentioning
+ * EXECUTE does not count.
+ */
+export function dynamicDdlFiles(files: MigrationFile[]): string[] {
+  const re = /\bexecute\s+(?:format\s*\(\s*)?(?:'|\$[A-Za-z_]*\$)[^;]*?(?:row\s+level\s+security|\bpolicy\b)/i
+  return files.filter((f) => re.test(maskComments(f.sql))).map((f) => f.name)
+}
+
 type Event =
   | { at: number; kind: "fn"; key: string; fn: ExpectedFunction }
   | { at: number; kind: "dropfn"; key: string }
@@ -161,7 +188,7 @@ type Event =
   | { at: number; kind: "droppolicy"; key: string }
   | { at: number; kind: "droptable"; key: string }
 
-function eventsOf(file: MigrationFile): Event[] {
+function eventsOf(file: MigrationFile, dynamic: DynamicDeclarations): Event[] {
   const raw = file.sql
   const masked = maskComments(raw)
   const events: Event[] = []
@@ -225,14 +252,19 @@ function eventsOf(file: MigrationFile): Event[] {
   ]
   for (const [re, make] of patterns) for (const m of outside.matchAll(re)) events.push(make(m))
 
+  // Declared dynamic statements count as the file's last word.
+  for (const table of dynamic[file.name]?.rlsEnabled ?? []) {
+    events.push({ at: raw.length, kind: "rls", key: qualify(table), enabled: true })
+  }
+
   return events.sort((a, b) => a.at - b.at)
 }
 
 /** Replays the files in the order given. Pass them sorted by filename. */
-export function readMigrationState(files: MigrationFile[]): MigrationState {
+export function readMigrationState(files: MigrationFile[], dynamic: DynamicDeclarations = {}): MigrationState {
   const state: MigrationState = { functions: new Map(), rls: new Map(), policies: new Map() }
   for (const file of files) {
-    for (const e of eventsOf(file)) {
+    for (const e of eventsOf(file, dynamic)) {
       switch (e.kind) {
         case "fn":
           state.functions.set(e.key, e.fn)

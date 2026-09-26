@@ -38,10 +38,13 @@ deploy, and it needs the `DEV_CLONE_SERVICE_ROLE_KEY` repository secret.
 **Run `npm run test:integration:drift` after applying a migration to the dev clone.** The clone is written to by
 hand and its `supabase_migrations` ledger does not say what ran: in G46 it listed `00256` while the clone ran
 the body from before 00256's review fix, and `00231`'s RLS was simply off. This compares the clone's catalogs
-with the migrations: each function's code (comments and layout ignored) and SECURITY DEFINER flag, each
-table's RLS flag, and each policy (`scripts/lib/migration-state.ts`). It is local only (it needs
-`SUPABASE_ACCESS_TOKEN`, which CI does not have), read-only, and fixed to the clone's project ref.
-`KNOWN_ABSENT` is a ratchet like the two above.
+with the migrations (`scripts/lib/migration-state.ts`): each function's code (comments and layout ignored)
+and SECURITY DEFINER flag; each RLS flag a plain `ALTER TABLE` sets; and that each policy the migrations
+create exists, **by name only** (not its roles or expressions, and not that a dropped one is gone). Dynamic
+SQL is invisible to it, so a migration that sets RLS or policies through `EXECUTE` must be declared in
+`DYNAMIC` with the tables a human read off it (today: `00274`). `DYNAMIC` and `KNOWN_ABSENT` are ratchets
+like the two above. It is read-only and fixed to the clone's project ref, and it needs
+`SUPABASE_ACCESS_TOKEN`. No workflow runs it; run it locally.
 
 ## Architecture
 
