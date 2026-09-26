@@ -18,7 +18,9 @@
 // the inquiry route now passes the application form's "Sport / Activity"
 // answer into the event metadata, so `sport` became an ENROLMENT_METADATA_KEYS
 // entry, which is also what made it a branchable key in the editor. It is
-// blank for anyone who came in through a door that does not ask it.
+// blank for anyone whose front door does not pass it on: the event signup and
+// checkout routes collect a sport too and do not (yet) pass it; a funnel form
+// with a field named `sport` does, since a funnel passes its whole payload.
 //
 // WHY `{{goals}}` IS NOT. It is FREE PROSE, and enrolment-metadata.ts says in
 // as many words that its 120-character cap exists so "nothing resembling prose
@@ -71,7 +73,15 @@ const KNOWN = new Set<string>([...MERGE_FIELD_KEYS, ...LINK_PLACEHOLDER_KEYS])
  * cannot forget it.
  */
 function oneLine(value: string | null | undefined): string {
-  return value?.replace(/[\r\n]+/g, " ").trim() ?? ""
+  // Braces go too (G16 review). email.ts fills `{{sms_consent_url}}` in AFTER
+  // this, on the merged body, so a value that carried a token would become a
+  // live consent link for whoever typed it. No name or answer needs a brace.
+  return (
+    value
+      ?.replace(/[\r\n]+/g, " ")
+      .replace(/[{}]/g, "")
+      .trim() ?? ""
+  )
 }
 
 /**
@@ -97,7 +107,7 @@ export function firstNameOf(contactName: string | null | undefined): string {
  * Fills in every merge field, and BLANKS the ones nobody wrote.
  *
  * An unknown token renders as nothing, which is the same answer a known token
- * with no value gives. The alternative is shipping `{{sport}}` as visible
+ * with no value gives. The alternative is shipping `{{goals}}` as visible
  * template syntax to a real person — the failure this repo already guards
  * against for `{{sms_consent_url}}`, there by throwing, because that one is a
  * link on a consent page and a silent blank would be worse. For a

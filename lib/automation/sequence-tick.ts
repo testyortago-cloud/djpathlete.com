@@ -186,10 +186,13 @@ export function evaluateBranch(
       // would kill those runs the moment a coach added this branch.
       const remembered = ctx.enrolmentMetadata[condition.key]
       if (typeof remembered !== "string") return { ok: true, value: false }
-      // Case- and space-insensitive. The stored side is machine-written
-      // (`camp`, `parent`, `in_person`); the compared side is typed by a
-      // coach into a text box, and a branch that silently never matches
-      // because of a capital letter is the worst way to learn that.
+      // Case- and space-insensitive. The stored side is mostly machine-written
+      // (`camp`, `parent`, `in_person`), but `camp_name` is an owner's title
+      // and `sport` (G16) is what an applicant typed; the compared side is
+      // typed by a coach into a text box, and a branch that silently never
+      // matches because of a capital letter is the worst way to learn that.
+      // Only the ends are trimmed: "Track  and Field" with two spaces inside
+      // does not match "track and field".
       //
       // NO SEPARATE "the coach left the box blank" CHECK. One was written
       // here and removed: it could never change an answer, because a blank

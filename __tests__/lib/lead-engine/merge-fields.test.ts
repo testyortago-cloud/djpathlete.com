@@ -71,6 +71,20 @@ describe("substituteMergeFields", () => {
     expect(out).toBe("Hi Sam, about Summer Camp 2026 (camp) — Sam Athlete")
   })
 
+  it("cannot be made to splice in a token a LATER pass fills in (G16 review)", () => {
+    // email.ts substitutes {{sms_consent_url}} AFTER this function runs, on
+    // the already-merged body. An applicant who typed "{{sms_consent_url}}" as
+    // their sport would otherwise receive a live consent link in any step that
+    // says {{sport}}. The same door is open through the contact's name.
+    const out = substituteMergeFields("Your {{sport}} plan, {{name}}", {
+      contactName: "Sam {{sms_consent_url}}",
+      metadata: { sport: "{{sms_consent_url}}" },
+    })
+    expect(out).not.toContain("{{")
+    expect(out).not.toContain("}}")
+    expect(out).toBe("Your sms_consent_url plan, Sam sms_consent_url")
+  })
+
   it("fills in {{sport}} from the run's memory (G16)", () => {
     expect(substituteMergeFields("Your {{sport}} plan", { contactName: "Sam", metadata: { sport: "Soccer" } })).toBe(
       "Your Soccer plan",

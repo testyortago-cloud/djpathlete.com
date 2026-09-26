@@ -163,7 +163,7 @@ const ENROLMENT_METADATA_KEY_LABEL: Record<EnrolmentMetadataKey, string> = {
   quiz_key: "Which quiz they took",
   branch: "Which quiz result they got",
   tier: "Which quiz level they scored",
-  sport: "Which sport they wrote on the application form",
+  sport: "Which sport they wrote on a form",
 }
 
 /** The answers a coach will nearly always want, shown under the box. */
@@ -737,7 +737,7 @@ const SEQUENCE_SOURCES_WITH_AN_ANCHOR = new Set(["event_signup"])
  * What the reader will actually see where a `{{token}}` sits.
  *
  * WRITTEN FOR A COACH, NOT A PROGRAMMER — no "merge field", no "placeholder",
- * no "token". A person typing `{{sport}}` into a subject line has a perfectly
+ * no "token". A person typing `{{goals}}` into a subject line has a perfectly
  * reasonable expectation, and the only useful thing to tell them is that it
  * will come out blank and which words do work.
  *

@@ -24,11 +24,13 @@
 // whatever a stranger typed.
 //
 // So the value is guarded too: scalars only, trimmed, length-capped, and
-// never something shaped like an email address or a phone number. Nothing on
-// production reaches that path today (0 funnel submissions, and no funnel
-// field is named after an allow-listed key) — this is the guard being in
-// place before the path is, which is the only order that works for a column
-// that persists.
+// never something shaped like an email address or a phone number. When this
+// was written nothing on production reached that path (0 funnel submissions,
+// and no funnel field named after an allow-listed key) — the guard was in
+// place before the path, which is the only order that works for a column that
+// persists. G16 made it likelier: `sport` is also a funnel field ROLE
+// (lib/funnels/islands.ts), so an owner may well name a field `sport`, and
+// its answer then reaches runs, `{{sport}}` and branches through these guards.
 //
 // A dropped value is ABSENT, never truncated or redacted-in-place. An absent
 // key makes `enrolled_metadata_is` false, which is a visible, correct "this
@@ -57,7 +59,11 @@
  *                 characters by `inquiryFormSchema`. It takes the strict
  *                 digit rule below, and `enrolled_metadata_is` compares
  *                 ignoring case and spaces, so "Soccer" matches a coach's
- *                 "soccer". It is also the `{{sport}}` merge field.
+ *                 "soccer". It is also the `{{sport}}` merge field. A
+ *                 funnel form with a field named `sport` is a second
+ *                 producer (lib/funnels/capture-contact.ts passes the whole
+ *                 payload); the event routes collect a sport and do not
+ *                 pass it.
  *
  * Adding a key here widens what a coach can branch on — see
  * `branchConditionSchema` (lib/validators/sequence-admin.ts), which takes its
