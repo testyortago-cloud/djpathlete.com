@@ -995,13 +995,13 @@ async function resolveRoutedPipelineKey(
  * NON-DEFAULT board this tenant has not been seeded with, instead of
  * throwing.
  *
- * `create_business()` (migration 00249) seeds every new tenant with
- * `coaching` ONLY; `camps_clinics` and `assessment` exist only where a later
- * migration (00257) or a future board-editor save added them. The moment a
- * caller can route to a board other than `coaching`, that gap becomes
- * reachable for any tenant seeded before those boards existed — every
- * business on the dev clone except the platform's own, and every tenant
- * `create_business()` creates until it is taught to seed all three. The
+ * `create_business()` seeds every new tenant with all three boards —
+ * `coaching`, `camps_clinics` and `assessment` — through
+ * `seed_business_starter_set()` (migration 00279), which also backfilled
+ * every business that already existed. This fallback stays anyway: a board
+ * missing for a given tenant today means the coach archived it by hand
+ * (`pipelines.status = 'archived'`), or a still-later migration adds a
+ * fourth board that an older business has not been backfilled with yet. The
  * spec's own fallback rule ("an unroutable event lands on Coaching — it must
  * not throw and must not vanish", §3.2) applies here for the identical
  * reason: a board missing for THIS tenant is exactly as unroutable as a
@@ -1877,8 +1877,11 @@ async function readLastContactActivity(
  * ACTIVE ONLY. `pipelines.status` is `'active' | 'archived'` (00219); an
  * archived board is one the coach retired, and offering it as a pill would
  * invite them back into it. Ordered by `created_at` so the pills keep a
- * meaningful order — `coaching` is seeded first for every tenant
- * (`create_business()`, 00249), so the default board leads.
+ * meaningful order — every business lists `coaching` first, because
+ * `seed_business_starter_set()` (00279, called by `create_business()` and by
+ * that migration's own backfill) stamps `camps_clinics` and `assessment`
+ * `now() + 1 millisecond`, one tick after the shared `now()` the rest of the
+ * transaction — `coaching` included — gets.
  *
  * `key` IS THE SECOND SORT, AND IT IS LOAD-BEARING. Boards seeded by the SAME
  * migration are inserted in one transaction and carry byte-identical

@@ -47,10 +47,11 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   //     — the whole page becomes the admin error boundary, reachable by
   //     editing the URL.
   //  2. A key can be perfectly real and still not exist HERE.
-  //     `create_business()` (00249) seeds `coaching` only, so
-  //     `?board=assessment` names a board most tenants have never had. A
-  //     validator built from a constant list of keys would wave that through
-  //     and fail the same way as (1).
+  //     `create_business()` seeds every tenant with all three boards
+  //     (`seed_business_starter_set()`, 00279), but a coach can archive one
+  //     by hand, so `?board=assessment` can still name a board that tenant no
+  //     longer has active. A validator built from a constant list of keys
+  //     would wave that through and fail the same way as (1).
   //
   // Anything that does not survive that check falls back to the default board
   // rather than erroring — the same rule `resolvePipelineWithFallback` applies
@@ -127,8 +128,10 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
           </Link>
         </div>
       </div>
-      {/* One board is not a choice. Every tenant create_business() has made has
-          exactly one, and a lone pill would be chrome that does nothing. */}
+      {/* A single board is not a choice. Every tenant starts with all three
+          boards (`create_business()`, 00279); this list can still be one if
+          a coach has archived the other two by hand, and a lone pill would
+          be chrome that does nothing. */}
       {boards.length > 1 && <BoardSwitcher boards={boards} activeKey={activeKey} />}
       <PipelineBoard columns={columns} grantablePrograms={grantablePrograms} />
     </div>

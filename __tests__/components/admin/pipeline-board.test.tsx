@@ -201,7 +201,9 @@ describe("<PipelinePage>", () => {
     vi.clearAllMocks()
     ;(requirePermission as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "admin" } })
     ;(readBoard as ReturnType<typeof vi.fn>).mockResolvedValue([])
-    // One board — the shape every tenant create_business() seeds (00249).
+    // One board — every business actually starts with all three
+    // (create_business(), 00279); this default simulates a tenant who has
+    // archived the other two, the shape most of these tests exercise.
     ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
       { id: "pipe-coaching", key: "coaching", name: "Coaching" },
     ])
@@ -254,10 +256,10 @@ describe("<PipelinePage>", () => {
     })
 
     it("is not rendered when the tenant has only one board", async () => {
-      // MUTANT: render it unconditionally — every single-board tenant (which
-      // is every tenant create_business() has ever made) gets a one-pill
-      // switcher that does nothing. The control below proves this assertion
-      // is not simply passing because nothing rendered.
+      // MUTANT: render it unconditionally — a tenant who has archived down to
+      // one board (every tenant starts with all three, create_business(),
+      // 00279) gets a one-pill switcher that does nothing. The control below
+      // proves this assertion is not simply passing because nothing rendered.
       const { container } = render(await PipelinePage({ searchParams: Promise.resolve({}) }))
 
       expect(container.querySelector("nav")).toBeNull()

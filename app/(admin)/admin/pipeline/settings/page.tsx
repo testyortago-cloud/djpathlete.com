@@ -41,9 +41,10 @@ export default async function PipelineSettingsPage({ searchParams }: { searchPar
     boards.find((b) => b.key === requestedBoard) ?? boards.find((b) => b.key === DEFAULT_PIPELINE_KEY) ?? boards[0]
 
   if (!activeBoard) {
-    // `create_business()` seeds a `coaching` board, so this is close to
-    // unreachable — but rendering an editor with no board to edit would be a
-    // crash, and "there is nothing here" is a sentence, not an exception.
+    // `create_business()` seeds all three boards (`seed_business_starter_set()`,
+    // 00279), so this needs a coach to have archived all of them to reach —
+    // but rendering an editor with no board to edit would be a crash, and
+    // "there is nothing here" is a sentence, not an exception.
     return (
       <div className="space-y-6">
         <Header activeKey={null} />
