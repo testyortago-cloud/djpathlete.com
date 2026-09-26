@@ -68,11 +68,21 @@ export const PLATFORM_TIER_CTAS: Record<string, { ctaLabel: string; ctaHref: str
   green: { ctaLabel: "See what an assessment covers", ctaHref: "/assessment" },
 }
 
+function platformButton(tierKey: string): { ctaLabel: string; ctaHref: string } {
+  const cta = PLATFORM_TIER_CTAS[tierKey]
+  if (!cta) throw new Error(`no platform button for tier "${tierKey}"; add it to PLATFORM_TIER_CTAS`)
+  return cta
+}
+
+/** The seed with this platform's buttons on every band: what this script actually writes. */
+export function platformQuiz(quiz: SeedQuiz): SeedQuiz {
+  return { ...quiz, tiers: quiz.tiers.map((t) => ({ ...t, ...platformButton(t.key) })) }
+}
+
 /** The quiz_tiers rows this script inserts: the seed's bands, with this platform's buttons. */
 export function platformTierRows(quiz: SeedQuiz): Record<string, unknown>[] {
   return quiz.tiers.map((t) => {
-    const cta = PLATFORM_TIER_CTAS[t.key]
-    if (!cta) throw new Error(`no platform button for tier "${t.key}"; add it to PLATFORM_TIER_CTAS`)
+    const cta = platformButton(t.key)
     return {
       key: t.key,
       position: t.position,
@@ -131,7 +141,9 @@ async function main(): Promise<void> {
   // THE GATE RUNS BEFORE ANYTHING IS WRITTEN. The seed is a typed module
   // precisely so this is possible; a quiz that could not go active has no
   // business being inserted.
-  const gate = quizGate(toDefinition(RPI_ATHLETE_QUIZ))
+  // Gated WITH this platform's buttons, since those are the rows it writes: the
+  // neutral module alone would warn four times about buttons it then inserts.
+  const gate = quizGate(toDefinition(platformQuiz(RPI_ATHLETE_QUIZ)))
   console.log(`gate     : ${gate.ok ? "ok" : "FAILED"}${gate.warnings.length ? ` (${gate.warnings.length} warning(s))` : ""}`)
   for (const warning of gate.warnings) console.log(`  warn: ${warning}`)
   if (!gate.ok) {

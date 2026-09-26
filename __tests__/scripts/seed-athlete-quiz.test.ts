@@ -3,8 +3,9 @@
 // (which any business can clone) and into the script that seeds only this
 // platform's quiz. These pin that the script now writes them, one per band.
 import { describe, expect, it } from "vitest"
-import { PLATFORM_TIER_CTAS, platformTierRows } from "@/scripts/seed-athlete-quiz"
-import { RPI_ATHLETE_QUIZ } from "@/lib/quizzes/seed/rpi-athlete-quiz"
+import { PLATFORM_TIER_CTAS, platformQuiz, platformTierRows } from "@/scripts/seed-athlete-quiz"
+import { RPI_ATHLETE_QUIZ, toDefinition } from "@/lib/quizzes/seed/rpi-athlete-quiz"
+import { quizGate } from "@/lib/quizzes/gate"
 
 describe("scripts/seed-athlete-quiz.ts tier rows", () => {
   it("writes this platform's button on every band of its own quiz", () => {
@@ -33,6 +34,10 @@ describe("scripts/seed-athlete-quiz.ts tier rows", () => {
   it("refuses a band it has no button for, rather than seeding a dead end", () => {
     const quiz = { ...RPI_ATHLETE_QUIZ, tiers: [...RPI_ATHLETE_QUIZ.tiers, { ...RPI_ATHLETE_QUIZ.tiers[0], key: "violet" }] }
     expect(() => platformTierRows(quiz)).toThrow(/no platform button for tier "violet"/)
+  })
+
+  it("gates what it writes: with this platform's buttons the quiz raises no warning", () => {
+    expect(quizGate(toDefinition(platformQuiz(RPI_ATHLETE_QUIZ))).warnings).toEqual([])
   })
 
   it("has a button for exactly the seed's bands", () => {

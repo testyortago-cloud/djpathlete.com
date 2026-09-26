@@ -15,12 +15,12 @@ const QUIZ_ID = "5f2b7c1e-0000-4000-8000-000000000001"
 
 describe("buildQuizFunnelDoc", () => {
   it("validates against the section grammar", () => {
-    const result = sectionDocSchema.safeParse(buildQuizFunnelDoc({ quizId: QUIZ_ID }))
+    const result = sectionDocSchema.safeParse(buildQuizFunnelDoc({ quizId: QUIZ_ID, businessName: "Trailhead Strength" }))
     expect(result.success).toBe(true)
   })
 
   it("points the quiz section at the quiz it was given", () => {
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, businessName: "Trailhead Strength" })
     const quiz = doc.sections.find((section) => section.kind === "quiz")
     expect(quiz).toBeTruthy()
     expect((quiz!.props as { quizId: string }).quizId).toBe(QUIZ_ID)
@@ -31,7 +31,7 @@ describe("buildQuizFunnelDoc", () => {
     // measured at 1440x900 the document was 1038px in a 900px viewport, so the
     // quiz was already on screen and the hero's "Start the quiz" scrolled 138px
     // and started nothing. Three headings, two buttons, one of them a decoy.
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, businessName: "Trailhead Strength" })
     expect(doc.sections.map((section) => section.kind)).not.toContain("hero")
   })
 
@@ -39,12 +39,12 @@ describe("buildQuizFunnelDoc", () => {
     // MUTANT KILLED: put a CTA anywhere on this document. Starting the quiz is
     // a state inside the island — no link or anchor can reach it — so any
     // button this page adds is decoration that looks like the way in.
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, businessName: "Trailhead Strength" })
     expect(JSON.stringify(doc)).not.toMatch(/"primaryCta"|"secondaryCta"|"anchor"/)
   })
 
   it("opens on the quiz", () => {
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, businessName: "Trailhead Strength" })
     expect(doc.sections[0].kind).toBe("quiz")
   })
 
@@ -53,20 +53,20 @@ describe("buildQuizFunnelDoc", () => {
     // the longest name that can reach here fits. Pinned because a prose cap
     // rejecting a whole payload is a failure this repo has paid for before:
     // the document is built AFTER the quiz has already been inserted.
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, businessName: "Trailhead Strength" })
     expect(sectionDocSchema.safeParse(doc).success).toBe(true)
   })
 
   it("does not repeat the heading on the quiz section itself", () => {
     // The island renders the quiz's own `introHeadline`, so a section heading
     // here would be the third heading on a page with three sections.
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, businessName: "Trailhead Strength" })
     const quiz = doc.sections.find((section) => section.kind === "quiz")!
     expect((quiz.props as { heading?: string }).heading).toBeUndefined()
   })
 
   it("is the quiz and a footer, and nothing else", () => {
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, businessName: "Trailhead Strength" })
     expect(doc.sections.map((section) => section.kind)).toEqual(["quiz", "footer"])
   })
 
@@ -75,8 +75,14 @@ describe("buildQuizFunnelDoc", () => {
     // controls set `color: var(--foreground)` and `background: var(--background)`
     // outright, so the answers would be unreadable on it. `muted` changes the
     // background only.
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, businessName: "Trailhead Strength" })
     const quiz = doc.sections.find((section) => section.kind === "quiz")!
     expect((quiz.style as { tone?: string }).tone).toBe("muted")
+  })
+
+  it("puts the caller's business name in the footer, not a built-in one (G47)", () => {
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, businessName: "Trailhead Strength" })
+    const footer = doc.sections.find((section) => section.kind === "footer")!
+    expect((footer.props as { businessName: string }).businessName).toBe("Trailhead Strength")
   })
 })

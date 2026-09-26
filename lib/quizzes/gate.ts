@@ -144,7 +144,8 @@ export function quizGate(definition: QuizDefinition): QuizGateResult {
   // sit inside a longer funnel, so it warns rather than blocks. It matters
   // most for a clone of the built-in quiz, which carries no buttons on
   // purpose (G47, lib/quizzes/seed/rpi-athlete-quiz.ts): this is what tells
-  // the coach to write their own before publishing.
+  // the coach, in the quiz editor, to write their own. The funnel publish
+  // review does not show it: `loadCatalogues` keeps only a quiz's blockers.
   for (const tier of tiers) {
     if (!tier.ctaLabel?.trim() || !tier.ctaHref?.trim()) {
       warnings.push(

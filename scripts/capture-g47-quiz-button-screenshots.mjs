@@ -33,6 +33,8 @@ const DEV_REF = "anjvztjiokcgiyhobknq"
 const APP = process.env.APP ?? "http://localhost:3087"
 const OUT = "screenshots/g47-neutral-builtin-quiz"
 const DSF = 2
+// CSS px from a target to its marker's centre: clear of the target's own edge (the disc is ~19px across its radius)
+const GAP = 30
 const TRAILHEAD = "82d5b238-1653-4a04-9d2d-2f65e5a8c225"
 
 const env = {}
@@ -67,9 +69,9 @@ async function markerOn(locator, caption, { dx = 0, dy = 0, place = "left" } = {
     console.warn(`  !! MARKER TARGET HAS NO BOX: "${caption.slice(0, 60)}…"`)
     return { x: 100, y: 100, caption }
   }
-  let cx = box.x - 22
+  let cx = box.x - GAP
   let cy = box.y + box.height / 2
-  if (place === "right") cx = box.x + box.width + 22
+  if (place === "right") cx = box.x + box.width + GAP
   return { x: Math.round((cx + dx) * DSF), y: Math.round((cy + dy) * DSF), caption }
 }
 
@@ -166,7 +168,23 @@ try {
     "Open \"Tiers\". Under each band's score range and headline there are two new boxes: the words on the button, and where it goes.",
     async () => [
       await markerOn(redText, '"red button text": the words on the button, for example "Book a call".'),
-      await markerOn(redLink, '"red button link": where the button goes. One of your own pages, starting with /, or a full web address.', { place: "right" }),
+      // Just past the END OF THE LABEL'S TEXT, in open space. The label is a
+      // full-width block, so its box's right edge is the page's edge.
+      await (async () => {
+        const caption = '"red button link": where the button goes. One of your own pages, starting with /, or a full web address.'
+        const label = page.getByText("red button link", { exact: true })
+        if ((await label.count()) !== 1) {
+          console.warn(`  !! LABEL NOT FOUND EXACTLY ONCE for marker: "${caption.slice(0, 60)}…"`)
+          return { x: 100, y: 100, caption }
+        }
+        const end = await label.evaluate((el) => {
+          const range = document.createRange()
+          range.selectNodeContents(el)
+          const r = range.getBoundingClientRect()
+          return { x: r.right, y: r.top + r.height / 2 }
+        })
+        return { x: Math.round((end.x + GAP) * DSF), y: Math.round(end.y * DSF), caption }
+      })(),
       // Left of the line, in the same gutter as marker 1: to its right sits the floating Messages button.
       await markerOn(hint, "A band needs both boxes filled, or no button shows."),
     ],

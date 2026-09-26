@@ -4,7 +4,7 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { createFunnelSchema } from "@/lib/validators/funnel"
 import { listFunnels, createFunnel } from "@/lib/db/funnels"
-import { SlugTakenError } from "@/lib/db/businesses"
+import { SlugTakenError, getBusinessSettings } from "@/lib/db/businesses"
 import { createQuizFrom, deleteQuiz, getQuizDefinition, assertQuizInBusiness, QuizNotInBusinessError } from "@/lib/db/quizzes"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { buildQuizFunnelDoc } from "@/lib/funnels/quiz-funnel-doc"
@@ -156,9 +156,23 @@ export const POST = withAudit(
         }
       }
 
+      // THE FOOTER NAMES THIS BUSINESS (G47), read BEFORE the clone is inserted so
+      // a failed read cannot orphan a quiz. The footer's schema needs 1-120
+      // characters, so a failed read or a blank display name falls back to the
+      // funnel's own name: this business's words either way, never another
+      // business's name, and never a reason to fail the create. The owner can
+      // change it in the builder.
+      const displayName = await getBusinessSettings(businessId)
+        .then((settings) => (settings.display_name ?? "").trim())
+        .catch((error: unknown) => {
+          console.error("[POST /api/admin/funnels] could not read the business name for the quiz footer", error)
+          return ""
+        })
+      const businessName = (displayName || funnelIntake.name.trim()).slice(0, 120)
+
       const clone = await createQuizFrom(businessId, { source, name: funnelIntake.name })
       createdQuizId = clone.id
-      const page = buildQuizFunnelDoc({ quizId: clone.id })
+      const page = buildQuizFunnelDoc({ quizId: clone.id, businessName })
 
       // FROM THE TEMPLATE WHEN THE BODY SENDS NO PLAN. `createFunnel` falls
       // back to a single unnamed entry step, and mapping over an absent plan

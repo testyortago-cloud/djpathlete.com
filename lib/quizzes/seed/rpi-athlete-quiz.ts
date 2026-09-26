@@ -72,8 +72,9 @@ export interface SeedQuiz {
      * every business: a relative link like /contact is this platform's own page
      * on this platform's host, and its form files the lead under the Host's
      * business, not the quiz's. So the clone gets no button, and `quizGate` warns
-     * about each band without one, in the editor and at publish, until the coach
-     * writes their own. The platform's own quiz gets its buttons from
+     * about each band without one in the quiz editor's "Worth a look" list, next
+     * to the Tiers tab where the coach writes their own. (Not at funnel publish:
+     * `loadCatalogues` keeps only a quiz's blockers.) The platform's own quiz gets its buttons from
      * scripts/seed-athlete-quiz.ts, which owns them.
      */
     ctaLabel: string | null

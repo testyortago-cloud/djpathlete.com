@@ -25,6 +25,7 @@ import {
   saveQuizDefinition,
 } from "@/lib/db/quizzes"
 import { quizGate } from "@/lib/quizzes/gate"
+import { BUTTON_LINK_RULE, isAllowedButtonLabel, isAllowedButtonLink } from "@/lib/quizzes/button-link"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 export const runtime = "nodejs"
@@ -86,19 +87,11 @@ const bodySchema = z.object({
         maxScore: z.number().int().min(0).max(100).optional(),
         headline: z.string().max(200).optional(),
         body: z.string().max(2000).optional(),
-        ctaLabel: z.string().max(60).nullable().optional(),
-        // Rendered as a public result page's <a href>, and typed by a coach since
-        // G47 put the field in the editor. A path on this site ("/...", but not
-        // "//host", which is another site) or an http(s) address; anything else,
-        // javascript: included, is refused.
-        ctaHref: z
-          .string()
-          .max(300)
-          .refine((href) => /^\/(?!\/)/.test(href) || /^https?:\/\/[^\s/]/i.test(href), {
-            message: "A button link must start with / (a page on this site) or https:// (a full web address).",
-          })
-          .nullable()
-          .optional(),
+        // G47: typed by a coach since the editor gained the fields, and the link
+        // lands in a public page's <a href>. The rule is lib/quizzes/button-link.ts,
+        // which the editor also checks first so a coach gets the reason.
+        ctaLabel: z.string().refine(isAllowedButtonLabel).nullable().optional(),
+        ctaHref: z.string().refine(isAllowedButtonLink, { message: BUTTON_LINK_RULE }).nullable().optional(),
       }),
     )
     .max(20)

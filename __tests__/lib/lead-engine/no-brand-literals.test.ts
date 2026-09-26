@@ -95,6 +95,9 @@ const ROOTS = [
   // buttons now live in scripts/seed-athlete-quiz.ts, which is not swept: it
   // seeds only this platform's quiz.
   "lib/quizzes/seed/rpi-athlete-quiz.ts",
+  // ...and the page every quiz funnel is created with, whose footer carried the
+  // operator's name for every business until the same day.
+  "lib/funnels/quiz-funnel-doc.ts",
 ]
 
 function filesUnder(p: string): string[] {

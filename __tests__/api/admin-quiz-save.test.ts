@@ -231,7 +231,24 @@ describe("PATCH /api/admin/quizzes/[id]", () => {
     )
   })
 
-  it.each(["javascript:alert(1)", "//evil.example/x", "example.com/book", "mailto:a@b.c", "https:// x", ""])(
+  it.each(["   ", "x".repeat(61)])("refuses the button text %j and writes nothing", async (label) => {
+    const res = await patch({ tiers: [{ id: TIER, ctaLabel: label, ctaHref: "/contact" }] })
+    expect(res.status).toBe(400)
+    expect(saveQuizDefinition).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    "javascript:alert(1)",
+    "//evil.example/x",
+    "/\\evil.example/x",
+    "/go/my page",
+    " /go/page",
+    "example.com/book",
+    "mailto:a@b.c",
+    "https:// x",
+    "https:evil.example",
+    "",
+  ])(
     "refuses the link %j and writes nothing",
     async (href) => {
       const res = await patch({ tiers: [{ id: TIER, ctaLabel: "Book a call", ctaHref: href }] })
