@@ -87,7 +87,18 @@ const bodySchema = z.object({
         headline: z.string().max(200).optional(),
         body: z.string().max(2000).optional(),
         ctaLabel: z.string().max(60).nullable().optional(),
-        ctaHref: z.string().max(300).nullable().optional(),
+        // Rendered as a public result page's <a href>, and typed by a coach since
+        // G47 put the field in the editor. A path on this site ("/...", but not
+        // "//host", which is another site) or an http(s) address; anything else,
+        // javascript: included, is refused.
+        ctaHref: z
+          .string()
+          .max(300)
+          .refine((href) => /^\/(?!\/)/.test(href) || /^https?:\/\/[^\s/]/i.test(href), {
+            message: "A button link must start with / (a page on this site) or https:// (a full web address).",
+          })
+          .nullable()
+          .optional(),
       }),
     )
     .max(20)

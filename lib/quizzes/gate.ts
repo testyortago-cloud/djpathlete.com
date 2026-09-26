@@ -138,6 +138,21 @@ export function quizGate(definition: QuizDefinition): QuizGateResult {
     }
   }
 
+  // WARNING: a band with no button. QuizRunner shows a band's button only when
+  // it has BOTH text and a link, so missing either leaves a visitor who scores
+  // there on a result with nothing to click. That is legal, since a quiz may
+  // sit inside a longer funnel, so it warns rather than blocks. It matters
+  // most for a clone of the built-in quiz, which carries no buttons on
+  // purpose (G47, lib/quizzes/seed/rpi-athlete-quiz.ts): this is what tells
+  // the coach to write their own before publishing.
+  for (const tier of tiers) {
+    if (!tier.ctaLabel?.trim() || !tier.ctaHref?.trim()) {
+      warnings.push(
+        `Band "${tier.key}" (${tier.minScore}-${tier.maxScore}) has no button. It needs both button text and a link, or a visitor who scores there sees their result with nothing to click next.`,
+      )
+    }
+  }
+
   // WARNING: a profile nothing votes for can never be elected, except as the
   // position-0 no-vote fallback.
   const voted = new Set(

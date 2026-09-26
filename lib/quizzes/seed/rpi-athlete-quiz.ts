@@ -15,8 +15,14 @@
 // WHAT DID NOT SURVIVE: the weights, the tier cutoffs and the routing rules.
 // They lived in the workflow steps. Every number in this file is therefore
 // INVENTED — a documented, defensible default, marked by SEED_MARKER so the
-// editor can say so on screen. Nobody should mistake it for Darren's
+// editor can say so on screen. Nobody should mistake it for the coach's own
 // judgement. See spec §6.2.
+//
+// NO PLATFORM COPY (G47). This module is also the "Athlete Quiz — the
+// original" that any business can clone into its own quiz funnel, so it names
+// no operator and links to no page of this platform's site. It is swept by
+// __tests__/lib/lead-engine/no-brand-literals.test.ts, and a test pins that
+// every tier's button is empty (see `ctaLabel` on SeedQuiz for why).
 //
 // Spec: docs/superpowers/specs/2026-08-23-athlete-quiz-funnel-design.md §6
 
@@ -59,9 +65,19 @@ export interface SeedQuiz {
     maxScore: number
     headline: string
     body: string
-    /** EVERY tier gets one. A result with no next step is a dead end. */
-    ctaLabel: string
-    ctaHref: string
+    /**
+     * NULL IN THE BUILT-IN, and that is not an oversight (G47). This module is
+     * what `copyFrom: "builtin:rpi"` clones into ANY business's quiz funnel
+     * (app/api/admin/funnels/route.ts). There is no destination that belongs to
+     * every business: a relative link like /contact is this platform's own page
+     * on this platform's host, and its form files the lead under the Host's
+     * business, not the quiz's. So the clone gets no button, and `quizGate` warns
+     * about each band without one, in the editor and at publish, until the coach
+     * writes their own. The platform's own quiz gets its buttons from
+     * scripts/seed-athlete-quiz.ts, which owns them.
+     */
+    ctaLabel: string | null
+    ctaHref: string | null
   }[]
   questions: SeedQuestion[]
 }
@@ -180,10 +196,10 @@ export const RPI_ATHLETE_QUIZ: SeedQuiz = {
   // Higher is better, so RED IS THE MOST URGENT. That is why Red and Orange
   // are the tiers that alert and open a pipeline card.
   tiers: [
-    { key: "red", position: 1, minScore: 0, maxScore: 39, headline: "Large gaps worth addressing now", body: "Several of the things that decide whether your body holds up are missing. That is fixable, and it is worth knowing which ones.", ctaLabel: "Book a call with Darren", ctaHref: "/contact" },
-    { key: "orange", position: 2, minScore: 40, maxScore: 59, headline: "Real gaps, and they are findable", body: "You have a base to work from, but there are clear holes that will keep costing you until they are identified.", ctaLabel: "Book a call with Darren", ctaHref: "/contact" },
-    { key: "yellow", position: 3, minScore: 60, maxScore: 79, headline: "Mostly holding up", body: "The foundation is largely there. What is left is the specific work that separates consistent from exceptional.", ctaLabel: "See the training options", ctaHref: "/online" },
-    { key: "green", position: 4, minScore: 80, maxScore: 100, headline: "Well prepared", body: "You are doing most of the right things. The value now is in precision — finding the small asymmetries that still cost output.", ctaLabel: "See what an assessment covers", ctaHref: "/assessment" },
+    { key: "red", position: 1, minScore: 0, maxScore: 39, headline: "Large gaps worth addressing now", body: "Several of the things that decide whether your body holds up are missing. That is fixable, and it is worth knowing which ones.", ctaLabel: null, ctaHref: null },
+    { key: "orange", position: 2, minScore: 40, maxScore: 59, headline: "Real gaps, and they are findable", body: "You have a base to work from, but there are clear holes that will keep costing you until they are identified.", ctaLabel: null, ctaHref: null },
+    { key: "yellow", position: 3, minScore: 60, maxScore: 79, headline: "Mostly holding up", body: "The foundation is largely there. What is left is the specific work that separates consistent from exceptional.", ctaLabel: null, ctaHref: null },
+    { key: "green", position: 4, minScore: 80, maxScore: 100, headline: "Well prepared", body: "You are doing most of the right things. The value now is in precision — finding the small asymmetries that still cost output.", ctaLabel: null, ctaHref: null },
   ],
 
   questions: [

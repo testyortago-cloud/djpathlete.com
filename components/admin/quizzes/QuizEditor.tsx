@@ -355,6 +355,9 @@ export function QuizEditor({
             maxScore: t.maxScore,
             headline: t.headline,
             body: t.body,
+            // Blank is "no button", stored as NULL, never as an empty string.
+            ctaLabel: t.ctaLabel?.trim() ? t.ctaLabel.trim() : null,
+            ctaHref: t.ctaHref?.trim() ? t.ctaHref.trim() : null,
           })),
           profiles: quiz.profiles.map((p) => ({ id: p.id, name: p.name, description: p.description, position: p.position })),
           branches: quiz.branches.map((b) => ({ id: b.id, name: b.name, description: b.description, position: b.position })),
@@ -825,8 +828,30 @@ export function QuizEditor({
                     setQuiz((q) => ({ ...q, tiers: q.tiers.map((t) => (t.id === tier.id ? { ...t, headline: v } : t)) }))
                   }
                 />
+                {/* G47: the result page's only way onward. A clone of the built-in quiz arrives with
+                    these empty on purpose, and the gate's "has no button" warning points here. */}
+                <div className="grid gap-2 sm:col-span-3 sm:grid-cols-2">
+                  <Field
+                    label={`${tier.key} button text`}
+                    value={tier.ctaLabel ?? ""}
+                    onChange={(v) =>
+                      setQuiz((q) => ({ ...q, tiers: q.tiers.map((t) => (t.id === tier.id ? { ...t, ctaLabel: v } : t)) }))
+                    }
+                  />
+                  <Field
+                    label={`${tier.key} button link`}
+                    value={tier.ctaHref ?? ""}
+                    onChange={(v) =>
+                      setQuiz((q) => ({ ...q, tiers: q.tiers.map((t) => (t.id === tier.id ? { ...t, ctaHref: v } : t)) }))
+                    }
+                  />
+                </div>
               </div>
             ))}
+          <p className="text-xs text-muted-foreground">
+            A band shows its button only when it has both text and a link. The link can be one of your own pages,
+            starting with /, or a full web address starting with https://.
+          </p>
         </section>
       ) : null}
 
