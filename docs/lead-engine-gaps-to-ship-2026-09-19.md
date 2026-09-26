@@ -814,7 +814,7 @@ Ten rows the G35 sweep and its critic found. None is built. Each carries its evi
     - Clones made before this change keep the old buttons and footer. The dev clone has none: every quiz tier there belongs to the platform, read 2026-09-26. Production's quiz rows were not read.
     - In screenshot 02, marker 2 grazes the empty link box's top border: the gap between the two rows is narrower than the marker.
 
-### G48 · The `has_user` branch crosses businesses · **S** · **blocked on G37**
+### G48 · The `has_user` branch crosses businesses · **S** · **blocked on G37 (owner ruled A, 2026-09-26: a precondition of coach hosts, enforced by a test)**
 - The `quiz_*` sequences' `{"kind":"has_user"}` branch tests `contacts.user_id IS NOT NULL` (`lib/automation/sequence-tick.ts`, ~166). `linkContactsToUser` sets `user_id` on EVERY business's contact with the same email (`lib/db/contacts.ts`, ~669-681).
 - So a platform client who takes another coach's quiz takes the "you already have an account with us" arm, and is never asked to talk.
 - G32 made the wording say what the branch checks (an account). The check itself needs "a client of THIS business", which the schema cannot express until users or client relationships carry a business (G37).
@@ -827,6 +827,10 @@ Ten rows the G35 sweep and its critic found. None is built. Each carries its evi
     - **(B)** An interim: take the `has_user` branch out of the four `quiz_*` drafts for every business except the platform, so everyone gets the prospect arm until G37. That needs a migration editing only non-platform drafts, and `seed_business_starter_set` replaced whole.
     - **(C)** An interim: a new branch condition backed by the lead-side proxies above.
     - Recommendation: **A**. Nothing is reachable today, and B or C would each be undone by G37.
+- **2026-09-26: RULING, option A ("do what is recommended").** G48 waits for G37, and fixing it is a precondition of giving any coach a host. Nothing in the product changes.
+  - **The precondition is enforced, not just written down.** `__tests__/lib/tenancy/coach-hosts-precondition.test.ts` fails if anything starts writing `business_domains`: application code (`.from("business_domains")` then insert, upsert, update or delete), or any migration other than `00251`'s one-time seed of the platform's own hosts. Its failure message and header say what to close first: G48, and G49's host half (`appOrigin()`). They also say to retire the file in the same change, never to add an exemption.
+  - Why a writer is the right trigger: a business's public pages resolve to it only through `business_domains`, so no host means no reachable quiz and no reachable wrong arm.
+  - **Verified:** 3/3 green on the real tree. Two mutants each turned it red: a writer appended to `lib/db/business-domains.ts`, and a new migration inserting a coach's host. The first draft was a false negative, found by the first mutant: its "same chain" filter let a reader near the top of the file swallow a later writer. The regex now cannot cross another `.from(`, and a control pins exactly that case. The test file has no type errors. A full tsc in this worktree read 239, because `functions/` was not installed here (the known phantom), so it was not compared per file.
 
 ### G49 · A tenant's unsubscribe and consent links land on the platform's branded pages · **M** · **buildable part BUILT 2026-09-26 (owner chose option 1); per-business hosts still later**
 - `appOrigin()` is deployment-wide (`lib/automation/sequence-tick-runner.ts`, ~464-477). The unsubscribe and `{{sms_consent_url}}` pages sit under `app/(marketing)`, whose navbar is the platform's (`SiteNavbar.tsx`). A coach's lead who unsubscribes lands on the platform's site.
@@ -1051,7 +1055,7 @@ scoreboard below moved on.)*
 | G45 | Small ownership checks | **S** | Not started; needs no owner |
 | G46 | The dev clone has drifted from the migrations | **S** | **Done** 2026-09-26: dev clone fixed; drift check merged (`6a2a6def`) |
 | G47 | Cloning the built-in quiz copies "Book a call with Darren" | **S** | **Done** 2026-09-26: merged and deployed (`f628c859`) |
-| G48 | The `has_user` branch crosses businesses | **S** | Blocked on G37; investigated 2026-09-26, owner asked A/B/C |
+| G48 | The `has_user` branch crosses businesses | **S** | Blocked on G37; ruled A 2026-09-26, tripwire on `worktree-g48-ruling-tripwire` |
 | G49 | Unsubscribe and consent links land on the platform's pages | **M** | Built on `worktree-g49-business-token-pages` 2026-09-26 (option 1), awaiting merge |
 
 **FINISHED IN CODE, NOT FINISHED IN WORDS — these need the owner, not a developer:**
