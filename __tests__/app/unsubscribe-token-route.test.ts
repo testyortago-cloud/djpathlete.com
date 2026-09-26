@@ -21,7 +21,8 @@ const store: {
   suppressions: Row[]
   timeline: Row[]
   sequenceRuns: Row[]
-} = { contacts: [], consents: [], suppressions: [], timeline: [], sequenceRuns: [] }
+  settings: Row[]
+} = { contacts: [], consents: [], suppressions: [], timeline: [], sequenceRuns: [], settings: [] }
 
 function collectionFor(table: string): Row[] {
   switch (table) {
@@ -35,6 +36,8 @@ function collectionFor(table: string): Row[] {
       return store.timeline
     case "sequence_runs":
       return store.sequenceRuns
+    case "business_settings":
+      return store.settings
     default:
       return []
   }
@@ -108,7 +111,8 @@ import { recordAudit } from "@/lib/audit/record"
 import { signUnsubscribeToken } from "@/lib/lead-engine/unsubscribe-token"
 import { signPersonalCheckinToken } from "@/lib/qr/checkin-token"
 import { UNSUBSCRIBE_FOOTER_SENTENCE } from "@/lib/lead-engine/email"
-import UnsubscribeTokenPage from "@/app/(marketing)/unsubscribe/[token]/page"
+import { renderToStaticMarkup } from "react-dom/server"
+import UnsubscribeTokenPage from "@/app/(business)/unsubscribe/[token]/page"
 import { POST as unsubscribePost, GET as unsubscribeGet } from "@/app/api/unsubscribe/[token]/route"
 
 const CONTACT = "c-1"
@@ -135,7 +139,34 @@ beforeEach(() => {
     { id: "run-1", contact_id: CONTACT, business_id: BUSINESS, status: "active" },
     { id: "run-2", contact_id: OTHER_CONTACT, business_id: BUSINESS, status: "active" },
   ]
+  // Another business's row listed FIRST, so a settings read that dropped its
+  // business filter would name the wrong business and the G49 test would see it.
+  store.settings = [
+    { business_id: "b-other", display_name: "Other Gym", sender_name: "", postal_address: "" },
+    { business_id: BUSINESS, display_name: "Northside Strength", sender_name: "Ana Diaz", postal_address: "4 Elm St" },
+  ]
   vi.clearAllMocks()
+})
+
+describe("/unsubscribe/[token] is the business's own page (G49)", () => {
+  it("names the business the token was signed for, and no other", async () => {
+    const el = await UnsubscribeTokenPage({ params: Promise.resolve({ token: signUnsubscribeToken(CONTACT, BUSINESS) }) })
+    const html = renderToStaticMarkup(el)
+    expect(html).toContain("Northside Strength")
+    expect(html).toContain("Sent by Ana Diaz · 4 Elm St")
+    expect(html).not.toContain("Other Gym")
+    expect(html).toContain("Unsubscribed")
+  })
+
+  it("still confirms the unsubscribe when the business's settings cannot be read", async () => {
+    store.settings = []
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const el = await UnsubscribeTokenPage({ params: Promise.resolve({ token: signUnsubscribeToken(CONTACT, BUSINESS) }) })
+    const html = renderToStaticMarkup(el)
+    expect(html).toContain("Unsubscribed")
+    expect(html).not.toContain("Sent by")
+    expect(store.suppressions).toHaveLength(1)
+  })
 })
 
 describe("/unsubscribe/[token]", () => {

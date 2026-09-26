@@ -828,7 +828,7 @@ Ten rows the G35 sweep and its critic found. None is built. Each carries its evi
     - **(C)** An interim: a new branch condition backed by the lead-side proxies above.
     - Recommendation: **A**. Nothing is reachable today, and B or C would each be undone by G37.
 
-### G49 · A tenant's unsubscribe and consent links land on the platform's branded pages · **M** · **later, with coach domains**
+### G49 · A tenant's unsubscribe and consent links land on the platform's branded pages · **M** · **buildable part BUILT 2026-09-26 (owner chose option 1); per-business hosts still later**
 - `appOrigin()` is deployment-wide (`lib/automation/sequence-tick-runner.ts`, ~464-477). The unsubscribe and `{{sms_consent_url}}` pages sit under `app/(marketing)`, whose navbar is the platform's (`SiteNavbar.tsx`). A coach's lead who unsubscribes lands on the platform's site.
 - It needs per-business hosts (nothing writes `business_domains` yet) or a neutral, unbranded page for these two routes.
 - **2026-09-26: the buildable part was designed (bounded path, in chat) and waits on ONE owner choice; nothing built.**
@@ -836,6 +836,44 @@ Ten rows the G35 sweep and its critic found. None is built. Each carries its evi
   - Both token readers already return the token's `businessId` (`processUnsubscribe`, `readSmsConsentState`). `getBusinessSettings(businessId)` supplies the identity. The page title overrides the root's `%s | <platform>` template.
   - **The choice:** (1, recommended) the business's own chrome, matching the email the person clicked from: `logo_url` or `display_name`, `brand_color` through the emails' `paletteFor` (exported from `lib/lead-engine/email.ts` so page and email share one rule), and "Sent by <sender_name> · <postal_address>"; or (2) the business's name in plain text and nothing else.
   - The brand sweep's ROOTS must follow the moved files; its "every root still resolves" guard fails the run if they do not. Three tests import the page paths (`__tests__/app/sms-consent-page.test.ts`, `sms-consent-agree-button.test.tsx`, `unsubscribe-token-route.test.ts`). The address bar still shows the platform's domain until coaches have hosts.
+- **2026-09-26: the owner chose (1) ("do what is recommended"). BUILT on branch `worktree-g49-business-token-pages`, NOT merged.**
+  - **Moved** (with `git mv`, so history follows): `app/(business)/unsubscribe/[token]/page.tsx` and `app/(business)/sms-consent/[token]/{page,actions,agree-button}`. The URLs are unchanged: the build lists `/unsubscribe` (the newsletter's own page, still in `(marketing)`), `/unsubscribe/[token]` and `/sms-consent/[token]`.
+  - **`app/(business)/layout.tsx`** adds none of the platform's chrome. Its metadata removes everything the root passes down that names the platform:
+    - the title template, plus `absolute` on the layout's own default, because a layout's title still runs through its PARENT's template (seen live as "Message settings | DJP Athlete" before the fix);
+    - the description, the Open Graph and Twitter blocks, and the manifest;
+    - and it keeps the pages out of search. Page titles are fixed ("Unsubscribed", "Can we text you?"). Naming the business in the title would mean resolving the token in metadata, and the unsubscribe page writes when it resolves one.
+  - **`components/public/BusinessFrame.tsx`** mirrors the sequence emails' chrome: a band in the business's brand colour carrying its logo or its name, an accent strip, and "<name> / Sent by <sender> · <address>" at the foot. It re-themes its contents by overriding `--primary` / `--primary-foreground`, so the pages' headings and the "I agree" button take the business's colours with no copy changes.
+  - **`lib/lead-engine/business-page.ts`** reads the identity from the token's business: blank strings count as missing, the sender falls back to the business name, the address is omitted when blank, and a logo is kept only if it is an `http(s)` address. Colours come through `paletteFor`, now exported from `lib/lead-engine/email.ts`, so page and email share one rule. A business with no name, or settings that cannot be read, gets the page with no identity at all: never another business's name.
+  - **Brand sweep:** the root `"app/(marketing)/sms-consent"` became `"app/(business)"`, which now covers both pages and the layout, and the frame was added. The owner's instruction was to keep the consent page swept; the old path would have tripped the sweep's own "every root still resolves" guard.
+  - **Screenshots** (`screenshots/g49-business-token-pages/`, `scripts/capture-g49-business-token-pages.ts`, run with `npx tsx`): real signed links for throwaway Trailhead contacts, deleted afterwards with their suppression rows.
+    - Before (the old code): 00a and 00b, the platform's logo and menu around a coach's question and a coach's unsubscribe.
+    - After:
+      - 05 Trailhead as it really is: no colour chosen, so the default palette. Shot before any colour was set.
+      - 06 a bad link: the group's own not-found page, with no link anywhere.
+      - Then, with Trailhead's brand colour set to green through `POST /api/admin/businesses/brand`: 01 the ask; 02 the confirmation after "I agree"; 03 the unsubscribe; 04 the same page on a phone (no sideways scroll; its caption drawn at 3x). The colour was put back to NULL afterwards and read back; the captions say so.
+    - The script asserts that no platform name appears in the page's `<head>` or visible text, on 01, 03 and 06. Dev-mode script bodies are left out, because React's dev stack traces carry this repository's folder path.
+  - **Review round** (independent Opus review: 0 Critical, 0 Important, 7 Minor):
+    - The review checked Next 16's own metadata resolver: the `null`s and `title.absolute` do what the comments say, and GET on the consent page still writes nothing.
+    - Acted on:
+      - `icons: null`, so the platform's icon links are gone too.
+      - `app/(business)/not-found.tsx`: a bad or orphaned token used to fall through to the platform's not-found page and its "Back to home".
+      - Logos must be `https` (plain http is blocked on an https page, which would leave a broken image).
+      - The phone caption scale.
+      - Shot 01's caption now says the colour was put back.
+      - Shot 05 was added, because every after-shot had used the temporary colour.
+      - The identity module's comment no longer claims colours never fall back.
+  - **Verified:**
+    - 7 G49 test files / 81 tests, plus the 7 suites importing `lib/lead-engine/email.ts` (243 tests), 0 skipped.
+    - Seven mutants turned tests red, each restored byte-exact: no re-theme; no sender fallback; any logo URL accepted; the unsubscribe page reads another business; the layout title goes back through the template; the consent page loses its identity; the platform's name put into the frame.
+    - tsc 238/54, identical per file. Select contract 22/22.
+    - `next build` exit 0, after `rm -rf .next`: a dev server leaves `.next/dev/types` naming the old `(marketing)` path, which broke the first build.
+  - **Not done, and noted:**
+    - **For the owner:** a business that has not picked a brand colour gets the platform's own teal and gold (`DEFAULT_PALETTE` in `lib/lead-engine/email.ts`) on this page and in its sequence emails alike (shot 05). A neutral default would change both, so it is a separate decision.
+    - With no icon link, browsers still ask for `/favicon.ico`, which is the platform's. A business icon would need the token in metadata, and the unsubscribe page writes when it resolves one.
+    - The address bar shows the platform's domain until coaches have hosts.
+    - The root layout's Google Analytics and gclid capture still run on these pages, and GA receives the page URL, signed token included. That was true before the move too.
+    - The accent `resolvePalette` derives for a brand colour is the emails' rule, unchanged. For the green used here it is a purple, visible in the strip and the footer name.
+    - The consent page reads the business's settings twice: once for the wording, once for the frame. The two could disagree only if the business is renamed between the reads.
 
 ---
 
@@ -1014,7 +1052,7 @@ scoreboard below moved on.)*
 | G46 | The dev clone has drifted from the migrations | **S** | **Done** 2026-09-26: dev clone fixed; drift check merged (`6a2a6def`) |
 | G47 | Cloning the built-in quiz copies "Book a call with Darren" | **S** | **Done** 2026-09-26: merged and deployed (`f628c859`) |
 | G48 | The `has_user` branch crosses businesses | **S** | Blocked on G37; investigated 2026-09-26, owner asked A/B/C |
-| G49 | Unsubscribe and consent links land on the platform's pages | **M** | Design ready 2026-09-26; waits on the owner: own branding (1) or name only (2) |
+| G49 | Unsubscribe and consent links land on the platform's pages | **M** | Built on `worktree-g49-business-token-pages` 2026-09-26 (option 1), awaiting merge |
 
 **FINISHED IN CODE, NOT FINISHED IN WORDS — these need the owner, not a developer:**
 - **G18's `ai_chat` sequence** — the consent half is live; the follow-up sequence a chat lead enters

@@ -8,8 +8,8 @@
 //
 // WHY THIS LIVES UNDER /api AND NOT NEXT TO THE PAGE: Next.js App Router
 // cannot serve a `route.ts` and a `page.tsx` from the same route segment —
-// `normalizeAppPath` maps `/(marketing)/unsubscribe/[token]/page` and
-// `/(marketing)/unsubscribe/[token]/route` to the identical pathname
+// `normalizeAppPath` maps `/(business)/unsubscribe/[token]/page` and
+// `/(business)/unsubscribe/[token]/route` to the identical pathname
 // `/unsubscribe/[token]`, so one entry would shadow the other. The human link
 // keeps the rendered page; this is the machine endpoint. Both carry the same
 // signed token and both call the same `processUnsubscribe`, so they cannot

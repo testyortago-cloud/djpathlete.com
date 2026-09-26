@@ -24,7 +24,7 @@
 // either would leave this suite asserting its own mock.
 import { describe, it, expect, vi } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
-import { AgreeButton } from "@/app/(marketing)/sms-consent/[token]/agree-button"
+import { AgreeButton } from "@/app/(business)/sms-consent/[token]/agree-button"
 
 /** An action that stays in flight until the test lets it finish. */
 function gatedAction() {

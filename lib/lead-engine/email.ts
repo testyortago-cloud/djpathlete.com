@@ -267,7 +267,7 @@ const HEX_COLOUR = /^#[0-9a-fA-F]{6}$/
  * email; without the second, they get their brand band above the incumbent
  * tenant's gold strip.
  */
-function paletteFor(settings: BusinessSettings): { brand: string; brandInk: string; accent: string; strip: string } {
+export function paletteFor(settings: BusinessSettings): { brand: string; brandInk: string; accent: string; strip: string } {
   const brand = settings.brand_color?.trim() ?? ""
   if (!HEX_COLOUR.test(brand)) return DEFAULT_PALETTE
 

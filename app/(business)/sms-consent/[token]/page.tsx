@@ -1,4 +1,7 @@
+import type { Metadata } from "next"
 import { notFound } from "next/navigation"
+import { BusinessFrame } from "@/components/public/BusinessFrame"
+import { loadBusinessPageIdentity } from "@/lib/lead-engine/business-page"
 import { readSmsConsentState } from "@/lib/lead-engine/sms-consent"
 import { confirmSmsConsentAction } from "./actions"
 import { AgreeButton } from "./agree-button"
@@ -6,6 +9,8 @@ import { AgreeButton } from "./agree-button"
 // Never statically cached: what this page shows depends on rows that change
 // (a consent row, a suppression row) and on a per-contact token.
 export const dynamic = "force-dynamic"
+
+export const metadata: Metadata = { title: "Can we text you?" }
 
 /**
  * The page a contact lands on from the "can we text you?" email.
@@ -18,10 +23,11 @@ export const dynamic = "force-dynamic"
  * in lib/lead-engine/sms-consent.ts's header; `readSmsConsentState` is a read
  * on every branch and must stay one.
  *
- * Sits in `(marketing)` so it inherits the site header and footer — the same
- * placement as app/(marketing)/unsubscribe/[token]/page.tsx. Someone who has
- * just been asked to trust this business with their phone number should not
- * land on a page that looks like it belongs to somebody else.
+ * Framed as the business the token was signed for (G49), like
+ * app/(business)/unsubscribe/[token]/page.tsx. It used to sit in `(marketing)`
+ * and wear this platform's header and footer, which is exactly the "page that
+ * looks like it belongs to somebody else" that someone who has just been asked
+ * to trust THIS business with their phone number should not land on.
  */
 export default async function SmsConsentPage({
   params,
@@ -41,16 +47,16 @@ export default async function SmsConsentPage({
   // that does not exist.
   if (resolved.state === "invalid_token" || resolved.state === "contact_not_found") notFound()
 
+  const identity = await loadBusinessPageIdentity(resolved.businessId)
+
   return (
-    <div className="flex min-h-[70vh] items-center justify-center px-4 py-16">
-      <div className="w-full max-w-md">
-        {resolved.state === "ask" && <Ask token={token} wording={resolved.wording} />}
-        {resolved.state === "already_consented" && <Confirmed justConfirmed={justConfirmed} />}
-        {resolved.state === "phone_suppressed" && <Stopped />}
-        {resolved.state === "email_suppressed" && <Unsubscribed />}
-        {resolved.state === "wording_unavailable" && <Unavailable />}
-      </div>
-    </div>
+    <BusinessFrame identity={identity}>
+      {resolved.state === "ask" && <Ask token={token} wording={resolved.wording} />}
+      {resolved.state === "already_consented" && <Confirmed justConfirmed={justConfirmed} />}
+      {resolved.state === "phone_suppressed" && <Stopped />}
+      {resolved.state === "email_suppressed" && <Unsubscribed />}
+      {resolved.state === "wording_unavailable" && <Unavailable />}
+    </BusinessFrame>
   )
 }
 
