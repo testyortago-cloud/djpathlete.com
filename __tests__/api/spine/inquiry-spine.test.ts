@@ -384,6 +384,37 @@ describe("POST /api/inquiry — tenant", () => {
   })
 })
 
+// G45. `lead_inquiries` gained `business_id` (00280). The route stamps the
+// Host's business on the row, and its AI-fields write names the same business,
+// so the admin by-id read (which now carries the tenant) finds the row under
+// the business that received it. "host-biz" is the Host mock above, NOT the
+// platform id, so a route that stamped platformBusinessId() fails this.
+describe("POST /api/inquiry — the inquiry row carries its business (G45)", () => {
+  beforeEach(() => {
+    mocks.createGenerationLog.mockResolvedValue({ id: "log-1" })
+    mocks.updateGenerationLog.mockResolvedValue(undefined)
+    mocks.updateLeadInquiryAiFields.mockResolvedValue(undefined)
+    mocks.recordAudit.mockResolvedValue(undefined)
+    mocks.generateLeadAnalysis.mockResolvedValue({
+      content: { priority: "high", priority_reason: "Ready now", summary: "Sprinter", draft_reply: "Hi Ada" },
+      tokens_used: 10,
+    })
+    mocks.listBusinessMemberUserIds.mockResolvedValue(["owner-1"])
+  })
+
+  it("stamps the Host's business on the inquiry it writes", async () => {
+    await post(VALID_BODY)
+    expect(mocks.createLeadInquiry).toHaveBeenCalledWith(expect.objectContaining({ business_id: "host-biz" }))
+  })
+
+  it("writes the AI fields back under the same business", async () => {
+    await post(VALID_BODY)
+    expect(mocks.updateLeadInquiryAiFields).toHaveBeenCalledTimes(1)
+    expect(mocks.updateLeadInquiryAiFields.mock.calls[0][0]).toBe("host-biz")
+    expect(mocks.updateLeadInquiryAiFields.mock.calls[0][1]).toBe("inquiry-1")
+  })
+})
+
 // G35. Same change as POST /api/contact: the bell goes to the site business's
 // owners and coaches, not to every `users.role = 'admin'` row. This route also
 // named its FIRST admin as the requester of the lead analysis, so that moves

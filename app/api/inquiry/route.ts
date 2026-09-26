@@ -249,6 +249,9 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
     let leadInquiryId: string | null = null
     try {
       const inquiryRow = await createLeadInquiry({
+        // G45: the business that received it, so the admin by-id read (which
+        // carries the tenant) finds it under that business and no other.
+        business_id: businessId,
         lead_user_id: leadUserId,
         name,
         email,
@@ -339,7 +342,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
           completed_at: new Date().toISOString(),
         })
 
-        await updateLeadInquiryAiFields(leadInquiryId, {
+        await updateLeadInquiryAiFields(businessId, leadInquiryId, {
           ai_priority: content.priority,
           ai_priority_reason: content.priority_reason,
           ai_summary: content.summary,

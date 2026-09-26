@@ -8,6 +8,7 @@ import { recordAudit } from "@/lib/audit/record"
 import { MODEL_SONNET } from "@/lib/ai/anthropic"
 import { SERVICE_LABELS, type ServiceType } from "@/lib/validators/inquiry"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 
 export const maxDuration = 30
 
@@ -20,10 +21,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { id } = await params
   const startTime = Date.now()
 
+  // G45. The inquiry is read, and written back, under the admin's own
+  // business. Another business's id reads as not found, before any model call
+  // is paid for. "Could not read" is a 500, not a 404: telling a coach their
+  // own applicant does not exist because a read timed out is the worse lie.
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    // A signed-in user who can reach no business is refused, not a 500.
+    if (err instanceof NoAccessibleBusinessError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    throw err
+  }
+
   let inquiry: Awaited<ReturnType<typeof getLeadInquiryById>>
   try {
-    inquiry = await getLeadInquiryById(id)
-  } catch {
+    inquiry = await getLeadInquiryById(businessId, id)
+  } catch (err) {
+    console.error("[regenerate-analysis] could not read the inquiry:", err)
+    return NextResponse.json({ error: "Could not load this inquiry" }, { status: 500 })
+  }
+  if (!inquiry) {
     return NextResponse.json({ error: "Lead inquiry not found" }, { status: 404 })
   }
 
@@ -69,7 +89,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       completed_at: new Date().toISOString(),
     })
 
-    const updated = await updateLeadInquiryAiFields(id, {
+    const updated = await updateLeadInquiryAiFields(businessId, id, {
       ai_priority: content.priority,
       ai_priority_reason: content.priority_reason,
       ai_summary: content.summary,

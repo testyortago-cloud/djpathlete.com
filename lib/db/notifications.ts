@@ -17,11 +17,23 @@ export async function getNotifications(userId: string) {
   return data as Notification[]
 }
 
-export async function markAsRead(id: string) {
+/**
+ * Marks ONE of `userId`'s own notifications read. G45: this used to update by
+ * id alone, so any signed-in user could mark anyone's notification read and be
+ * handed its title and message back. Null when `id` is not this user's, which
+ * the route answers as 404; a read error still throws.
+ */
+export async function markAsRead(userId: string, id: string): Promise<Notification | null> {
   const supabase = getClient()
-  const { data, error } = await supabase.from("notifications").update({ is_read: true }).eq("id", id).select().single()
+  const { data, error } = await supabase
+    .from("notifications")
+    .update({ is_read: true })
+    .eq("user_id", userId)
+    .eq("id", id)
+    .select()
+    .maybeSingle()
   if (error) throw error
-  return data as Notification
+  return (data as Notification | null) ?? null
 }
 
 export async function createNotification(notification: Omit<Notification, "id" | "created_at">) {

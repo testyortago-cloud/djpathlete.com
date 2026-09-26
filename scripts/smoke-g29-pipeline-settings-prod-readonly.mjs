@@ -1,6 +1,11 @@
 // G29 PRODUCTION SMOKE TEST — READ-ONLY HALF.
 //
-//   node --env-file=.env.prod scripts/smoke-g29-pipeline-settings-prod-readonly.mjs
+//   node --env-file=.env.prod scripts/smoke-g29-pipeline-settings-prod-readonly.mjs --business <uuid>
+//
+// --business IS REQUIRED (G45). Since 00279 every business has an
+// 'assessment' board, so the board is read inside the named business, and the
+// browser is given the same business in its `djp_business` cookie, so the page
+// it compares against is that business's board and not the session's default.
 //
 // ────────────────────────────────────────────────────────────────────────────
 // STRICTLY READ-ONLY. THIS SCRIPT CONTAINS NO SAVE PATH AT ALL.
@@ -27,6 +32,7 @@ import { createClient } from "@supabase/supabase-js"
 import { encode } from "next-auth/jwt"
 import { chromium } from "playwright"
 import { mkdirSync } from "node:fs"
+import { findByKeyForBusiness, readBusinessArg } from "./_business-scope.mjs"
 
 const SITE = "https://www.darrenjpaul.com"
 const PROD_REF = "epzuvzkokzqtzomeyoha"
@@ -34,6 +40,7 @@ const BOARD = "assessment"
 const ADMIN_ID = "00000000-0000-0000-0000-000000000001"
 const ADMIN_EMAIL = "admin@darrenjpaul.com"
 const OUT = "screenshots/g29-prod-smoke"
+const BUSINESS = readBusinessArg(process.argv.slice(2))
 
 function must(cond, msg) {
   if (!cond) throw new Error(`SMOKE FAILED — ${msg}`)
@@ -51,15 +58,12 @@ async function main() {
   })
 
   console.log("\nDATABASE (read)")
-  const { data: pipe, error: pErr } = await supabase
-    .from("pipelines")
-    .select("id, key")
-    .eq("key", BOARD)
-    .single()
-  must(!pErr, `could not read the ${BOARD} pipeline: ${pErr?.message}`)
+  const pipe = await findByKeyForBusiness(supabase, "pipelines", { businessId: BUSINESS, key: BOARD, select: "id, key" })
+  must(!!pipe, `business ${BUSINESS} has no ${BOARD} pipeline`)
   const { data: rows, error: sErr } = await supabase
     .from("pipeline_stages")
     .select("id, key, name, kind, position, amber_after_days, red_after_days")
+    .eq("business_id", BUSINESS)
     .eq("pipeline_id", pipe.id)
     .order("position", { ascending: true })
   must(!sErr, `could not read stages: ${sErr?.message}`)
@@ -84,6 +88,10 @@ async function main() {
       httpOnly: true,
       sameSite: "Lax",
     },
+    // The page renders the business this cookie selects (lib/tenancy/resolve.ts).
+    // Without it the admin's default business is shown, and the comparison
+    // below would set one business's board against another's.
+    { name: "djp_business", value: BUSINESS, domain: ".darrenjpaul.com", path: "/", secure: true, sameSite: "Lax" },
   ])
   const page = await ctx.newPage()
 

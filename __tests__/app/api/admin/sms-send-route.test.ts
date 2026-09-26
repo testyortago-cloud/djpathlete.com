@@ -414,6 +414,74 @@ describe("POST /api/admin/sms/send — contact must belong to this business", ()
   })
 })
 
+// G45. `sendManualSms` asks for consent on `contactId` and texts `phone`, and
+// nothing tied the two together: a request naming contact A (who agreed) and
+// any other number sent to that number on A's permission, and filed the text
+// in A's thread. Consent is recorded per contact, not per number, so the
+// number has to be the contact's own.
+describe("POST /api/admin/sms/send — G45: the number must be the contact's own", () => {
+  function contactWithPhone(phone_e164: string | null) {
+    return {
+      id: CONTACT_ID,
+      business_id: BIZ,
+      user_id: null,
+      name: "Test Contact",
+      email: null,
+      phone_e164,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      timezone: null,
+    }
+  }
+
+  it("refuses (400) and sends nothing when the number is not the contact's", async () => {
+    getContactByIdMock.mockResolvedValue(contactWithPhone("+12025550123"))
+    const res = await post({ phone: "+13125550199", body: "hi", contactId: CONTACT_ID })
+    expect(res.status).toBe(400)
+    expect((await res.json()).reason).toBe("phone_not_contacts")
+    expect(sendManualSmsMock).not.toHaveBeenCalled()
+  })
+
+  it("refuses the mismatch even when the coach ticked 'Send anyway'", async () => {
+    // The override answers "no consent on file"; it does not make a stranger's
+    // number this contact's.
+    getContactByIdMock.mockResolvedValue(contactWithPhone("+12025550123"))
+    const res = await post({ phone: "+13125550199", body: "hi", contactId: CONTACT_ID, consentOverride: true })
+    expect(res.status).toBe(400)
+    expect(sendManualSmsMock).not.toHaveBeenCalled()
+  })
+
+  it("refuses when the contact has no number on file", async () => {
+    getContactByIdMock.mockResolvedValue(contactWithPhone(null))
+    const res = await post({ phone: "+12025550123", body: "hi", contactId: CONTACT_ID })
+    expect(res.status).toBe(400)
+    expect((await res.json()).reason).toBe("phone_not_contacts")
+    expect(sendManualSmsMock).not.toHaveBeenCalled()
+  })
+
+  it("sends when the number is the contact's own (permissive control)", async () => {
+    getContactByIdMock.mockResolvedValue(contactWithPhone("+12025550123"))
+    const res = await post({ phone: "+12025550123", body: "hi", contactId: CONTACT_ID })
+    expect(res.status).toBe(200)
+    expect(sendManualSmsMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("compares NORMALISED numbers, so a trunk-prefixed variant of the contact's number still sends", async () => {
+    // "+4402071838750" is the same line as "+442071838750" (the UK trunk 0
+    // kept after the country code). A raw string compare would refuse it.
+    getContactByIdMock.mockResolvedValue(contactWithPhone("+442071838750"))
+    const res = await post({ phone: "+4402071838750", body: "hi", contactId: CONTACT_ID })
+    expect(res.status).toBe(200)
+    expect(sendManualSmsMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not ask for a match when no contactId is supplied (the consent gate refuses that send instead)", async () => {
+    const res = await post({ phone: "+13125550199", body: "hi" })
+    expect(res.status).toBe(200)
+    expect(sendManualSmsMock).toHaveBeenCalledTimes(1)
+  })
+})
+
 // G28 — the consent gate as the ROUTE presents it. Owner ruled 2026-09-21.
 //
 // The gate itself lives in `sendManualSms` and is tested there (including
@@ -424,6 +492,22 @@ describe("POST /api/admin/sms/send — contact must belong to this business", ()
 // resulted in a real text is stamped on the audit trail, and one that did
 // not is NOT.
 describe("POST /api/admin/sms/send — G28 consent gate", () => {
+  // The contact these tests text OWNS the number they text (G45 refuses a
+  // mismatch before the consent gate is ever asked).
+  beforeEach(() => {
+    getContactByIdMock.mockResolvedValue({
+      id: CONTACT_ID,
+      business_id: BIZ,
+      user_id: null,
+      name: "Test Contact",
+      email: null,
+      phone_e164: "+12025550123",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      timezone: null,
+    })
+  })
+
   it("answers 409 with a machine-readable reason the client can branch on", async () => {
     sendManualSmsMock.mockRejectedValue(new SmsNoConsentError("+12025550123"))
 

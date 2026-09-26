@@ -20,10 +20,17 @@ function isUnknownColumnError(error: { code?: string; message?: string }): boole
   )
 }
 
+/**
+ * Writes one inquiry, stamped with the business that received it (00280, G45).
+ * `business_id` is REQUIRED and non-null here even though the column is
+ * nullable: the column has no default (G44), so an insert that left it out
+ * would file an inquiry under nobody, invisible to every business's reader.
+ */
 export async function createLeadInquiry(
   data: Omit<
     LeadInquiry,
     | "id"
+    | "business_id"
     | "created_at"
     | "ai_priority"
     | "ai_priority_reason"
@@ -36,8 +43,7 @@ export async function createLeadInquiry(
     | "gbraid"
     | "wbraid"
     | "fbclid"
-  > &
-    Partial<Pick<LeadInquiry, "gbraid" | "wbraid" | "fbclid">>,
+  > & { business_id: string } & Partial<Pick<LeadInquiry, "gbraid" | "wbraid" | "fbclid">>,
 ) {
   const supabase = getClient()
   const { data: result, error } = await supabase.from("lead_inquiries").insert(data).select().single()
@@ -60,7 +66,9 @@ export async function createLeadInquiry(
   return retried as LeadInquiry
 }
 
+/** Writes the AI fields onto ONE business's inquiry (G45); another business's same id is untouched. */
 export async function updateLeadInquiryAiFields(
+  businessId: string,
   id: string,
   updates: {
     ai_priority: LeadPriority
@@ -72,11 +80,31 @@ export async function updateLeadInquiryAiFields(
   },
 ) {
   const supabase = getClient()
-  const { data, error } = await supabase.from("lead_inquiries").update(updates).eq("id", id).select().single()
+  const { data, error } = await supabase
+    .from("lead_inquiries")
+    .update(updates)
+    .eq("business_id", businessId)
+    .eq("id", id)
+    .select()
+    .single()
   if (error) throw error
   return data as LeadInquiry
 }
 
+/**
+ * The newest inquiry by a USER, for the ADMIN client page
+ * (app/(admin)/admin/clients/[id]/page.tsx). NO business predicate,
+ * deliberately and for now: that page reads a login's record across every
+ * business (programmes, assignments and clients are shared: G37, an owner
+ * decision still open). When G37 scopes clients to a business, this takes the
+ * business too; `lead_inquiries.business_id` (00280) is already there for it.
+ *
+ * KNOWN GAP until then: the page's "Regenerate" button calls a route that DOES
+ * scope by business (G45), so for an inquiry filed under a business other
+ * than the admin's selected one it answers "not found" for the inquiry shown
+ * right above it. Today every inquiry is the platform business's, so it shows
+ * only when an operator has selected another business.
+ */
 export async function getLeadInquiryByUserId(userId: string) {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -90,14 +118,19 @@ export async function getLeadInquiryByUserId(userId: string) {
   return data as LeadInquiry | null
 }
 
-export async function getLeadInquiryById(id: string) {
+/**
+ * ONE business's inquiry by id (G45). Null when this business has no such
+ * inquiry, including when another business does. A read error THROWS, so the
+ * caller can tell "not yours" from "could not read".
+ */
+export async function getLeadInquiryById(businessId: string, id: string): Promise<LeadInquiry | null> {
   const supabase = getClient()
-  // UNTENANTED BY SCHEMA (G45). `lead_inquiries` has no `business_id` column
-  // (the public inquiry route resolves the Host's business, then writes here
-  // without it), so this reads any business's inquiry by id. Reaching one
-  // needs its UUID, and no list of these rows sits on a grantable surface.
-  // See the shelf in lib/tenancy/platform.ts.
-  const { data, error } = await supabase.from("lead_inquiries").select("*").eq("id", id).single()
+  const { data, error } = await supabase
+    .from("lead_inquiries")
+    .select("*")
+    .eq("business_id", businessId)
+    .eq("id", id)
+    .maybeSingle()
   if (error) throw error
-  return data as LeadInquiry
+  return (data as LeadInquiry | null) ?? null
 }
