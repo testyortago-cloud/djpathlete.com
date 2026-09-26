@@ -13,7 +13,8 @@
 // migration; APPROVED_EDITS below is the complete list of what may differ.
 // A wording change that is not in that list fails this file, so the list IS
 // the reviewed diff.
-import { describe, expect, it } from "vitest"
+import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { validateStepList, type StepDraft } from "@/lib/lead-engine/step-list"
@@ -476,5 +477,116 @@ describe("00279 -- the SQL (static)", () => {
   it("backfills every business, keyed on absence inside the helper, never on a list of ids", () => {
     const sql = norm(SQL)
     expect(sql).toMatch(/for b in select id from public\.businesses loop perform public\.seed_business_starter_set\(b\.id\); end loop;/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// THE LIVE HALF, on the dev clone only. It creates a throwaway business through
+// create_business (with no creator, as a system-created business would be),
+// checks what it was given, and deletes it; every table involved cascades from
+// businesses. It never writes to any other business.
+// ---------------------------------------------------------------------------
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+const describeIf = url && key ? describe : describe.skip
+const DEV_REF = "anjvztjiokcgiyhobknq"
+const PLATFORM_ID = "00000000-0000-0000-0000-000000000001"
+
+describeIf("00279 on the dev clone -- create_business provisions a whole business", () => {
+  let db: SupabaseClient
+  let businessId: string
+  let platformBefore: Record<string, number>
+  const literals = sequenceLiterals()
+
+  async function counts(id: string): Promise<Record<string, number>> {
+    const out: Record<string, number> = {}
+    for (const table of ["sequences", "sequence_steps", "pipelines", "pipeline_stages"]) {
+      const { count, error } = await db.from(table).select("id", { count: "exact", head: true }).eq("business_id", id)
+      if (error) throw new Error(`${table}: ${error.message}`)
+      out[table] = count ?? -1
+    }
+    return out
+  }
+
+  beforeAll(async () => {
+    expect(url, "refusing to run against anything but the dev clone").toContain(DEV_REF)
+    db = createClient(url!, key!)
+    platformBefore = await counts(PLATFORM_ID)
+    const { data, error } = await db.rpc("create_business", {
+      p_name: "G32 Starter Set Test",
+      p_slug: `g32-starter-${Date.now()}`,
+      p_timezone: "UTC",
+      p_host_display_name: "Test Coach",
+      p_host_email: "",
+      p_created_by: null,
+    })
+    if (error) throw new Error(`create_business: ${error.message}`)
+    businessId = (Array.isArray(data) ? data[0] : data).id
+  })
+
+  afterAll(async () => {
+    if (!businessId) return
+    const { error } = await db.from("businesses").delete().eq("id", businessId)
+    if (error) console.error(`[00279 live] could not delete the throwaway business ${businessId}: ${error.message}`)
+  })
+
+  it("gives it all three boards, Coaching first in listPipelines' own order", async () => {
+    const { data, error } = await db
+      .from("pipelines")
+      .select("id, key")
+      .eq("business_id", businessId)
+      .eq("status", "active")
+      .order("created_at", { ascending: true })
+      .order("key", { ascending: true })
+    if (error) throw new Error(error.message)
+    // The same query listPipelines (lib/db/pipeline.ts) makes; the static half pins that it still does.
+    expect(data!.map((p) => p.key)).toEqual(["coaching", "assessment", "camps_clinics"])
+    for (const board of data!) {
+      const { count } = await db.from("pipeline_stages").select("id", { count: "exact", head: true }).eq("pipeline_id", board.id).eq("business_id", businessId)
+      expect(count, board.key).toBe(4)
+    }
+  })
+
+  it("gives it the eleven sequences, every one a draft", async () => {
+    const { data, error } = await db.from("sequences").select("key, status").eq("business_id", businessId)
+    if (error) throw new Error(error.message)
+    expect(data!.map((s) => s.key).sort()).toEqual(literals.map((s) => s.key).sort())
+    expect(new Set(data!.map((s) => s.status))).toEqual(new Set(["draft"]))
+  })
+
+  it("files every step under the new business, with each sequence's full step count", async () => {
+    const { data: seqs } = await db.from("sequences").select("id, key").eq("business_id", businessId)
+    for (const s of seqs!) {
+      const { data: steps, error } = await db.from("sequence_steps").select("business_id, position").eq("sequence_id", s.id)
+      if (error) throw new Error(error.message)
+      const want = literals.find((l) => l.key === s.key)!.steps.length
+      expect(steps!.length, s.key).toBe(want)
+      expect(new Set(steps!.map((st) => st.business_id)), s.key).toEqual(new Set([businessId]))
+      expect(steps!.map((st) => st.position).sort((a, b) => a - b), s.key).toEqual([...Array(want).keys()])
+    }
+  })
+
+  it("leaves the platform business exactly as it was", async () => {
+    expect(await counts(PLATFORM_ID)).toEqual(platformBefore)
+  })
+
+  it("adds back only what is missing when run again, and never touches an edited draft", async () => {
+    const { data: seqs } = await db.from("sequences").select("id, key").eq("business_id", businessId)
+    const edited = seqs!.find((s) => s.key === "new_lead_nurture")!
+    const removed = seqs!.find((s) => s.key === "newsletter_welcome")!
+    await db.from("sequences").update({ name: "Edited by the coach" }).eq("id", edited.id)
+    await db.from("sequences").delete().eq("id", removed.id)
+    const before = await counts(businessId)
+
+    const { error } = await db.rpc("seed_business_starter_set", { p_business_id: businessId })
+    if (error) throw new Error(`seed_business_starter_set: ${error.message}`)
+
+    const after = await counts(businessId)
+    const back = literals.find((l) => l.key === "newsletter_welcome")!
+    expect(after.sequences).toBe(before.sequences + 1)
+    expect(after.sequence_steps).toBe(before.sequence_steps + back.steps.length)
+    expect(after.pipelines).toBe(before.pipelines)
+    const { data: stillEdited } = await db.from("sequences").select("id, name").eq("id", edited.id).single()
+    expect(stillEdited!.name).toBe("Edited by the coach")
   })
 })
