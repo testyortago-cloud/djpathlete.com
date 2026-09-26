@@ -660,10 +660,10 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
 ### G34 · Settings are owner-only · **decision, scoping**
 - `/admin/businesses` is in `OWNER_ONLY_PREFIXES`. Letting a tenant coach edit their own branding touches the "do not elaborate permissions" invariant in `CLAUDE.md`; it belongs in the SaaS direction spec, not here. Record the decision; no code until then.
 
-### G35 · Readers with no tenant predicate · **S → M** · **BUILT 2026-09-26 (branch worktree-g35-untenanted-readers, awaiting merge)**
+### G35 · Readers with no tenant predicate · **S → M** · **DONE (merged + pushed + deployed 2026-09-26, `79320de8`)**
 - Chat facts read `faqs`, `programs`, `testimonials` with no `business_id` (those tables have none — a seam to name in `platform.ts`); `hasConsent` is keyed on contact UUID only; campaign-revenue reads `marketing_attribution` without one (no column). Name each seam honestly in `lib/tenancy/platform.ts` or add the predicate where a column exists.
 - **Its one owner question is answered: owners, in-app.** It asked where the SEO and social agents' admin alert should go. Both read a `profiles` table that does not exist, so PostgREST answered `PGRST205` on every run and no agent alert has ever reached anyone. The owner ruled neither "the first admin user" (which makes an untenanted reader live) nor the tenant's `reply_to` email: the alert is a bell row for each **owner** of the job's business. Both `profiles` entries are deleted from `KNOWN_REFUSED`, in the same commit that stopped reading `profiles`.
-- **Built on `worktree-g35-untenanted-readers` off `main@8b7fb0e6`. NOT MERGED — the owner has not given the word.** Spec `docs/superpowers/specs/2026-09-25-g35-untenanted-readers-design.md` (`4f3fa23b`), plan `docs/superpowers/plans/2026-09-25-g35-untenanted-readers.md` (`10ba091d`). No migration. One commit per spec section, listed below.
+- **Built on `worktree-g35-untenanted-readers` off `main@8b7fb0e6`. MERGED 2026-09-26 as `79320de8` on the owner's word (`--no-ff`; the merged tree `7f12a476` is byte-identical to the gated branch tree, because `main@af4c41c3` had been merged into the branch and gated first), and pushed.** Deployed by the push: Vercel "Deployment has completed"; Firebase functions run 36229709928, 85 "Successful update operation", 0 errors; select-contract backstop run 36229709947 success. No migration. Worktree and branch deleted. Spec `docs/superpowers/specs/2026-09-25-g35-untenanted-readers-design.md` (`4f3fa23b`), plan `docs/superpowers/plans/2026-09-25-g35-untenanted-readers.md` (`10ba091d`). No migration. One commit per spec section, listed below.
 - **THE ROW NAMED THREE READERS. THE SWEEP FOUND A CLASS, and that is why it grew from S to M.** Before designing, a discovery workflow (five investigators and a completeness critic, 13 claims re-checked) swept every read of the 38 tables that carry `business_id`: **197 read sites, 41 with no business predicate.** Most of the 41 are safe by construction: keyed on a webhook id, a token, or an id that came from an already-scoped read. The critic then found what the sweep could not see by construction: readers of tables with NO `business_id`, behind a staff permission an owner can grant or a public route that resolved another business's Host. That class became the new shelf (D1) and most of G36-G45 below.
 - **Production has one business** (`Primary`, measured 2026-09-23), so nothing here was leaking in production. Every item was a fuse for the white-label destination, not an incident. The dev clone has second businesses, and that is where the cross-business paths could be reached.
 - **The owner ruled four things (2026-09-25):**
@@ -839,7 +839,7 @@ option over a staged rollout, on the measured basis that no policies are require
 | 1 — truthful data | G04, G05, G06, G07, G08 | M + 4 S ≈ 3 days |
 | 2 — quoted behaviours | G09, G10, G11, G12, G13, G14, G15, G16, G17, G18 | 5 M + 5 S ≈ 2 weeks |
 | 3 — entry points + pipeline | G20–G29 | 2 M + 7 S + 1 L ≈ 1 week |
-| 4 — white-label edges | ~~G30~~, ~~G31~~, G32, ~~G33~~, ~~G35~~ | M (G32 only; G30 built 2026-09-23, G31 merged 2026-09-25, G33 built 2026-09-25, G35 built 2026-09-26 on its branch, awaiting merge) |
+| 4 — white-label edges | ~~G30~~, ~~G31~~, G32, ~~G33~~, ~~G35~~ | M (G32 only; G30 built 2026-09-23, G31 merged 2026-09-25, G33 built 2026-09-25, G35 merged 2026-09-26) |
 | 4b — found by G35's sweep | G36-G45 | decisions + S/M rows |
 
 Phase 0 today. Phases 1 and 2 are what make the quotation's sentences true. Phases 3 and 4 are what make "GoHighLevel replacement" and "white-label ready" true.
@@ -889,16 +889,15 @@ nothing — read production back; every new column needs a named reader.
 
 ### Finished vs not — the one-screen answer
 
-**35 of 47 rows are finished in code: 34 merged, pushed and deployed, and G35 built on branch
-`worktree-g35-untenanted-readers`, awaiting the owner's merge. 12 are not.** Four of the 12 need
+**35 of 47 rows are finished, merged, pushed and deployed. 12 are not.** Four of the 12 need
 no owner and can be built now: G32 (unblocked by G31), G40, G41 and G45. G44 is recorded for later.
 The other seven wait on the owner: G34 is parked by ruling, and G36, G37, G38, G39, G42 and G43 are
 decisions only the owner can take. Separately, some finished rows still need wording only the owner
 can write (below). *(Corrected 2026-09-26 by the G35 final review: this sentence said everything not
 finished was an owner decision or owner wording, which G40, G41 and G45 are not. Commit `04d8019f`'s
 message makes the same overstatement, "each is a scoping decision, not a bug fix"; the commit is not
-rewritten.)* *(Updated 2026-09-26 on that branch: G35 is built, and the ten rows its sweep found are added
-as G36-G45, so the count went from 37 to 47. `main` still says 34 of 37 until the branch merges.)*
+rewritten.)* *(Updated 2026-09-26: G35 is merged and deployed, and the ten rows its sweep found are added
+as G36-G45, so the count went from 37 to 47.)*
 *(Corrected 2026-09-25. This line said "30 of 36 … 6 are not" through G30b, G31 and G33, while the
 scoreboard below moved on.)*
 
@@ -910,6 +909,7 @@ scoreboard below moved on.)*
 | 1 — truthful data | G04 G05 G06 G07 G08 | `contacts.user_id` now 43 of 170 linked |
 | 2 — quoted behaviours | G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b | two partial, see below |
 | 3 — entry points + pipeline | G20 G21 G22 G23 G24 G25 G26 G27 G28 G29 | whole phase complete |
+| 4 — white-label (so far) | G30 G30b G31 G33 G35 | the rest of Phase 4 is open, below. *(This row was missing while the four before G35 closed; added 2026-09-26.)* |
 | Security (not a gap) | S01 S02 | migrations `00274`/`00275` live; 0 tables with RLS off |
 
 **NOT FINISHED — 12 rows, none of them started:**
@@ -1015,9 +1015,8 @@ per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run
 Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29** **G30** **G30b** **G31** **G33** **G35**.
 Open: G32 G34 G36 G37 G38 G39 G40 G41 G42 G43 G44 G45.
 
-**G35 is counted Done while it is still on its branch.** Done here means finished in code, as it
-does for G18. G35 is not on `main` until the owner gives the word, and until then `main`'s copy
-of this scoreboard says 37 · 34 · 3. **The row count went from 37 to 47** because G35's sweep
+**G35 is Done: merged, pushed and deployed on 2026-09-26.** *(This paragraph was written on
+G35's branch, when it was counted Done while still unmerged.)* **The row count went from 37 to 47** because G35's sweep
 recorded ten new rows, G36-G45, under its own heading after G35. They are rows, not lettered
 sub-rows: each is a separate decision or fix, and none was built in G35.
 
@@ -1062,7 +1061,7 @@ production. G18's `ai_chat` follow-up sequence is NOT built and is blocked on th
 "every row is built" was an overclaim; it is counted under Done in the scoreboard because that list
 means FINISHED IN CODE, and G18's outstanding half is in the owner section below. G21 and G28, the two rows that were
 blocked on an owner decision, were ruled on and built the same day. G29, the last Phase 3 row and the one deliberately deferred until Phases 0-2 were done, was
-built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the first two Phase 4 rows, were merged and pushed on 2026-09-23 and 2026-09-25. G33 was built on 2026-09-25. G35 was built on 2026-09-26 on its own branch and is awaiting the owner's merge. What remains is **Phase 4's G32** (and G34, which is a decision, not work), plus **the ten rows G35's sweep found, G36-G45**: six wait on an owner decision (G36-G39, G42, G43), three are small fixes that need no owner (G40, G41, G45), and G44 is schema work for later.
+built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the first two Phase 4 rows, were merged and pushed on 2026-09-23 and 2026-09-25. G33 was built on 2026-09-25. G35 was merged, pushed and deployed on 2026-09-26. What remains is **Phase 4's G32** (and G34, which is a decision, not work), plus **the ten rows G35's sweep found, G36-G45**: six wait on an owner decision (G36-G39, G42, G43), three are small fixes that need no owner (G40, G41, G45), and G44 is schema work for later.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
@@ -1085,10 +1084,10 @@ built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the fir
 - **G30 made `sales@darrenjpaul.com` go quiet** — new-inquiry alerts now go to
   `business_settings.reply_to` (`darren@`) alone, per decision 9. If `sales@` should still receive
   them, the fix is a recipient list, not a revert.
-- **G35's merge** — built on `worktree-g35-untenanted-readers` and not merged; the owner's go-ahead
-  merges it. Read the row's five behaviour changes first, especially (c): contact and inquiry bells
-  move to `Primary`'s owners and coaches, which is today's admin set only if `Primary`'s owners
-  still match `00246`'s backfill. That is unconfirmed, because production was not readable.
+- **G35's behaviour change (c), now live** — merged and deployed 2026-09-26 (`79320de8`). Contact
+  and inquiry bells now go to `Primary`'s owners and coaches, which is the old admin set only if
+  `Primary`'s owners still match `00246`'s backfill. That is still unconfirmed, because production
+  was not readable; check who receives the next contact or inquiry bell.
   *(G35's own question, where the agents' alert goes, is answered: owners, as bell rows. See the
   row.)*
 - **G36 · the grantable staff surfaces** — scope the admin AI chat, blog, website CMS, money,
@@ -1110,7 +1109,7 @@ built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the fir
 **Next unblocked: G32** (**M**), which G31 unblocked. Then the three **S** rows G35's sweep found
 that need no owner: **G40** (bind the funnel checkout's product to the published page's offers),
 **G41** (the strategy critic's attribution read, and the select contract's blindness to filter
-columns) and **G45** (small ownership checks). **G35 is built** on its branch, awaiting merge.
+columns) and **G45** (small ownership checks). **G35 is done** (merged 2026-09-26).
 **G33 is done.** **G34 is not work**: decision 11 ruled record it, write no code. G36-G39, G42 and
 G43 wait on the questions above, and G44 is schema work for later.
 
