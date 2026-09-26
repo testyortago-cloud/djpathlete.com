@@ -1,6 +1,7 @@
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
 import { Resend } from "resend"
 import { getSupabase } from "./lib/supabase.js"
+import { isUndeliverableAddress } from "./lib/newsletter-recipients.js"
 
 const BATCH_SIZE = 100
 const BATCH_DELAY_MS = 1000
@@ -37,7 +38,7 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
     // total order (id tiebreaker) keeps page boundaries correct when a bulk import
     // shares one subscribed_at.
     const PAGE = 1000
-    const subscribers: { email: string }[] = []
+    const listed: { email: string }[] = []
     for (let from = 0; ; from += PAGE) {
       const { data, error: subError } = await supabase
         .from("newsletter_subscribers")
@@ -48,23 +49,31 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
         .range(from, from + PAGE - 1)
       if (subError) throw new Error(`Failed to fetch subscribers: ${subError.message}`)
       const rows = (data ?? []) as { email: string }[]
-      subscribers.push(...rows)
+      listed.push(...rows)
       if (rows.length < PAGE) break
     }
+
+    // One undeliverable address 422s its entire batch of 100 — see
+    // lib/newsletter-recipients. Drop them up front and count them as skipped.
+    const subscribers = listed.filter((s) => !isUndeliverableAddress(s.email))
+    const skipped = listed.length - subscribers.length
+    if (skipped > 0) console.warn(`[newsletter-send] Skipping ${skipped} undeliverable address(es)`)
 
     if (subscribers.length === 0) {
       console.log("[newsletter-send] No active subscribers — skipping")
       await jobRef.update({
         status: "completed",
-        result: { sent: 0, failed: 0, total: 0 },
+        result: { sent: 0, failed: 0, total: 0, skipped },
         updatedAt: FieldValue.serverTimestamp(),
       })
       return
     }
 
-    // mail.darrenjpaul.com is the account's one verified domain since
-    // 2026-09-20 -- see getFromEmail() in ./lib/notify-job-done.
-    const fromEmail = process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@mail.darrenjpaul.com>"
+    // RESEND_FROM_EMAIL is bound (sendSecrets), so this fallback only fires if it
+    // goes missing. send.darrenjpaul.com is the live account's one verified domain
+    // (GET /domains, 2026-09-27); mail. was suspended on 2026-09-26. The account
+    // has changed twice, so re-read /domains before trusting this.
+    const fromEmail = process.env.RESEND_FROM_EMAIL ?? "Darren J. Paul <noreply@send.darrenjpaul.com>"
     let sent = 0
     let failed = 0
 
@@ -123,7 +132,7 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
 
     await jobRef.update({
       status: "completed",
-      result: { sent, failed, total: subscribers.length },
+      result: { sent, failed, total: subscribers.length, skipped },
       updatedAt: FieldValue.serverTimestamp(),
     })
   } catch (error) {
