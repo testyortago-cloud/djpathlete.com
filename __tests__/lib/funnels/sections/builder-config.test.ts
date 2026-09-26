@@ -94,10 +94,13 @@ describe("the import graph the AI page builder's config sits in", () => {
     // MUTANT: a `reachableFrom` that returns an empty set — every assertion
     // below would go green while the graph got arbitrarily worse. This is the
     // guard on the guard: `lib/ai/anthropic` DOES reach `lib/ai/models` and
-    // `lib/admin-ai-config`, and it must be seen doing so.
+    // `lib/ai/openrouter-object-stream`, and it must be seen doing so. The
+    // second witness used to be `lib/admin-ai-config`, which only the deleted
+    // `streamChat` imported (removed 2026-09-26, when the page builder's
+    // stream moved to OpenRouter); a witness must be an import the file still has.
     const reached = reachableFrom("lib/ai/anthropic.ts")
     expect(reached).toContain("lib/ai/models")
-    expect(reached).toContain("lib/admin-ai-config")
+    expect(reached).toContain("lib/ai/openrouter-object-stream")
   })
 
   it("builder-config reaches the Anthropic SDK through nothing at all", () => {

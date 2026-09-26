@@ -134,6 +134,14 @@ Every converted shape, against the real provider:
 through the Vercel AI SDK, and are blocked by the provider-version conflict
 described above — not by anything about OpenRouter itself.
 
+**Superseded 2026-09-26.** `streamAgent` (the AI page builder) now streams from
+OpenRouter through `lib/ai/openrouter-object-stream.ts`, which uses the raw
+OpenAI SDK and so never meets the provider-version conflict; direct Anthropic is
+only its pre-first-part fallback. `streamChat`, `getClient` and the
+`export { Anthropic }` re-export were deleted from `lib/ai/anthropic.ts` the same
+day: none had a caller, and each was a ready-made way to wire a new
+direct-Anthropic call back in.
+
 ### Tests
 
 Four suites had to move with the transport:
