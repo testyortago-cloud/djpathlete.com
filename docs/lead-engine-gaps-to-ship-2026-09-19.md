@@ -827,12 +827,12 @@ Ten rows the G35 sweep and its critic found. None is built. Each carries its evi
     - **(B)** An interim: take the `has_user` branch out of the four `quiz_*` drafts for every business except the platform, so everyone gets the prospect arm until G37. That needs a migration editing only non-platform drafts, and `seed_business_starter_set` replaced whole.
     - **(C)** An interim: a new branch condition backed by the lead-side proxies above.
     - Recommendation: **A**. Nothing is reachable today, and B or C would each be undone by G37.
-- **2026-09-26: RULING, option A ("do what is recommended").** G48 waits for G37, and fixing it is a precondition of giving any coach a host. Nothing in the product changes.
+- **2026-09-26: RULING, option A ("do what is recommended").** G48 waits for G37, and fixing it is a precondition of giving any coach a host. Nothing in the product changes. The tripwire test was merged on the owner's "merge all of it" (`14053dea`, pushed and deployed).
   - **The precondition is enforced, not just written down.** `__tests__/lib/tenancy/coach-hosts-precondition.test.ts` fails if anything starts writing `business_domains`: application code (`.from("business_domains")` then insert, upsert, update or delete), or any migration other than `00251`'s one-time seed of the platform's own hosts. Its failure message and header say what to close first: G48, and G49's host half (`appOrigin()`). They also say to retire the file in the same change, never to add an exemption.
   - Why a writer is the right trigger: a business's public pages resolve to it only through `business_domains`, so no host means no reachable quiz and no reachable wrong arm.
   - **Verified:** 3/3 green on the real tree. Two mutants each turned it red: a writer appended to `lib/db/business-domains.ts`, and a new migration inserting a coach's host. The first draft was a false negative, found by the first mutant: its "same chain" filter let a reader near the top of the file swallow a later writer. The regex now cannot cross another `.from(`, and a control pins exactly that case. The test file has no type errors. A full tsc in this worktree read 239, because `functions/` was not installed here (the known phantom), so it was not compared per file.
 
-### G49 · A tenant's unsubscribe and consent links land on the platform's branded pages · **M** · **buildable part BUILT 2026-09-26 (owner chose option 1); per-business hosts still later**
+### G49 · A tenant's unsubscribe and consent links land on the platform's branded pages · **M** · **DONE for the page (merged + deployed 2026-09-26, `9acc0772`); the address bar waits on coach hosts, gated by G48's tripwire**
 - `appOrigin()` is deployment-wide (`lib/automation/sequence-tick-runner.ts`, ~464-477). The unsubscribe and `{{sms_consent_url}}` pages sit under `app/(marketing)`, whose navbar is the platform's (`SiteNavbar.tsx`). A coach's lead who unsubscribes lands on the platform's site.
 - It needs per-business hosts (nothing writes `business_domains` yet) or a neutral, unbranded page for these two routes.
 - **2026-09-26: the buildable part was designed (bounded path, in chat) and waits on ONE owner choice; nothing built.**
@@ -840,7 +840,7 @@ Ten rows the G35 sweep and its critic found. None is built. Each carries its evi
   - Both token readers already return the token's `businessId` (`processUnsubscribe`, `readSmsConsentState`). `getBusinessSettings(businessId)` supplies the identity. The page title overrides the root's `%s | <platform>` template.
   - **The choice:** (1, recommended) the business's own chrome, matching the email the person clicked from: `logo_url` or `display_name`, `brand_color` through the emails' `paletteFor` (exported from `lib/lead-engine/email.ts` so page and email share one rule), and "Sent by <sender_name> · <postal_address>"; or (2) the business's name in plain text and nothing else.
   - The brand sweep's ROOTS must follow the moved files; its "every root still resolves" guard fails the run if they do not. Three tests import the page paths (`__tests__/app/sms-consent-page.test.ts`, `sms-consent-agree-button.test.tsx`, `unsubscribe-token-route.test.ts`). The address bar still shows the platform's domain until coaches have hosts.
-- **2026-09-26: the owner chose (1) ("do what is recommended"). BUILT on branch `worktree-g49-business-token-pages`, NOT merged.**
+- **2026-09-26: the owner chose (1) ("do what is recommended"). Built on `worktree-g49-business-token-pages`; MERGED on the owner's "merge all of it" (`9acc0772`), pushed as `main@14053dea` and deployed (Vercel "Deployment has completed"; select-contract backstop green). No migration.**
   - **Moved** (with `git mv`, so history follows): `app/(business)/unsubscribe/[token]/page.tsx` and `app/(business)/sms-consent/[token]/{page,actions,agree-button}`. The URLs are unchanged: the build lists `/unsubscribe` (the newsletter's own page, still in `(marketing)`), `/unsubscribe/[token]` and `/sms-consent/[token]`.
   - **`app/(business)/layout.tsx`** adds none of the platform's chrome. Its metadata removes everything the root passes down that names the platform:
     - the title template, plus `absolute` on the layout's own default, because a layout's title still runs through its PARENT's template (seen live as "Message settings | DJP Athlete" before the fix);
@@ -1012,11 +1012,11 @@ nothing — read production back; every new column needs a named reader.
 
 ### Finished vs not — the one-screen answer
 
-**38 of 51 rows are finished, merged, pushed and deployed. 13 are not.** Three of the 13 need
-no owner and can be built now: G40, G41 and G45. G44 is recorded for later; G49's buildable part
-(a neutral page for the two token routes) was designed on 2026-09-26 and waits on the owner's choice
-between the business's own branding and its name alone; G48 waits on G37 and on the owner's A/B/C
-answer. *(Updated 2026-09-26: G46 and G47 merged, `main@c6440766`.)* The other seven wait on the owner: G34 is parked by ruling, and G36, G37, G38, G39,
+**39 of 51 rows are finished, merged, pushed and deployed. 12 are not.** Three of the 12 need
+no owner and can be built now: G40, G41 and G45. G44 is recorded for later. G48 waits on G37; the
+owner ruled that fixing it is a precondition of coach hosts, and a test enforces that. G49 is done
+for the page; its address-bar half waits on coach hosts, which that same test gates. *(Updated
+2026-09-26: G46 and G47 merged, `main@c6440766`; G49 and the G48 ruling merged, `main@14053dea`.)* The other seven wait on the owner: G34 is parked by ruling, and G36, G37, G38, G39,
 G42 and G43 are decisions only the owner can take. *(Updated 2026-09-26: G32 merged and applied to
 production, and the four rows its discovery found added as G46-G49, so the count went from 47 to 51.)* Separately, some finished rows still need wording only the owner
 can write (below). *(Corrected 2026-09-26 by the G35 final review: this sentence said everything not
@@ -1055,8 +1055,8 @@ scoreboard below moved on.)*
 | G45 | Small ownership checks | **S** | Not started; needs no owner |
 | G46 | The dev clone has drifted from the migrations | **S** | **Done** 2026-09-26: dev clone fixed; drift check merged (`6a2a6def`) |
 | G47 | Cloning the built-in quiz copies "Book a call with Darren" | **S** | **Done** 2026-09-26: merged and deployed (`f628c859`) |
-| G48 | The `has_user` branch crosses businesses | **S** | Blocked on G37; ruled A 2026-09-26, tripwire on `worktree-g48-ruling-tripwire` |
-| G49 | Unsubscribe and consent links land on the platform's pages | **M** | Built on `worktree-g49-business-token-pages` 2026-09-26 (option 1), awaiting merge |
+| G48 | The `has_user` branch crosses businesses | **S** | Blocked on G37; ruled A 2026-09-26, tripwire merged (`14053dea`) |
+| G49 | Unsubscribe and consent links land on the platform's pages | **M** | **Done** 2026-09-26 for the page: merged and deployed (`9acc0772`); address bar waits on coach hosts |
 
 **FINISHED IN CODE, NOT FINISHED IN WORDS — these need the owner, not a developer:**
 - **G18's `ai_chat` sequence** — the consent half is live; the follow-up sequence a chat lead enters
@@ -1140,9 +1140,9 @@ Verified on the MERGED result, not just per branch (2026-09-21, after all four g
 per-file set identical to `.claude/baselines/tsc-ce6f2aba-perfile.txt`; `npm run build` exit 0 after
 `rm -rf .next/dev`.
 
-**Scoreboard, re-measured 2026-09-26 on `main@c6440766` (G46 and G47 merged): 51 rows · 38 done · 13 open.**
-Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29** **G30** **G30b** **G31** **G32** **G33** **G35** **G46** **G47**.
-Open: G34 G36 G37 G38 G39 G40 G41 G42 G43 G44 G45 G48 G49.
+**Scoreboard, re-measured 2026-09-26 on `main@14053dea` (G49 merged): 51 rows · 39 done · 12 open.**
+Done: G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G19b G20 **G21** G22 G23 G24 G25 G26 G27 **G28** **G29** **G30** **G30b** **G31** **G32** **G33** **G35** **G46** **G47** **G49**.
+Open: G34 G36 G37 G38 G39 G40 G41 G42 G43 G44 G45 G48.
 *(G46-G49 are the four rows G32's discovery added.)*
 
 **G35 is Done: merged, pushed and deployed on 2026-09-26.** *(This paragraph was written on
@@ -1191,7 +1191,7 @@ production. G18's `ai_chat` follow-up sequence is NOT built and is blocked on th
 "every row is built" was an overclaim; it is counted under Done in the scoreboard because that list
 means FINISHED IN CODE, and G18's outstanding half is in the owner section below. G21 and G28, the two rows that were
 blocked on an owner decision, were ruled on and built the same day. G29, the last Phase 3 row and the one deliberately deferred until Phases 0-2 were done, was
-built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the first two Phase 4 rows, were merged and pushed on 2026-09-23 and 2026-09-25. G33 was built on 2026-09-25. G35 was merged, pushed and deployed on 2026-09-26. G32 was merged, pushed and applied to production on 2026-09-26, and G46 and G47 were merged and pushed on 2026-09-26. What remains is G34 (a decision, not work), **the ten rows G35's sweep found, G36-G45**, and **two of the four G32's discovery found, G48 and G49**: six wait on an owner decision (G36-G39, G42, G43), three are small fixes that need no owner (G40, G41, G45), G48 waits on G37 and the owner's A/B/C answer, G49 waits on the owner's design choice, and G44 is for later.
+built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the first two Phase 4 rows, were merged and pushed on 2026-09-23 and 2026-09-25. G33 was built on 2026-09-25. G35 was merged, pushed and deployed on 2026-09-26. G32 was merged, pushed and applied to production on 2026-09-26, and G46 and G47 were merged and pushed on 2026-09-26. What remains is G34 (a decision, not work), **the ten rows G35's sweep found, G36-G45**, and **two of the four G32's discovery found, G48 and G49**: six wait on an owner decision (G36-G39, G42, G43), three are small fixes that need no owner (G40, G41, G45), G48 waits on G37 (ruled A: a precondition of coach hosts), G49 is done for the page, and G44 is for later.
 
 **Everything still waiting on the owner, in one place:**
 - **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
@@ -1236,12 +1236,13 @@ built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the fir
   or does each business need its own first? A legal decision before a code one.
 - **The decisions in §Decisions** that Phase 3 rows still name (G21, G28, G34).
 
-**G46 and G47 are done** (merged 2026-09-26, `main@c6440766`). **G32 is done** (merged and applied to
+**G49 is done for the page** (merged 2026-09-26, `main@14053dea`). **G46 and G47 are done** (merged 2026-09-26, `main@c6440766`). **G32 is done** (merged and applied to
 production 2026-09-26). **Next unblocked:** the three **S** rows that need no owner: **G40** (bind the
 funnel checkout's product to the published page's offers), **G41** (the strategy critic's attribution
 read, and the select contract's blindness to filter columns) and **G45** (small ownership checks).
-G47 left one follow-up with no row yet: the quiz gate's "no button" warning does not reach the funnel
-publish review. **G35 is done** (merged 2026-09-26).
+Two follow-ups with no row yet: the quiz gate's "no button" warning does not reach the funnel publish
+review (G47); and a business with no brand colour gets the platform's teal and gold on its token pages
+and in its sequence emails alike (G49, an owner question). **G35 is done** (merged 2026-09-26).
 **G33 is done.** **G34 is not work**: decision 11 ruled record it, write no code. G36-G39, G42 and
 G43 wait on the questions above, and G44 is schema work for later.
 
