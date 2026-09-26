@@ -39,6 +39,14 @@ vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.f
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
+// The quiz reads `loadCatalogues` makes (G35 review, F7). Unmocked, they
+// reached the dev clone through `.env.local` on every run: a unit test that
+// passes or fails on what the shared database holds today. `clearAllMocks`
+// below keeps these implementations.
+vi.mock("@/lib/db/quizzes", () => ({
+  listQuizzes: vi.fn(async () => []),
+  getQuizDefinition: vi.fn(async () => null),
+}))
 // `resolveBrandKit` is now called UNCONDITIONALLY inside `renderDraftPreview`
 // (Task 7 made `businessId` required, not an optional cosmetic extra), so an
 // unmocked `getBusinessSettings` here would make a REAL Supabase call every

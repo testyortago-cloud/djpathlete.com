@@ -347,14 +347,16 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *
  * The entries:
  *   - `getPrograms`, `getAllPrograms` and `getProgramById`
- *     (lib/db/programs.ts) read `programs`. The programme list and the
- *     programme page (app/(admin)/admin/programs/page.tsx,
- *     app/(admin)/admin/programs/[id]/page.tsx) reach them through the
- *     `programs` permission, which the Coach preset grants, and the
- *     analytics page (app/(admin)/admin/analytics/page.tsx) through
- *     `analytics`. A second business's coach sees every business's
- *     programmes -- most of them private plans named after an athlete -- and
- *     opens any of them by id. G37.
+ *     (lib/db/programs.ts) read `programs`. The programme list
+ *     (app/(admin)/admin/programs/page.tsx) reaches `getPrograms` and the
+ *     programme page (app/(admin)/admin/programs/[id]/page.tsx) reaches
+ *     `getProgramById`, both through the `programs` permission, which the
+ *     Coach preset grants; the analytics page
+ *     (app/(admin)/admin/analytics/page.tsx) reaches `getPrograms` through
+ *     `analytics`. `getAllPrograms` is reached only through `loadCatalogues`,
+ *     the funnel catalogue entry below (`funnels`). A second business's coach
+ *     sees every business's programmes -- most of them private plans named
+ *     after an athlete -- and opens any of them by id. G37.
  *   - `getAssignments` and `getAssignmentCountsByProgram`
  *     (lib/db/assignments.ts) read `program_assignments`. The same programme
  *     list: every business's assignments feed its counts and its completion

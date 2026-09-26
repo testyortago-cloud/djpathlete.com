@@ -126,6 +126,42 @@ const SHELF_CARVE_OUTS = [
 const SHELF_HEADER = "UNTENANTED BY SCHEMA --"
 
 /**
+ * Functions the shelf's entries paragraph names in backticks AS CONTEXT, not
+ * as a read it describes. The function-level reverse check allows these and
+ * the entries' own `fn`s, and nothing else.
+ */
+const SHELF_CONTEXT_NAMES = [
+  // "`linkContactsToUser` links one login into every business's contact with
+  //  that email" — the WRITER that makes the payments and attribution reads
+  //  span businesses. It reads nothing on the shelf.
+  "linkContactsToUser",
+]
+
+const SHELF_ENTRIES_MARKER = "The entries:"
+
+/**
+ * The camelCase identifiers the shelf's entries paragraph names in backticks.
+ * Table and permission names (`programs`, `contacts`, `user_id`) are
+ * lowercase or snake_case, so camelCase is what marks a function. The
+ * preamble above the marker names functions that are NOT entries on purpose
+ * (`getAttributionBySession`), so it is left out.
+ */
+function entryFunctionsNamedIn(shelf: string): string[] {
+  const start = shelf.indexOf(SHELF_ENTRIES_MARKER)
+  if (start === -1 || shelf.indexOf(SHELF_ENTRIES_MARKER, start + 1) !== -1) {
+    throw new Error(`the UNTENANTED BY SCHEMA shelf must say "${SHELF_ENTRIES_MARKER}" exactly once`)
+  }
+  const found = [...shelf.slice(start).matchAll(/`([a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*)`/g)].map((m) => m[1])
+  return [...new Set(found)].sort()
+}
+
+/** Functions the entries paragraph names that are neither an entry's `fn` nor a stated context name. */
+function unlistedEntryFunctions(shelf: string, entries: UntenantedRead[]): string[] {
+  const listed = new Set([...entries.map((e) => e.fn), ...SHELF_CONTEXT_NAMES])
+  return entryFunctionsNamedIn(shelf).filter((name) => !listed.has(name))
+}
+
+/**
  * The inventory in two parts: the UNTENANTED BY SCHEMA shelf (from its header
  * to the end of the doc comment, which is where it sits) and everything else.
  * Throws unless the header appears exactly once and the comment closes after
@@ -269,6 +305,21 @@ describe("lib/tenancy/platform.ts — the UNTENANTED BY SCHEMA shelf", () => {
     expect(SHELF_CARVE_OUTS.filter((p) => !existsSync(join(ROOT, p)))).toEqual([])
   })
 
+  // (d2) The same reverse check at FUNCTION level (G35 review, F5). The path
+  // check above passes while any one entry still names a file, so dropping
+  // one row of a multi-row file (`getAllPrograms` out of lib/db/programs.ts)
+  // left the prose describing a read that nothing checked. The control that
+  // proves this can fail is in "controls" below.
+  it("names no function in its entries that is not an entry's function or a stated context name", () => {
+    const { shelf } = inventoryParts()
+    // Presence: the scan finds the functions the entries name at all.
+    expect(entryFunctionsNamedIn(shelf)).toEqual(expect.arrayContaining(["getAllPrograms", "loadCatalogues"]))
+    expect(unlistedEntryFunctions(shelf, UNTENANTED_BY_SCHEMA)).toEqual([])
+    // The context allowlist cannot outlive its prose, nor hide an entry.
+    expect(SHELF_CONTEXT_NAMES.filter((name) => !entryFunctionsNamedIn(shelf).includes(name))).toEqual([])
+    expect(SHELF_CONTEXT_NAMES.filter((name) => UNTENANTED_BY_SCHEMA.some((e) => e.fn === name))).toEqual([])
+  })
+
   // §D3. The shelf is one place to look; the read is where someone about to
   // "just add a predicate" will be standing. Every entry's function says, in
   // place, that its table has no `business_id` and which row owns that.
@@ -294,6 +345,14 @@ describe("lib/tenancy/platform.ts — the UNTENANTED BY SCHEMA shelf", () => {
       expect(staleReasons({ file: "lib/db/programs.ts", fn: "getClient", table: "programs", row: "G37" })).toEqual([
         'lib/db/programs.ts · getClient · programs: getClient no longer contains .from("programs")',
       ])
+    })
+
+    it("a dropped row of a multi-row file is caught at function level, though every path check still passes (MUTANT: path-level reverse check only)", () => {
+      const { shelf } = inventoryParts()
+      const withoutOne = UNTENANTED_BY_SCHEMA.filter((e) => e.fn !== "getAllPrograms")
+      // The path-level check cannot see it: lib/db/programs.ts is still an entry's file.
+      expect(withoutOne.some((e) => e.file === "lib/db/programs.ts")).toBe(true)
+      expect(unlistedEntryFunctions(shelf, withoutOne)).toEqual(["getAllPrograms"])
     })
 
     it("an entry naming a function that does not exist is stale", () => {
