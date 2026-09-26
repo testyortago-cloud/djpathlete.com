@@ -26,7 +26,7 @@ const branchConditionSchema = z
     z.object({ kind: z.literal("opened_last_email") }),
     z.object({ kind: z.literal("clicked_last_email") }),
     // G10. `key` takes its enum straight from ENROLMENT_METADATA_KEYS rather
-    // than restating the seven values, so the save endpoint can never accept
+    // than restating the values, so the save endpoint can never accept
     // a key nothing writes. `value` is `.min(1)` because a blank answer is a
     // branch nobody can reason about — `validateStepList` says the same
     // thing in English before the request is made.

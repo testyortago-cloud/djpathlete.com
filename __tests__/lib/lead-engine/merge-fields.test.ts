@@ -31,12 +31,13 @@ describe("MERGE_FIELD_KEYS", () => {
     expect(MERGE_FIELD_KEYS).toHaveLength(ENROLMENT_METADATA_KEYS.length + 2)
   })
 
-  it("does NOT offer the two tokens the ledger named but the data cannot supply", () => {
-    // `sport` is collected by the application form but never passed into the
-    // contact event's metadata; `goals` is free prose, which the metadata
-    // column's own 120-character cap exists to keep out. Both render blank —
-    // see this module's header for what it would take to change that.
-    expect(MERGE_FIELD_KEYS).not.toContain("sport")
+  it("offers {{sport}} now that the application form writes it, and still not {{goals}}", () => {
+    // G16 {{sport}} (2026-09-27): the inquiry route now passes the form's
+    // "Sport / Activity" answer into the contact event's metadata, so `sport`
+    // is a key a run remembers. `goals` is still free prose, which the
+    // metadata column's own 120-character cap exists to keep out: it renders
+    // blank, and the editor warns about it.
+    expect(MERGE_FIELD_KEYS).toContain("sport")
     expect(MERGE_FIELD_KEYS).not.toContain("goals")
   })
 })
@@ -70,8 +71,28 @@ describe("substituteMergeFields", () => {
     expect(out).toBe("Hi Sam, about Summer Camp 2026 (camp) — Sam Athlete")
   })
 
+  it("cannot be made to splice in a token a LATER pass fills in (G16 review)", () => {
+    // email.ts substitutes {{sms_consent_url}} AFTER this function runs, on
+    // the already-merged body. An applicant who typed "{{sms_consent_url}}" as
+    // their sport would otherwise receive a live consent link in any step that
+    // says {{sport}}. The same door is open through the contact's name.
+    const out = substituteMergeFields("Your {{sport}} plan, {{name}}", {
+      contactName: "Sam {{sms_consent_url}}",
+      metadata: { sport: "{{sms_consent_url}}" },
+    })
+    expect(out).not.toContain("{{")
+    expect(out).not.toContain("}}")
+    expect(out).toBe("Your sms_consent_url plan, Sam sms_consent_url")
+  })
+
+  it("fills in {{sport}} from the run's memory (G16)", () => {
+    expect(substituteMergeFields("Your {{sport}} plan", { contactName: "Sam", metadata: { sport: "Soccer" } })).toBe(
+      "Your Soccer plan",
+    )
+  })
+
   it("BLANKS an unknown token rather than shipping braces to a real person", () => {
-    expect(substituteMergeFields("Your {{sport}} plan", { contactName: "Sam" })).toBe("Your  plan")
+    expect(substituteMergeFields("Your {{goals}} plan", { contactName: "Sam" })).toBe("Your  plan")
     expect(substituteMergeFields("{{totally_made_up}}", { contactName: "Sam" })).toBe("")
   })
 
@@ -115,7 +136,7 @@ describe("substituteMergeFields", () => {
 
 describe("unknownMergeFields", () => {
   it("names the tokens nothing will fill in", () => {
-    expect(unknownMergeFields("Your {{sport}} plan for {{goals}}")).toEqual(["sport", "goals"])
+    expect(unknownMergeFields("Your {{sport}} plan for {{goals}}")).toEqual(["goals"])
   })
 
   it("says nothing about the ones that DO work, including the consent link", () => {
