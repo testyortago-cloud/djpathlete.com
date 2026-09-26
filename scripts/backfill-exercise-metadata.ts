@@ -11,7 +11,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import * as dotenv from "dotenv"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
-import { createMessageCompat, type CompatMessage } from "@/lib/ai/openrouter-message"
+import { assertModelProvider, createMessageCompat, type CompatMessage } from "@/lib/ai/openrouter-message"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -323,7 +323,7 @@ async function main() {
   // Validate env
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) throw new Error("NEXT_PUBLIC_SUPABASE_URL is not set")
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set")
-  if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not set")
+  assertModelProvider()
 
   // Fetch exercises
   console.log("Fetching exercises from Supabase...")
