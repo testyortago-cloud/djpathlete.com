@@ -1,6 +1,6 @@
 "use server"
 
-// app/(marketing)/sms-consent/[token]/actions.ts — the POST behind the
+// app/(business)/sms-consent/[token]/actions.ts — the POST behind the
 // "I agree" button, and the ONLY thing on this route that writes.
 //
 // The page beside this file renders on GET and writes nothing, deliberately:

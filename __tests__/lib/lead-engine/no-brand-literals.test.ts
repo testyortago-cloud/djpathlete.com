@@ -23,7 +23,13 @@ const ROOTS = [
   // reads while deciding whether to trust this business with their phone
   // number — the last place a hardcoded operator brand belongs.
   "supabase/migrations/00226_repermission_consent_link.sql",
-  "app/(marketing)/sms-consent",
+  // G49 moved that page (it was "app/(marketing)/sms-consent") into its own
+  // route group with the unsubscribe page, so this root now sweeps both pages
+  // and their layout. The frame both pages wear is swept with them: it is
+  // where the business's identity is drawn, so a platform name there would
+  // head every business's page.
+  "app/(business)",
+  "components/public/BusinessFrame.tsx",
   // Stage 1c (pipeline board) — flagged as a gap by both Task 1 and Task 2,
   // left for Task 8 to close.
   "supabase/migrations/00219_lead_engine_pipeline.sql",

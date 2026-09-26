@@ -128,8 +128,8 @@ import { signSmsConsentToken } from "@/lib/lead-engine/sms-consent-token"
 import { signUnsubscribeToken } from "@/lib/lead-engine/unsubscribe-token"
 import { renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { confirmSmsConsent, readSmsConsentState } from "@/lib/lead-engine/sms-consent"
-import SmsConsentPage from "@/app/(marketing)/sms-consent/[token]/page"
-import { confirmSmsConsentAction } from "@/app/(marketing)/sms-consent/[token]/actions"
+import SmsConsentPage from "@/app/(business)/sms-consent/[token]/page"
+import { confirmSmsConsentAction } from "@/app/(business)/sms-consent/[token]/actions"
 
 const CONTACT = "c-1"
 const BUSINESS = "00000000-0000-0000-0000-000000000001"
@@ -554,6 +554,35 @@ describe("the audit row", () => {
     const def = getActionDef("marketing.sms_consent_confirmed")
     expect(def).toBeDefined()
     expect(def?.category).toBe("compliance")
+  })
+})
+
+describe("the page is the business's own (G49)", () => {
+  // The wording already names the business, so the name alone proves nothing
+  // about the frame. "Sent by" is drawn only by the frame's footer.
+  it("is signed by the business the token was signed for, around the ask", async () => {
+    store.settings = [
+      { business_id: "b-other", display_name: "Other Gym", sender_name: "Someone Else" },
+      { business_id: BUSINESS, display_name: DISPLAY_NAME, sender_name: "Ana Diaz", postal_address: "4 Elm St" },
+    ]
+    const shown = collectText(await renderPage(signSmsConsentToken(CONTACT, BUSINESS)))
+    expect(shown).toContain(WORDING)
+    expect(shown).toContain("Sent by Ana Diaz · 4 Elm St")
+    expect(shown).not.toContain("Other Gym")
+  })
+
+  it("frames the other states too, not only the ask", async () => {
+    await confirmSmsConsent(signSmsConsentToken(CONTACT, BUSINESS))
+    const shown = collectText(await renderPage(signSmsConsentToken(CONTACT, BUSINESS), { done: "1" }))
+    expect(shown).toMatch(/all set/i)
+    expect(shown).toContain(`Sent by ${DISPLAY_NAME}`)
+  })
+
+  it("with no name configured, shows no frame at all rather than borrow a name", async () => {
+    store.settings = [{ business_id: BUSINESS, display_name: "  " }]
+    const shown = collectText(await renderPage(signSmsConsentToken(CONTACT, BUSINESS)))
+    expect(shown).toMatch(/not ready yet/i)
+    expect(shown).not.toContain("Sent by")
   })
 })
 

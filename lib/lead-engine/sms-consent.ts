@@ -234,7 +234,7 @@ export async function readSmsConsentState(token: string): Promise<SmsConsentStat
  * The narrow window that actually happens — the impatient second tap on a slow
  * connection, where a server-component form gives no sign the first one landed
  * — is closed at the button, which disables itself while the press is in
- * flight (app/(marketing)/sms-consent/[token]/agree-button.tsx). That is a UI
+ * flight (app/(business)/sms-consent/[token]/agree-button.tsx). That is a UI
  * guard, not a lock: it does nothing before hydration, with JavaScript off, or
  * across two tabs. If duplicate grants ever show up in the data, a partial
  * unique index on (contact_id, channel) WHERE granted is where to look next —
