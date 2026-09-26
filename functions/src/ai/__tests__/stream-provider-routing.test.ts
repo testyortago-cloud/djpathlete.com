@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import OpenAI from "openai"
+import Anthropic from "@anthropic-ai/sdk"
 
 /**
  * streamRaw and streamWithTools are what the admin "DJP Assistant" chat
@@ -21,20 +23,24 @@ const h = vi.hoisted(() => ({
   orTools: vi.fn(),
 }))
 
-vi.mock("@anthropic-ai/sdk", () => {
-  class APIError extends Error {
-    status: number
-    constructor(status: number, message: string) {
-      super(message)
-      this.status = status
-    }
-  }
-  const Anthropic = vi.fn().mockImplementation(() => {
-    h.anthropicCtor()
-    return { messages: { stream: h.anthropicStream } }
-  }) as unknown as { new (): unknown } & { APIError: typeof APIError }
-  ;(Anthropic as unknown as { APIError: typeof APIError }).APIError = APIError
-  return { default: Anthropic, Anthropic }
+// Only the CLIENT is faked; the error classes stay the SDK's own, so an abort
+// thrown here is the real class whose `.name` is plain "Error" — not a fake
+// that names itself and so passes a check no real error would.
+vi.mock("@anthropic-ai/sdk", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@anthropic-ai/sdk")>()
+  const Anthropic = Object.assign(
+    vi.fn().mockImplementation(() => {
+      h.anthropicCtor()
+      return { messages: { stream: h.anthropicStream } }
+    }),
+    {
+      APIError: real.APIError,
+      APIUserAbortError: real.APIUserAbortError,
+      APIConnectionError: real.APIConnectionError,
+      APIConnectionTimeoutError: real.APIConnectionTimeoutError,
+    },
+  )
+  return { ...real, default: Anthropic, Anthropic }
 })
 
 vi.mock("../openrouter-stream.js", () => ({
@@ -84,9 +90,28 @@ const creditError = () =>
 const rateLimit = () =>
   httpError(429, "429 Rate limit exceeded: anthropic/claude-sonnet-4.6 is temporarily rate-limited")
 
+/**
+ * The shape openrouter-stream's own `callerAbort` throws when the signal fires
+ * mid-stream — it DOES name itself. The SDK's classes do not; see
+ * `sdkAbort` / `anthropicAbort` below for those.
+ */
 function abortError(): Error {
   const e = new Error("OpenRouter stream aborted by the caller (model: claude-sonnet-4-6)")
   e.name = "AbortError"
+  return e
+}
+
+/** What the openai SDK throws when the signal fires before the stream opens. `.name` is "Error". */
+function sdkAbort(): Error {
+  const e = new OpenAI.APIUserAbortError()
+  expect(e.name).toBe("Error")
+  return e
+}
+
+/** The Anthropic SDK's real abort class. `.name` is "Error" here too. */
+function anthropicAbort(): Error {
+  const e = new Anthropic.APIUserAbortError()
+  expect(e.name).toBe("Error")
   return e
 }
 
@@ -305,6 +330,32 @@ describe("streamWithTools provider routing", () => {
     expect(h.anthropicStream).not.toHaveBeenCalled()
   })
 
+  it("does not fall back on the openai SDK's own APIUserAbortError", async () => {
+    const aborted = sdkAbort()
+    h.orTools.mockImplementation(() => events([], aborted))
+
+    const { error } = await collect(mod.streamWithTools(toolOpts()))
+
+    expect(error).toBe(aborted)
+    expect(h.anthropicStream).not.toHaveBeenCalled()
+  })
+
+  it("surfaces an abort DURING the Anthropic fallback as the abort itself, not a ProviderFallbackError", async () => {
+    // Wrapped, the abort would read as "OpenRouter failed: 503 …" and carry
+    // OpenRouter's 503 — a deadline dressed up as a provider outage.
+    const aborted = anthropicAbort()
+    h.orTools.mockImplementation(() => events([], httpError(503, "503 Service Unavailable")))
+    h.anthropicStream.mockImplementation(() => anthropicFailingStream(aborted))
+
+    const { seen, error } = await collect(mod.streamWithTools(toolOpts()))
+
+    expect(seen).toEqual([])
+    expect(error).toBe(aborted)
+    expect(error).not.toBeInstanceOf(ProviderFallbackError)
+    // Presence control: the fallback really was attempted.
+    expect(h.anthropicStream).toHaveBeenCalledTimes(1)
+  })
+
   it("does not send a non-Claude model to Anthropic", async () => {
     const outage = httpError(503, "503 Service Unavailable")
     h.orTools.mockImplementation(() => events([], outage))
@@ -426,5 +477,28 @@ describe("streamRaw provider routing", () => {
 
     expect(error).toBe(aborted)
     expect(h.anthropicStream).not.toHaveBeenCalled()
+  })
+
+  it("does not fall back on the openai SDK's own APIUserAbortError", async () => {
+    const aborted = sdkAbort()
+    h.orText.mockImplementation(() => events([], aborted))
+
+    const { error } = await collect(mod.streamRaw(rawOpts()))
+
+    expect(error).toBe(aborted)
+    expect(h.anthropicStream).not.toHaveBeenCalled()
+  })
+
+  it("surfaces an abort DURING the Anthropic fallback as the abort itself, not a ProviderFallbackError", async () => {
+    const aborted = anthropicAbort()
+    h.orText.mockImplementation(() => events([], httpError(503, "503 Service Unavailable")))
+    h.anthropicStream.mockImplementation(() => anthropicFailingStream(aborted))
+
+    const { seen, error } = await collect(mod.streamRaw(rawOpts()))
+
+    expect(seen).toEqual([])
+    expect(error).toBe(aborted)
+    expect(error).not.toBeInstanceOf(ProviderFallbackError)
+    expect(h.anthropicStream).toHaveBeenCalledTimes(1)
   })
 })

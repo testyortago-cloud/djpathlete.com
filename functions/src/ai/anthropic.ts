@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { toJSONSchema, type ZodSchema } from "zod"
 import type { AgentCallResult } from "./types.js"
 import pRetry from "p-retry"
-import { jsonrepair } from "jsonrepair"
+import { jsonrepair, JSONRepairError } from "jsonrepair"
 import { isAbortError } from "../lib/deadline.js"
 import {
   canFallBackToAnthropic,
@@ -104,8 +104,11 @@ export const MODEL_PROGRAM_ARCHITECT = process.env.PROGRAM_ARCHITECT_MODEL || MO
 export const MODEL_EXERCISE_SELECTOR = process.env.EXERCISE_SELECTOR_MODEL || MODEL_GPT6_ASTRA
 
 /**
- * Thinking depth for the two agents above. Only reaches the wire on the
- * structured-outputs branch, which is the only branch these models take.
+ * Thinking depth for the two agents above. gpt-6-astra takes the forced-tool
+ * branch (it does not reject forced tool choice), and through OpenRouter
+ * `buildChatRequest` sends effort as `reasoning` on that branch too — so this
+ * does reach the wire. It would not on direct Anthropic, where only the
+ * structured-outputs branch sends it, but astra never goes there.
  */
 export const PROGRAM_AGENT_EFFORT = "medium" as const
 
@@ -257,28 +260,46 @@ export function stripUnsupportedSchemaKeywords(node: unknown, depth = 0): unknow
  *
  * The numeric status is read from any SDK, not only `Anthropic.APIError`:
  * OpenRouter's errors come from the OpenAI SDK and carry the same `.status`.
+ *
+ * A MALFORMED ANSWER IS NEVER TRANSIENT, and is ruled out before the message
+ * is read. The message fallback used to match SUBSTRINGS, so the digits inside
+ * a validation message set the policy: a jsonrepair failure "at position 1502"
+ * read as a 502 and a `.max(500)` Zod miss ("<=500 characters") as a 500. Both
+ * are still retried — see `shouldRetry`, which retries malformed output on
+ * purpose — but as what they are, so an exhausted run no longer takes callAgent's
+ * Haiku last resort, five more paid calls for an answer that was the wrong shape.
+ *
+ * What remains of the message fallback is for provider faults that lost their
+ * numeric field: a status-shaped TOKEN (429 or 5xx standing alone, not inside a
+ * longer number) or the word "overloaded", which is how a mid-stream Anthropic
+ * overloaded_error arrives — as an SSE error event with no HTTP status at all.
  */
 function isTransientError(error: unknown): boolean {
   if (error instanceof ProviderFallbackError) return isTransientError(error.openRouterError)
+  if (isMalformedOutput(error)) return false
   const statusCode = (error as { status?: unknown } | null)?.status
   if (typeof statusCode === "number") {
     return statusCode === 429 || statusCode >= 500
   }
-  // Fallback: check error message string for known transient codes/keywords
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase()
-    if (
-      msg.includes("429") ||
-      msg.includes("529") ||
-      msg.includes("overloaded") ||
-      msg.includes("500") ||
-      msg.includes("502") ||
-      msg.includes("503")
-    ) {
-      return true
-    }
-  }
-  return false
+  if (!(error instanceof Error)) return false
+  return /(^|\D)(429|5\d\d)(\D|$)/.test(error.message) || /overloaded/i.test(error.message)
+}
+
+/**
+ * The model answered, and the answer was not the shape asked for: unparseable
+ * JSON (`JSON.parse` throws a SyntaxError; `jsonrepair` throws its own
+ * JSONRepairError, which is NOT a SyntaxError and names itself only "Error"),
+ * or a Zod miss from `schema.parse`.
+ *
+ * Zod is matched by NAME — classic "ZodError" and core "$ZodError" — and by
+ * constructor name, because an `instanceof` against one zod copy is false for
+ * an error thrown by another.
+ */
+function isMalformedOutput(error: unknown): boolean {
+  if (error instanceof SyntaxError || error instanceof JSONRepairError) return true
+  const e = error as { name?: unknown; constructor?: { name?: unknown } } | null
+  const name = e?.name
+  return name === "ZodError" || name === "$ZodError" || e?.constructor?.name === "ZodError"
 }
 
 // ─── callAgent: structured output via raw Anthropic SDK ─────────────────────
@@ -347,9 +368,11 @@ function callAgentWithModel<T>(
      */
     images?: Array<{ media_type: string; data: string }>
     /**
-     * Thinking depth / token spend, for models that support it. Only sent on
-     * the structured-outputs path; the tool path's models are tuned without it
-     * and adding it there would change behaviour for every existing agent.
+     * Thinking depth / token spend, for models that support it. Direct
+     * Anthropic sends it only on the structured-outputs path
+     * (`output_config.effort`). Through OpenRouter, `buildChatRequest` sends it
+     * as `reasoning` on EVERY path, the forced-tool path included — which is
+     * why callAgent's Haiku fallback does not pass it on.
      */
     effort?: "low" | "medium" | "high" | "max"
     /**
@@ -601,6 +624,13 @@ function callAgentWithModel<T>(
       retries: 4,
       minTimeout: 5_000,
       maxTimeout: 30_000,
+      // The backoff sleeps are 5s, 10s, 20s and 30s. Without the caller's
+      // signal, a deadline that fired mid-sleep was only noticed by the NEXT
+      // attempt, after the sleep — wall-clock the budget no longer had, and one
+      // more request started past it. With it, pRetry ends the sleep and throws
+      // the signal's reason (an AbortError) at once. The isAbortError checks
+      // below stay: they cover an abort thrown by the request itself.
+      signal: options?.signal,
       shouldRetry: (ctx) => {
         const err = ctx.error
         // The caller's time budget is gone — retrying spends wall-clock we do
@@ -617,10 +647,12 @@ function callAgentWithModel<T>(
         // the wrapper alone would stop on OpenRouter's non-transient 402 and
         // never retry a funded Anthropic's recoverable bad answer.
         const answerError = err instanceof ProviderFallbackError ? err.anthropicError : err
-        // Retry on JSON parse errors (model produced malformed JSON)
-        if (answerError instanceof SyntaxError) return true
-        // Retry on Zod validation errors (model output didn't match schema)
-        if ((answerError as Error | undefined)?.constructor?.name === "ZodError") return true
+        // Retry malformed JSON (JSON.parse's SyntaxError, or jsonrepair's
+        // JSONRepairError when even the repair failed) and Zod misses. This is
+        // deliberate for long-running jobs, and it is the ONLY route by which a
+        // malformed answer is retried: isTransientError refuses it, so an
+        // exhausted run does not go on to the Haiku last resort.
+        if (isMalformedOutput(answerError)) return true
         console.log(`[callAgent] NOT retrying: ${err?.constructor?.name} (model: ${modelId})`)
         return false
       },
@@ -648,10 +680,14 @@ export async function callAgent<T>(
     /**
      * Thinking depth for models that support it.
      *
-     * Safe to leave set across the Haiku fallback below: `effort` is only put
-     * on the wire by the structured-outputs branch, which Haiku never takes
-     * (it does not reject forced tool choice), and Haiku 4.5 would 400 on the
-     * parameter. Do not "simplify" this by sending effort on the tool path.
+     * NOT carried into the Haiku fallback below. It used to be, on the grounds
+     * that only the structured-outputs branch puts effort on the wire — true of
+     * direct Anthropic, false through OpenRouter: `buildChatRequest` sends it
+     * as `reasoning` on every branch, including the forced tool choice Haiku
+     * is asked with. For a Claude model that reasoning is extended thinking,
+     * which Anthropic refuses alongside a forced tool choice. So a Fable blog
+     * draft (effort "medium") that exhausted its retries handed Haiku a request
+     * built to 400, and that 400 replaced the fault worth seeing.
      */
     effort?: "low" | "medium" | "high" | "max"
     signal?: AbortSignal
@@ -665,10 +701,15 @@ export async function callAgent<T>(
     // An aborted call means the caller is out of time. A Haiku fallback here
     // would start a WHOLE NEW request (up to 5 more attempts) past the budget.
     if (isAbortError(error)) throw error
-    // If primary model exhausted all retries on a transient error, fall back to Haiku
-    if (modelId !== MODEL_HAIKU && isTransientError(error)) {
+    // The Haiku last resort is for CLAUDE primaries only. A gpt-6-astra
+    // failure (the architect and selector default) used to be rerouted here
+    // too, astra's options and all: either Haiku silently wrote the training
+    // program the owner chose astra for, or the effort it inherited made it
+    // 400 and that 400 replaced astra's 503. A non-Claude primary's own error
+    // is the one worth seeing.
+    if (modelId !== MODEL_HAIKU && canFallBackToAnthropic(modelId) && isTransientError(error)) {
       console.warn(`[callAgent] ${modelId} exhausted all retries — falling back to ${MODEL_HAIKU}`)
-      return callAgentWithModel(MODEL_HAIKU, systemPrompt, userMessage, schema, options)
+      return callAgentWithModel(MODEL_HAIKU, systemPrompt, userMessage, schema, { ...options, effort: undefined })
     }
     throw error
   }
