@@ -835,6 +835,10 @@ async function getServedNodes(businessId: string, stepId: string, label: string)
     .select("nodes")
     .eq("business_id", businessId)
     .eq("id", versionId)
+    // The version must be THIS step's. Only publishStep writes the pointer, so
+    // a mismatch is corruption; it reads as "not published", not as another
+    // step's page.
+    .eq("step_id", stepId)
     .maybeSingle()
   if (versionError) throw new Error(`${label}(version): ${versionError.message}`)
   if (!versionRow) return null

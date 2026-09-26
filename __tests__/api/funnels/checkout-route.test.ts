@@ -204,6 +204,15 @@ describe("what it refuses to start", () => {
       expect(createSessionMock).toHaveBeenCalledTimes(1)
     })
 
+    it("matches the offered id whatever its letter case (UUIDs are case-insensitive)", async () => {
+      // The schema accepts an uppercase UUID, and the page keeps whatever case
+      // the owner published. The program read then uses the PAGE's spelling.
+      getOffersMock.mockResolvedValue([{ productKind: "program", productId: PROGRAM_ID.toUpperCase() }])
+      const { POST } = await import("@/app/api/funnels/checkout/route")
+      expect((await POST(post(body()))).status).toBe(200)
+      expect(getProgramByIdMock).toHaveBeenCalledWith(PROGRAM_ID.toUpperCase())
+    })
+
     it("reads the offers of THIS step, under the request's own tenant", async () => {
       const { POST } = await import("@/app/api/funnels/checkout/route")
       await POST(post(body()))

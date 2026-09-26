@@ -13,6 +13,13 @@
 // app/api/events/[id]/checkout/route.ts, which has no auth() call either.
 //
 // Spec: docs/superpowers/specs/2026-08-15-funnel-anonymous-checkout-design.md
+//
+// NOTHING IN THE APP CALLS THIS YET (G40, 2026-09-27). The published checkout
+// island (components/funnels/islands/CheckoutIsland.tsx) is still a link to
+// /login. The client that eventually posts here must send the id of the step
+// being SERVED (where the island sits) and the island's `productId` as
+// published: the route sells only what that step's published version offers,
+// so any other step id refuses a real buyer.
 
 import { NextResponse } from "next/server"
 import { z } from "zod"
@@ -104,13 +111,19 @@ export async function POST(request: Request) {
     console.error("[funnels/checkout] could not read the page's offers:", error)
     return reject(503, "Checkout is unavailable right now, please try again.")
   }
-  const offer = offers.find((o) => o.productKind === body.productKind && o.productId === body.productId)
+  // A UUID's letter case carries no meaning, and the page keeps whatever case
+  // was published. The program is read by the PAGE's spelling below.
+  const wanted = body.productId.toLowerCase()
+  const offer = offers.find((o) => o.productKind === body.productKind && o.productId.toLowerCase() === wanted)
   if (!offer) return reject(404, "That program is not available.")
 
   // `programs` still has no `business_id` (G37), so the page's own offer is
-  // what ties this read to the business: a builder lists the platform's
-  // programmes (`loadCatalogues`, G31), and that is where a cross-business
-  // offer would come from, not from here.
+  // what ties this read to the business. Another business's programme reaches
+  // it only by being on the page: through the builder's catalogue
+  // (`loadCatalogues`, G31), or through a publish request's own html, which
+  // the publish route does not rebuild from the document. Either way it takes
+  // a signed-in owner of THIS business publishing it, and it must still be
+  // active and public below.
   let program
   try {
     program = await getProgramById(offer.productId)

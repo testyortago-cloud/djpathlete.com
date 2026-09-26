@@ -79,11 +79,20 @@ beforeEach(() => {
       { id: "s-shared", business_id: B, published_version_id: "v-b", project_data: {} },
       { id: "s-shared", business_id: A, published_version_id: "v-a", project_data: {} },
       { id: "s-never", business_id: A, published_version_id: null, project_data: {} },
+      // A pointer at ANOTHER step's version. Only publishStep writes the
+      // pointer, so this is corruption, not a flow; it must still offer nothing.
+      { id: "s-crossed", business_id: A, published_version_id: "v-a", project_data: {} },
     ],
     funnel_step_versions: [
-      { id: "v-b", business_id: B, nodes: page({ productKind: "program", productId: PROGRAM_B, label: "Buy" }) },
+      {
+        id: "v-b",
+        step_id: "s-shared",
+        business_id: B,
+        nodes: page({ productKind: "program", productId: PROGRAM_B, label: "Buy" }),
+      },
       {
         id: "v-a",
+        step_id: "s-shared",
         business_id: A,
         nodes: page(
           { productKind: "program", productId: PROGRAM_A, label: "Buy" },
@@ -92,7 +101,12 @@ beforeEach(() => {
       },
       // A LATER version that is not the one being served — the draft the owner
       // is still editing. It must never be read as an offer.
-      { id: "v-a-draft", business_id: A, nodes: page({ productKind: "program", productId: PROGRAM_DRAFT }) },
+      {
+        id: "v-a-draft",
+        step_id: "s-shared",
+        business_id: A,
+        nodes: page({ productKind: "program", productId: PROGRAM_DRAFT }),
+      },
     ],
   }
 })
@@ -123,6 +137,10 @@ describe("getPublishedCheckoutOffers", () => {
     expect(await getPublishedCheckoutOffers(A, "s-never")).toEqual([])
     // It must not fall back to "the latest version" the way a preview does.
     expect(captured.some((c) => c.table === "funnel_step_versions")).toBe(false)
+  })
+
+  it("offers nothing when the step points at a version that belongs to ANOTHER step", async () => {
+    expect(await getPublishedCheckoutOffers(A, "s-crossed")).toEqual([])
   })
 
   it("offers nothing for a step id it cannot find", async () => {
