@@ -196,8 +196,12 @@ function completedToolCalls(state: StreamRound): CompletedToolCall[] {
  * error branch; it arrives here looking status-less, and shouldFallBackToAnthropic
  * treats a status-less error as our own bug and refuses to fall back. Lifting the
  * code onto `.status` keeps a provider fault classified as one.
+ *
+ * Exported because EVERY streamed OpenRouter request meets the same SDK
+ * behaviour — callAgentViaOpenRouter and the page builder's object stream
+ * included — and each must classify a mid-stream 502 the same way.
  */
-function liftStreamStatus(error: unknown, model: string): unknown {
+export function liftStreamStatus(error: unknown, model: string): unknown {
   const e = error as { status?: unknown; code?: unknown; message?: unknown } | null
   if (!e || typeof e.status === "number" || typeof e.code !== "number") return error
   return streamFailure(model, typeof e.message === "string" ? e.message : String(error), e.code, error)
