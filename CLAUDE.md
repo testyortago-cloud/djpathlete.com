@@ -25,13 +25,16 @@ Test files live in `__tests__/` with setup in `__tests__/setup.tsx`. E2E tests i
 dev clone.** It is the only check that talks to a real PostgREST. Every DAL unit test mocks it, which is how
 G31 shipped an embed hint (`funnels:funnel_id`) that answered `PGRST200` and 500'd the leads inbox for every
 tenant while all of them passed. It collects every `.from(...).select(...)` in `lib`, `app`, `components`,
-`functions/src` and `render-worker/src`, with the `.order()` columns applied to it
+`functions/src` and `render-worker/src`, with the `.order()` columns and the filter columns (`.eq`, `.gte`,
+`.in`, `.is`, `.not`, `.filter` and the rest, since G41) applied to it
 (`scripts/lib/collect-postgrest-selects.ts`), and runs each with `limit=0`. A fake cannot tell you a column
-is missing: G25's refund lookup ordered by one, and its unit fake stamped it on every row. It refuses any
-database but the dev clone. Two lists in the test file are ratchets, not allowlists: `KNOWN_REFUSED`
-(selects production code sends today that the schema refuses — each is a bug with its impact written down)
-and `KNOWN_UNRESOLVED` (orders it cannot trace through a helper, each with the table a human checked, which
-is probed too). A new entry in either fails the run, and so does an entry that has since been fixed. The
+is missing: G25's refund lookup ordered by one, and its unit fake stamped it on every row; the strategy
+critic (G41) filtered on one under `select("*")` for its whole life and never looked at the error. It does
+NOT see `.or()`/`.match()` expressions, rpc() calls, write payload columns, or a filter added to a builder
+in a later statement. It refuses any database but the dev clone. Two lists in the test file are ratchets, not
+allowlists: `KNOWN_REFUSED` (selects production code sends today that the schema refuses — each is a bug
+with its impact written down) and `KNOWN_UNRESOLVED` (orders it cannot trace through a helper, and filter
+columns passed in as a variable, each with what a human checked, which is probed too). A new entry in either fails the run, and so does an entry that has since been fixed. The
 GitHub workflow of the same name reruns it on push to `main`; that is a backstop, since it runs alongside the
 deploy, and it needs the `DEV_CLONE_SERVICE_ROLE_KEY` repository secret.
 

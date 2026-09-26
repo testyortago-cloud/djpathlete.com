@@ -17,7 +17,9 @@ describe("collectSelectsFromSource — what it collects", () => {
   it("collects a plain from().select() chain with its table and select string", () => {
     const src = `const { data } = await supabase.from("contacts").select("id, email").eq("id", id)`
     expect(collectSelectsFromSource(FILE, src)).toEqual({
-      calls: [{ file: FILE, line: 1, schema: null, table: "contacts", select: "id, email", orders: [] }],
+      calls: [
+        { file: FILE, line: 1, schema: null, table: "contacts", select: "id, email", orders: [], filters: ["id"] },
+      ],
       unresolved: [],
     })
   })
@@ -25,7 +27,7 @@ describe("collectSelectsFromSource — what it collects", () => {
   it("treats a select() with no argument as *", () => {
     const src = `await supabase.from("contacts").insert(row).select().single()`
     expect(collectSelectsFromSource(FILE, src).calls).toEqual([
-      { file: FILE, line: 1, schema: null, table: "contacts", select: "*", orders: [] },
+      { file: FILE, line: 1, schema: null, table: "contacts", select: "*", orders: [], filters: [] },
     ])
   })
 
@@ -47,6 +49,7 @@ describe("collectSelectsFromSource — what it collects", () => {
         table: "funnel_submissions",
         select: "*, funnels(name, slug), funnel_steps(name)",
         orders: [],
+        filters: ["id", "business_id"],
       },
     ])
   })
@@ -54,28 +57,28 @@ describe("collectSelectsFromSource — what it collects", () => {
   it("records the schema when the chain goes through .schema()", () => {
     const src = `await supabase.schema("storage").from("objects").select("name")`
     expect(collectSelectsFromSource(FILE, src).calls).toEqual([
-      { file: FILE, line: 1, schema: "storage", table: "objects", select: "name", orders: [] },
+      { file: FILE, line: 1, schema: "storage", table: "objects", select: "name", orders: [], filters: [] },
     ])
   })
 
   it("records the schema when .from() is called on a const that holds a .schema() client", () => {
     const src = [`const db = supabase.schema("analytics")`, `await db.from("events").select("id")`].join("\n")
     expect(collectSelectsFromSource(FILE, src).calls).toEqual([
-      { file: FILE, line: 2, schema: "analytics", table: "events", select: "id", orders: [] },
+      { file: FILE, line: 2, schema: "analytics", table: "events", select: "id", orders: [], filters: [] },
     ])
   })
 
   it("keeps the select's option object out of the select string", () => {
     const src = `await supabase.from("leads").select("id", { count: "exact", head: true })`
     expect(collectSelectsFromSource(FILE, src).calls).toEqual([
-      { file: FILE, line: 1, schema: null, table: "leads", select: "id", orders: [] },
+      { file: FILE, line: 1, schema: null, table: "leads", select: "id", orders: [], filters: [] },
     ])
   })
 
   it("collects a select inside a template literal with no substitutions", () => {
     const src = "await supabase.from(`programs`).select(`id,\n  name`)"
     expect(collectSelectsFromSource(FILE, src).calls).toEqual([
-      { file: FILE, line: 1, schema: null, table: "programs", select: "id,\n  name", orders: [] },
+      { file: FILE, line: 1, schema: null, table: "programs", select: "id,\n  name", orders: [], filters: [] },
     ])
   })
 })
@@ -114,7 +117,15 @@ describe("collectSelectsFromSource — order columns in the same chain", () => {
       `const { data } = await query.order("created_at", { ascending: false }).limit(limit)`,
     ].join("\n")
     expect(collectSelectsFromSource(FILE, src).calls).toEqual([
-      { file: FILE, line: 1, schema: null, table: "ai_conversation_history", select: "*", orders: [] },
+      {
+        file: FILE,
+        line: 1,
+        schema: null,
+        table: "ai_conversation_history",
+        select: "*",
+        orders: [],
+        filters: ["user_id"],
+      },
       {
         file: FILE,
         line: 3,
@@ -122,6 +133,7 @@ describe("collectSelectsFromSource — order columns in the same chain", () => {
         table: "ai_conversation_history",
         select: "*",
         orders: [{ column: "created_at", referencedTable: null }],
+        filters: [],
       },
     ])
   })
@@ -142,7 +154,9 @@ describe("collectSelectsFromSource — order columns in the same chain", () => {
   it("reports an order column it cannot resolve, and still collects the select", () => {
     const src = `function list(sort: string) { return supabase.from("events").select("id").order(sort) }`
     const out = collectSelectsFromSource(FILE, src)
-    expect(out.calls).toEqual([{ file: FILE, line: 1, schema: null, table: "events", select: "id", orders: [] }])
+    expect(out.calls).toEqual([
+      { file: FILE, line: 1, schema: null, table: "events", select: "id", orders: [], filters: [] },
+    ])
     expect(out.unresolved).toEqual([
       {
         file: FILE,
@@ -154,6 +168,81 @@ describe("collectSelectsFromSource — order columns in the same chain", () => {
   })
 })
 
+// G41. The strategy critic filtered marketing_attribution on `occurred_at`, a
+// column that never existed, under a `select("*")` that any select probe
+// passes. A filter on a missing column answers 42703 like a select does.
+describe("collectSelectsFromSource — filter columns (G41)", () => {
+  it("collects the critic's exact shape: a filter after select('*')", () => {
+    const src = `await supabase.from("marketing_attribution").select("*").gte("occurred_at", cutoff)`
+    expect(collectSelectsFromSource(FILE, src).calls[0].filters).toEqual(["occurred_at"])
+  })
+
+  it("collects every filter method's column after the select, in chain order", () => {
+    const src = [
+      `await supabase.from("contacts")`,
+      `  .select("id, funnels(slug)")`,
+      `  .eq("business_id", businessId)`,
+      `  .in("id", ids)`,
+      `  .is("merged_into", null)`,
+      `  .not("phone_e164", "is", null)`,
+      `  .ilike("email", email)`,
+      `  .filter("metadata->>quiz_key", "eq", key)`,
+      `  .neq("funnels.slug", "x")`,
+      `  .order("created_at")`,
+      `  .limit(5)`,
+    ].join("\n")
+    expect(collectSelectsFromSource(FILE, src).calls[0].filters).toEqual([
+      "business_id",
+      "id",
+      "merged_into",
+      "phone_e164",
+      "email",
+      "metadata->>quiz_key",
+      "funnels.slug",
+    ])
+  })
+
+  it("collects the filters of a write whose returning select comes after them", () => {
+    const src = `await supabase.from("lead_inquiries").update(u).eq("business_id", b).eq("id", id).select().single()`
+    expect(collectSelectsFromSource(FILE, src).calls[0].filters).toEqual(["business_id", "id"])
+  })
+
+  it("resolves a filter column held in a const", () => {
+    const src = [
+      `const COL = "first_seen_at"`,
+      `await supabase.from("marketing_attribution").select("id").gte(COL, c)`,
+    ].join("\n")
+    expect(collectSelectsFromSource(FILE, src).calls[0].filters).toEqual(["first_seen_at"])
+  })
+
+  it("reports a filter column it cannot resolve, and still collects the select", () => {
+    const src = `function by(col: string) { return supabase.from("events").select("id").eq(col, 1) }`
+    const out = collectSelectsFromSource(FILE, src)
+    expect(out.calls[0].filters).toEqual([])
+    expect(out.unresolved.map((u) => u.reason)).toEqual(["filter column is not a constant: col"])
+  })
+
+  it("does not parse .or() or .match(), which take an expression and an object", () => {
+    const src = `await supabase.from("events").select("id").or("a.eq.1,b.eq.2").match({ c: 3 })`
+    const out = collectSelectsFromSource(FILE, src)
+    expect(out.calls[0].filters).toEqual([])
+    expect(out.unresolved).toEqual([])
+  })
+
+  it("does not take another chain's filters, or a non-PostgREST .filter()", () => {
+    const src = [
+      `const a = await supabase.from("events").select("id").eq("status", "published")`,
+      `const b = await supabase.from("contacts").select("id")`,
+      `const live = rows.filter((r) => r.ok)`,
+    ].join("\n")
+    const calls = collectSelectsFromSource(FILE, src).calls
+    expect(calls.map((c) => [c.table, c.filters])).toEqual([
+      ["events", ["status"]],
+      ["contacts", []],
+    ])
+  })
+})
+
 describe("collectSelectsFromSource — resolving constants", () => {
   it("resolves a select held in a same-file const", () => {
     const src = [
@@ -161,7 +250,15 @@ describe("collectSelectsFromSource — resolving constants", () => {
       `await supabase.from("contacts").select(CONTACT_COLUMNS)`,
     ].join("\n")
     expect(collectSelectsFromSource(FILE, src).calls).toEqual([
-      { file: FILE, line: 2, schema: null, table: "contacts", select: "id, email, phone_e164", orders: [] },
+      {
+        file: FILE,
+        line: 2,
+        schema: null,
+        table: "contacts",
+        select: "id, email, phone_e164",
+        orders: [],
+        filters: [],
+      },
     ])
   })
 
@@ -192,7 +289,7 @@ describe("collectSelectsFromSource — resolving constants", () => {
   it("follows a receiver held in a const back to its from()", () => {
     const src = [`const q = supabase.from("bookings")`, `const { data } = await q.select("id, starts_at")`].join("\n")
     expect(collectSelectsFromSource(FILE, src).calls).toEqual([
-      { file: FILE, line: 2, schema: null, table: "bookings", select: "id, starts_at", orders: [] },
+      { file: FILE, line: 2, schema: null, table: "bookings", select: "id, starts_at", orders: [], filters: [] },
     ])
   })
 
@@ -235,7 +332,7 @@ describe("collectSelectsFromSource — scoping: a name that is not the const it 
       `const { data } = await query.select("id")`,
     ].join("\n")
     expect(collectSelectsFromSource(FILE, src).calls).toEqual([
-      { file: FILE, line: 3, schema: null, table: "shop_product_variants", select: "id", orders: [] },
+      { file: FILE, line: 3, schema: null, table: "shop_product_variants", select: "id", orders: [], filters: [] },
     ])
   })
 

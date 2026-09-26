@@ -60,7 +60,7 @@ Inputs you receive:
 You will also receive cross-channel tool_performance (last 90 days). Bias priority_channel selection toward channels whose tools have positive success_rate and meaningful n_measured. If a channel is in warm-up (n_measured < 5), do not yet treat its absence of wins as a signal.
 
 Priorities (in order):
-1. Bookings + revenue, not vanity engagement. Use the signal's attribution_summary.
+1. Bookings + revenue, not vanity engagement. The signal's attribution_summary counts sessions and leads by first-touch channel (tagged and /go/ landings only); it does not measure bookings or revenue, so take those from what the memos report.
 2. Compounding themes: themes that already worked > novel themes.
 3. Avoid whiplash: keep at least one theme from last week unless the data is clear it bombed.
 

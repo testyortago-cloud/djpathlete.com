@@ -56,8 +56,9 @@ export default async function SignalsPage() {
           </Link>
           <h1 className="font-heading text-3xl text-primary mt-1">Cross-channel signals</h1>
           <p className="text-muted-foreground">
-            Each Saturday the critic distills the past {WINDOW_DAYS} days of agent memos and booking
-            attribution into a single signal row. The chief reads it on Sunday to draft your brief.
+            Each Saturday the critic distills the past {WINDOW_DAYS} days of agent memos and the
+            visits and leads each channel brought in into a single signal row. The chief reads it
+            on Sunday to draft your brief.
           </p>
         </div>
         <RunCriticButton />

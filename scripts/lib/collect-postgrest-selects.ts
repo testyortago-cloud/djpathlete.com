@@ -12,6 +12,19 @@
 // columns in the same chain (an ORDER BY on a missing column answers 42703
 // too, and G25's refund lookup had exactly that bug in its order clause).
 //
+// AND THE FILTER COLUMNS (G41, 2026-09-27). The strategy critic read
+// `marketing_attribution` with `.gte("occurred_at", ...)`, a column that has
+// never existed; PostgREST answered 42703, the code never looked at the error,
+// and the critic saw no attribution for its whole life. Its select string was
+// `*`, so a select-and-order probe passed. A filter on a missing column is
+// refused exactly like a select or an order, so each filter method's column
+// in the chain (before the select, as in `.update().eq().select()`, or after
+// it) is collected in `filters`, and the contract applies it as `is.null`.
+//
+// Stated limits of the filter half: `.or()` and `.match()` take expressions or
+// objects and are not parsed, and a filter applied to a builder in a LATER
+// statement (`query = query.eq(...)`) is not in the chain and is not seen.
+//
 // REAL SCOPES, NO TYPE CHECKING. Every file goes into one in-memory TypeScript
 // program with `noResolve` and `noLib`, so nothing is imported or type-checked
 // and `functions/src` (its own tsconfig) reads the same as `lib/`. The binder
@@ -48,6 +61,12 @@ export interface SelectCall {
   table: string
   select: string
   orders: OrderColumn[]
+  /**
+   * The column of every filter in the chain, in chain order (G41). As
+   * PostgREST takes it: `embed.col` for an embedded table, `col->>key` for a
+   * JSON path.
+   */
+  filters: string[]
 }
 
 export interface UnresolvedSelect {
@@ -252,6 +271,66 @@ function ordersAfter(selectCall: ts.CallExpression): ts.CallExpression[] {
   return orders
 }
 
+/**
+ * supabase-js filter methods whose FIRST argument is a column. `or` and
+ * `match` are left out on purpose: they take an expression string and an
+ * object, and are stated limits in this file's header.
+ */
+const FILTER_METHODS = new Set([
+  "eq",
+  "neq",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "like",
+  "ilike",
+  "likeAllOf",
+  "likeAnyOf",
+  "ilikeAllOf",
+  "ilikeAnyOf",
+  "is",
+  "in",
+  "contains",
+  "containedBy",
+  "rangeGt",
+  "rangeGte",
+  "rangeLt",
+  "rangeLte",
+  "rangeAdjacent",
+  "overlaps",
+  "textSearch",
+  "not",
+  "filter",
+])
+
+/**
+ * Every filter call in this select's chain: the ones between `from()` and the
+ * select (a write with a returning select) and the ones after it, in chain
+ * order.
+ */
+function filtersInChain(selectCall: ts.CallExpression): ts.CallExpression[] {
+  const before: ts.CallExpression[] = []
+  let e = unwrap((selectCall.expression as ts.PropertyAccessExpression).expression)
+  while (ts.isCallExpression(e) && ts.isPropertyAccessExpression(e.expression)) {
+    const name = e.expression.name.text
+    if (name === "from") break
+    if (FILTER_METHODS.has(name)) before.unshift(e)
+    e = unwrap(e.expression.expression)
+  }
+  const after: ts.CallExpression[] = []
+  let node: ts.Node = selectCall
+  for (;;) {
+    const access = node.parent
+    if (!access || !ts.isPropertyAccessExpression(access) || access.expression !== node) break
+    const call = access.parent
+    if (!call || !ts.isCallExpression(call) || call.expression !== access) break
+    if (FILTER_METHODS.has(access.name.text)) after.push(call)
+    node = call
+  }
+  return [...before, ...after]
+}
+
 function referencedTableOf(options: ts.Expression | undefined, checker: ts.TypeChecker): string | null | undefined {
   if (!options) return null
   const o = unwrap(options)
@@ -297,6 +376,23 @@ function collectFromSourceFile(file: string, sf: ts.SourceFile, checker: ts.Type
     return { column, referencedTable }
   }
 
+  /** Resolve one filter call's column, reporting it when it cannot be. */
+  const resolveFilter = (filter: ts.CallExpression): string | null => {
+    const colArg = filter.arguments[0]
+    const column = colArg ? resolveString(colArg, checker) : null
+    if (column === null) {
+      const what = colArg ? oneLine(colArg.getText(sf)) : "(none)"
+      unresolved.push({
+        file,
+        line: lineOf((filter.expression as ts.PropertyAccessExpression).name),
+        reason: `filter column is not a constant: ${what}`,
+        text: oneLine(filter.getText(sf)),
+      })
+      return null
+    }
+    return column
+  }
+
   /** Table, schema and select of a chain that reached from(), or the reason it cannot be resolved. */
   const resolveChain = (
     start: Extract<ChainEnd, { kind: "from" }>,
@@ -329,7 +425,10 @@ function collectFromSourceFile(file: string, sf: ts.SourceFile, checker: ts.Type
             const orders = ordersAfter(node)
               .map(resolveOrder)
               .filter((o): o is OrderColumn => o !== null)
-            calls.push({ file, line, ...chain, orders })
+            const filters = filtersInChain(node)
+              .map(resolveFilter)
+              .filter((f): f is string => f !== null)
+            calls.push({ file, line, ...chain, orders, filters })
           }
         } else if (start.kind === "unknown" && (node.arguments.length > 0 || start.sawCall)) {
           // A bare `.select()` straight off a property or identifier with no
@@ -350,7 +449,7 @@ function collectFromSourceFile(file: string, sf: ts.SourceFile, checker: ts.Type
           if ("reason" in chain) report(chain.reason)
           else {
             const order = resolveOrder(node)
-            if (order) calls.push({ file, line, ...chain, orders: [order] })
+            if (order) calls.push({ file, line, ...chain, orders: [order], filters: [] })
           }
         } else if (start.kind === "unknown") {
           report(`order receiver is not a from() chain: ${oneLine(start.receiver.getText(sf))}`)
