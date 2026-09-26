@@ -103,16 +103,9 @@ export const UNTENANTED_BY_SCHEMA: UntenantedRead[] = [
     reads: "listAllSessionPackProducts()",
     row: "G31",
   },
-  // S8 — public funnel checkout. The needle is the unbound product id: G40
-  // binds it to the page's offers, which changes this line and makes the
-  // entry stale on purpose.
-  {
-    file: "app/api/funnels/checkout/route.ts",
-    fn: "POST",
-    table: "programs",
-    reads: "getProgramById(body.productId)",
-    row: "G40",
-  },
+  // S8 (public funnel checkout) left the shelf with G40: the route now reads
+  // only a product id its page's published version offers, so the one way a
+  // cross-business programme reaches it is the `loadCatalogues` entry above.
   // S9 — attribution keyed on a user_id that spans businesses.
   {
     file: "lib/db/marketing-attribution.ts",

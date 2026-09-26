@@ -55,8 +55,9 @@ export async function getProgramById(id: string) {
   const supabase = getClient()
   // UNTENANTED BY SCHEMA (G37): `programs` has no `business_id` column, so an
   // id from ANY business resolves here. /admin/programs/[id] opens whatever
-  // id is in its URL, and the funnel checkout sells whatever id its body
-  // names (G40). See the shelf in lib/tenancy/platform.ts.
+  // id is in its URL. The public funnel checkout reads here only an id its
+  // page's published version offers (G40). See the shelf in
+  // lib/tenancy/platform.ts.
   const { data, error } = await supabase.from("programs").select("*").eq("id", id).single()
   if (error) throw error
   return data as Program

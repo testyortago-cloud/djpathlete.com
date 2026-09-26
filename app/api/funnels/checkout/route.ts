@@ -17,7 +17,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createServiceRoleClient } from "@/lib/supabase"
-import { getFunnelById, getStep } from "@/lib/db/funnels"
+import { getFunnelById, getPublishedCheckoutOffers, getStep } from "@/lib/db/funnels"
 import { getProgramById } from "@/lib/db/programs"
 import { getSetting } from "@/lib/db/system-settings"
 import { createFunnelProgramCheckoutSession } from "@/lib/stripe"
@@ -88,16 +88,40 @@ export async function POST(request: Request) {
   // refusing it.
   if (funnel.status !== "published") return reject(404, "Not found")
 
-  // UNTENANTED BY SCHEMA (G40). `programs` has no `business_id` column, and
-  // this reads whatever product id the request body names, checked above only
-  // for being a UUID and below only for having a price: not for being one of
-  // this page's offers, active, public, or this business's. The sale is then
-  // filed under the Host's business either way. G40 binds the id to the
-  // published version's offers; see the shelf in lib/tenancy/platform.ts.
+  // THE PAGE IS THE OFFER (G40). The body only chooses among the products this
+  // step's PUBLISHED version sells: its `checkout` islands, read from the
+  // version row the step serves, under this request's tenant. Before this the
+  // route sold any priced program whose id a request named, including a
+  // client's private plan or one retired from sale. An id the page does not
+  // offer, or offers as another kind, reads exactly like one that does not
+  // exist. Checked before the lead write: a crafted id is not a buyer.
+  let offers
+  try {
+    offers = await getPublishedCheckoutOffers(businessId, step.id)
+  } catch (error) {
+    // Not "unavailable": the program may well be on sale, and a buyer on a
+    // page that sells it must not be told otherwise because a read failed.
+    console.error("[funnels/checkout] could not read the page's offers:", error)
+    return reject(503, "Checkout is unavailable right now, please try again.")
+  }
+  const offer = offers.find((o) => o.productKind === body.productKind && o.productId === body.productId)
+  if (!offer) return reject(404, "That program is not available.")
+
+  // `programs` still has no `business_id` (G37), so the page's own offer is
+  // what ties this read to the business: a builder lists the platform's
+  // programmes (`loadCatalogues`, G31), and that is where a cross-business
+  // offer would come from, not from here.
   let program
   try {
-    program = await getProgramById(body.productId)
+    program = await getProgramById(offer.productId)
   } catch {
+    return reject(404, "That program is not available.")
+  }
+  // A page published last month can name a program retired or made private
+  // since, and nothing re-checks the page when a program changes. So the sale
+  // is checked instead. Both flags: `is_active` alone includes every client's
+  // personal plan, priced at what that client paid.
+  if (!program.is_active || !program.is_public) {
     return reject(404, "That program is not available.")
   }
   // A price is the difference between a purchase and a free grant. The Stripe
