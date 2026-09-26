@@ -1,0 +1,1192 @@
+[
+  {
+    "key": "abandoned_checkout",
+    "name": "Abandoned checkout",
+    "description": "Follows someone who started paying for coaching or a program and did not finish. Stripe only reports an abandoned checkout when the session expires, about 24 hours later, so the first message here is a day behind the event by construction. Excludes shop orders, event tickets and card-on-file setups.",
+    "status": "draft",
+    "trigger_source": "checkout_abandoned",
+    "trigger_filter": {},
+    "reenrol_cooldown_days": 30,
+    "steps": [
+      {
+        "position": 0,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "You left something half-finished",
+        "body": "Hi {{name}}\n\nYou started to pay for something and it did not go through. That happens — it's usually a question that didn't have an obvious answer.\n\nIf it was the price, the commitment, or whether it is the right thing right now, tell me which and I'll give you a straight answer. If it was just the timing, that's fine too.\n\nReply to this email and let me know.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 1,
+        "kind": "wait",
+        "wait_minutes": 2880,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 2,
+        "kind": "tag",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {
+          "tag": "abandoned-checkout"
+        }
+      },
+      {
+        "position": 3,
+        "kind": "branch",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": {
+          "kind": "has_consent",
+          "channel": "sms"
+        },
+        "on_true_position": 4,
+        "on_false_position": 6,
+        "config": {}
+      },
+      {
+        "position": 4,
+        "kind": "sms",
+        "wait_minutes": null,
+        "subject": null,
+        "body": "Hi {{name}} — you started to pay for something and it didn't go through. If something was unclear, text back and a real person answers.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 5,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 6,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Still worth a conversation",
+        "body": "Hi {{name}}\n\nI'll leave this one here.\n\nIf you want to talk it through before deciding anything, reply to this email. No commitment, and no follow-up after this if you'd rather leave it.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 7,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      }
+    ]
+  },
+  {
+    "key": "camp_clinic_deadline",
+    "name": "Camp or clinic deadline",
+    "description": "Chases someone who registered interest in a camp or clinic and has not paid. The first email goes out straight away. The three after it count down to the camp's own start date -- 14, 7 and 3 days before -- so everyone gets them at the same moment, whenever they signed up. Someone who signs up late skips the reminders whose moment has already gone. Someone added by hand has no camp date, so their follow-up stops after the first email. The copy never names a particular camp.",
+    "status": "draft",
+    "trigger_source": "event_signup",
+    "trigger_filter": {
+      "signup_type": "interest"
+    },
+    "reenrol_cooldown_days": 30,
+    "steps": [
+      {
+        "position": 0,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "About the camp you asked about",
+        "body": "Hi {{name}}\n\nThanks for putting your name down. Your place isn't held yet — that happens when you register properly — but here is what it covers so you can decide.\n\nIt's a small group, coached in person, working on the things that actually limit an athlete rather than a general session everyone gets. If you have a specific problem you want looked at, bring it.\n\nIf you want the details again or have a question first, reply to this email.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 1,
+        "kind": "wait",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {
+          "wait_until": {
+            "days_before_anchor": 14
+          }
+        }
+      },
+      {
+        "position": 2,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "What a day there looks like",
+        "body": "Hi {{name}}\n\nIn case it helps you decide.\n\nThe day's mostly work, not talking. We look at how an athlete moves under load, fix the things that are cheap to fix on the spot, and give them the two or three things worth taking home. Nobody's standing around.\n\nParents are welcome to watch. Athletes usually leave knowing exactly what to work on, which is the part that lasts after the day ends.\n\nReply if you want to know whether it suits the athlete you have in mind.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 3,
+        "kind": "wait",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {
+          "wait_until": {
+            "days_before_anchor": 7
+          }
+        }
+      },
+      {
+        "position": 4,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Places are limited",
+        "body": "Hi {{name}}\n\nA quick heads up: places are capped so the coaching stays hands-on, and registering interest doesn't hold one.\n\nIf you want the spot, register properly and it's yours. If you've decided against it, that is completely fine — you can ignore this.\n\nReply if there's anything you still need to know first.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 5,
+        "kind": "wait",
+        "wait_minutes": 1440,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 6,
+        "kind": "sms",
+        "wait_minutes": null,
+        "subject": null,
+        "body": "Places at the camp are capped, and registering interest does not hold one. Reply here if you want yours.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 7,
+        "kind": "wait",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {
+          "wait_until": {
+            "days_before_anchor": 3
+          }
+        }
+      },
+      {
+        "position": 8,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Last one about this",
+        "body": "Hi {{name}}\n\nLast message about the camp — I will not keep bringing it up.\n\nIf the timing is wrong, tell me and I'll let you know when the next one is instead. If you want a place, register and you're set.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 9,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      }
+    ]
+  },
+  {
+    "key": "cold_lead_re_engagement",
+    "name": "Cold Lead Re-engagement",
+    "description": "Manual enrolment only (trigger_source is NULL) — for leads who have gone quiet, enrolled by a human decision rather than a live event. No auto-reply audit applies because nothing else fires synchronously with a manual enrolment.",
+    "status": "active",
+    "trigger_source": null,
+    "trigger_filter": {},
+    "reenrol_cooldown_days": 30,
+    "steps": [
+      {
+        "position": 0,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Checking back in",
+        "body": "Hi {{name}}\n\nIt's been a while since we last talked, and a lot can change — new season, new schedule, new goals. Wanted to check in and see where things stand for you now.\n\nIf training is something you're thinking about again, reply and let us know what's changed.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 1,
+        "kind": "wait",
+        "wait_minutes": 10080,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 2,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Last check-in for now",
+        "body": "Hi {{name}}\n\nJust one more note — if the timing still isn't right, no worries at all, and we'll leave it here for now. If something has shifted and you'd like to pick things back up, reply any time and we'll go from there.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 3,
+        "kind": "wait",
+        "wait_minutes": 4320,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 4,
+        "kind": "sms",
+        "wait_minutes": null,
+        "subject": null,
+        "body": "Hi {{name}} — no pressure. If getting back to training is still on your mind, reply here and we'll find a time to talk.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 5,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      }
+    ]
+  },
+  {
+    "key": "lead_magnet_delivery",
+    "name": "Lead Magnet Follow-Up",
+    "description": "Follows a free digital download. sendFreeDownloadEmail already delivers the file to the lead the instant they request it, so this sequence opens with a wait rather than a second immediate email.",
+    "status": "draft",
+    "trigger_source": "lead_magnet",
+    "trigger_filter": {},
+    "reenrol_cooldown_days": 30,
+    "steps": [
+      {
+        "position": 0,
+        "kind": "wait",
+        "wait_minutes": 2880,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 1,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Did the guide answer what you were looking for?",
+        "body": "Hi {{name}}\n\nHope the guide was useful. A lot of people read something like it and still have questions specific to their own situation — different sport, different schedule, coming back from an injury, whatever it is.\n\nIf that's you, reply and tell me what you're working with. Happy to point you in the right direction.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 2,
+        "kind": "wait",
+        "wait_minutes": 5760,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 3,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "A next step, if you want one",
+        "body": "Hi {{name}}\n\nIf you found the guide helpful and you're curious what a full training plan built around your goals would look like, the next step is a short call — no pressure, just a conversation about where you are and what would actually move the needle.\n\nReply to this email and we'll set something up.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 4,
+        "kind": "wait",
+        "wait_minutes": 1440,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 5,
+        "kind": "sms",
+        "wait_minutes": null,
+        "subject": null,
+        "body": "Hi {{name}} — did the download land? If anything in it raises a question, text back and a real person answers.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 6,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      }
+    ]
+  },
+  {
+    "key": "new_lead_nurture",
+    "name": "New Lead Nurture",
+    "description": "Follows up with a lead captured through a funnel landing page. sendNewFunnelLeadEmail only notifies the coach, so this sequence is the only automated message the lead itself receives; its first step sends immediately.",
+    "status": "active",
+    "trigger_source": "funnel_form",
+    "trigger_filter": {},
+    "reenrol_cooldown_days": 30,
+    "steps": [
+      {
+        "position": 0,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Thanks for reaching out about training",
+        "body": "Hi {{name}}\n\nThanks for filling out the form — that's the first step toward a program built around your actual goals, not a generic template.\n\nOver the next few days you'll hear a bit more about how we work and what to expect. In the meantime, if you have a specific question, just reply to this email and it'll land in a real inbox.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 1,
+        "kind": "wait",
+        "wait_minutes": 4320,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 2,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "What working together actually looks like",
+        "body": "Hi {{name}}\n\nA quick look at how this usually starts: we talk about where you are now, where you want to be, and what's gotten in the way so far. From there we build a training plan around your schedule and your goals — not the other way around.\n\nIf that sounds like something you want to explore, reply to this email and we'll find a time to talk.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 3,
+        "kind": "wait",
+        "wait_minutes": 10080,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 4,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Still thinking it over?",
+        "body": "Hi {{name}}\n\nNo pressure — just wanted to check in. If now isn't the right time, that's completely fine. If you're still weighing it, the easiest next step is a short call to talk through what you're working with and whether this is a good fit.\n\nReply any time and we'll get something on the calendar.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 5,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      }
+    ]
+  },
+  {
+    "key": "newsletter_welcome",
+    "name": "Newsletter Welcome",
+    "description": "Welcomes a new newsletter subscriber. The subscribe endpoint only syncs to GHL in the background and sends no email to the subscriber itself, so this sequence's first step sends immediately.",
+    "status": "draft",
+    "trigger_source": "newsletter",
+    "trigger_filter": {},
+    "reenrol_cooldown_days": 30,
+    "steps": [
+      {
+        "position": 0,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "You're on the list",
+        "body": "Hi {{name}}\n\nThanks for signing up. You'll get training tips, program updates, and the occasional idea worth trying — nothing you didn't ask for.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 1,
+        "kind": "wait",
+        "wait_minutes": 4320,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 2,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "One thing worth trying this week",
+        "body": "Hi {{name}}\n\nSince you're on the list, here's something concrete: pick one part of your training you've been putting off — mobility work, a weak lift, recovery — and give it real focus for the next two weeks. Small, consistent attention beats a big overhaul almost every time.\n\nIf you want help figuring out where to focus, just reply and let us know what you're working with.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 3,
+        "kind": "wait",
+        "wait_minutes": 1440,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 4,
+        "kind": "sms",
+        "wait_minutes": null,
+        "subject": null,
+        "body": "Hi {{name}} — thanks for joining the newsletter. Expect one useful training idea a week, no filler. Save this number so you know it's us.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 5,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      }
+    ]
+  },
+  {
+    "key": "quiz_aspiring_pro",
+    "name": "Quiz — Aspiring Pro",
+    "description": "Follows a young athlete building toward something serious. The reader may be the athlete or a parent, so the copy should work read aloud at a kitchen table.",
+    "status": "paused",
+    "trigger_source": "quiz",
+    "trigger_filter": {
+      "branch": "aspiring_pro"
+    },
+    "reenrol_cooldown_days": 0,
+    "steps": [
+      {
+        "position": 0,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Your Athlete Quiz result",
+        "body": "Hi {{name}}\n\nYour results are in the link you just saw.\n\nAt your stage the gap between good and serious is rarely talent — it's whether the physical base gets built before the sport demands it. The things the quiz flagged are the ones that get expensive later if they're left.\n\nIf you want to know what to prioritise first, reply to this email.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 1,
+        "kind": "wait",
+        "wait_minutes": 1440,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 2,
+        "kind": "sms",
+        "wait_minutes": null,
+        "subject": null,
+        "body": "Your quiz result went to your email yesterday. Cannot see it? Check your spam folder. Reply here with any question.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 3,
+        "kind": "wait",
+        "wait_minutes": 2880,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 4,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "The base that gets built early",
+        "body": "Hi {{name}}\n\nA follow-up to your result.\n\nAt this stage the gap between good and serious usually isn't talent. It's whether the physical base gets built before the sport starts demanding it — strength, movement, the boring stuff.\n\nSkip it now and it doesn't disappear. It just gets more expensive to fix later.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 5,
+        "kind": "branch",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": {
+          "kind": "has_user"
+        },
+        "on_true_position": 8,
+        "on_false_position": 6,
+        "config": {}
+      },
+      {
+        "position": 6,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "What to prioritise first",
+        "body": "Hi {{name}}\n\nIf you want to know what to prioritise first, reply to this email and tell me what you're training for and how the season is shaping up.\n\nI'll tell you where I would start.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 7,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 8,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Worth keeping in during the season",
+        "body": "Hi {{name}}\n\nYou're already training with us, so there's nothing to sign up for here.\n\nWhen the season gets busy, the base work is usually the first thing that gets dropped — and the easiest to lose without noticing. Keep it in, even if it is just maintenance volume.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 9,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      }
+    ]
+  },
+  {
+    "key": "quiz_ceiling_breaker",
+    "name": "Quiz — Ceiling Breaker",
+    "description": "Follows an athlete who took the Athlete Quiz and sorted into Ceiling Breaker: already performing, looking for the next level. Their result is on screen before this arrives, so the first step sends immediately.",
+    "status": "paused",
+    "trigger_source": "quiz",
+    "trigger_filter": {
+      "branch": "ceiling_breaker"
+    },
+    "reenrol_cooldown_days": 0,
+    "steps": [
+      {
+        "position": 0,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Your Athlete Quiz result",
+        "body": "Hi {{name}}\n\nYour results are in the link you just saw — worth reading properly rather than skimming.\n\nThe pattern with athletes at your level is rarely a lack of work. It's that one or two specific qualities have stopped translating into output, and training harder around them doesn't fix it.\n\nIf you want to know which ones, reply to this email and tell me what you're training for.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 1,
+        "kind": "wait",
+        "wait_minutes": 1440,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 2,
+        "kind": "sms",
+        "wait_minutes": null,
+        "subject": null,
+        "body": "Your quiz result went to your email yesterday. Cannot see it? Check your spam folder. Reply here with any question.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 3,
+        "kind": "wait",
+        "wait_minutes": 2880,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 4,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "The part most people train around",
+        "body": "Hi {{name}}\n\nA quick follow-up to your result.\n\nWhen someone is already working hard and the numbers stop moving, it's rarely a work-rate problem. One or two specific qualities have usually stopped feeding into the thing you actually do, and everything built on top of them is capped by that.\n\nIt's a specific problem, and it is fixable — just not by training harder around it.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 5,
+        "kind": "branch",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": {
+          "kind": "has_user"
+        },
+        "on_true_position": 8,
+        "on_false_position": 6,
+        "config": {}
+      },
+      {
+        "position": 6,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Which one is holding you back",
+        "body": "Hi {{name}}\n\nIf you want to know which of those qualities is actually costing you output, that's a short conversation, not a long assessment.\n\nReply to this email and tell me what you are training for and what has plateaued. I'll tell you where I would start.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 7,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 8,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Worth raising at your next session",
+        "body": "Hi {{name}}\n\nYou're already training with us, so there is nothing to sign up for here.\n\nBring what the quiz flagged to your next session and we'll look at it directly — it's more useful in front of someone than on a screen.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 9,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      }
+    ]
+  },
+  {
+    "key": "quiz_parent_coach",
+    "name": "Quiz — Parent or Coach",
+    "description": "Follows a parent or coach enquiring on an athlete's behalf. The quiz re-voices its questions in the third person for this branch and the follow-up should too: the reader is not the athlete.",
+    "status": "paused",
+    "trigger_source": "quiz",
+    "trigger_filter": {
+      "branch": "parent_coach"
+    },
+    "reenrol_cooldown_days": 0,
+    "steps": [
+      {
+        "position": 0,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "The athlete's quiz result",
+        "body": "Hi {{name}}\n\nThe results are in the link you just saw.\n\nMost programs an athlete this age lands in are built for a group, not for them. What the quiz flags is specific to the athlete you answered for — and it's the difference between training that holds up and training that just adds load.\n\nIf you'd like to go through it, reply to this email.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 1,
+        "kind": "wait",
+        "wait_minutes": 1440,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 2,
+        "kind": "sms",
+        "wait_minutes": null,
+        "subject": null,
+        "body": "The athlete's quiz result went to your email yesterday. Cannot see it? Check your spam. Reply here with a question.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 3,
+        "kind": "wait",
+        "wait_minutes": 2880,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 4,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Why group programs don't fit here",
+        "body": "Hi {{name}}\n\nA follow-up on the athlete's result.\n\nMost group programs are built for the average kid in the room, not the one you're asking about. What the quiz flagged is specific to them, and it's easy for a general session to miss it entirely.\n\nThat gap doesn't close on its own — it usually shows up later, at a worse time.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 5,
+        "kind": "branch",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": {
+          "kind": "has_user"
+        },
+        "on_true_position": 8,
+        "on_false_position": 6,
+        "config": {}
+      },
+      {
+        "position": 6,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Happy to go through it with you",
+        "body": "Hi {{name}}\n\nIf you'd like to go through what the quiz flagged together, reply to this email and tell me what the athlete is working on and what you are seeing day to day.\n\nI'll tell you what I'd focus on first.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 7,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 8,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "How to support what's already working",
+        "body": "Hi {{name}}\n\nThe athlete is already training with us, so there's nothing here to sign up for.\n\nThe best thing you can do is keep doing what you're already doing: get them there, ask how it's going, and leave the programming to us. If something specific is nagging them, mention it to their coach directly.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 9,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      }
+    ]
+  },
+  {
+    "key": "quiz_rebuilder",
+    "name": "Quiz — Rebuilder",
+    "description": "Follows an athlete who sorted into Rebuilder: coming back from injury or recurring breakdown. Tone matters most here — this sequence must never read as a sales push at someone who is hurt.",
+    "status": "paused",
+    "trigger_source": "quiz",
+    "trigger_filter": {
+      "branch": "rebuilder"
+    },
+    "reenrol_cooldown_days": 0,
+    "steps": [
+      {
+        "position": 0,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Your Athlete Quiz result",
+        "body": "Hi {{name}}\n\nYour results are in the link you just saw.\n\nWhen something keeps breaking down, the site of the pain is usually not the cause. What the quiz points at is where load is going that shouldn't be — which is the part worth fixing before you push volume again.\n\nIf you want to talk through what's been recurring, reply to this email.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 1,
+        "kind": "wait",
+        "wait_minutes": 1440,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 2,
+        "kind": "sms",
+        "wait_minutes": null,
+        "subject": null,
+        "body": "Your quiz result went to your email yesterday. Cannot see it? Check your spam folder. Reply here with any question.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 3,
+        "kind": "wait",
+        "wait_minutes": 2880,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 4,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Where the load is actually going",
+        "body": "Hi {{name}}\n\nA short follow-up to your result.\n\nWhen something keeps coming back, the spot that hurts usually isn't where the problem started. Load has been going somewhere it shouldn't, and the pain is just where it shows up first.\n\nThat's worth knowing before you push volume again, not after.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 5,
+        "kind": "branch",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": {
+          "kind": "has_user"
+        },
+        "on_true_position": 8,
+        "on_false_position": 6,
+        "config": {}
+      },
+      {
+        "position": 6,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "If you want to talk through what recurs",
+        "body": "Hi {{name}}\n\nNo pressure here — if you'd like to talk through what keeps recurring, reply to this email and tell me what's been happening and when it shows up.\n\nI won't chase this if you'd rather sit with it for now.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 7,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 8,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Worth telling your coach",
+        "body": "Hi {{name}}\n\nYou're already training with us, so this isn't about booking anything.\n\nIf what the quiz flagged is still showing up, tell your coach directly — the plan can only account for it if we know it's there.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 9,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      }
+    ]
+  },
+  {
+    "key": "service_application_received",
+    "name": "Service application received",
+    "description": "Follows someone who submitted the enquiry form on a service page. They land on /application-received and, until this sequence is switched on, receive nothing at all -- the existing notification goes to the sales inbox, not to them. Step-Up submissions are excluded: those record a different source.",
+    "status": "draft",
+    "trigger_source": "inquiry",
+    "trigger_filter": {},
+    "reenrol_cooldown_days": 30,
+    "steps": [
+      {
+        "position": 0,
+        "kind": "wait",
+        "wait_minutes": 2880,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 1,
+        "kind": "alert",
+        "wait_minutes": null,
+        "subject": "{{name}} applied two days ago — have you replied?",
+        "body": "{{name}} sent a service application two days ago.\n\nThey have already had the automatic \"we have your application\" email, and the follow-up emails are still going out on schedule. This is only a nudge to check that a person has actually come back to them.\n\nWe cannot see your inbox, so if you have already replied there is nothing to do here.\n\nYou will not get another reminder about this one.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 2,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "What the first conversation covers",
+        "body": "Hi {{name}}\n\nWhile you're waiting, here is what the first conversation actually is, so it's not a mystery.\n\nIt is a straight talk about what you are training for, what has and hasn't worked, and anything that keeps breaking down. No assessment to prepare for and nothing to bring.\n\nBy the end of it you should know whether this is worth doing. If it's not, I'll say so.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 3,
+        "kind": "wait",
+        "wait_minutes": 5760,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 4,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Still want to talk?",
+        "body": "Hi {{name}}\n\nI haven't heard back, so this is the last one about your application.\n\nIf you still want to go through it, reply and we'll find a time. If your plans changed, no reply needed — I will leave you alone.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 5,
+        "kind": "wait",
+        "wait_minutes": 1440,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 6,
+        "kind": "sms",
+        "wait_minutes": null,
+        "subject": null,
+        "body": "If the timing is wrong, say so and I will close this off. Otherwise reply here and we will find a slot.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 7,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      }
+    ]
+  },
+  {
+    "key": "sms_repermission",
+    "name": "SMS Re-permission Ask",
+    "description": "One-time email to an imported contact whose phone number carries no recorded SMS consent (tagged sms_repermission_candidate at import — see lib/lead-engine/import.ts), asking them to reply YES to start receiving texts. Manual enrolment only (trigger_source NULL) via scripts/enrol-repermission.ts; closing the loop on a YES reply is a manual act today (see this migration's header) until a consent landing page exists.",
+    "status": "draft",
+    "trigger_source": null,
+    "trigger_filter": {},
+    "reenrol_cooldown_days": 30,
+    "steps": [
+      {
+        "position": 0,
+        "kind": "email",
+        "wait_minutes": null,
+        "subject": "Can we text you?",
+        "body": "Hi {{name}}\n\nWe'd like to be able to reach you by text as well as email — often the quicker way to get a real person when you have a question.\n\nRight now we don't have your OK to text this number. If that's fine with you, tap the link below. It opens a page that shows exactly what you're agreeing to, and there's a button to press.\n\n{{sms_consent_url}}\n\nMessage and data rates may apply once texting begins, and you can reply STOP to opt out or HELP for help at any time after that.\n\nIf the link doesn't work for you, just reply YES to this email and we'll sort it out from our end.\n\nIf you'd rather we stick to email only, you don't need to do anything — we won't text you unless you tell us to.",
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      },
+      {
+        "position": 1,
+        "kind": "stop",
+        "wait_minutes": null,
+        "subject": null,
+        "body": null,
+        "branch_condition": null,
+        "on_true_position": null,
+        "on_false_position": null,
+        "config": {}
+      }
+    ]
+  }
+]

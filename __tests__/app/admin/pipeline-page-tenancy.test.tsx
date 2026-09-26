@@ -145,9 +145,10 @@ describe("PipelinePage — which board it reads", () => {
   it("validates the key against THIS tenant's boards, not a hardcoded list of keys", async () => {
     // The mutant the test above cannot kill on its own: a validator checking
     // `["coaching","camps_clinics","assessment"].includes(requested)` passes it
-    // too. Here the tenant has NOT been seeded with Assessment (only `coaching`
-    // is seeded by create_business, 00249), so a key-list validator would send
-    // "assessment" through and 500 the page.
+    // too. Here the tenant's active boards are mocked down to `coaching` alone
+    // (a real shape — a coach can archive the other two by hand, even though
+    // create_business seeds all three, 00279), so a key-list validator would
+    // send "assessment" through and 500 the page.
     ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
       { id: "pipe-coaching", key: DEFAULT_PIPELINE_KEY, name: "Coaching" },
     ])

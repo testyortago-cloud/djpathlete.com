@@ -324,9 +324,11 @@ async function reconcileForBusiness(
   // sit on different pipelines.
   //
   // `resolvePipelineWithFallback` inside `applyPipelineEvent` handles a tenant
-  // that has no such board (every business seeded before migration 00257): the
-  // event lands on Coaching with a warning rather than throwing, which is the
-  // same rule the live path already follows.
+  // missing that board today — archived by hand, or added by a migration after
+  // this business was created (every business has had all three since
+  // migration 00279's backfill): the event lands on Coaching with a warning
+  // rather than throwing, which is the same rule the live path already
+  // follows.
   //
   for (const booking of bookings) {
     if (!booking.id || processed.bookingIds.has(booking.id)) continue
@@ -390,11 +392,13 @@ async function reconcileForBusiness(
         resolved = await resolvePipeline(key, businessId)
       } catch (err) {
         if (!(err instanceof PipelineNotConfiguredError)) throw err
-        // A NON-default board this tenant was never seeded with — every
-        // business created before migration 00257. Same rule as
-        // `resolvePipelineWithFallback` on the live path: land on Coaching
-        // with a warning rather than throw. Applied here explicitly because
-        // this read happens before `applyPipelineEvent` and cannot borrow it.
+        // A NON-default board this tenant does not have today — archived by
+        // hand, or added by a migration after this business was created
+        // (every business has had all three since 00279's backfill). Same
+        // rule as `resolvePipelineWithFallback` on the live path: land on
+        // Coaching with a warning rather than throw. Applied here explicitly
+        // because this read happens before `applyPipelineEvent` and cannot
+        // borrow it.
         console.warn(
           `[pipeline-reconcile] board "${key}" is not configured for business ${businessId} — falling back to "${defaultPipelineKey}"`,
         )

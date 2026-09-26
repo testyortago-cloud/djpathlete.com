@@ -2844,11 +2844,13 @@ describe("applyPipelineEvent", () => {
     })
   })
 
-  // Task 3 — the hard requirement found while reviewing Task 2: every
-  // tenant gets ONLY "coaching" from `create_business()` (migration 00249).
-  // `camps_clinics`/`assessment` exist only where a later migration or a
-  // board-editor save added them. Routing an event to one of those for a
-  // tenant that lacks it must fall back to Coaching, not throw.
+  // Task 3 — the hard requirement found while reviewing Task 2: routing an
+  // event to a board this tenant lacks must fall back to Coaching, not
+  // throw. Every tenant now gets all three boards from `create_business()`
+  // (`seed_business_starter_set()`, migration 00279, which also backfilled
+  // every business that already existed), so the gap this fallback covers
+  // today is a coach who has archived a board by hand, not a tenant that
+  // was never seeded with it.
   describe("fallback for a routed board this tenant lacks (Task 3)", () => {
     // A call that passes NO pipelineKey at all (every caller before Task 3,
     // and still the shape a refund's own resolution can produce) must use

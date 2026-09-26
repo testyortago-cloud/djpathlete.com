@@ -15,9 +15,13 @@
 //
 // TENANT COOKIE IS LOAD-BEARING. resolveAdminTenant() falls back to
 // choices[0] with no cookie, and on this dev clone that is the seeded test
-// business "Northcrest Barbell 10E", which has no sequences at all. Every
-// shot here must run against "Primary" (00000000-0000-0000-0000-000000000001)
-// or the report is a wall of zeros that looks like a broken feature.
+// business "Northcrest Barbell 10E". Since migration 00279's backfill, 10E
+// has its own eleven sequences (business_id = 10E), all draft and all with
+// zero runs — landing there by accident does not read as an empty page, it
+// silently swaps in 10E's rows for Primary's. Every shot here must run
+// against "Primary" (00000000-0000-0000-0000-000000000001) or the report
+// shows the wrong tenant's sequences, which is still a wall of zeros — just
+// not an empty one.
 //
 // LIGHT ONLY, DELIBERATELY. The admin components were never built against the
 // `.dark` class variant — forcing it breaks existing pages — so there is no
@@ -172,8 +176,9 @@ try {
 
   // CRITICAL — set the business cookie BEFORE navigating anywhere that reads
   // the tenant. Without it resolveAdminTenant() lands on choices[0], which on
-  // this dev clone is "Northcrest Barbell 10E" — a seeded test business with
-  // no sequences at all.
+  // this dev clone is "Northcrest Barbell 10E" — since 00279's backfill, its
+  // own eleven draft sequences (business_id = 10E), all with zero runs, none
+  // of them Primary's.
   await ctx.addCookies([{ name: "djp_business", value: PRIMARY_BUSINESS_ID, url: APP }])
 
   const page = await ctx.newPage()

@@ -587,8 +587,10 @@ describe("runPipelineReconcile — every board, not just Coaching (G26)", () => 
     expect(store.opportunities[0].pipeline_id).toBe("pipe-camps")
   })
 
-  // A tenant seeded before migration 00257 has only `coaching`. The replay must
-  // land somewhere real rather than throwing — the same fallback rule
+  // A tenant can still be missing a non-default board today — archived by
+  // hand, or added by a migration after this business was created (every
+  // business has had all three since 00279's backfill). The replay must land
+  // somewhere real rather than throwing — the same fallback rule
   // `resolvePipelineWithFallback` applies on the live path.
   it("falls back to Coaching when the routed board is not seeded for this tenant", async () => {
     seedBoard()
@@ -672,11 +674,13 @@ describe("runPipelineReconcile — every board, not just Coaching (G26)", () => 
       expect(store.opportunities.find((o) => o.id === "opp-coaching")?.outcome).toBeNull()
     })
 
-    // The PAYMENT half of the not-seeded fallback. The booking test above goes
-    // through `applyPipelineEvent`'s own `resolvePipelineWithFallback`; this
-    // path resolves a board BEFORE that call, to read the open-card
-    // precondition against, so it needs the same rule of its own — every
-    // tenant created before migration 00257 has `coaching` and nothing else.
+    // The PAYMENT half of the missing-board fallback. The booking test above
+    // goes through `applyPipelineEvent`'s own `resolvePipelineWithFallback`;
+    // this path resolves a board BEFORE that call, to read the open-card
+    // precondition against, so it needs the same rule of its own — a tenant
+    // can still be missing a non-default board today (archived by hand, or one
+    // added by a later migration), even though every business has had all
+    // three since 00279's backfill.
     //
     // Landing on Coaching rather than throwing is spec §3.2's fallback applied
     // consistently ("an unroutable event lands on Coaching — it must not throw

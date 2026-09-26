@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>G32 business starter set — review sheet</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 40px; background: #f6f6f4; color: #16323c;
+         font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: #5b7280; margin: 0 0 32px; }
+  figure { margin: 0 0 44px; background: #fff; border: 1px solid #e2e5e3;
+           border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { padding: 18px 22px 22px; border-top: 1px solid #e2e5e3; }
+  figcaption h2 { font-size: 18px; margin: 0 0 6px; }
+  figcaption p { margin: 0 0 8px; color: #40525c; }
+  .route { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+           font-size: 13px; color: #7a6a52; background: #fdf6ec;
+           border: 1px solid #f0e2cc; border-radius: 6px; padding: 2px 7px; display: inline-block; }
+  .note { background: #fff; border: 1px solid #e2e5e3; border-left: 4px solid #c8873f;
+          border-radius: 8px; padding: 18px 22px; margin: 0 0 36px; }
+  .note h2 { font-size: 17px; margin: 0 0 8px; }
+  .note ul { margin: 8px 0 0; padding-left: 20px; }
+  .note li { margin-bottom: 6px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+         background: #eef0ee; border-radius: 4px; padding: 1px 5px; }
+</style>
+<div class="wrap">
+
+<h1>G32 — a backfilled business starts with a full starter set</h1>
+<p class="sub">
+  Two screens of "Trailhead Strength &amp; Conditioning", a coach's business on the dev clone that
+  migration <code>00279</code> backfilled after the fact. Captured in the real running app on the real
+  routes, signed in as the dev-clone operator via <code>/api/dev/login</code>, with the
+  <span class="route">djp_business</span> cookie set to Trailhead so the admin panel reads and writes its
+  data. Annotations are burned into each PNG. Captured 2026-09-26 by
+  <code>scripts/capture-g32-starter-set-screenshots.mjs</code>.
+</p>
+
+<div class="note">
+  <h2>What these shots are, and are not</h2>
+  <ul>
+    <li><strong>Nothing was written to the database.</strong> Both routes are read-only pages; the script
+      never clicks a sequence's on/off switch, never drags a pipeline card, and never submits a form.</li>
+    <li><strong>Light only.</strong> The admin screens have no working dark mode, so there is no dark shot.</li>
+    <li><strong>Proven, not assumed, that this is Trailhead's screen and not the platform's own.</strong>
+      The platform's business ("Primary") has the same three board names, also all active, also Coaching
+      first — but not because 00279 backfilled it. Primary has had Coaching since migration 00219 and
+      gained Assessment and Camps &amp; Clinics from 00257; 00279's insert is a no-op for a board key that
+      already exists, so it left Primary's three untouched. Either way, a wrong-tenant pipeline shot would
+      look almost identical at a glance. The capture script instead reads the page's own sentence, which
+      the server builds from Trailhead's own business name ("Trailhead Strength &amp; Conditioning —
+      Personal Training's Coaching pipeline") — a sentence Primary's page can never produce. For the
+      sequences shot, the tell is sharper: Primary has twelve sequences, including one
+      ("SMS Re-permission Ask") that Trailhead does not have at all, and six of Primary's are not
+      "Never turned on". The script throws if the row count is not exactly eleven, if any row reads
+      anything other than "Never turned on", or if Primary's extra sequence appears on screen.</li>
+    <li><strong>The business switcher, top right, is not staged.</strong> It shows "Trailhead Strength" on
+      both shots because that cookie is genuinely what the request carried — it is there as a visible
+      cross-check, not a prop.</li>
+  </ul>
+</div>
+
+<figure>
+  <img src="01-eleven-sequences-never-turned-on.png" alt="The Sequences list for Trailhead, showing eleven rows all marked Never turned on">
+  <figcaption>
+    <h2>1 · Every business now has eleven follow-up sequences</h2>
+    <p>They start switched off. Nothing is sent until the coach turns one on. A business created from
+      today gets them the moment it is made; Trailhead is an existing business, and it got them when the
+      update ran — that is why every row here still shows zero people, since none has been turned on yet.</p>
+  </figcaption>
+</figure>
+
+<figure>
+  <img src="02-three-boards-coaching-first.png" alt="The Pipeline page for Trailhead, showing three board pills: Coaching, Assessment, Camps and Clinics, with Coaching selected">
+  <figcaption>
+    <h2>2 · …and all three boards, with Coaching first</h2>
+    <p>A coach who wants to track assessments or camps and clinics separately from day-to-day coaching
+      does not have to build these boards — they already exist, empty, ready to use, the same way the
+      eleven sequences above did.</p>
+  </figcaption>
+</figure>
+
+</div>
