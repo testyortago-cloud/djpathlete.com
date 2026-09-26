@@ -203,14 +203,18 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     rows, the same call the chat's booking offer above makes: a coach's
  *     visitors must not read the platform's answers or its athletes' quotes
  *     as that coach's own. Deliberately NOT `resolvePublicTenant()` inside
- *     the island, the way the event island does it: on the two preview
+ *     the island (the event island did that until the G35 review moved it
+ *     onto the render context too): on the two preview
  *     routes the Host is the admin's, not the funnel's, so a platform admin
  *     previewing a coach's page would see the platform's rows while the live
  *     page on the coach's host showed none -- preview and live disagreeing
  *     about one document, which is this subsystem's worst failure.
  *   - the funnel builder's catalogue and publish gate
- *     (lib/funnels/sections/resolve.ts, in `loadCatalogues`), since G35 --
- *     the gate's half of the island entry directly above. It already has the
+ *     (lib/funnels/sections/resolve.ts, in `liveFeedsAvailableFor`), since
+ *     G35 -- the gate's half of the island entry directly above.
+ *     `loadCatalogues` asks it, and so does the draft preview for the
+ *     builder canvas's note on a live section, so the canvas and the gate
+ *     cannot disagree about a business. It already has the
  *     admin's tenant, and consults this only to decide whether that tenant
  *     may use the platform's live FAQ and testimonial feeds. Any other
  *     business gets no FAQ page keys (the table is not even read) and

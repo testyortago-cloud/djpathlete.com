@@ -60,7 +60,9 @@ with `if (businessId)` and a public caller that never passed one.
 - `getConversation(id, businessId)` — REQUIRED, always filtered. The "Optional … public callers legitimately
   have no tenant" doc comment predates the Host boundary (`resolvePublicTenant`, phase 4) and is replaced.
 - `app/api/ask/route.ts:329`: resolve the Host tenant BEFORE reading `requestedId`, and read under it. A
-  conversation id from another business reads as absent, so the visitor starts a fresh conversation. The
+  conversation id from another business reads as absent, and the route answers its existing 404
+  `unknownConversation` (Ruling R7 overruled this spec's first wording, "the visitor starts a fresh
+  conversation": nothing is created for a foreign id). The
   later reads keep using `conversation.business_id`, which now equals the Host tenant by construction.
 - `app/api/ask/capture/route.ts:240`: resolve the Host tenant and read under it; a foreign id answers the
   existing 404 `unknownConversation`. If this adds a `resolvePublicTenant` caller, add it to the
@@ -301,7 +303,7 @@ Each row carries its evidence and, where it needs one, the owner's question. Non
 - **G43 · Every business's customers accept the platform's waiver (owner / legal decision).**
   `getActiveDocument` serves the platform's `legal_documents` on camp, clinic and funnel-form surfaces that
   resolve another business's tenant.
-- **G44 · Schema guards for tenancy (M, later).** The platform `DEFAULT` on `business_id` in 31 of 38 tenanted
+- **G44 · Schema guards for tenancy (M, later).** The platform `DEFAULT` on `business_id` in 30 of 38 tenanted
   tables (one schema-wide decision, already known from 00278); no composite FK tying a consent (or any
   cascading child) to its contact's business; `merge_contacts` never checks that the survivor exists in
   `p_business`; the `lead_magnets` "active lead magnets are public" RLS policy returns every business's
