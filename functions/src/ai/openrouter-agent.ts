@@ -14,10 +14,12 @@ import { buildChatRequest, normalizeUsage, STRUCTURED_OUTPUT_NAME, type MediaPar
  * dispatcher lives in anthropic.ts and calls this), and it keeps this file
  * testable without dragging the Anthropic SDK in.
  *
- * No retry loop here either — the caller already wraps this in pRetry with
- * retry semantics that took real incidents to get right (never retry an abort,
- * do retry a malformed-JSON or Zod failure). Adding a second loop inside would
- * multiply the attempts rather than replace them.
+ * No retry loop here either — each caller already wraps this in pRetry with
+ * retry semantics that took real incidents to get right, and they differ on
+ * purpose: both never retry an abort; the functions/ callAgent DOES retry a
+ * malformed-JSON or Zod failure, while the lib/ callAgent does NOT (a schema
+ * miss on a request path would cost up to three paid calls). Adding a second
+ * loop inside would multiply the attempts rather than replace them.
  *
  * Twin: functions/src/ai/openrouter-agent.ts.
  */

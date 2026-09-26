@@ -195,7 +195,10 @@ async function callWithRetry(userMessage: string): Promise<CompatMessage> {
         tool_choice: { type: "tool", name: "set_extended_metadata" },
       })
     } catch (err: unknown) {
-      const isRateLimit = err instanceof Anthropic.APIError && err.status === 429
+      // By status, not by class: createMessageCompat fails with the OpenAI SDK's
+      // error (OpenRouter) or a ProviderFallbackError carrying OpenRouter's
+      // status — never an Anthropic.APIError, so a class check never retries.
+      const isRateLimit = (err as { status?: unknown } | null)?.status === 429
       if (isRateLimit && attempt < MAX_RETRIES) {
         const delay = Math.pow(2, attempt) * 2000
         console.log(`  Rate limited, retrying in ${delay / 1000}s...`)

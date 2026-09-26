@@ -21,7 +21,7 @@ import {
   embedConversationMessage,
 } from "./ai/rag.js"
 import { getSupabase } from "./lib/supabase.js"
-import { createDeadline } from "./lib/deadline.js"
+import { createDeadline, isAbortError, type Deadline } from "./lib/deadline.js"
 import pRetry from "p-retry"
 
 /**
@@ -105,12 +105,28 @@ export function isTransientError(error: unknown): boolean {
  * Every attempt is a fresh `createMessageCompat` call, so each retry tries
  * OpenRouter first again: one fallback does not pin the rest of the turn to
  * Anthropic, and an OpenRouter 429 stays retryable on OpenRouter.
+ *
+ * THE TURN'S DEADLINE BOUNDS THE RETRIES, NOT ONLY THE WORK. Once retries
+ * actually ran (see the RetryContext note below), one turn could make 4 Opus
+ * and 3 Haiku attempts with up to 27s of backoff between them — enough for a
+ * slowly failing provider to carry the turn past the 540s hard kill, where the
+ * catch block never runs and the job sits in "streaming" (the 2026-08-24
+ * incident). The deadline's signal cuts off the in-flight request AND stops
+ * p-retry waiting for the next one; an abort at the deadline is reported as
+ * the DeadlineExceededError the job records, not as a bare "aborted".
  */
 export async function createWithRetry(
-  params: Omit<CompatMessageParams, "model">,
+  params: Omit<CompatMessageParams, "model" | "signal">,
   primaryModel: string = MODEL_OPUS,
+  deadline?: Deadline,
 ): Promise<CompatMessage> {
-  const callModel = (model: string) => createMessageCompat({ ...params, model })
+  const callModel = (model: string) =>
+    createMessageCompat({ ...params, model, ...(deadline ? { signal: deadline.signal } : {}) })
+  const stopAtDeadline = deadline ? { signal: deadline.signal } : {}
+  const reportDeadline = (error: unknown): never => {
+    if (deadline?.expired() && isAbortError(error)) deadline.assertLive(`model call (${primaryModel})`)
+    throw error
+  }
 
   // p-retry 7 calls `shouldRetry` with a RetryContext ({error, attemptNumber,
   // retriesLeft}), NOT the error. The old `shouldRetry: (err) =>
@@ -123,6 +139,7 @@ export async function createWithRetry(
       retries: 3,
       minTimeout: 3_000,
       maxTimeout: 15_000,
+      ...stopAtDeadline,
       shouldRetry: ({ error }) => isTransientError(error),
       onFailedAttempt: (ctx) => {
         console.warn(
@@ -131,6 +148,8 @@ export async function createWithRetry(
       },
     })
   } catch (error) {
+    // Out of time: no Haiku attempt either — it would start past the budget.
+    if (deadline?.expired()) reportDeadline(error)
     // If primary model exhausted retries on transient error, fall back to Haiku
     if (primaryModel !== MODEL_HAIKU && isTransientError(error)) {
       console.warn(`[program-chat] ${primaryModel} exhausted retries — falling back to ${MODEL_HAIKU}`)
@@ -138,20 +157,22 @@ export async function createWithRetry(
         retries: 2,
         minTimeout: 2_000,
         maxTimeout: 10_000,
+        ...stopAtDeadline,
         shouldRetry: ({ error }) => isTransientError(error),
         onFailedAttempt: (ctx) => {
           console.warn(
             `[program-chat] Haiku attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} left): ${ctx.error.message}`,
           )
         },
-      })
+      }).catch(reportDeadline)
     }
     throw error
   }
 }
 
 // Tool definitions, in Anthropic's shape — the compat shim converts them for
-// OpenRouter. Exported for tmp/ live probes, which must send the real ones.
+// OpenRouter. Exported so a live probe of this chat sends the real definitions
+// rather than a hand-copied one that can drift.
 export const TOOL_DEFINITIONS: CompatTool[] = [
   {
     name: "list_clients",
@@ -469,12 +490,16 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       // (generate_program is always allowed since it's the terminal action)
       const availableTools = TOOL_DEFINITIONS.filter((t) => t.name === "generate_program" || !calledTools.has(t.name))
 
-      const response = await createWithRetry({
-        max_tokens: 32000,
-        system: systemPrompt,
-        messages: apiMessages,
-        tools: availableTools,
-      })
+      const response = await createWithRetry(
+        {
+          max_tokens: 32000,
+          system: systemPrompt,
+          messages: apiMessages,
+          tools: availableTools,
+        },
+        MODEL_OPUS,
+        deadline,
+      )
 
       tokensInput += response.usage?.input_tokens ?? 0
       tokensOutput += response.usage?.output_tokens ?? 0

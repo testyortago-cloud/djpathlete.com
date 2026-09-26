@@ -289,6 +289,14 @@ describe("ProviderFallbackError", () => {
     expect(err.cause).toBe(openRouter)
   })
 
+  it("does not double the period when OpenRouter's own message already ends in one", () => {
+    // Measured live: an invalid key answers "401 User not found." — and the
+    // owner reads this message in the chat bubble.
+    const err = new ProviderFallbackError(Object.assign(new Error("401 User not found."), { status: 401 }), anthropic)
+    expect(err.message).toMatch(/^OpenRouter failed: 401 User not found\. The Anthropic fallback also failed: /)
+    expect(err.message).not.toContain("..")
+  })
+
   it("describes non-Error throwables without crashing", () => {
     const err = new ProviderFallbackError({ status: 503 }, "boom")
     expect(err.message).toMatch(/^OpenRouter failed/)

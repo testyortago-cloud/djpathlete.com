@@ -216,8 +216,10 @@ export class ProviderFallbackError extends Error {
   readonly anthropicError: unknown
 
   constructor(openRouterError: unknown, anthropicError: unknown) {
+    // One trailing period off OpenRouter's text: its messages usually end in
+    // one ("401 User not found."), and the owner reads this in the chat.
     super(
-      `OpenRouter failed: ${describeProviderError(openRouterError)}. ` +
+      `OpenRouter failed: ${describeProviderError(openRouterError).replace(/\.$/, "")}. ` +
         `The Anthropic fallback also failed: ${describeProviderError(anthropicError)}`,
       { cause: openRouterError },
     )

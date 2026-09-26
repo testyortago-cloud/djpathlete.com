@@ -46,6 +46,7 @@ vi.mock("../lib/supabase.js", () => ({ getSupabase: vi.fn() }))
 
 import { createWithRetry, isTransientError } from "../program-chat.js"
 import { ProviderFallbackError } from "../ai/openrouter.js"
+import { createDeadline, DeadlineExceededError } from "../lib/deadline.js"
 
 const OPUS = "claude-opus-4-6"
 const HAIKU = "claude-haiku-4-5-20251001"
@@ -140,6 +141,50 @@ describe("createWithRetry", () => {
 
     expect(r.value?.content).toEqual([{ type: "text", text: "second try" }])
     expect(modelsCalled()).toEqual([OPUS, OPUS])
+  })
+
+  it("retries a 429 on HAIKU too, once the Opus attempts are spent", async () => {
+    // The Haiku loop had the same RetryContext bug as the Opus one; reverting
+    // only its shouldRetry left every other test here green.
+    let haikuCalls = 0
+    h.compat.mockImplementation(async ({ model }: { model: string }) => {
+      if (model === OPUS) throw statusError(503)
+      haikuCalls += 1
+      if (haikuCalls === 1) throw statusError(429)
+      return ok("from haiku, second try")
+    })
+
+    const r = await settle(createWithRetry(params))
+
+    expect(r.value?.content).toEqual([{ type: "text", text: "from haiku, second try" }])
+    expect(modelsCalled()).toEqual([OPUS, OPUS, OPUS, OPUS, HAIKU, HAIKU])
+  })
+
+  it("hands the turn deadline's signal to every model call, so an in-flight request is cut off", async () => {
+    const deadline = createDeadline(60_000, "Program generation")
+    h.compat.mockRejectedValueOnce(statusError(429)).mockResolvedValueOnce(ok("second try"))
+
+    await settle(createWithRetry(params, OPUS, deadline))
+
+    expect(h.compat).toHaveBeenCalledTimes(2)
+    for (const call of h.compat.mock.calls) expect((call[0] as { signal?: AbortSignal }).signal).toBe(deadline.signal)
+    deadline.dispose()
+  })
+
+  it("stops retrying at the turn's deadline, never reaches Haiku, and reports the budget", async () => {
+    // Retries now really run: 4 Opus attempts, 3 Haiku ones, and up to 27s of
+    // backoff. A provider that fails slowly would carry the turn past the 540s
+    // hard kill — the catch block never runs and the job sits in "streaming",
+    // the 2026-08-24 incident. The deadline has to bound the retries too.
+    const deadline = createDeadline(10_000, "Program generation")
+    h.compat.mockRejectedValue(statusError(503))
+
+    const r = await settle(createWithRetry(params, OPUS, deadline))
+
+    // Opus at 0s, 3s and 9s; the next 12s backoff crosses the 10s budget.
+    expect(modelsCalled()).toEqual([OPUS, OPUS, OPUS])
+    expect(r.error).toBeInstanceOf(DeadlineExceededError)
+    deadline.dispose()
   })
 
   it("does not retry or switch model on a 400 — it rethrows the same error once", async () => {

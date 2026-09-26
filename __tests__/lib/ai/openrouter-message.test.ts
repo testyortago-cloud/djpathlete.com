@@ -31,8 +31,8 @@ vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
     messages = {
       create: h.anthropicCreate,
-      stream: (body: unknown) => {
-        h.anthropicStream(body)
+      stream: (body: unknown, options?: unknown) => {
+        h.anthropicStream(body, options)
         return { finalMessage: () => h.anthropicFinal(body) }
       },
     }
@@ -149,6 +149,38 @@ describe("createMessageCompat — provider routing", () => {
       usage: { input_tokens: 3, output_tokens: 2 },
       stop_reason: "end_turn",
     })
+  })
+
+  it("passes the caller's abort signal to OpenRouter as a request option, never in the body", async () => {
+    // Program chat hands its turn deadline in here. Without it a slow provider
+    // holds the request open past the 540s hard kill, and the job is left
+    // "streaming" with no error recorded.
+    const controller = new AbortController()
+    h.orCreate.mockResolvedValueOnce(orCompletion({ content: "ok" }))
+
+    await createMessageCompat({ ...base, signal: controller.signal })
+
+    expect(h.orCreate.mock.calls[0][1]).toEqual({ signal: controller.signal })
+    expect(h.orCreate.mock.calls[0][0]).not.toHaveProperty("signal")
+  })
+
+  it("passes the signal to the Anthropic path as well", async () => {
+    delete process.env.OPENROUTER_API_KEY
+    const controller = new AbortController()
+    h.anthropicFinal.mockResolvedValueOnce(anthropicMessage)
+
+    await createMessageCompat({ ...base, signal: controller.signal })
+
+    expect(h.anthropicStream.mock.calls[0][1]).toEqual({ signal: controller.signal })
+    expect(h.anthropicStream.mock.calls[0][0]).not.toHaveProperty("signal")
+  })
+
+  it("does not fall back when the caller aborted — the deadline is not a provider fault", async () => {
+    const abort = Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" })
+    h.orCreate.mockRejectedValueOnce(abort)
+
+    expect(await failureOf(createMessageCompat(base))).toBe(abort)
+    expect(h.anthropicStream).not.toHaveBeenCalled()
   })
 
   it("falls back to Anthropic on an OpenRouter 429 and returns Anthropic's answer", async () => {

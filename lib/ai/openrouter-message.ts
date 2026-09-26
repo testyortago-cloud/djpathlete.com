@@ -84,6 +84,13 @@ export interface CompatMessageParams {
   messages: Array<{ role: "user" | "assistant"; content: CompatContent }>
   tools?: CompatTool[]
   tool_choice?: { type: "tool"; name: string } | { type: "auto" } | { type: "any" }
+  /**
+   * Aborts the in-flight request on either provider. A request option, never
+   * part of the body. Program chat passes its turn deadline here: without it a
+   * slow provider holds the request open past the function's hard kill, the
+   * catch block never runs, and the job is left "streaming" with no error.
+   */
+  signal?: AbortSignal
 }
 
 export type CompatResponseBlock =
@@ -192,14 +199,17 @@ async function viaOpenRouter(params: CompatMessageParams): Promise<CompatMessage
   if (params.system) messages.push({ role: "system", content: params.system })
   messages.push(...toOpenAIMessages(params.messages))
 
-  const completion = await client.chat.completions.create({
-    model: toOpenRouterModel(params.model),
-    max_tokens: params.max_tokens,
-    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
-    ...(params.tools ? { tools: toOpenAITools(params.tools) } : {}),
-    ...(params.tool_choice ? { tool_choice: toOpenAIToolChoice(params.tool_choice) } : {}),
-    messages: messages as never,
-  })
+  const completion = await client.chat.completions.create(
+    {
+      model: toOpenRouterModel(params.model),
+      max_tokens: params.max_tokens,
+      ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+      ...(params.tools ? { tools: toOpenAITools(params.tools) } : {}),
+      ...(params.tool_choice ? { tool_choice: toOpenAIToolChoice(params.tool_choice) } : {}),
+      messages: messages as never,
+    },
+    params.signal ? { signal: params.signal } : undefined,
+  )
 
   const choice = completion.choices?.[0]
   const refusal = (choice?.message as { refusal?: string | null } | undefined)?.refusal
@@ -259,15 +269,18 @@ function anthropicClient(): Anthropic {
  */
 async function viaAnthropic(params: CompatMessageParams): Promise<CompatMessage> {
   const res = await anthropicClient()
-    .messages.stream({
-      model: params.model,
-      max_tokens: params.max_tokens,
-      ...(params.system ? { system: params.system } : {}),
-      ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
-      ...(params.tools ? { tools: params.tools } : {}),
-      ...(params.tool_choice ? { tool_choice: params.tool_choice } : {}),
-      messages: params.messages,
-    } as never)
+    .messages.stream(
+      {
+        model: params.model,
+        max_tokens: params.max_tokens,
+        ...(params.system ? { system: params.system } : {}),
+        ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+        ...(params.tools ? { tools: params.tools } : {}),
+        ...(params.tool_choice ? { tool_choice: params.tool_choice } : {}),
+        messages: params.messages,
+      } as never,
+      params.signal ? { signal: params.signal } : undefined,
+    )
     .finalMessage()
 
   const content: CompatResponseBlock[] = []
