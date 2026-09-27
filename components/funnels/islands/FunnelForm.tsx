@@ -57,9 +57,12 @@ interface FunnelFormProps {
    * built here, so the wording the visitor ticks against is the exact string
    * the submit route re-renders into `contact_consents.wording_shown`.
    *
-   * `undefined` when the form has no `tel` field (FormIsland does not fetch
-   * business settings for a form that has nothing to attach a phone consent
-   * to), OR when the business has no usable name — a failed settings read
+   * `undefined` when the form has no `tel` field — FormIsland gates this
+   * wording on its OWN field type, not merely on whether it fetched
+   * business settings at all: since decision 7 that read also fires for a
+   * form whose only contact field is `email`, so "the read happened" no
+   * longer implies "there is a phone field to attach this to" — OR when the
+   * business has no usable name — a failed settings read
    * or a blank `display_name` (`hasSmsConsentDisplayName` in
    * sms-consent-wording.ts) both collapse to the same "no wording" outcome
    * rather than one of them rendering a checkbox over a sentence with a hole

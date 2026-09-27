@@ -37,6 +37,21 @@ function resolveContactSource(formContext: "step_up" | undefined): ContactEventS
   return formContext === "step_up" ? "step_up" : "inquiry"
 }
 
+/**
+ * `code` and `message` only, never the raw error — mirrors
+ * `app/api/quiz/submit/route.ts`'s `logFailure`. The house DAL convention
+ * rethrows PostgREST's own error object, whose `details` can embed the
+ * inserted row's other columns verbatim (e.g. "Failing row contains (...,
+ * 203.0.113.9, Mozilla/5.0 ...)") — a consent write's own IP and user agent,
+ * printed into the operator's own logs on the exact failure path meant to
+ * protect that visitor's details.
+ */
+function shapeConsentError(error: unknown): { code: string | null; message: string | null } {
+  return error instanceof Error
+    ? { code: null, message: error.message }
+    : { code: (error as { code?: string })?.code ?? null, message: (error as { message?: string })?.message ?? null }
+}
+
 async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
   const timeout = new Promise<never>((_, reject) => {
@@ -232,7 +247,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null
       const userAgent = request.headers.get("user-agent")
       void recordInquirySmsConsent({ contactId, ip, userAgent, source: contactSource, businessId }).catch((err) => {
-        console.error("Inquiry sms consent write failed (the lead was saved):", err)
+        console.error("Inquiry sms consent write failed (the lead was saved):", shapeConsentError(err))
       })
     }
 
@@ -244,7 +259,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null
       const userAgent = request.headers.get("user-agent")
       void recordInquiryEmailConsent({ contactId, ip, userAgent, source: contactSource, businessId }).catch((err) => {
-        console.error("Inquiry email consent write failed (the lead was saved):", err)
+        console.error("Inquiry email consent write failed (the lead was saved):", shapeConsentError(err))
       })
     }
 

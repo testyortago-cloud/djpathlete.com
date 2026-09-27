@@ -363,18 +363,22 @@ describe("POST /api/quiz/submit", () => {
     expect(recordConsent).not.toHaveBeenCalled()
   })
 
-  it("9a. files the email consent wording byte-for-byte as renderEmailConsentWording renders it", async () => {
+  it("9a. files the email consent wording byte-for-byte as renderEmailConsentWording renders it, with THIS request's own ip and user agent", async () => {
     const { renderEmailConsentWording } = await import("@/lib/lead-engine/email-consent-wording")
-    await post({ emailConsent: true })
-    expect(recordConsent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        contactId: CONTACT_ID,
-        channel: "email",
-        granted: true,
-        source: "quiz",
-        wordingShown: renderEmailConsentWording("DJP Athlete"),
-      }),
-    )
+    // Pinned, not `objectContaining` without them: `ip`/`userAgent` are real
+    // fields on the write, and a partial match here could not tell a correct
+    // value from one silently dropped (e.g. always `null`).
+    await post({ emailConsent: true }, "10.1.0.77")
+    expect(recordConsent).toHaveBeenCalledWith({
+      businessId: ATTEMPT_BUSINESS_ID,
+      contactId: CONTACT_ID,
+      channel: "email",
+      granted: true,
+      source: "quiz",
+      wordingShown: renderEmailConsentWording("DJP Athlete"),
+      ip: "10.1.0.77",
+      userAgent: "vitest",
+    })
   })
 
   it("9b. files no email consent row when the display name is blank, and still answers 200", async () => {
@@ -394,12 +398,19 @@ describe("POST /api/quiz/submit", () => {
     expect(recordConsent).not.toHaveBeenCalled()
   })
 
-  it("9e. still returns the result when the email recordConsent throws, logging that step by name", async () => {
+  it("9e. still returns the result when the email recordConsent throws, logging that step under ITS OWN name", async () => {
+    // The SMS and email consent writers share one DB function (recordConsent)
+    // but must log under DIFFERENT step names — otherwise an operator reading
+    // "[quiz/submit] recordConsent failed" cannot tell which channel broke.
     const spy = vi.spyOn(console, "error").mockImplementation(() => {})
     recordConsent.mockRejectedValue(new Error("consent table is down"))
     const res = await post({ emailConsent: true })
     expect(res.status).toBe(200)
-    expect(spy.mock.calls.map((c) => String(c[0])).join(" | ")).toContain("recordConsent failed")
+    const logged = spy.mock.calls.map((c) => String(c[0])).join(" | ")
+    expect(logged).toContain("recordEmailConsent failed")
+    // Presence control: NOT the SMS block's own step name — that would mean
+    // both channels still log under one indistinguishable string.
+    expect(logged).not.toContain("[quiz/submit] recordConsent failed")
     spy.mockRestore()
   })
 

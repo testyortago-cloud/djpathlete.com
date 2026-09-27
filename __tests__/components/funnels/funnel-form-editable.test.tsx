@@ -243,9 +243,19 @@ describe("FunnelForm — SMS consent checkbox", () => {
   })
 
   it("renders no checkbox next to a non-tel field even when wording is provided", () => {
+    // NOT a query INSIDE the email field's own div: the consent checkbox is a
+    // SIBLING of the field div in the Fragment, never a child of it, so
+    // `emailField.querySelector(...)` would read null even if the checkbox
+    // rendered right next to it (or under the phone field, or anywhere else)
+    // — that assertion could never fail. Instead this counts every
+    // `sms_consent` checkbox on the page (must be exactly the one under
+    // `phone`) and checks by name that none carries the EMAIL field's own
+    // `data-djp-field` suffix (`email_sms_consent`), which is what an
+    // implementation that stopped checking `field.type === "tel"` would emit
+    // while iterating the email field.
     renderForm({ fields: FIELDS_WITH_PHONE, smsConsentWording: WORDING })
-    const emailField = document.querySelector<HTMLElement>('[data-djp-field="email"]')!
-    expect(emailField.querySelector('[name="sms_consent"]')).toBeNull()
+    expect(document.querySelectorAll('input[name="sms_consent"]')).toHaveLength(1)
+    expect(document.querySelector('[data-djp-field="email_sms_consent"]')).toBeNull()
   })
 
   it("stamps no editing anchor on the consent wording — it is not owner-editable copy", () => {
@@ -321,9 +331,19 @@ describe("FunnelForm — email consent checkbox", () => {
   })
 
   it("renders no checkbox next to a non-email field even when wording is provided", () => {
+    // NOT a query INSIDE the phone field's own div: the consent checkbox is a
+    // SIBLING of the field div in the Fragment (see FunnelForm.tsx's field
+    // map), never a child of it, so `phoneField.querySelector(...)` would
+    // read null even if an implementation rendered the email tick under
+    // EVERY field regardless of type — that assertion could never fail.
+    // Instead this counts every `email_consent` checkbox on the page (must be
+    // exactly the one under `email`) and checks by name that none carries the
+    // PHONE field's own `data-djp-field` suffix (`phone_email_consent`),
+    // which is exactly what an implementation that stopped checking
+    // `field.type === "email"` would emit while iterating the phone field.
     renderForm({ fields: FIELDS_WITH_EMAIL, emailConsentWording: WORDING })
-    const phoneField = document.querySelector<HTMLElement>('[data-djp-field="phone"]')!
-    expect(phoneField.querySelector('[name="email_consent"]')).toBeNull()
+    expect(document.querySelectorAll('input[name="email_consent"]')).toHaveLength(1)
+    expect(document.querySelector('[data-djp-field="phone_email_consent"]')).toBeNull()
   })
 
   it("stamps no editing anchor on the consent wording — it is not owner-editable copy", () => {

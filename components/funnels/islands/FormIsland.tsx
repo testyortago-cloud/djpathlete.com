@@ -55,7 +55,8 @@ export async function FormIsland({ props, context }: FormIslandProps) {
   // Read for the SAME business the submit route files the consent row under:
   // both resolve it from the request's Host through lib/tenancy/public.ts, so
   // the wording shown and the wording filed cannot name different businesses.
-  // Resolved only when there is a phone field — a form with none costs no read.
+  // Resolved when there is a phone field OR an email field — a form with
+  // neither costs no read.
   // Each wording is gated on its OWN field type, not merely on the read
   // having happened: a form with an email field but no tel field must not
   // get a defined `smsConsentWording` just because the (now-widened) read

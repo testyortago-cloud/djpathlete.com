@@ -45,6 +45,13 @@ const FIELDS_NO_EMAIL_NO_PHONE: FunnelFormField[] = [
   { name: "notes", label: "Anything else?", type: "textarea", required: false },
 ]
 
+// A form with a `tel` field and NO `email` field. The widened read fires for
+// this form (a `tel` field alone is enough — see form-island-sms-consent.test.tsx's
+// own widened-gate test), but there is no email field to attach the email
+// tick to, so `emailConsentWording` must stay undefined even with a usable
+// display name and even though the settings read genuinely happened.
+const FIELDS_TEL_ONLY: FunnelFormField[] = [{ name: "phone", label: "Phone", type: "tel", required: false }]
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function emailWordingOf(element: any): string | undefined {
   return element.props.emailConsentWording
@@ -100,6 +107,21 @@ describe("FormIsland — email consent wording gate", () => {
       context: CONTEXT,
     })
     expect(getBusinessSettings).not.toHaveBeenCalled()
+    expect(emailWordingOf(element)).toBeUndefined()
+  })
+
+  it("reads business_settings for a tel-only form (the read fires), but passes no email wording — there is no email field to attach it to", async () => {
+    // MUTANT KILLED: dropping `hasEmailField &&` from the emailConsentWording
+    // computation in FormIsland — that would let this tel-only form's
+    // perfectly usable display name leak into a wording prop with nowhere to
+    // render, and `FunnelForm` would then never be asked to check for an
+    // email field before showing it.
+    getBusinessSettings.mockResolvedValue({ display_name: "Acme Fitness" })
+    const element = await FormIsland({
+      props: { fields: FIELDS_TEL_ONLY, successMode: "message" },
+      context: CONTEXT,
+    })
+    expect(getBusinessSettings).toHaveBeenCalled()
     expect(emailWordingOf(element)).toBeUndefined()
   })
 

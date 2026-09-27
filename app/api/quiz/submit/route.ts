@@ -512,8 +512,11 @@ async function handoff(input: {
     }
   }
 
-  // 5b (decision 7). The email tick's own consent write, same fire-and-forget
-  // shape as the SMS block above. `body.email` needs no presence check —
+  // 5b (decision 7). The email tick's own consent write, same shape as the
+  // SMS block above (awaited, guarded by its own try/catch — see the header
+  // comment's ordering note; neither block is fire-and-forget, since both
+  // run before the visitor's result is returned and a throw here must not
+  // escape to the outer handler). `body.email` needs no presence check —
   // unlike phone, the schema REQUIRES an email on every submission — so this
   // only ever gates on the box having been ticked and a contact existing.
   if (contactId && body.emailConsent) {
@@ -534,7 +537,7 @@ async function handoff(input: {
         })
       }
     } catch (error) {
-      logFailure("recordConsent", error, correlation)
+      logFailure("recordEmailConsent", error, correlation)
     }
   }
 }

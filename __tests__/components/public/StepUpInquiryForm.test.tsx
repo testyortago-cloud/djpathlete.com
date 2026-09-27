@@ -81,6 +81,12 @@ describe("StepUpInquiryForm (server wrapper) — email consent wording gate", ()
     expect(emailWordingOf(element)).toBeUndefined()
   })
 
+  it("passes no wording when display_name is whitespace-only", async () => {
+    getBusinessSettings.mockResolvedValue({ display_name: "   " })
+    const element = await StepUpInquiryForm()
+    expect(emailWordingOf(element)).toBeUndefined()
+  })
+
   it("passes the rendered wording when display_name is set", async () => {
     getBusinessSettings.mockResolvedValue({ display_name: "Acme Fitness" })
     const element = await StepUpInquiryForm()
