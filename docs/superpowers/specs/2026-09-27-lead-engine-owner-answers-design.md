@@ -30,6 +30,21 @@ up, AND nothing tells the coach: the chat capture writes no notification and sen
 escalation email in `lib/lead-engine/chat/escalate.ts` is for the assistant being unsure, not for a
 capture). The visitor is told "Thanks — someone has your details now."
 
+> **Revised 2026-09-27 after the Task 1 review (supersedes the step-1 alert and the superseding
+> paragraph below).** The coach is told by a TRANSACTIONAL email sent from `POST /api/ask/capture` on
+> EVERY capture — `sendChatLeadAlertEmail` in `lib/email/lead-alerts.ts`, to the business's
+> `reply_to`, like the quiz and application alerts — not by a sequence step. `ai_chat` stays
+> NON-superseding. Why: with `ai_chat` superseding, a person inside `camp_clinic_deadline` or the
+> application follow-up who asks the chat one question has that run ended `superseded`, and the
+> camp's 30-day cooldown then refuses their re-registration, so they lose the 14/7/3/1 countdown; and
+> a repeat chat lead inside the cooldown would never reach the coach, while the visitor is told
+> "someone has your details now". A transactional alert reaches the coach every time, whatever
+> sequence the person is in. The sequence therefore has NO alert step: email · wait 2 days · email ·
+> wait 1 day · text · end (6 steps). The alert's subject is `{{name}} left their details in your
+> website chat` with the real name substituted; its body says they asked a question in the chat and
+> were told a person would be in touch, gives their email and phone as given, and says to open the
+> chat assistant in the admin to read the conversation. A failed alert never fails the capture.
+
 **Design.** One new sequence, added to the starter set so every business gets it as a draft:
 
 - key `chat_lead_follow_up`, name **Chat Lead Follow-Up**, `trigger_source = 'ai_chat'`, filter `{}`,
