@@ -118,7 +118,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
 
     // Send email notification to admin (non-blocking)
     try {
-      await sendContactFormEmail({ name, email, subject, message })
+      await sendContactFormEmail({ businessId, name, email, subject, message })
     } catch {
       console.error("Failed to send contact form email — continuing")
     }

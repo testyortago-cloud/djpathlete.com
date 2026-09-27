@@ -1,5 +1,7 @@
 import { getPreferences } from "@/lib/db/notification-preferences"
 import { getActiveSubscribers } from "@/lib/db/newsletter"
+import { getBusinessSettings } from "@/lib/db/businesses"
+import { alertAddressing } from "@/lib/email/business-identity"
 import { formatEventWhen } from "@/lib/events/format"
 import type { Event, EventSignup } from "@/types/database"
 
@@ -1317,17 +1319,43 @@ export async function sendNewRegistrationEmail({
   }
 }
 
+/**
+ * Routed through `alertAddressing(settings)` (migration 00282), same as every
+ * other coach alert -- `to: alert_email` (cc `reply_to` when it differs), or
+ * `to: reply_to` alone when `alert_email` is unset. Previously hard-coded to
+ * `INFO_EMAIL`/`ADMIN_CC` for EVERY business, which was also a cross-tenant
+ * leak: a second business's contact form would email DJP.
+ *
+ * `businessId` is REQUIRED, not defaulted -- a caller that hard-codes one
+ * instead of passing the resolved tenant is exactly the leak this closes.
+ *
+ * When `alertAddressing` returns null (neither `alert_email` nor `reply_to`
+ * set), this warns and returns WITHOUT sending -- never falls back to
+ * `INFO_EMAIL`/`ADMIN_CC`, which would reintroduce the same leak for an
+ * unconfigured tenant.
+ */
 export async function sendContactFormEmail({
+  businessId,
   name,
   email,
   subject,
   message,
 }: {
+  businessId: string
   name: string
   email: string
   subject: string
   message: string
 }) {
+  const settings = await getBusinessSettings(businessId)
+  const addressing = alertAddressing(settings)
+  if (!addressing) {
+    console.warn(
+      `[email] sendContactFormEmail: business ${businessId} has no alert_email or reply_to -- nobody was told`,
+    )
+    return
+  }
+
   const html = emailLayout(`
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr>
@@ -1373,8 +1401,8 @@ export async function sendContactFormEmail({
 
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
-    to: INFO_EMAIL,
-    cc: ADMIN_CC,
+    to: addressing.to,
+    cc: addressing.cc,
     replyTo: email,
     subject: `[Contact] ${subject}`,
     html,
@@ -1573,7 +1601,31 @@ export async function sendEventSignupOverbookRefundEmail(signup: EventSignup, ev
   })
 }
 
+/**
+ * Routed through `alertAddressing(settings)` (migration 00282), same as every
+ * other coach alert -- `to: alert_email` (cc `reply_to` when it differs), or
+ * `to: reply_to` alone when `alert_email` is unset. Previously hard-coded to
+ * `ADMIN_CC` for EVERY business's camp/clinic signups.
+ *
+ * The tenant is `event.business_id` -- `events.business_id` is `NOT NULL`
+ * (migration 00252) and every DAL read selects it, so there is no null case
+ * to fall back to the signup's own `business_id` for.
+ *
+ * When `alertAddressing` returns null (neither `alert_email` nor `reply_to`
+ * set), this warns and returns WITHOUT sending -- never falls back to
+ * `ADMIN_CC`, which would reintroduce the cross-tenant leak.
+ */
 export async function sendAdminNewSignupEmail(signup: EventSignup, event: Event) {
+  const businessId = event.business_id
+  const settings = await getBusinessSettings(businessId)
+  const addressing = alertAddressing(settings)
+  if (!addressing) {
+    console.warn(
+      `[email] sendAdminNewSignupEmail: business ${businessId} has no alert_email or reply_to -- nobody was told`,
+    )
+    return
+  }
+
   const adminUrl = `${getBaseUrl()}/admin/events/${event.id}`
   const html = emailLayout(`
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -1613,7 +1665,8 @@ export async function sendAdminNewSignupEmail(signup: EventSignup, event: Event)
 
   await resend.emails.send({
     from: FROM_EMAIL,
-    to: ADMIN_CC,
+    to: addressing.to,
+    cc: addressing.cc,
     subject: `New signup: ${signup.athlete_name} for ${event.title}`,
     html,
   })

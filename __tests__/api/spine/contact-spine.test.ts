@@ -161,6 +161,17 @@ describe("POST /api/contact — tenant", () => {
     expect(mocks.recordContactEvent).toHaveBeenCalledTimes(1)
     expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
   })
+
+  // sendContactFormEmail now routes through THIS business's alertAddressing
+  // (migration 00282) rather than the old hard-coded INFO_EMAIL/ADMIN_CC, so
+  // the route must pass the resolved tenant into it -- the same "host-biz"
+  // sentinel threaded into recordContactEvent above, not a hard-coded id.
+  it("passes the resolved tenant's businessId to sendContactFormEmail", async () => {
+    const res = await post(VALID_BODY)
+    expect(res.status).toBe(200)
+    expect(mocks.sendContactFormEmail).toHaveBeenCalledTimes(1)
+    expect(mocks.sendContactFormEmail.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
+  })
 })
 
 // G35. The bell used to go to `users where role = 'admin'` — every platform
