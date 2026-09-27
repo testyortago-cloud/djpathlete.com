@@ -24,6 +24,32 @@ export type BusinessSettings = {
    */
   brand_color: string | null
   accent_color: string | null
+  /**
+   * Where a COACH ALERT goes (migration 00282): quiz results, chat handovers,
+   * chat leads, new applications, new funnel leads, and the sequence engine's
+   * "have you replied?" reminder. WRITER: the Business Settings form, via
+   * `PATCH /api/admin/businesses/[id]` (`lib/validators/business.ts`'s
+   * `alert_email` field). READER: `alertAddressing` in
+   * `lib/email/business-identity.ts`.
+   *
+   * NULL (or absent -- see below) means "alerts go to `reply_to` alone", the
+   * behaviour every tenant had before this column existed. Set, it becomes
+   * the alert's `to`, with `reply_to` copied (`cc`) rather than dropped.
+   *
+   * Optional here, not just nullable in the database: `getBusinessSettings`
+   * selects `*`, so a `business_settings` row read before migration 00282 has
+   * run (mid-deploy) comes back with this key simply ABSENT, not `null` --
+   * PostgREST only returns columns that exist. Marking it optional is what
+   * lets every existing `BusinessSettings` fixture across this codebase keep
+   * compiling and keep passing unchanged, which is itself the proof that
+   * "column not there yet" and "column there but empty" are handled the same
+   * way: both fall through to `reply_to`.
+   *
+   * Per-tenant column, never an environment variable -- see this repo's
+   * CLAUDE.md on white-labelling: an env var is a single-tenant assumption
+   * wearing a config file's clothes.
+   */
+  alert_email?: string | null
 }
 
 function getClient() {
@@ -190,12 +216,7 @@ export interface UpdateBusinessPatch {
 
 export async function updateBusiness(businessId: string, patch: UpdateBusinessPatch): Promise<Business> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("businesses")
-    .update(patch)
-    .eq("id", businessId)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("businesses").update(patch).eq("id", businessId).select().single()
   if (error) throw new Error(`updateBusiness failed (${error.code}): ${error.message}`)
   return data as Business
 }

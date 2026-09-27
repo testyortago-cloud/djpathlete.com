@@ -49,10 +49,11 @@ export class BusinessNotConfiguredError extends Error {
  * `display_name` (the email would identify nobody) and `postal_address`
  * (CAN-SPAM requires a physical address in every commercial message).
  *
- * `reply_to` is deliberately NOT on this list. For sequence mail it is a
- * courtesy; for an operator alert it is the DESTINATION, and a missing one
+ * `reply_to` is deliberately NOT on this list, and neither is `alert_email`.
+ * For sequence mail `reply_to` is a courtesy; for an operator alert
+ * `alert_email`/`reply_to` together ARE the destination, and a missing one
  * there is "there was nobody to tell", not "this tenant may not send" -- a
- * different answer, owed to a different caller. `alertRecipient` below is
+ * different answer, owed to a different caller. `alertAddressing` below is
  * where that question is asked.
  */
 export function assertSendable(settings: BusinessSettings): void {
@@ -76,16 +77,77 @@ export function businessFrom(settings: BusinessSettings): string {
 }
 
 /**
- * Where an OPERATOR ALERT goes: the tenant's own `reply_to`, or null when
- * nobody has filled one in.
+ * The tenant's own `reply_to`, trimmed, or null when nobody has filled one in.
+ *
+ * NARROWED SCOPE (migration 00282, "Alert email"). Before `alert_email`
+ * existed, this WAS the operator-alert destination -- every coach alert went
+ * `to: reply_to`. It no longer is: `alertAddressing` below is the one place
+ * that decides where a coach alert goes, and it reads `alert_email` first.
+ *
+ * What still needs THIS function, specifically, is
+ * `sendInquiryAutoReply`'s `Reply-To` header (lib/email/lead-alerts.ts,
+ * `const replyTo = alertRecipient(settings)`): the applicant's auto-reply
+ * must keep landing a reply at `reply_to`, never `alert_email`, because
+ * `alert_email` can be a distribution mailbox nobody reads FROM (`sales@`
+ * cannot receive a reply meant for a human). If another caller needs "the
+ * reply_to address" for a similar reason, this is the function to reach for
+ * -- but a caller that wants to know where a COACH ALERT should go must use
+ * `alertAddressing`, not this, or it will quietly stop honouring
+ * `alert_email` the day someone points it here by habit.
  *
  * Null rather than an empty string because the empty string satisfies
  * `to: string` and is a hard provider error at send time -- and a provider
  * rejection is indistinguishable from a mailbox that refused the message,
  * which is how "nobody configured an address" gets mistaken for "delivery
- * failed". The callers answer those two differently.
+ * failed".
  */
 export function alertRecipient(settings: BusinessSettings): string | null {
   const replyTo = settings.reply_to?.trim()
   return replyTo ? replyTo : null
+}
+
+/**
+ * Where a COACH ALERT goes (migration 00282, "Alert email"): quiz results,
+ * chat handovers, chat leads, new applications, new funnel leads, and the
+ * sequence engine's own "have you replied?" reminder.
+ *
+ * `alert_email` is what the owner asked for: a single mailbox (e.g. a
+ * `sales@` distribution address) that gets EVERY new-lead alert, with the
+ * tenant's own `reply_to` (their personal inbox) copied so nothing is missed
+ * twice. `reply_to` stays the sole destination when `alert_email` is unset --
+ * that is the pre-00282 behaviour, unchanged, which is what a fixture with no
+ * `alert_email` field at all proves by continuing to pass.
+ *
+ * `alert_email` is read from a per-tenant COLUMN, never an environment
+ * variable -- see the white-label note in this repo's CLAUDE.md: an env var
+ * is a single-tenant assumption wearing a config file's clothes, and this
+ * product is headed toward one coach per row, not one coach per deploy.
+ *
+ * Returns:
+ *  - `{ to: alert_email, cc: reply_to }` when both are set and DIFFER
+ *    case-insensitively (Resend, like every mail system, treats an address's
+ *    case as cosmetic; CCing a mailbox on itself is a no-op that just makes
+ *    the header longer and confuses a reply-all).
+ *  - `{ to: alert_email }` (no `cc`) when `alert_email` is set and `reply_to`
+ *    is blank or equal to it.
+ *  - `{ to: reply_to }` when `alert_email` is blank, null or undefined
+ *    (undefined covers a `business_settings` row read before the migration
+ *    added the column) -- today's behaviour, unchanged.
+ *  - `null` when BOTH are blank: there is nobody to tell. Every caller must
+ *    treat `null` as "skip the send", the same way `alertRecipient` returning
+ *    null always has -- an empty string would satisfy `to: string` and reach
+ *    the provider as a rejection, misfiling "nobody configured an address" as
+ *    "delivery failed".
+ */
+export function alertAddressing(settings: BusinessSettings): { to: string; cc?: string } | null {
+  const alertEmail = settings.alert_email?.trim()
+  const replyTo = settings.reply_to?.trim()
+
+  if (alertEmail) {
+    return replyTo && replyTo.toLowerCase() !== alertEmail.toLowerCase()
+      ? { to: alertEmail, cc: replyTo }
+      : { to: alertEmail }
+  }
+
+  return replyTo ? { to: replyTo } : null
 }

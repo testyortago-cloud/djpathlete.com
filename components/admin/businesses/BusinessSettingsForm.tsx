@@ -23,6 +23,7 @@ function toFormValues(settings: BusinessSettings): FormValues {
     sender_name: settings.sender_name ?? "",
     sender_email: settings.sender_email ?? "",
     reply_to: settings.reply_to ?? "",
+    alert_email: settings.alert_email ?? "",
     timezone: settings.timezone ?? "",
     quiet_hours_start: settings.quiet_hours_start,
     quiet_hours_end: settings.quiet_hours_end,
@@ -34,13 +35,7 @@ function toFormValues(settings: BusinessSettings): FormValues {
   }
 }
 
-export function BusinessSettingsForm({
-  businessId,
-  settings,
-}: {
-  businessId: string
-  settings: BusinessSettings
-}) {
+export function BusinessSettingsForm({ businessId, settings }: { businessId: string; settings: BusinessSettings }) {
   const [serverError, setServerError] = useState<string | null>(null)
 
   const {
@@ -101,11 +96,7 @@ export function BusinessSettingsForm({
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="display_name">Display name</Label>
-            <Input
-              id="display_name"
-              aria-invalid={!!errors.display_name}
-              {...register("display_name")}
-            />
+            <Input id="display_name" aria-invalid={!!errors.display_name} {...register("display_name")} />
             {errors.display_name && <p className="text-xs text-error">{errors.display_name.message}</p>}
           </div>
 
@@ -142,12 +133,7 @@ export function BusinessSettingsForm({
 
           <div className="space-y-1.5">
             <Label htmlFor="sender_email">Sender email</Label>
-            <Input
-              id="sender_email"
-              type="email"
-              aria-invalid={!!errors.sender_email}
-              {...register("sender_email")}
-            />
+            <Input id="sender_email" type="email" aria-invalid={!!errors.sender_email} {...register("sender_email")} />
             {errors.sender_email && <p className="text-xs text-error">{errors.sender_email.message}</p>}
           </div>
 
@@ -158,6 +144,25 @@ export function BusinessSettingsForm({
               <p className="text-xs text-error">{errors.reply_to.message}</p>
             ) : (
               <p className="text-xs text-muted-foreground">Where replies to this business&apos;s emails land.</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="alert_email">Alert email</Label>
+            <Input
+              id="alert_email"
+              type="email"
+              aria-invalid={!!errors.alert_email}
+              aria-describedby="alert_email-hint"
+              {...register("alert_email")}
+            />
+            {errors.alert_email ? (
+              <p className="text-xs text-error">{errors.alert_email.message}</p>
+            ) : (
+              <p id="alert_email-hint" className="text-xs text-muted-foreground">
+                Where alerts about new leads go: applications, quiz results, chat and funnel leads. The reply-to address
+                is copied. Leave blank to send them to the reply-to address only.
+              </p>
             )}
           </div>
         </CardContent>
@@ -201,9 +206,7 @@ export function BusinessSettingsForm({
                 aria-describedby="quiet-hours-hint"
                 {...register("quiet_hours_start", { valueAsNumber: true })}
               />
-              {errors.quiet_hours_start && (
-                <p className="text-xs text-error">{errors.quiet_hours_start.message}</p>
-              )}
+              {errors.quiet_hours_start && <p className="text-xs text-error">{errors.quiet_hours_start.message}</p>}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="quiet_hours_end">Stop sending at</Label>
@@ -219,9 +222,9 @@ export function BusinessSettingsForm({
             </div>
           </div>
           <p id="quiet-hours-hint" className="text-xs text-muted-foreground">
-            Follow-up emails and texts only go out between these hours, in each person&apos;s own time zone
-            when we know it, otherwise this business&apos;s. Use the hour of the day, from 0 (midnight) to 23
-            (11pm): 8 and 21 means 8am until 9pm.
+            Follow-up emails and texts only go out between these hours, in each person&apos;s own time zone when we know
+            it, otherwise this business&apos;s. Use the hour of the day, from 0 (midnight) to 23 (11pm): 8 and 21 means
+            8am until 9pm.
           </p>
 
           <div className="space-y-1.5">
@@ -239,8 +242,8 @@ export function BusinessSettingsForm({
               <p className="text-xs text-error">{errors.daily_message_cap.message}</p>
             ) : (
               <p id="daily-cap-hint" className="text-xs text-muted-foreground">
-                The most follow-up messages (emails and texts together) one person can be sent in a day,
-                across all sequences.
+                The most follow-up messages (emails and texts together) one person can be sent in a day, across all
+                sequences.
               </p>
             )}
           </div>
@@ -277,8 +280,8 @@ export function BusinessSettingsForm({
               <p className="text-xs text-error">{errors.sms_messaging_service_sid.message}</p>
             ) : (
               <p id="sms-messaging-service-sid-hint" className="text-xs text-muted-foreground">
-                Identifies this business&apos;s text messages to the carrier network. Comes from your text
-                messaging provider when this business is set up to send texts.
+                Identifies this business&apos;s text messages to the carrier network. Comes from your text messaging
+                provider when this business is set up to send texts.
               </p>
             )}
           </div>
@@ -299,8 +302,8 @@ export function BusinessSettingsForm({
               <p className="text-xs text-error">{errors.sms_sender_phone.message}</p>
             ) : (
               <p id="sms-sender-phone-hint" className="text-xs text-muted-foreground">
-                The number your texts are sent from. Start with + and the country code, exactly as Twilio shows
-                it. It is saved without spaces, for example +12025550123.
+                The number your texts are sent from. Start with + and the country code, exactly as Twilio shows it. It
+                is saved without spaces, for example +12025550123.
               </p>
             )}
           </div>
@@ -315,11 +318,7 @@ export function BusinessSettingsForm({
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="postal_address">Postal address</Label>
-            <Textarea
-              id="postal_address"
-              aria-invalid={!!errors.postal_address}
-              {...register("postal_address")}
-            />
+            <Textarea id="postal_address" aria-invalid={!!errors.postal_address} {...register("postal_address")} />
             {errors.postal_address && <p className="text-xs text-error">{errors.postal_address.message}</p>}
           </div>
         </CardContent>

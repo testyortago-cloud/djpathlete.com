@@ -34,6 +34,9 @@ const SETTINGS = {
   postal_address: null,
 } as unknown as BusinessSettings
 
+const ALERT_EMAIL_HINT =
+  "Where alerts about new leads go: applications, quiz results, chat and funnel leads. The reply-to address is copied. Leave blank to send them to the reply-to address only."
+
 const REFUSAL = "darrenjpaul.com is not verified at Resend, so email sent from it would be dropped."
 
 beforeEach(() => {
@@ -177,5 +180,81 @@ describe("BusinessSettingsForm -- the sending-window fields say what they do", (
     // The old hint claimed it was texts only, and per-client rather than the
     // cap's real scope (per CONTACT, across every sequence and channel).
     expect(screen.queryByText(/The most text messages a single client/)).toBeNull()
+  })
+})
+
+// Migration 00282, "Alert email".
+describe("BusinessSettingsForm -- the alert email field", () => {
+  function sentSettings(): Record<string, unknown> {
+    const calls = vi.mocked(fetch).mock.calls
+    expect(calls).toHaveLength(1)
+    return JSON.parse(String((calls[0][1] as RequestInit).body)).settings
+  }
+
+  it("renders the field, directly under Reply-to email, with the exact hint", () => {
+    render(<BusinessSettingsForm businessId="bbb" settings={SETTINGS} />)
+
+    const field = screen.getByLabelText("Alert email")
+    expect(field).toHaveAttribute("type", "email")
+    expect(field).toHaveAttribute("id", "alert_email")
+    expect(field).toHaveAttribute("name", "alert_email")
+    expect(screen.getByText(ALERT_EMAIL_HINT)).toBeInTheDocument()
+
+    // "Directly under" -- the DOM order the coach reads, not just presence.
+    const replyTo = screen.getByLabelText("Reply-to email")
+    expect(replyTo.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("defaults to '' when the business has no alert_email (null)", () => {
+    render(<BusinessSettingsForm businessId="bbb" settings={{ ...SETTINGS, alert_email: null }} />)
+
+    expect(screen.getByLabelText("Alert email")).toHaveValue("")
+  })
+
+  it("round-trips an existing alert_email into the field", () => {
+    render(<BusinessSettingsForm businessId="bbb" settings={{ ...SETTINGS, alert_email: "sales@example.test" }} />)
+
+    expect(screen.getByLabelText("Alert email")).toHaveValue("sales@example.test")
+  })
+
+  it("sends what was typed on save", async () => {
+    respondWith(200, { settings: SETTINGS })
+    render(<BusinessSettingsForm businessId="bbb" settings={SETTINGS} />)
+
+    await userEvent.type(screen.getByLabelText("Alert email"), "sales@example.test")
+    await userEvent.click(screen.getByRole("button", { name: /save/i }))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(sentSettings().alert_email).toBe("sales@example.test")
+  })
+
+  it("shows the field's own validation error beside it, the way its neighbours do -- MUTANT: rendering a generic or shared error message instead of errors.alert_email's own", async () => {
+    render(<BusinessSettingsForm businessId="bbb" settings={SETTINGS} />)
+
+    // "a@b" (no TLD) is valid per the browser's native type="email" syntax
+    // check -- there is no `noValidate` on this form, so a value the browser
+    // itself would reject (like "not-an-email", no "@" at all) blocks the
+    // submit event before React ever sees it. Zod's `.email()` is stricter
+    // than that native check (it requires a dotted TLD), so this value passes
+    // the browser's gate and still reaches, and fails, this schema.
+    await userEvent.type(screen.getByLabelText("Alert email"), "a@b")
+    await userEvent.click(screen.getByRole("button", { name: /save/i }))
+
+    const field = await screen.findByLabelText("Alert email")
+    expect(field).toHaveAttribute("aria-invalid", "true")
+    // The hint is replaced by the error, same convention as reply_to/logo_url.
+    expect(screen.queryByText(ALERT_EMAIL_HINT)).toBeNull()
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled()
+  })
+
+  it("still allows '' -- clearing the field is not a validation error", async () => {
+    respondWith(200, { settings: SETTINGS })
+    render(<BusinessSettingsForm businessId="bbb" settings={{ ...SETTINGS, alert_email: "sales@example.test" }} />)
+
+    await userEvent.clear(screen.getByLabelText("Alert email"))
+    await userEvent.click(screen.getByRole("button", { name: /save/i }))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(sentSettings().alert_email).toBe("")
   })
 })

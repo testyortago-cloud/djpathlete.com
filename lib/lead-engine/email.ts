@@ -267,7 +267,12 @@ const HEX_COLOUR = /^#[0-9a-fA-F]{6}$/
  * email; without the second, they get their brand band above the incumbent
  * tenant's gold strip.
  */
-export function paletteFor(settings: BusinessSettings): { brand: string; brandInk: string; accent: string; strip: string } {
+export function paletteFor(settings: BusinessSettings): {
+  brand: string
+  brandInk: string
+  accent: string
+  strip: string
+} {
   const brand = settings.brand_color?.trim() ?? ""
   if (!HEX_COLOUR.test(brand)) return DEFAULT_PALETTE
 
@@ -472,6 +477,15 @@ export type RenderedSequenceEmail = { subject: string; html: string; text: strin
  */
 export async function sendRenderedSequenceEmail(args: {
   to: string
+  /**
+   * Copied on the send, when supplied. Added for the `alert` step (migration
+   * 00282, "Alert email"): a coach alert's `to` becomes `alert_email` when
+   * the tenant has set one, with `reply_to` copied here. Every LEAD-facing
+   * sequence send simply never passes this — its `to` is already the lead,
+   * and copying anyone else on mail meant for a lead is out of scope for this
+   * parameter's one caller.
+   */
+  cc?: string
   rendered: RenderedSequenceEmail
   settings: BusinessSettings
   unsubscribeUrl?: string
@@ -484,6 +498,7 @@ export async function sendRenderedSequenceEmail(args: {
   const { data, error } = await resend.emails.send({
     from: businessFrom(settings),
     to: args.to,
+    ...(args.cc ? { cc: args.cc } : {}),
     replyTo: settings.reply_to,
     subject: rendered.subject,
     html: rendered.html,
@@ -529,6 +544,8 @@ export async function sendRenderedSequenceEmail(args: {
  */
 export async function sendSequenceEmail(args: {
   to: string
+  /** Copied on the send, when supplied. See `sendRenderedSequenceEmail`'s `cc`. */
+  cc?: string
   subject: string
   body: string
   /**
@@ -569,6 +586,7 @@ export async function sendSequenceEmail(args: {
 
   return sendRenderedSequenceEmail({
     to: args.to,
+    cc: args.cc,
     rendered,
     settings,
     unsubscribeUrl: args.unsubscribeUrl,

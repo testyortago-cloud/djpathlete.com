@@ -662,10 +662,43 @@ describe("an alert step, through the runner (G12)", () => {
     await runSequenceTick()
 
     expect(sendMock).toHaveBeenCalledTimes(1)
-    const payload = sendMock.mock.calls[0][0] as { to?: unknown; subject?: string }
+    const payload = sendMock.mock.calls[0][0] as { to?: unknown; cc?: unknown; subject?: string }
     expect(payload.to).toBe("reply@example.com")
     // And the control that makes the claim mean something: NOT the lead.
     expect(payload.to).not.toBe("lead@example.com")
+    // No alert_email in SETTINGS -- proves NULL/absent is unchanged behaviour.
+    expect(payload.cc).toBeUndefined()
+  })
+
+  // Migration 00282, "Alert email".
+  it("goes to alert_email, cc reply_to, when the business has set one", async () => {
+    // MUTANT: the alert step ignoring alert_email and always sending to
+    // settings.reply_to, the pre-00282 behaviour.
+    ;(getBusinessSettings as Mock).mockResolvedValue({ ...SETTINGS, alert_email: "sales@example.com" })
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
+
+    await runSequenceTick()
+
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    const payload = sendMock.mock.calls[0][0] as { to?: unknown; cc?: unknown }
+    expect(payload.to).toBe("sales@example.com")
+    // MUTANT: dropping the cc entirely.
+    expect(payload.cc).toBe("reply@example.com")
+  })
+
+  it("is skipped, with a warning naming both fields, and still advances the run, when neither is set", async () => {
+    // MUTANT: still calling sendSequenceEmail with `to: ""`, which reaches
+    // the (mocked) provider instead of being skipped before the attempt.
+    ;(getBusinessSettings as Mock).mockResolvedValue({ ...SETTINGS, alert_email: "", reply_to: "" })
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    await runSequenceTick()
+
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("no alert_email or reply_to"))
+    // A coach with nobody to alert must not stall the lead's own run.
+    expect(advanceRun).toHaveBeenCalledWith("run-1", 1)
   })
 
   it("names the lead the alert is ABOUT, so the subject is actionable in an inbox", async () => {
@@ -708,9 +741,7 @@ describe("an alert step, through the runner (G12)", () => {
     // real wall clock, a month later — so `dailyCapDefer` counted zero sends
     // and returned null for every step kind. The test passed whether or not
     // the alert arm consulted the cap at all, which is no test.
-    ;(loadRunContext as Mock).mockResolvedValue(
-      sendableContext({ dailyCap: 1, sentAtToday: ["2026-08-18T12:00:00Z"] }),
-    )
+    ;(loadRunContext as Mock).mockResolvedValue(sendableContext({ dailyCap: 1, sentAtToday: ["2026-08-18T12:00:00Z"] }))
     ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
 
     await runSequenceTick()

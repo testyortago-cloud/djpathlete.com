@@ -9,8 +9,20 @@ import { permissionMapSchema } from "@/lib/validators/team-invite"
  * 'api' are both perfectly legal against the pattern.
  */
 export const RESERVED_SLUGS = new Set([
-  "admin", "api", "app", "www", "go", "preview", "funnel-preview",
-  "client", "editor", "login", "register", "book", "b", "primary",
+  "admin",
+  "api",
+  "app",
+  "www",
+  "go",
+  "preview",
+  "funnel-preview",
+  "client",
+  "editor",
+  "login",
+  "register",
+  "book",
+  "b",
+  "primary",
 ])
 
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/
@@ -116,7 +128,17 @@ export const businessSettingsPatchSchema = z.object({
   sender_name: z.string().trim().max(200).optional(),
   sender_email: z.union([z.literal(""), z.string().trim().email()]).optional(),
   reply_to: z.union([z.literal(""), z.string().trim().email()]).optional(),
-  logo_url: z.union([z.literal(""), z.string().trim().url()]).nullable().optional(),
+  // Migration 00282, "Alert email". Writer for `business_settings.alert_email`.
+  // "" clears the field back to "alerts go to reply_to alone" -- the route
+  // converts "" to NULL before the write, same shape as sms_sender_phone's
+  // "" meaning "not configured" (this schema keeps "" here rather than
+  // nullable+optional like logo_url, because the ROUTE does the "" -> null
+  // conversion for this one field; see app/api/admin/businesses/[id]/route.ts).
+  alert_email: z.union([z.literal(""), z.string().trim().email()]).optional(),
+  logo_url: z
+    .union([z.literal(""), z.string().trim().url()])
+    .nullable()
+    .optional(),
   timezone: z.string().trim().min(1).refine(isValidTimezone, "Unrecognised timezone").optional(),
   quiet_hours_start: z.number().int().min(0).max(23).optional(),
   quiet_hours_end: z.number().int().min(0).max(23).optional(),

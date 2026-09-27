@@ -38,9 +38,15 @@ let updateSettingsImpl: (businessId: string) => Promise<unknown> = (businessId: 
 
 vi.mock("@/lib/db/businesses", () => ({
   getBusiness: (id: string) => Promise.resolve({ id, name: "B", slug: "b", status: "active" }),
-  updateBusiness: (id: string, patch: unknown) => { businessCalls.push({ id, patch }); return Promise.resolve({ id, ...(patch as object) }) },
+  updateBusiness: (id: string, patch: unknown) => {
+    businessCalls.push({ id, patch })
+    return Promise.resolve({ id, ...(patch as object) })
+  },
   getBusinessSettings: (id: string) => getSettingsImpl(id),
-  updateBusinessSettings: (patch: unknown, businessId: string) => { settingsCalls.push({ patch, businessId }); return updateSettingsImpl(businessId) },
+  updateBusinessSettings: (patch: unknown, businessId: string) => {
+    settingsCalls.push({ patch, businessId })
+    return updateSettingsImpl(businessId)
+  },
   BusinessSettingsMissingError,
   SmsSenderPhoneTakenError,
 }))
@@ -119,7 +125,14 @@ describe("PATCH /api/admin/businesses/[id]", () => {
   })
 
   it("lets the operator patch any business", async () => {
-    tenant = { businessId: "aaa", choices: [{ id: "aaa", name: "A", slug: "a" }, { id: "bbb", name: "B", slug: "b" }], isOperator: true }
+    tenant = {
+      businessId: "aaa",
+      choices: [
+        { id: "aaa", name: "A", slug: "a" },
+        { id: "bbb", name: "B", slug: "b" },
+      ],
+      isOperator: true,
+    }
     const res = await PATCH(req({ settings: { display_name: "Fine" } }), { params: Promise.resolve({ id: "bbb" }) })
     expect(res.status).toBe(200)
     expect(settingsCalls[0].businessId).toBe("bbb")
@@ -167,10 +180,9 @@ describe("PATCH /api/admin/businesses/[id]", () => {
     // array a non-admin-panel role should never have received.
     session = { user: { id: "cust", role: "client" } }
     resolveImpl = () => Promise.reject(new NoAccessibleBusinessError())
-    const res = await PATCH(
-      req({ settings: { sender_email: "attacker@example.com" } }),
-      { params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }) },
-    )
+    const res = await PATCH(req({ settings: { sender_email: "attacker@example.com" } }), {
+      params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }),
+    })
     expect(res.status).toBe(403)
     expect(settingsCalls).toHaveLength(0)
     expect(businessCalls).toHaveLength(0)
@@ -180,7 +192,14 @@ describe("PATCH /api/admin/businesses/[id]", () => {
     // The operator's OWN business is "aaa"; the URL asks to patch "bbb".
     // Both getBusinessSettings(id) and updateBusiness(id, ...) must be
     // called with "bbb" -- the id in the URL -- not "aaa".
-    tenant = { businessId: "aaa", choices: [{ id: "aaa", name: "A", slug: "a" }, { id: "bbb", name: "B", slug: "b" }], isOperator: true }
+    tenant = {
+      businessId: "aaa",
+      choices: [
+        { id: "aaa", name: "A", slug: "a" },
+        { id: "bbb", name: "B", slug: "b" },
+      ],
+      isOperator: true,
+    }
     const res = await PATCH(req({ business: { status: "paused" } }), { params: Promise.resolve({ id: "bbb" }) })
     expect(res.status).toBe(200)
     expect(businessCalls[0].id).toBe("bbb")
@@ -353,9 +372,12 @@ describe("PATCH /api/admin/businesses/[id] -- sms_sender_phone (G33)", () => {
     // around the two, so this body's status change is committed by the time
     // the number clashes. MUTANT: the old wording, "Nothing was saved."
     updateSettingsImpl = () => Promise.reject(takenError())
-    const res = await PATCH(req({ business: { status: "paused" }, settings: { sms_sender_phone: "+1 202 555 0123" } }), {
-      params: Promise.resolve({ id: "bbb" }),
-    })
+    const res = await PATCH(
+      req({ business: { status: "paused" }, settings: { sms_sender_phone: "+1 202 555 0123" } }),
+      {
+        params: Promise.resolve({ id: "bbb" }),
+      },
+    )
     const body = await res.json()
     expect(res.status).toBe(409)
     expect(businessCalls).toEqual([{ id: "bbb", patch: { status: "paused" } }])
@@ -366,5 +388,50 @@ describe("PATCH /api/admin/businesses/[id] -- sms_sender_phone (G33)", () => {
   it("CONTROL: any other write failure still propagates, rather than being dressed up as a taken number", async () => {
     updateSettingsImpl = () => Promise.reject(Object.assign(new Error("boom"), { code: "57014" }))
     await expect(patchPhone("+1 202 555 0123")).rejects.toThrow("boom")
+  })
+})
+
+// Migration 00282, "Alert email". alert_email is nullable with no default
+// (unlike reply_to/sender_email, which are NOT NULL DEFAULT ''), so clearing
+// it has to write NULL, not "" -- the route does that conversion, not the
+// schema.
+describe("PATCH /api/admin/businesses/[id] -- alert_email (migration 00282)", () => {
+  it("writes a valid email straight through", async () => {
+    const res = await PATCH(req({ settings: { alert_email: "sales@example.test" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    expect(res.status).toBe(200)
+    expect((settingsCalls[0].patch as { alert_email: unknown }).alert_email).toBe("sales@example.test")
+  })
+
+  it("converts '' to NULL -- MUTANT: writing '' verbatim would not match the nullable, no-default column the way logo_url's own '' does", async () => {
+    const res = await PATCH(req({ settings: { alert_email: "" } }), { params: Promise.resolve({ id: "bbb" }) })
+    expect(res.status).toBe(200)
+    expect(settingsCalls).toHaveLength(1)
+    expect((settingsCalls[0].patch as { alert_email: unknown }).alert_email).toBeNull()
+  })
+
+  it("rejects an invalid address and writes nothing", async () => {
+    const res = await PATCH(req({ settings: { alert_email: "not-an-email" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    expect(res.status).toBe(400)
+    expect(settingsCalls).toHaveLength(0)
+  })
+
+  it("leaves other fields in the same patch untouched by the '' -> null conversion", async () => {
+    const res = await PATCH(req({ settings: { alert_email: "", display_name: "New Name" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    expect(res.status).toBe(200)
+    const patch = settingsCalls[0].patch as { alert_email: unknown; display_name: unknown }
+    expect(patch.alert_email).toBeNull()
+    expect(patch.display_name).toBe("New Name")
+  })
+
+  it("presence control: a patch that never names alert_email writes it as neither '' nor null", async () => {
+    const res = await PATCH(req({ settings: { display_name: "New Name" } }), { params: Promise.resolve({ id: "bbb" }) })
+    expect(res.status).toBe(200)
+    expect("alert_email" in (settingsCalls[0].patch as object)).toBe(false)
   })
 })

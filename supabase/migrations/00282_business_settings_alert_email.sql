@@ -1,0 +1,26 @@
+-- supabase/migrations/00282_business_settings_alert_email.sql
+-- Per-tenant "Alert email": a single mailbox that gets every coach alert
+-- about a new lead (quiz results, chat handovers, chat leads, new
+-- applications, new funnel leads, and the sequence engine's "have you
+-- replied?" reminder), with the tenant's own `reply_to` copied rather than
+-- replaced.
+--
+-- WRITER: the Business Settings form, via `PATCH /api/admin/businesses/[id]`
+-- (`lib/validators/business.ts`'s `alert_email` field).
+-- READER: `alertAddressing` in `lib/email/business-identity.ts`.
+--
+-- NULL (the only state possible right after this migration -- no backfill)
+-- means "alerts go to `reply_to` alone", exactly what every tenant already
+-- gets today. This column only ever narrows or redirects that destination
+-- when a tenant fills it in; it changes nothing for a business_settings row
+-- that never sets it.
+--
+-- Nullable, no default, no backfill, on purpose -- same shape as
+-- `brand_color`/`accent_color` (migration 00260): a default would make every
+-- existing tenant claim an alert address it never chose.
+--
+-- Per-tenant COLUMN, never an environment variable: this product is headed
+-- toward one coach per row (white-label SaaS), not one coach per deploy, so a
+-- setting a coach owns belongs in their own `business_settings` row.
+ALTER TABLE public.business_settings
+  ADD COLUMN IF NOT EXISTS alert_email text;

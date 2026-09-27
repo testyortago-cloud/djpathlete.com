@@ -20,15 +20,26 @@
 // forgot would have had no compile error and no test failure, only a coach
 // reading someone else's name.
 //
-// WHERE THE COACH IS ADDRESSED. `reply_to`, always, per decision 9. The
-// funnel's `notify_emails` still ADDS recipients where a funnel sets them; it
-// has never been the primary destination and this change does not make it one.
+// WHERE THE COACH IS ADDRESSED. `alertAddressing(settings)` (migration 00282,
+// "Alert email") -- `alert_email` when the tenant has set one, `cc:
+// reply_to`; `reply_to` alone otherwise, per decision 9. The funnel's
+// `notify_emails` still ADDS recipients where a funnel sets them; it has
+// never been the primary destination and this change does not make it one.
+// The ONE exception is `sendInquiryAutoReply`'s own `Reply-To` HEADER, which
+// stays on `reply_to` even when `alert_email` is set -- see its own doc
+// comment, and `alertRecipient`'s, for why.
 
 import type { BusinessSettings } from "@/lib/db/businesses"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { calendlySchedulingUrlForBusiness } from "@/lib/calendly/config-for-business"
 import { schedulingLink } from "@/lib/calendly/links"
-import { BusinessNotConfiguredError, alertRecipient, assertSendable, businessFrom } from "@/lib/email/business-identity"
+import {
+  alertAddressing,
+  alertRecipient,
+  assertSendable,
+  BusinessNotConfiguredError,
+  businessFrom,
+} from "@/lib/email/business-identity"
 import {
   ctaButton,
   escapeHtml,
@@ -45,15 +56,19 @@ import { buildLeadMailtoLink, buildTelLink } from "@/lib/leads/build-mailto-link
 /**
  * Resolves the tenant and refuses early if they cannot lawfully send.
  *
- * Returns `null` instead of throwing when the row is unusable, so the two
+ * Returns `null` instead of throwing when the row is unusable, so the three
  * senders whose contract is `{ delivered: boolean }` can keep that contract.
  * The WARNING is what makes the null honest: without it, an unconfigured
  * business and a business that simply had nothing to say are the same silence.
+ *
+ * `to`/`cc` come from `alertAddressing` (migration 00282): `alert_email` when
+ * the tenant has set one, with `reply_to` copied, or `reply_to` alone
+ * otherwise -- unchanged from before this column existed.
  */
 async function resolveSender(
   businessId: string,
   context: string,
-): Promise<{ settings: BusinessSettings; to: string } | null> {
+): Promise<{ settings: BusinessSettings; to: string; cc?: string } | null> {
   const settings = await getBusinessSettings(businessId)
 
   try {
@@ -66,17 +81,18 @@ async function resolveSender(
     throw err
   }
 
-  const to = alertRecipient(settings)
-  if (!to) {
+  const addressing = alertAddressing(settings)
+  if (!addressing) {
     // Distinct from the branch above and reported as its own line: "this
     // business may not send" and "this business has nobody to be told" have
     // different fixes, and collapsing them sends whoever is debugging to the
-    // wrong field.
-    console.warn(`[email] ${context}: business ${businessId} has no reply_to -- nobody was told`)
+    // wrong field. Names BOTH fields now that either one can supply the
+    // destination.
+    console.warn(`[email] ${context}: business ${businessId} has no alert_email or reply_to -- nobody was told`)
     return null
   }
 
-  return { settings, to }
+  return { settings, to: addressing.to, cc: addressing.cc }
 }
 
 /**
@@ -94,16 +110,18 @@ async function loadSendableSettings(businessId: string): Promise<BusinessSetting
 }
 
 /**
- * The coach's own mailbox, or a refusal naming the field that is empty.
+ * The coach's alert `to`/`cc` (migration 00282), or a refusal naming the
+ * fields that are empty.
  *
  * Separate from `assertSendable` because it answers a different question --
  * "where does this alert GO" rather than "may this tenant send at all" -- and
- * because the auto-reply below needs the first without the second.
+ * because the auto-reply below needs "the reply_to address" specifically
+ * (via `alertRecipient`), not this.
  */
-function requireAlertRecipient(settings: BusinessSettings): string {
-  const to = alertRecipient(settings)
-  if (!to) throw new BusinessNotConfiguredError(["reply_to"])
-  return to
+function requireAlertAddressing(settings: BusinessSettings): { to: string; cc?: string } {
+  const addressing = alertAddressing(settings)
+  if (!addressing) throw new BusinessNotConfiguredError(["alert_email", "reply_to"])
+  return addressing
 }
 
 /**
@@ -147,7 +165,7 @@ export async function sendQuizAlertEmail({
 
   const sender = await resolveSender(businessId, `quiz alert for attempt ${attemptId}`)
   if (!sender) return { delivered: false }
-  const { settings, to } = sender
+  const { settings, to, cc } = sender
 
   const html = tenantEmailLayout(
     `
@@ -185,6 +203,7 @@ export async function sendQuizAlertEmail({
   const { error } = await resend.emails.send({
     from: businessFrom(settings),
     to,
+    ...(cc ? { cc } : {}),
     replyTo: settings.reply_to,
     subject: `[Quiz] ${name} scored ${score}/100 — ${tierKey}`,
     html,
@@ -211,12 +230,15 @@ export type ChatEscalationTurn = {
  *
  * Built on `sendContactFormEmail`'s shape, with three deliberate departures:
  *
- *  1. **One destination, no CC.** It goes to THIS TENANT'S OWN
- *     `business_settings.reply_to`, read here rather than handed in, because
- *     that is the mailbox their inbox screen is already connected to. A
- *     hardcoded CC would be a second recipient nobody on this tenant
- *     configured, for a message that can contain a stranger's phone number
- *     typed into a public box.
+ *  1. **The destination is `alertAddressing(settings)` (migration 00282),
+ *     read here rather than handed in**, because that is where their inbox
+ *     screen is already connected. Before `alert_email` existed this was
+ *     ALWAYS a single address with no CC, and the "no hardcoded CC" reasoning
+ *     still holds -- but a `cc` here is never hardcoded: it is the SAME
+ *     tenant's own `reply_to`, which they configured themselves alongside
+ *     `alert_email`. A message that can contain a stranger's phone number
+ *     typed into a public box still only ever reaches addresses this one
+ *     tenant chose.
  *  2. **No `replyTo`.** The visitor is anonymous. There may be no address to
  *     reply to at all, and guessing one would put the operator's answer in front
  *     of the wrong person.
@@ -259,7 +281,7 @@ export async function sendChatEscalationEmail({
 
   const sender = await resolveSender(businessId, `chat escalation for conversation ${conversationId}`)
   if (!sender) return { delivered: false }
-  const { settings, to } = sender
+  const { settings, to, cc } = sender
 
   const baseUrl = getBaseUrl()
   const transcriptHtml =
@@ -338,6 +360,7 @@ export async function sendChatEscalationEmail({
   const { error } = await resend.emails.send({
     from: businessFrom(settings),
     to,
+    ...(cc ? { cc } : {}),
     subject: `[Chat] Someone asked for a person — ${conversationId.slice(0, 8)}`,
     html,
   })
@@ -363,8 +386,8 @@ export async function sendChatEscalationEmail({
  * whatever sequence the person is in.
  *
  * Shaped like `sendQuizAlertEmail`: `{ delivered }`, never a throw, for an
- * unconfigured tenant, a blank `reply_to` (each warned on its own line by
- * `resolveSender`), or a provider refusal. A settings read that fails still
+ * unconfigured tenant, no `alert_email`/`reply_to` (each warned on its own
+ * line by `resolveSender`), or a provider refusal. A settings read that fails still
  * throws, as it does for the chat handover above: an outage is not "nobody to
  * tell". The capture route catches either way -- the lead is already saved.
  *
@@ -397,7 +420,7 @@ export async function sendChatLeadAlertEmail({
 
   const sender = await resolveSender(businessId, `chat lead alert for conversation ${conversationId}`)
   if (!sender) return { delivered: false }
-  const { settings, to } = sender
+  const { settings, to, cc } = sender
 
   // Only the details they actually gave: a row reading "not given" is noise
   // in an alert whose whole point is how to reach them.
@@ -439,6 +462,7 @@ export async function sendChatLeadAlertEmail({
   const { error } = await resend.emails.send({
     from: businessFrom(settings),
     to,
+    ...(cc ? { cc } : {}),
     ...(email ? { replyTo: email } : {}),
     subject: `${name.replace(/\s+/g, " ").trim()} left their details in your website chat`,
     html,
@@ -497,7 +521,7 @@ export async function sendInquiryEmail({
   aiAnalysis?: LeadAnalysisResult | null
 }) {
   const settings = await loadSendableSettings(businessId)
-  const to = requireAlertRecipient(settings)
+  const { to, cc } = requireAlertAddressing(settings)
 
   const infoRows: { label: string; value: string }[] = [
     { label: "Name", value: escapeHtml(name) },
@@ -626,6 +650,7 @@ export async function sendInquiryEmail({
   const { error } = await resend.emails.send({
     from: businessFrom(settings),
     to,
+    ...(cc ? { cc } : {}),
     replyTo: email,
     subject: `[Inquiry] New ${serviceLabel} Application — ${name}`,
     html,
@@ -644,12 +669,26 @@ export async function sendInquiryEmail({
  * still a parameter here and is read from settings everywhere else: the
  * destination is the person who just typed their address into a form.
  *
- * That is also why a blank `reply_to` does NOT stop it. For the four coach
- * alerts `reply_to` IS the destination, so a blank one means nobody to tell.
- * Here it is a courtesy header, and refusing to send would leave a person who
- * just applied with silence in order to fix a field that is not in the way.
- * `assertSendable` still applies: this is a commercial message to a member of
- * the public and it needs a postal address on it.
+ * That is also why a blank `reply_to` does NOT stop it. For the coach alerts
+ * `alertAddressing(settings)` IS the destination, so having neither
+ * `alert_email` nor `reply_to` means nobody to tell. Here it is a courtesy
+ * header, and refusing to send would leave a person who just applied with
+ * silence in order to fix a field that is not in the way. `assertSendable`
+ * still applies: this is a commercial message to a member of the public and
+ * it needs a postal address on it.
+ *
+ * `replyTo` HERE IS `alertRecipient(settings)` -- `reply_to`, ALONE, NEVER
+ * `alert_email` -- and that is deliberate, not an oversight left over from
+ * before migration 00282. `alert_email` exists to be a mailbox nothing reads
+ * FROM (a `sales@` distribution address, forwarding rule, or shared inbox);
+ * `reply_to` is the coach's own, personal inbox. Pointing an APPLICANT's
+ * reply at `alert_email` risks it landing somewhere nobody checks for a
+ * human reply, which is precisely the failure mode `alert_email` was
+ * invented to route AROUND for the coach's own alerts, not to inherit here.
+ * `alertRecipient` (as opposed to `alertAddressing`) is what makes this
+ * explicit: it returns "the reply_to address" and nothing else, so a future
+ * caller reaching for "where do I send a REPLY to a person" cannot
+ * accidentally get `alert_email` back.
  *
  * THE BOOKING LINK IS THE COACH'S OWN (G30's carried clause). Resolved from
  * `calendlySchedulingUrlForBusiness` -- the LINK-ONLY resolver, never
@@ -791,12 +830,13 @@ export interface NewFunnelLeadEmailInput {
  * interpolates its message raw.
  *
  * `replyTo` is the LEAD, so replying in the mail client answers the person
- * rather than the robot. The COACH is in `to`, read from their own
- * `business_settings.reply_to`.
+ * rather than the robot. The COACH is in `to`/`cc`, from `alertAddressing`
+ * (migration 00282): `alert_email` when set, with `reply_to` copied, or
+ * `reply_to` alone otherwise.
  */
 export async function sendNewFunnelLeadEmail(input: NewFunnelLeadEmailInput) {
   const settings = await loadSendableSettings(input.businessId)
-  const coachAddress = requireAlertRecipient(settings)
+  const { to: coachAddress, cc } = requireAlertAddressing(settings)
 
   const displayName = input.name?.trim() || input.email?.trim() || "Someone"
 
@@ -844,15 +884,20 @@ export async function sendNewFunnelLeadEmail(input: NewFunnelLeadEmailInput) {
     settings,
   )
 
-  // De-duplicated case-insensitively: a funnel whose recipient list already
-  // names the coach — in any casing — must not send the same lead twice. The
-  // coach's own address is always first, so it is the spelling that survives.
+  // De-duplicated case-insensitively ACROSS to/cc/extras: a funnel whose
+  // recipient list already names the coach's `to` address, or their `cc`
+  // (`reply_to`, when `alert_email` is also set) — in any casing — must not
+  // send the same lead twice, and must not CC someone who is already in
+  // `to`. The coach's own `to` address is always first, so it is the
+  // spelling that survives; `cc`'s slot is reserved before extras are walked,
+  // even though `cc` itself is never one of the `to` addresses.
   //
-  // `requireAlertRecipient` above is what stops a blank one being dropped
+  // `requireAlertAddressing` above is what stops a blank one being dropped
   // here quietly: with a funnel that sets `notify_emails`, a missing coach
   // address still leaves a non-empty list, so the send would succeed and the
   // coach would simply never hear about their own lead.
   const seen = new Set<string>()
+  if (cc) seen.add(cc.trim().toLowerCase())
   const recipients = [coachAddress, ...(input.extraRecipients ?? [])].filter((address) => {
     const key = address.trim().toLowerCase()
     if (key === "" || seen.has(key)) return false
@@ -863,6 +908,7 @@ export async function sendNewFunnelLeadEmail(input: NewFunnelLeadEmailInput) {
   const { error } = await resend.emails.send({
     from: businessFrom(settings),
     to: recipients,
+    ...(cc ? { cc } : {}),
     ...(input.email ? { replyTo: input.email } : {}),
     subject: `[Lead] ${displayName} — ${input.pageName}`,
     html,

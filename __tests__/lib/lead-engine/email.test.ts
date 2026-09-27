@@ -457,6 +457,40 @@ describe("sendSequenceEmail", () => {
     ).rejects.toThrow(/RESEND_API_KEY/)
     expect(sendMock).not.toHaveBeenCalled()
   })
+
+  // Migration 00282, "Alert email" -- added so the sequence engine's `alert`
+  // step (lib/automation/sequence-tick-runner.ts) can copy reply_to onto an
+  // alert addressed to alert_email.
+  it("copies `cc` onto the send when supplied", async () => {
+    await sendSequenceEmail({
+      to: "priya@northfieldstrength.test",
+      cc: "sales@northfieldstrength.test",
+      subject: "Hi",
+      body: "Body",
+      unsubscribeUrl: "https://x.test/u/20",
+      contactName: null,
+      settings: settingsA,
+    })
+
+    expect(sendMock.mock.calls[0][0].cc).toBe("sales@northfieldstrength.test")
+  })
+
+  it("sends no `cc` field at all when none is supplied -- not even an undefined one", async () => {
+    // MUTANT: `cc: args.cc` unconditionally -- Resend's SDK would receive
+    // `cc: undefined`, which is harmless to Resend but makes a mock-call
+    // assertion elsewhere ("no cc") ambiguous between "omitted" and
+    // "explicitly undefined".
+    await sendSequenceEmail({
+      to: "lead@example.com",
+      subject: "Hi",
+      body: "Body",
+      unsubscribeUrl: "https://x.test/u/21",
+      contactName: null,
+      settings: settingsA,
+    })
+
+    expect("cc" in sendMock.mock.calls[0][0]).toBe(false)
+  })
 })
 
 describe("emailEnvPresent", () => {

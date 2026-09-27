@@ -25,6 +25,7 @@
 import { randomUUID } from "crypto"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { getBusinessSettings, listBusinesses, type BusinessSettings } from "@/lib/db/businesses"
+import { alertAddressing } from "@/lib/email/business-identity"
 import {
   assertSendable,
   classifySendFault,
@@ -596,8 +597,10 @@ async function processRun(
         metadata: { run_id: run.id, sequence_id: run.sequence_id, step_id: action.step.id },
       })
 
-      // The email half reuses sendSequenceEmail, sent to
-      // business_settings.reply_to, with `includeUnsubscribeFooter: false`.
+      // The email half reuses sendSequenceEmail, sent to `alertAddressing`'s
+      // `to`/`cc` (migration 00282, "Alert email") -- `alert_email` when the
+      // tenant has set one, with `reply_to` copied, or `reply_to` alone
+      // otherwise -- with `includeUnsubscribeFooter: false`.
       //
       // That flag is not cosmetic. This mail goes to the OPERATOR, but the
       // only unsubscribe token this code could mint is one for the LEAD the
@@ -615,35 +618,49 @@ async function processRun(
       // notification is not a commercial message and CAN-SPAM's footer
       // requirements do not attach to it.
       //
-      // A failed alert EMAIL is logged, not fatal: the timeline row above
-      // already satisfies "visible", and this lead's own sequence
-      // progression must not stall on a Resend hiccup for a side-channel
-      // notification to someone else.
-      try {
-        await sendSequenceEmail({
-          to: settings.reply_to,
-          subject: action.step.subject ?? "Sequence alert",
-          body: action.step.body ?? "",
-          // G12. The LEAD's name, though the recipient is the coach — and the
-          // two are not in conflict. In an alert, `{{name}}` means the person
-          // the alert is ABOUT, which is the only name it could usefully
-          // carry; the coach already knows their own.
-          //
-          // This used to be `null`, and `substituteName` replaces `{{name}}`
-          // with the empty string, so "No reply yet to {{name}}'s
-          // application" — the wording the row itself proposes — arrived as
-          // "No reply yet to 's application". An alert that cannot say who it
-          // concerns sends the coach hunting through the contacts list, which
-          // is most of the point gone.
-          //
-          // Still never guessed: a contact with no name renders empty, the
-          // same as every other send path. Ugly beats invented.
-          contactName: ctx.contact.name,
-          settings,
-          includeUnsubscribeFooter: false,
-        })
-      } catch (err) {
-        console.error(`[sequence-tick] alert email to reply_to failed for run ${run.id}:`, err)
+      // Skipped, with a warning naming both fields, only when `alertAddressing`
+      // returns null -- neither `alert_email` nor `reply_to` is set, so there
+      // is nobody to tell. The run still advances: a coach with nobody
+      // configured to alert is a labelling gap, not a reason to stall the
+      // lead's own progression.
+      //
+      // A failed alert EMAIL (the try/catch below) is logged, not fatal: the
+      // timeline row above already satisfies "visible", and this lead's own
+      // sequence progression must not stall on a Resend hiccup for a
+      // side-channel notification to someone else.
+      const addressing = alertAddressing(settings)
+      if (!addressing) {
+        console.warn(
+          `[sequence-tick] alert step for run ${run.id}: business ${businessId} has no alert_email or reply_to -- nobody was told`,
+        )
+      } else {
+        try {
+          await sendSequenceEmail({
+            to: addressing.to,
+            cc: addressing.cc,
+            subject: action.step.subject ?? "Sequence alert",
+            body: action.step.body ?? "",
+            // G12. The LEAD's name, though the recipient is the coach — and the
+            // two are not in conflict. In an alert, `{{name}}` means the person
+            // the alert is ABOUT, which is the only name it could usefully
+            // carry; the coach already knows their own.
+            //
+            // This used to be `null`, and `substituteName` replaces `{{name}}`
+            // with the empty string, so "No reply yet to {{name}}'s
+            // application" — the wording the row itself proposes — arrived as
+            // "No reply yet to 's application". An alert that cannot say who it
+            // concerns sends the coach hunting through the contacts list, which
+            // is most of the point gone.
+            //
+            // Still never guessed: a contact with no name renders empty, the
+            // same as every other send path. Ugly beats invented.
+            contactName: ctx.contact.name,
+            settings,
+            includeUnsubscribeFooter: false,
+          })
+        } catch (err) {
+          console.error(`[sequence-tick] alert email failed for run ${run.id}:`, err)
+        }
       }
 
       await advanceRun(run.id, action.step.position + 1)

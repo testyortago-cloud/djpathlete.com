@@ -159,3 +159,43 @@ describe("businessSettingsPatchSchema -- sms_sender_phone", () => {
     })
   })
 })
+
+// Migration 00282, "Alert email". Same union shape as reply_to's -- "" or a
+// real email address -- so a coach can clear the field back to "alerts go to
+// reply_to alone".
+describe("businessSettingsPatchSchema -- alert_email", () => {
+  function parseAlertEmail(raw: string) {
+    return businessSettingsPatchSchema.safeParse({ alert_email: raw })
+  }
+
+  it("accepts a valid email", () => {
+    const result = parseAlertEmail("sales@example.test")
+    expect(result.success).toBe(true)
+    expect(result.success && result.data.alert_email).toBe("sales@example.test")
+  })
+
+  it("trims surrounding whitespace", () => {
+    const result = parseAlertEmail("  sales@example.test  ")
+    expect(result.success).toBe(true)
+    expect(result.success && result.data.alert_email).toBe("sales@example.test")
+  })
+
+  it("accepts '' -- clearing the field", () => {
+    const result = parseAlertEmail("")
+    expect(result.success).toBe(true)
+    expect(result.success && result.data.alert_email).toBe("")
+  })
+
+  it("rejects 'not-an-email'", () => {
+    const result = parseAlertEmail("not-an-email")
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.error.issues[0].path).toEqual(["alert_email"])
+  })
+
+  it("leaves the field out of the patch when it was not sent at all", () => {
+    // A patch that does not name the field must not touch the saved address.
+    const result = businessSettingsPatchSchema.safeParse({ display_name: "New Name" })
+    expect(result.success).toBe(true)
+    expect(result.success && "alert_email" in result.data).toBe(false)
+  })
+})

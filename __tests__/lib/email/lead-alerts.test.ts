@@ -124,8 +124,22 @@ describe("sendQuizAlertEmail", () => {
     expect(arg.to).toBe("priya@northfieldstrength.test")
     expect(arg.replyTo).toBe("priya@northfieldstrength.test")
     // Decision 9: one destination, the tenant's own. No CC to a mailbox
-    // nobody on this tenant configured.
+    // nobody on this tenant configured. NO `alert_email` in this fixture --
+    // this proves NULL/absent is still today's behaviour, unchanged.
     expect(arg.cc).toBeUndefined()
+  })
+
+  // Migration 00282, "Alert email".
+  it("goes to alert_email, cc reply_to, when the tenant has set one", async () => {
+    // MUTANT: ignoring alert_email and sending to reply_to as before.
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, alert_email: "sales@northfieldstrength.test" })
+
+    await sendQuizAlertEmail(quizArgs)
+
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.to).toBe("sales@northfieldstrength.test")
+    // MUTANT: dropping the cc entirely.
+    expect(arg.cc).toBe("priya@northfieldstrength.test")
   })
 
   it("renders the tenant's wordmark and postal address, and none of the platform's", async () => {
@@ -222,10 +236,22 @@ describe("sendChatEscalationEmail", () => {
     expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
     expect(arg.from).toBe("Coach Priya <hello@northfieldstrength.test>")
     expect(arg.to).toBe("priya@northfieldstrength.test")
-    // Still no CC. The transcript can contain a stranger's phone number typed
-    // into a public box, and a second recipient nobody on this tenant
-    // configured has no claim on it.
+    // Still no CC in this fixture (no alert_email). The transcript can
+    // contain a stranger's phone number typed into a public box, and a
+    // second recipient nobody on this tenant configured has no claim on it.
     expect(arg.cc).toBeUndefined()
+  })
+
+  // Migration 00282, "Alert email". The cc here is never a stranger: it is
+  // the SAME tenant's own reply_to, which they configured themselves.
+  it("goes to alert_email, cc reply_to, when the tenant has set one", async () => {
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, alert_email: "sales@northfieldstrength.test" })
+
+    await sendChatEscalationEmail(escalationArgs)
+
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.to).toBe("sales@northfieldstrength.test")
+    expect(arg.cc).toBe("priya@northfieldstrength.test")
   })
 
   it("does NOT reply to the tenant's own address -- the visitor is anonymous", async () => {
@@ -302,6 +328,20 @@ describe("sendChatLeadAlertEmail", () => {
     expect(arg.from).toBe("Coach Priya <hello@northfieldstrength.test>")
     expect(arg.to).toBe("priya@northfieldstrength.test")
     expect(arg.cc).toBeUndefined()
+  })
+
+  // Migration 00282, "Alert email".
+  it("goes to alert_email, cc reply_to, when the tenant has set one, and still replies to the lead", async () => {
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, alert_email: "sales@northfieldstrength.test" })
+
+    await sendChatLeadAlertEmail(chatLeadArgs)
+
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.to).toBe("sales@northfieldstrength.test")
+    expect(arg.cc).toBe("priya@northfieldstrength.test")
+    // The lead's own reply-to is unaffected by alert_email -- a different
+    // address entirely, answered separately from this section.
+    expect(arg.replyTo).toBe("jordan.vale@example.test")
   })
 
   it("names the person in the subject, in the spec's words", async () => {
@@ -388,14 +428,16 @@ describe("sendChatLeadAlertEmail", () => {
     expectNoPlatformLiterals(String(sendMock.mock.calls[0][0].subject))
   })
 
-  it("reports NOT delivered, sends nothing, and says why, when the tenant has no reply_to", async () => {
+  it("reports NOT delivered, sends nothing, and says why, when the tenant has no reply_to (or alert_email)", async () => {
     getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, reply_to: "  " })
 
     const out = await sendChatLeadAlertEmail(chatLeadArgs)
 
     expect(out).toEqual({ delivered: false })
     expect(sendMock).not.toHaveBeenCalled()
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("no reply_to"))
+    // The warning now names BOTH fields, since either can supply the
+    // destination since migration 00282.
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("no alert_email or reply_to"))
   })
 
   it("reports NOT delivered, naming the missing field, when the tenant is unconfigured", async () => {
@@ -439,8 +481,23 @@ describe("sendInquiryEmail", () => {
     expect(arg.to).toBe("priya@northfieldstrength.test")
     // It used to go to a hardcoded sales mailbox and CC a hardcoded personal
     // one. Both belonged to one tenant; neither had any claim on another
-    // coach's applicant.
+    // coach's applicant. No alert_email in THIS fixture -- no cc.
     expect(arg.cc).toBeUndefined()
+  })
+
+  // Migration 00282, "Alert email" -- brought sales@ (this time the tenant's
+  // OWN, configured address) back as a real destination, with reply_to
+  // copied rather than replaced.
+  it("goes to alert_email, cc reply_to, when the tenant has set one", async () => {
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, alert_email: "sales@northfieldstrength.test" })
+
+    await sendInquiryEmail(inquiryArgs)
+
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.to).toBe("sales@northfieldstrength.test")
+    expect(arg.cc).toBe("priya@northfieldstrength.test")
+    // The applicant's own reply-to is unaffected.
+    expect(arg.replyTo).toBe("sam@example.test")
   })
 
   it("still replies to the APPLICANT, not to the coach's own inbox", async () => {
@@ -486,6 +543,22 @@ describe("sendInquiryEmail", () => {
     await expect(sendInquiryEmail(inquiryArgs)).rejects.toThrow(/reply_to/)
     expect(sendMock).not.toHaveBeenCalled()
   })
+
+  it("sends fine, with no cc, when alert_email is set and reply_to is blank -- alert_email alone is enough", async () => {
+    // The throw above is about having NEITHER field, not specifically about
+    // reply_to -- alertAddressing only returns null when BOTH are blank.
+    getBusinessSettings.mockResolvedValue({
+      ...OTHER_COACH,
+      alert_email: "sales@northfieldstrength.test",
+      reply_to: "",
+    })
+
+    await sendInquiryEmail(inquiryArgs)
+
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.to).toBe("sales@northfieldstrength.test")
+    expect(arg.cc).toBeUndefined()
+  })
 })
 
 describe("sendInquiryAutoReply", () => {
@@ -504,6 +577,26 @@ describe("sendInquiryAutoReply", () => {
     expect(arg.from).toBe("Coach Priya <hello@northfieldstrength.test>")
     // And replying reaches the coach, because this one IS from the coach.
     expect(arg.replyTo).toBe("priya@northfieldstrength.test")
+  })
+
+  // Migration 00282, "Alert email". `alert_email` can be a distribution
+  // mailbox nothing reads FROM (e.g. a `sales@` alias) -- the applicant's
+  // reply must still land at the coach's own, personal `reply_to`, never
+  // there.
+  it("keeps its Reply-To on reply_to, never alert_email, even when the tenant has set an alert_email", async () => {
+    // MUTANT: pointing this at alert_email (or at alertAddressing's `to`) --
+    // an applicant hitting reply would land in a mailbox nobody reads
+    // personally, exactly the failure alert_email exists to route AROUND for
+    // the coach's own alerts, not inherit here.
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, alert_email: "sales@northfieldstrength.test" })
+
+    await sendInquiryAutoReply(autoReplyArgs)
+
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.to).toBe("sam@example.test")
+    expect(arg.replyTo).toBe("priya@northfieldstrength.test")
+    expect(arg.replyTo).not.toBe("sales@northfieldstrength.test")
+    expect(arg.cc).toBeUndefined()
   })
 
   it("signs off as the tenant's own coach and business, not the platform's", async () => {
@@ -588,7 +681,9 @@ describe("sendInquiryAutoReply", () => {
       await sendInquiryAutoReply(autoReplyArgs)
 
       const html = String(sendMock.mock.calls[0][0].html)
-      expect(html).toContain("The next step is a short consultation call. Reply to this email and we&rsquo;ll find a time.")
+      expect(html).toContain(
+        "The next step is a short consultation call. Reply to this email and we&rsquo;ll find a time.",
+      )
       expect(html).not.toContain("Schedule Your Consultation")
     })
 
@@ -601,11 +696,15 @@ describe("sendInquiryAutoReply", () => {
       await expect(sendInquiryAutoReply(autoReplyArgs)).resolves.toBeUndefined()
 
       const html = String(sendMock.mock.calls[0][0].html)
-      expect(html).toContain("The next step is a short consultation call. Reply to this email and we&rsquo;ll find a time.")
+      expect(html).toContain(
+        "The next step is a short consultation call. Reply to this email and we&rsquo;ll find a time.",
+      )
       expect(html).not.toContain("Schedule Your Consultation")
       expect(sendMock).toHaveBeenCalledTimes(1)
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining(`[email] inquiry auto-reply: could not read the booking page for business ${BUSINESS_ID}`),
+        expect.stringContaining(
+          `[email] inquiry auto-reply: could not read the booking page for business ${BUSINESS_ID}`,
+        ),
         expect.anything(),
       )
     })
@@ -714,6 +813,56 @@ describe("sendNewFunnelLeadEmail", () => {
     await sendNewFunnelLeadEmail({ ...funnelArgs, extraRecipients: ["PRIYA@NorthfieldStrength.test", "  "] })
 
     expect(sendMock.mock.calls[0][0].to).toEqual(["priya@northfieldstrength.test"])
+  })
+
+  // Migration 00282, "Alert email".
+  describe("alert_email set", () => {
+    it("puts alert_email in `to` and cc's reply_to, with extras still added to `to`", async () => {
+      getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, alert_email: "sales@northfieldstrength.test" })
+
+      await sendNewFunnelLeadEmail({ ...funnelArgs, extraRecipients: ["assistant@northfieldstrength.test"] })
+
+      const arg = sendMock.mock.calls[0][0]
+      expect(arg.to).toEqual(["sales@northfieldstrength.test", "assistant@northfieldstrength.test"])
+      expect(arg.cc).toBe("priya@northfieldstrength.test")
+    })
+
+    it("de-dupes an extra that already matches alert_email (the `to` address), in any casing", async () => {
+      getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, alert_email: "sales@northfieldstrength.test" })
+
+      await sendNewFunnelLeadEmail({ ...funnelArgs, extraRecipients: ["SALES@NorthfieldStrength.test"] })
+
+      const arg = sendMock.mock.calls[0][0]
+      expect(arg.to).toEqual(["sales@northfieldstrength.test"])
+      expect(arg.cc).toBe("priya@northfieldstrength.test")
+    })
+
+    it("de-dupes an extra that already matches the cc (reply_to), so it is not sent twice", async () => {
+      // MUTANT: only reserving alert_email's slot in the dedupe set, not
+      // reply_to's -- an extra equal to reply_to would then appear in `to`
+      // AND `cc`, so the coach gets the same lead twice.
+      getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, alert_email: "sales@northfieldstrength.test" })
+
+      await sendNewFunnelLeadEmail({ ...funnelArgs, extraRecipients: ["PRIYA@NorthfieldStrength.test"] })
+
+      const arg = sendMock.mock.calls[0][0]
+      expect(arg.to).toEqual(["sales@northfieldstrength.test"])
+      expect(arg.cc).toBe("priya@northfieldstrength.test")
+    })
+
+    it("omits cc when reply_to is blank -- alert_email alone is still enough to send", async () => {
+      getBusinessSettings.mockResolvedValue({
+        ...OTHER_COACH,
+        alert_email: "sales@northfieldstrength.test",
+        reply_to: "",
+      })
+
+      await sendNewFunnelLeadEmail(funnelArgs)
+
+      const arg = sendMock.mock.calls[0][0]
+      expect(arg.to).toEqual(["sales@northfieldstrength.test"])
+      expect(arg.cc).toBeUndefined()
+    })
   })
 
   it("renders the tenant's wordmark and postal address, and none of the platform's", async () => {

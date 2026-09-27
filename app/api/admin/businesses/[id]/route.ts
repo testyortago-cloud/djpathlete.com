@@ -7,6 +7,7 @@ import {
   updateBusinessSettings,
   BusinessSettingsMissingError,
   SmsSenderPhoneTakenError,
+  type BusinessSettings,
 } from "@/lib/db/businesses"
 import { businessPatchSchema, businessSettingsPatchSchema } from "@/lib/validators/business"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
@@ -123,11 +124,19 @@ export async function PATCH(request: Request, ctx: { params: Promise<Record<stri
     throw err
   }
   if (parsed.data.settings && Object.keys(parsed.data.settings).length > 0) {
+    // alert_email: "" means "clear it", and the column is nullable with no
+    // default (migration 00282) -- unlike reply_to/sender_email, which are
+    // `NOT NULL DEFAULT ''` and so keep "" as a real saved value. Converted
+    // here, not in the schema, because the schema's job is shape ("is this an
+    // email or blank"), not storage representation.
+    const settingsPatch: Partial<Omit<BusinessSettings, "business_id">> = { ...parsed.data.settings }
+    if (settingsPatch.alert_email === "") settingsPatch.alert_email = null
+
     // Field names only -- sender_email and sms_messaging_service_sid are
     // identity configuration, and the metadata scrubber does not cover them
     // by name. The values themselves never go into the audit row.
     try {
-      settings = await updateBusinessSettings(parsed.data.settings, id)
+      settings = await updateBusinessSettings(settingsPatch, id)
     } catch (err) {
       // Reachable more often since G33 saves E.164: "+1 202 555 0123" and
       // "+12025550123" used to be two different strings to 00247's index.
