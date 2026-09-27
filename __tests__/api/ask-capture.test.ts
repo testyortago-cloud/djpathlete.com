@@ -806,7 +806,7 @@ describe("POST /api/ask/capture — the conversation is read under the Host's te
 // reached them -- while the visitor is told "someone has your details now".
 // ---------------------------------------------------------------------------
 describe("POST /api/ask/capture — the coach is told of every capture (G18)", () => {
-  /** Lets the route's fire-and-forget `.catch` run before asserting on it. */
+  /** One macrotask turn: lets every promise callback already queued run. */
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
   it("sends the alert for the conversation's own business, with the details as submitted", async () => {
@@ -855,15 +855,47 @@ describe("POST /api/ask/capture — the coach is told of every capture (G18)", (
     errorSpy.mockRestore()
   })
 
-  it("does not make the visitor wait on the mail provider", async () => {
-    // Fire and forget, like the funnel form's own coach alert: a send that
-    // never settles must not hold the response.
-    h.sendChatLeadAlertEmail.mockReturnValue(new Promise(() => {}))
+  it("AWAITS the alert before answering, so a suspended instance cannot cut it off", async () => {
+    // Fix round 2 ruling. This email is the coach's ONLY notice of a chat
+    // lead, and nothing in this repo keeps a function alive after its
+    // response (no `after()` / `waitUntil`), so an un-awaited send can be
+    // dropped when the instance is suspended. The application route awaits
+    // its coach alert for the same reason (app/api/inquiry/route.ts).
+    // MUTANT: drop the `await` -- the response then resolves while the send
+    // is still pending, and this goes red.
+    let finishSend: (value: { delivered: boolean }) => void = () => {}
+    h.sendChatLeadAlertEmail.mockReturnValue(
+      new Promise<{ delivered: boolean }>((resolve) => {
+        finishSend = resolve
+      }),
+    )
 
-    const res = await POST(req(submission()))
+    let answered = false
+    const pending = POST(req(submission())).then((res) => {
+      answered = true
+      return res
+    })
+    // Long enough for every other await in the handler to settle.
+    for (let i = 0; i < 20; i++) await settle()
 
-    expect(res.status).toBe(200)
     expect(h.sendChatLeadAlertEmail).toHaveBeenCalledTimes(1)
+    expect(answered, "the handler answered before the alert settled").toBe(false)
+
+    finishSend({ delivered: true })
+    const res = await pending
+
+    expect(answered).toBe(true)
+    expect(res.status).toBe(200)
+  })
+
+  it("sends the alert only after the contact is saved and the consent rows are filed", async () => {
+    await POST(req(submission({ marketingConsent: true, smsConsent: true })))
+
+    const alertAt = h.sendChatLeadAlertEmail.mock.invocationCallOrder[0]
+    expect(alertAt).toBeGreaterThan(h.captureLead.mock.invocationCallOrder[0])
+    // Two consent rows (email, then sms), both filed before the alert.
+    expect(h.recordConsent.mock.invocationCallOrder).toHaveLength(2)
+    for (const at of h.recordConsent.mock.invocationCallOrder) expect(alertAt).toBeGreaterThan(at)
   })
 
   it("sends nothing when the contact could not be saved", async () => {

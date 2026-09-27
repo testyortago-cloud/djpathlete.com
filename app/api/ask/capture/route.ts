@@ -310,32 +310,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: COPY.failed }, { status: 500 })
   }
 
-  // 7b. TELL THE COACH (G18, revised in review 2026-09-27). On EVERY capture,
-  //     whatever sequence the person is in. A step in the chat follow-up could
-  //     only have reached the coach for a lead that sequence enrolled, and
-  //     `ai_chat` does not supersede, so a lead already inside another sequence
-  //     would never have been mentioned -- while the visitor is told "someone
-  //     has your details now". This email is what makes that sentence true.
-  //
-  //     FIRE AND FORGET, the funnel form's own shape (app/api/funnels/submit):
-  //     the lead is already saved, and an alert is worth less than the lead it
-  //     is about, so neither a mail outage nor a slow provider may change or
-  //     delay this response. The failure is logged by message only -- a
-  //     provider or database error can carry the submitted address in it.
-  void sendChatLeadAlertEmail({
-    businessId: conversation.business_id,
-    name,
-    email: email ?? null,
-    phone: phone ?? null,
-    conversationId,
-  }).catch((err) => {
-    const e = err as { code?: unknown; message?: unknown } | null | undefined
-    console.error(`[ask/capture] chat lead alert failed for contact ${contactId} (the lead was saved)`, {
-      code: typeof e?.code === "string" ? e.code : undefined,
-      message: typeof e?.message === "string" ? e.message : undefined,
-    })
-  })
-
   // 8. The link back to the conversation. Best effort, deliberately: the
   //    contact above is the durable record and it already exists, so a failure
   //    here must not turn a saved lead into an error the visitor sees. It is
@@ -382,6 +356,42 @@ export async function POST(request: Request) {
           userAgent,
         })
       : false
+
+  // 10. TELL THE COACH (G18, revised in review 2026-09-27). On EVERY capture,
+  //     whatever sequence the person is in. A step in the chat follow-up could
+  //     only have reached the coach for a lead that sequence enrolled, and
+  //     `ai_chat` does not supersede, so a lead already inside another sequence
+  //     would never have been mentioned -- while the visitor is told "someone
+  //     has your details now". This email is what makes that sentence true.
+  //
+  //     AWAITED, the way app/api/inquiry/route.ts awaits its coach alert, and
+  //     not fire-and-forget (fix round 2). It is the coach's ONLY notice of a
+  //     chat lead, and nothing in this repo keeps a function alive after its
+  //     response (no `after()` / `waitUntil`), so an un-awaited send can be cut
+  //     off when the instance is suspended. The cost is that the visitor waits
+  //     on the mail provider for one send.
+  //
+  //     After the contact and the consent rows, so everything the lead is
+  //     owed is written before we spend time on the coach's email. And inside
+  //     a try/catch that never changes the answer: the lead is already saved,
+  //     and a mail outage must not turn "we have your details" into an error
+  //     for somebody who would then submit again. Logged by message only -- a
+  //     provider or database error can carry the submitted address in it.
+  try {
+    await sendChatLeadAlertEmail({
+      businessId: conversation.business_id,
+      name,
+      email: email ?? null,
+      phone: phone ?? null,
+      conversationId,
+    })
+  } catch (err) {
+    const e = err as { code?: unknown; message?: unknown } | null | undefined
+    console.error(`[ask/capture] chat lead alert failed for contact ${contactId} (the lead was saved)`, {
+      code: typeof e?.code === "string" ? e.code : undefined,
+      message: typeof e?.message === "string" ? e.message : undefined,
+    })
+  }
 
   // The trail records what happened, never who it happened to: no name, no
   // email, no phone, no IP. `chat_conversations.ip_hash` is the only origin
