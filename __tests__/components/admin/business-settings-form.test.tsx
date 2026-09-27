@@ -126,3 +126,56 @@ describe("BusinessSettingsForm -- the sender phone number", () => {
     expect(field).toHaveAccessibleDescription(/country code/i)
   })
 })
+
+// Small admin fixes, 2026-09-27. `quiet_hours_start`/`quiet_hours_end` hold the
+// ALLOWED sending window `[start, end)` (`quietHoursDefer` in
+// lib/lead-engine/guardrails.ts), but the fields used to be labelled "Quiet
+// hours start/end" with a hint reading "No text messages go out ... between
+// these hours" -- the exact OPPOSITE of what the column does. The column
+// names are unchanged (the sequence runner and the DB schema still read
+// `quiet_hours_start`/`quiet_hours_end`); only what the coach is told changes.
+describe("BusinessSettingsForm -- the sending-window fields say what they do", () => {
+  it("labels the fields 'Start sending at' / 'Stop sending at', keeping their ids and names", () => {
+    render(<BusinessSettingsForm businessId="bbb" settings={SETTINGS} />)
+
+    const start = screen.getByLabelText("Start sending at")
+    const stop = screen.getByLabelText("Stop sending at")
+    expect(start).toHaveAttribute("id", "quiet_hours_start")
+    expect(start).toHaveAttribute("name", "quiet_hours_start")
+    expect(stop).toHaveAttribute("id", "quiet_hours_end")
+    expect(stop).toHaveAttribute("name", "quiet_hours_end")
+  })
+
+  it("no longer offers the old, backwards labels", () => {
+    render(<BusinessSettingsForm businessId="bbb" settings={SETTINGS} />)
+
+    expect(screen.queryByLabelText("Quiet hours start")).toBeNull()
+    expect(screen.queryByLabelText("Quiet hours end")).toBeNull()
+  })
+
+  it("states the sending window correctly, in the spec's exact words", () => {
+    render(<BusinessSettingsForm businessId="bbb" settings={SETTINGS} />)
+
+    expect(
+      screen.getByText(
+        "Follow-up emails and texts only go out between these hours, in each person's own time zone when we know it, otherwise this business's. Use the hour of the day, from 0 (midnight) to 23 (11pm): 8 and 21 means 8am until 9pm.",
+      ),
+    ).toBeInTheDocument()
+    // The old hint said the opposite -- that messages go out OUTSIDE these
+    // hours. It must be gone, not merely joined by the correct one.
+    expect(screen.queryByText(/No text messages go out/)).toBeNull()
+  })
+
+  it("states the daily limit in the spec's exact words, covering both channels", () => {
+    render(<BusinessSettingsForm businessId="bbb" settings={SETTINGS} />)
+
+    expect(
+      screen.getByText(
+        "The most follow-up messages (emails and texts together) one person can be sent in a day, across all sequences.",
+      ),
+    ).toBeInTheDocument()
+    // The old hint claimed it was texts only, and per-client rather than the
+    // cap's real scope (per CONTACT, across every sequence and channel).
+    expect(screen.queryByText(/The most text messages a single client/)).toBeNull()
+  })
+})

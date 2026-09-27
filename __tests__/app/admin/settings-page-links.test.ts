@@ -1,0 +1,26 @@
+// @vitest-environment node
+//
+// Small admin fixes, 2026-09-27: the business settings form
+// (components/admin/businesses/BusinessSettingsForm.tsx, at /admin/businesses)
+// had no link anywhere in the admin UI -- reachable only by typing its URL,
+// the same defect class fixed for the pipeline board, the texts inbox and the
+// chat assistant (see __tests__/components/admin/admin-nav.test.ts). It does
+// not belong in the sidebar itself -- it is a per-business configuration
+// screen, not a work surface -- so it goes on the Settings page's own
+// "Configuration" link list instead.
+//
+// SOURCE-LEVEL, NOT RENDERED: the Settings page is a server component that
+// calls `auth()` and `getUserById()` before it renders anything, and no test
+// for it exists yet to build that harness on. Reading the source for the
+// object literal is exactly what admin-nav.test.ts already does for the
+// funnels board's quiz wiring, for the same reason -- matched on the actual
+// prop/data wiring, not on a page render.
+import { describe, it, expect } from "vitest"
+import { readFileSync } from "fs"
+
+describe("the Settings page's Configuration list", () => {
+  it("links to Business Settings at /admin/businesses", () => {
+    const source = readFileSync("app/(admin)/admin/settings/page.tsx", "utf8")
+    expect(source).toContain('{ label: "Business Settings", href: "/admin/businesses"')
+  })
+})

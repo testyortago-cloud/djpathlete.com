@@ -191,7 +191,7 @@ export function BusinessSettingsForm({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="quiet_hours_start">Quiet hours start</Label>
+              <Label htmlFor="quiet_hours_start">Start sending at</Label>
               <Input
                 id="quiet_hours_start"
                 type="number"
@@ -206,7 +206,7 @@ export function BusinessSettingsForm({
               )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="quiet_hours_end">Quiet hours end</Label>
+              <Label htmlFor="quiet_hours_end">Stop sending at</Label>
               <Input
                 id="quiet_hours_end"
                 type="number"
@@ -219,8 +219,9 @@ export function BusinessSettingsForm({
             </div>
           </div>
           <p id="quiet-hours-hint" className="text-xs text-muted-foreground">
-            No text messages go out to clients between these hours, in this business&apos;s own time zone.
-            Use the hour of the day, from 0 (midnight) to 23 (11pm).
+            Follow-up emails and texts only go out between these hours, in each person&apos;s own time zone
+            when we know it, otherwise this business&apos;s. Use the hour of the day, from 0 (midnight) to 23
+            (11pm): 8 and 21 means 8am until 9pm.
           </p>
 
           <div className="space-y-1.5">
@@ -238,7 +239,8 @@ export function BusinessSettingsForm({
               <p className="text-xs text-error">{errors.daily_message_cap.message}</p>
             ) : (
               <p id="daily-cap-hint" className="text-xs text-muted-foreground">
-                The most text messages a single client can be sent in one day.
+                The most follow-up messages (emails and texts together) one person can be sent in a day,
+                across all sequences.
               </p>
             )}
           </div>

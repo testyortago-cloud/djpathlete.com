@@ -14,6 +14,7 @@ import {
   Target,
   ChevronRight,
   SlidersHorizontal,
+  Building2,
 } from "lucide-react"
 import Link from "next/link"
 import { auth } from "@/lib/auth"
@@ -126,6 +127,7 @@ export default async function SettingsPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {[
+            { label: "Business Settings", href: "/admin/businesses", icon: Building2 },
             { label: "AI Policy", href: "/admin/settings/ai-policy", icon: Sparkles },
             { label: "Platform Connections", href: "/admin/platform-connections", icon: Link2 },
             { label: "Automation Rules", href: "/admin/automation", icon: PlayCircle },

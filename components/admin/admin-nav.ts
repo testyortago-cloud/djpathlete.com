@@ -211,6 +211,13 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: Permi
           { label: "Memberships", href: "/admin/memberships/plans", icon: Repeat },
           { label: "Session Fees", href: "/admin/sessions/fees", icon: Ban },
           { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+          // Lead Engine Task 9: which ad campaign a lead came from and what it
+          // turned into. Registered here rather than left URL-only — the same
+          // defect class as the pipeline board and the texts inbox above (see
+          // admin-nav.test.ts). No permission key of its own: the page itself
+          // is `requireAdmin`, so it rides the registry's default-deny for any
+          // path `canAccessPath` does not recognise.
+          { label: "Campaign Revenue", href: "/admin/insights/campaign-revenue", icon: TrendingUp },
           { label: "Audit Logs", href: "/admin/audit-logs", icon: Activity },
           { label: "Reviews", href: "/admin/reviews", icon: Star },
           { label: "Shop Products", href: "/admin/shop/products", icon: ShoppingBag },

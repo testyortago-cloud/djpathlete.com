@@ -235,6 +235,65 @@ describe("getAdminNav", () => {
 // member who can use the in-app chat but was never given contacts must NOT
 // see the texts inbox, because the texts belong to the contacts.
 // ---------------------------------------------------------------------------
+// Small admin fixes, 2026-09-27: the campaign-to-revenue report
+// (app/(admin)/admin/insights/campaign-revenue/page.tsx, Task 9) was URL-only —
+// the same defect class as the pipeline board and the texts inbox above.
+describe("getAdminNav — Campaign Revenue in the Business section", () => {
+  it("sits immediately after Analytics, under both contentStudioEnabled variants", () => {
+    for (const contentStudioEnabled of [false, true]) {
+      const nav = getAdminNav({ contentStudioEnabled })
+      const business = nav.groupedSections.find((s) => s.title === "Business")
+      const labels = business?.items.map((i) => i.label) ?? []
+      const analyticsIndex = labels.indexOf("Analytics")
+      expect(analyticsIndex).toBeGreaterThanOrEqual(0)
+      expect(labels[analyticsIndex + 1]).toBe("Campaign Revenue")
+      expect(business?.items.find((i) => i.label === "Campaign Revenue")?.href).toBe(
+        "/admin/insights/campaign-revenue",
+      )
+    }
+  })
+})
+
+// The Business section carries no per-item permission field, same as Texts
+// above: `filterNavForActor` asks the registry through `canAccessPath`. Pinned
+// here rather than assumed, per the review note: /admin/insights/campaign-revenue
+// is in none of OWNER_ONLY_PREFIXES, OPEN_PREFIXES or PATH_PERMISSIONS, so
+// `resolvePathRequirement` answers `unmapped` — and `canAccessPath` treats an
+// unmapped path as a DENIAL for every non-admin actor, whatever permissions
+// they hold. That is the property the nav item rides on: nobody built it a
+// permission key, so nobody but the owner can even load the page.
+describe("filterNavForActor — Campaign Revenue is unmapped, so it denies by default", () => {
+  it("resolves /admin/insights/campaign-revenue to `unmapped` in the registry", () => {
+    const requirement = resolvePathRequirement("/admin/insights/campaign-revenue")
+    expect(requirement).toEqual({ kind: "unmapped" })
+  })
+
+  it("hides it from staff even holding the neighbouring `analytics` permission", () => {
+    const nav = filterNavForActor(getAdminNav({ contentStudioEnabled: false }), {
+      role: "staff",
+      permissions: { analytics: "view" },
+    })
+    const business = nav.groupedSections.find((s) => s.title === "Business")
+    // The presence control: this actor still sees Analytics itself.
+    expect(business?.items.some((i) => i.href === "/admin/analytics")).toBe(true)
+    expect(business?.items.some((i) => i.href === "/admin/insights/campaign-revenue")).toBe(false)
+  })
+
+  it("hides it from staff holding nothing", () => {
+    const nav = filterNavForActor(getAdminNav({ contentStudioEnabled: false }), {
+      role: "staff",
+      permissions: {},
+    })
+    expect(getAllHrefs(nav)).not.toContain("/admin/insights/campaign-revenue")
+  })
+
+  it("shows it to the owner", () => {
+    expect(getAllHrefs(getAdminNav({ contentStudioEnabled: false, actor: { role: "admin" } }))).toContain(
+      "/admin/insights/campaign-revenue",
+    )
+  })
+})
+
 describe("filterNavForActor — the texts inbox is gated on `contacts`", () => {
   function hrefs(actor: PermissionActor): string[] {
     return getAllHrefs(filterNavForActor(getAdminNav({ contentStudioEnabled: false }), actor))
