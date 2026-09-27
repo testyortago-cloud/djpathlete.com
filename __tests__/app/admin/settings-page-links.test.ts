@@ -24,3 +24,16 @@ describe("the Settings page's Configuration list", () => {
     expect(source).toContain('{ label: "Business Settings", href: "/admin/businesses"')
   })
 })
+
+// Whole-branch review, 2026-09-27: the old "Platform Settings" card sat
+// directly above the new Business Settings link and told the reader its own
+// fields were "configurable in a future update" -- true of the greyed-out
+// inputs in that card, but read next to a working link to the real settings
+// screen it looked like the whole feature was unbuilt.
+describe("the Platform Settings card's caption", () => {
+  it("points the reader at Business Settings instead of promising a future update", () => {
+    const source = readFileSync("app/(admin)/admin/settings/page.tsx", "utf8")
+    expect(source).not.toContain("configurable in a future update")
+    expect(source).toContain("Your business name, sender details and sending hours are edited in Business Settings")
+  })
+})

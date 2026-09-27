@@ -915,4 +915,46 @@ describe("POST /api/ask/capture — the coach is told of every capture (G18)", (
     expect(res.status).toBe(409)
     expect(h.sendChatLeadAlertEmail).not.toHaveBeenCalled()
   })
+
+  // A business that cannot send (e.g. a blank reply_to) reports
+  // `{ delivered: false }` rather than throwing -- lib/lead-engine/chat/
+  // escalate.ts records that same case under its own name, `not_configured`.
+  // Discarding the result here made a business that never gets alerted
+  // indistinguishable, in the audit trail, from one that does.
+  it("records coach_alerted: true on the audit row when the alert was actually delivered", async () => {
+    h.sendChatLeadAlertEmail.mockResolvedValue({ delivered: true })
+
+    await POST(req(submission()))
+
+    expect(h.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ coach_alerted: true }) }),
+    )
+  })
+
+  it("records coach_alerted: false when the tenant cannot send at all", async () => {
+    // MUTANT: discard the `{ delivered }` result -- this goes red because
+    // `coach_alerted` would still read `true` (or be missing) for a business
+    // that was never actually told.
+    h.sendChatLeadAlertEmail.mockResolvedValue({ delivered: false })
+
+    const res = await POST(req(submission()))
+
+    expect(res.status).toBe(200)
+    expect(h.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ coach_alerted: false }) }),
+    )
+  })
+
+  it("records coach_alerted: false when the alert send throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    h.sendChatLeadAlertEmail.mockRejectedValue(new Error("provider down"))
+
+    const res = await POST(req(submission()))
+
+    expect(res.status).toBe(200)
+    expect(h.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ coach_alerted: false }) }),
+    )
+    errorSpy.mockRestore()
+  })
 })

@@ -29,9 +29,9 @@ vi.mock("@/lib/db/businesses", () => ({
   BusinessSettingsMissingError: class extends Error {},
 }))
 
-const calendlyBookingOfferForBusiness = vi.fn()
+const calendlySchedulingUrlForBusiness = vi.fn()
 vi.mock("@/lib/calendly/config-for-business", () => ({
-  calendlyBookingOfferForBusiness: (...a: unknown[]) => calendlyBookingOfferForBusiness(...a),
+  calendlySchedulingUrlForBusiness: (...a: unknown[]) => calendlySchedulingUrlForBusiness(...a),
 }))
 
 import {
@@ -83,7 +83,7 @@ beforeEach(() => {
   process.env.RESEND_API_KEY = "re_test"
   sendMock.mockResolvedValue({ data: { id: "e_1" }, error: null })
   getBusinessSettings.mockResolvedValue(OTHER_COACH)
-  calendlyBookingOfferForBusiness.mockResolvedValue({ config: null, schedulingUrl: null })
+  calendlySchedulingUrlForBusiness.mockResolvedValue(null)
   vi.spyOn(console, "error").mockImplementation(() => {})
   vi.spyOn(console, "warn").mockImplementation(() => {})
 })
@@ -562,10 +562,7 @@ describe("sendInquiryAutoReply", () => {
   // than ever falling back to that platform link again.
   describe("the booking link (G30's carried clause)", () => {
     it("links the coach's own scheduling page when the resolver has one, and drops the old widget", async () => {
-      calendlyBookingOfferForBusiness.mockResolvedValue({
-        config: null,
-        schedulingUrl: "https://calendly.com/coach-b/consult",
-      })
+      calendlySchedulingUrlForBusiness.mockResolvedValue("https://calendly.com/coach-b/consult")
 
       await sendInquiryAutoReply(autoReplyArgs)
 
@@ -576,10 +573,7 @@ describe("sendInquiryAutoReply", () => {
     })
 
     it("prefills the applicant's own name and email on the link, the way the chat's slot links do", async () => {
-      calendlyBookingOfferForBusiness.mockResolvedValue({
-        config: null,
-        schedulingUrl: "https://calendly.com/coach-b/consult",
-      })
+      calendlySchedulingUrlForBusiness.mockResolvedValue("https://calendly.com/coach-b/consult")
 
       await sendInquiryAutoReply(autoReplyArgs)
 
@@ -589,7 +583,7 @@ describe("sendInquiryAutoReply", () => {
     })
 
     it("falls back to a reply-to sentence, with no button, when the resolver has no URL", async () => {
-      calendlyBookingOfferForBusiness.mockResolvedValue({ config: null, schedulingUrl: null })
+      calendlySchedulingUrlForBusiness.mockResolvedValue(null)
 
       await sendInquiryAutoReply(autoReplyArgs)
 
@@ -602,7 +596,7 @@ describe("sendInquiryAutoReply", () => {
       // MUTANT: rethrow the resolver's error -- an applicant who is already
       // waiting for this email must not get silence because a calendar read
       // failed on the other side of the world.
-      calendlyBookingOfferForBusiness.mockRejectedValue(new Error("Calendly API 503"))
+      calendlySchedulingUrlForBusiness.mockRejectedValue(new Error("Calendly API 503"))
 
       await expect(sendInquiryAutoReply(autoReplyArgs)).resolves.toBeUndefined()
 
@@ -616,18 +610,49 @@ describe("sendInquiryAutoReply", () => {
       )
     })
 
-    it("asks the resolver about the business the reply is FOR, not a hard-coded one", async () => {
-      // MUTANT: pass a fixed business id into the resolver instead of the
-      // one this call was made with.
-      calendlyBookingOfferForBusiness.mockResolvedValue({
-        config: null,
-        schedulingUrl: "https://calendly.com/coach-b/consult",
+    it("logs only { code, message } on a resolver failure, never the raw error", async () => {
+      // The raw thrown value can carry whatever the failed read touched. A
+      // provider error's `details` can embed other columns verbatim -- the
+      // same class of leak `shapeConsentError` closes on the funnel/inquiry
+      // consent-write catches (decision 7 review round 1).
+      const failure = Object.assign(new Error("Calendly API 503"), {
+        code: "ECONNRESET",
+        details: "Failing row contains (..., sam@example.test, ...)",
       })
+      calendlySchedulingUrlForBusiness.mockRejectedValue(failure)
 
       await sendInquiryAutoReply(autoReplyArgs)
 
-      expect(calendlyBookingOfferForBusiness).toHaveBeenCalledWith(BUSINESS_ID)
+      const logged = (console.error as ReturnType<typeof vi.fn>).mock.calls.find((call) =>
+        String(call[0]).includes("could not read the booking page"),
+      )
+      expect(logged, "the failure is logged").toBeTruthy()
+      expect(logged!.some((arg) => arg === failure)).toBe(false)
+      expect(JSON.stringify(logged)).not.toContain("Failing row contains")
+      expect(JSON.stringify(logged)).toContain("Calendly API 503")
     })
+
+    it("asks the resolver about the business the reply is FOR, not a hard-coded one", async () => {
+      // MUTANT: pass a fixed business id into the resolver instead of the
+      // one this call was made with.
+      calendlySchedulingUrlForBusiness.mockResolvedValue("https://calendly.com/coach-b/consult")
+
+      await sendInquiryAutoReply(autoReplyArgs)
+
+      expect(calendlySchedulingUrlForBusiness).toHaveBeenCalledWith(BUSINESS_ID)
+    })
+  })
+
+  it("escapes the applicant's first name in the hero banner -- it is visitor text, not the coach's own", async () => {
+    // Unlike settings.sender_name / display_name (the coach's own, already
+    // escaped elsewhere in this file), firstName comes straight off the
+    // inquiry form (name.split(" ")[0] in app/api/inquiry/route.ts) with no
+    // character restriction, so an applicant can put markup in it.
+    await sendInquiryAutoReply({ ...autoReplyArgs, firstName: '<a href="https://evil.example">x</a>' })
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(html).not.toContain('<a href="https://evil.example">x</a>')
+    expect(html).toContain("&lt;a href=&quot;https://evil.example&quot;&gt;x&lt;/a&gt;")
   })
 })
 

@@ -377,14 +377,23 @@ export async function POST(request: Request) {
   //     and a mail outage must not turn "we have your details" into an error
   //     for somebody who would then submit again. Logged by message only -- a
   //     provider or database error can carry the submitted address in it.
+  // Whether the coach actually heard about this lead -- distinct from
+  // whether the send was ATTEMPTED. `sendChatLeadAlertEmail` reports
+  // `{ delivered: false }` rather than throwing for a tenant that cannot send
+  // (e.g. a blank `reply_to`, lib/lead-engine/chat/escalate.ts's analogous
+  // `not_configured`), so a discarded return value would leave a business
+  // that never gets alerted looking identical, in the audit trail, to one
+  // that does.
+  let coachAlerted = false
   try {
-    await sendChatLeadAlertEmail({
+    const result = await sendChatLeadAlertEmail({
       businessId: conversation.business_id,
       name,
       email: email ?? null,
       phone: phone ?? null,
       conversationId,
     })
+    coachAlerted = result.delivered
   } catch (err) {
     const e = err as { code?: unknown; message?: unknown } | null | undefined
     console.error(`[ask/capture] chat lead alert failed for contact ${contactId} (the lead was saved)`, {
@@ -417,6 +426,9 @@ export async function POST(request: Request) {
       // come apart whenever a gate refuses, and the trail has to show which.
       sms_consent: smsConsent,
       sms_consent_recorded: smsConsentRecorded,
+      // False whenever the coach was not actually told: the send threw, or
+      // the tenant reported it could not deliver (e.g. no reply_to).
+      coach_alerted: coachAlerted,
     },
   })
 

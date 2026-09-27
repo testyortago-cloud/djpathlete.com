@@ -26,6 +26,13 @@
 
 ## Review Focus
 
+> **Revised 2026-09-27 (spec §1, "Revised 2026-09-27 after the Task 1 review"):** item 3 below is
+> superseded. The coach is told by a TRANSACTIONAL email (`sendChatLeadAlertEmail`) sent from
+> `POST /api/ask/capture` on every chat capture, not by a sequence step, and `ai_chat` stays
+> NON-superseding — a chat lead already inside another sequence keeps that sequence AND still gets
+> the coach alert. See the spec for the full reasoning; this plan file is left as-is below as a
+> historical record of the original design.
+
 1. **A run mid-way through the camp sequence when 00281 applies** — a run whose next step is the "Last one" email must not get it twice, and one whose next step is the 3-day email must get the NEW 3-day email. (Task 1 tests both.)
 2. **A business whose camp or chat copy does not match the known shape** (edited in the editor) — the migration skips it with a NOTICE and never aborts for everyone else. (Task 1.)
 3. **A chat lead already inside another sequence** — must get the chat follow-up (so the coach is told), superseding the older run. (Task 1.)
@@ -35,6 +42,14 @@
 ---
 
 ### Task 1: Migration 00281 — chat lead follow-up, camp 14/7/3/1, and `ai_chat` supersedes
+
+> **Revised 2026-09-27 (spec §1, "Revised 2026-09-27 after the Task 1 review"):** the Interfaces line
+> and Step 5 below describe the chat sequence carrying its own alert step and `ai_chat` becoming
+> superseding. Both are superseded: the coach alert ships as a transactional email sent on every
+> capture (`sendChatLeadAlertEmail` from `POST /api/ask/capture`), `ai_chat` stays NON-superseding, and
+> the chat sequence has 6 steps with no alert step (email · wait 2d · email · wait 1d · text · end).
+> This section is left unedited below beyond this note, as the record of what was originally planned
+> and why it changed — see the spec for the reasoning.
 
 **Files:**
 - Create: `supabase/migrations/00281_chat_follow_up_and_camp_countdown.sql`

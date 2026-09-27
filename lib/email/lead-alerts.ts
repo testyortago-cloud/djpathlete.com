@@ -26,7 +26,7 @@
 
 import type { BusinessSettings } from "@/lib/db/businesses"
 import { getBusinessSettings } from "@/lib/db/businesses"
-import { calendlyBookingOfferForBusiness } from "@/lib/calendly/config-for-business"
+import { calendlySchedulingUrlForBusiness } from "@/lib/calendly/config-for-business"
 import { schedulingLink } from "@/lib/calendly/links"
 import { BusinessNotConfiguredError, alertRecipient, assertSendable, businessFrom } from "@/lib/email/business-identity"
 import {
@@ -652,11 +652,22 @@ export async function sendInquiryEmail({
  * the public and it needs a postal address on it.
  *
  * THE BOOKING LINK IS THE COACH'S OWN (G30's carried clause). Resolved from
- * `calendlyBookingOfferForBusiness`, inside a try/catch that never reaches the
- * caller: an applicant who is already waiting on this email must not get
+ * `calendlySchedulingUrlForBusiness` -- the LINK-ONLY resolver, never
+ * `calendlyBookingOfferForBusiness` -- inside a try/catch that never reaches
+ * the caller: an applicant who is already waiting on this email must not get
  * silence because a calendar read failed on the other side of the world. No
  * URL, for whatever reason, means no button -- the paragraph above it changes
  * to ask them to reply instead, rather than linking nothing.
+ *
+ * WHY THE LINK-ONLY RESOLVER. This call is awaited by a request with a hard
+ * deadline (`app/api/inquiry/route.ts`, `maxDuration = 45`), and
+ * `calendlyBookingOfferForBusiness` reads the token unconditionally once a
+ * connection is ready -- refreshing Calendly's rotating, single-use OAuth
+ * refresh token on nearly every call (`lib/calendly/oauth.ts`, an untimed
+ * fetch). This function has no use for that token at all, so calling the
+ * booking-offer resolver just to read `schedulingUrl` cost every applicant an
+ * unnecessary refresh and the risk of a slow Calendly timing out the request
+ * AFTER the lead was already saved -- producing a duplicate submission.
  */
 export async function sendInquiryAutoReply({
   businessId,
@@ -674,9 +685,13 @@ export async function sendInquiryAutoReply({
 
   let schedulingUrl: string | null = null
   try {
-    schedulingUrl = (await calendlyBookingOfferForBusiness(businessId)).schedulingUrl
+    schedulingUrl = await calendlySchedulingUrlForBusiness(businessId)
   } catch (err) {
-    console.error(`[email] inquiry auto-reply: could not read the booking page for business ${businessId}`, err)
+    const e = err as { code?: unknown; message?: unknown } | null | undefined
+    console.error(`[email] inquiry auto-reply: could not read the booking page for business ${businessId}`, {
+      code: typeof e?.code === "string" ? e.code : undefined,
+      message: typeof e?.message === "string" ? e.message : undefined,
+    })
   }
 
   const bookingSection = schedulingUrl
@@ -695,13 +710,16 @@ export async function sendInquiryAutoReply({
 
   const html = tenantEmailLayout(
     `
-    ${heroBanner("Application Received", `We&rsquo;re excited to hear from you, ${firstName}.`)}
+    ${heroBanner("Application Received", `We&rsquo;re excited to hear from you, ${escapeHtml(firstName)}.`)}
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr>
         <td style="padding:48px 48px 52px;">
 
           <p style="margin:0 0 24px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:16px; color:#5c5750; line-height:1.8;">
+            <!-- serviceLabel is not visitor text: app/api/inquiry/route.ts derives it from
+                 SERVICE_LABELS[service] (lib/validators/inquiry.ts), a fixed Record keyed by a
+                 z.enum. No escaping needed unless that stops being true. -->
             Thanks for applying for <strong style="color:#0E3F50;">${serviceLabel}</strong>. We&rsquo;ve received your application and our team will review it shortly.
           </p>
 

@@ -67,6 +67,7 @@ import { accessTokenForConnection } from "@/lib/calendly/credentials"
 import { getPrimaryBookingHostId } from "@/lib/db/booking-hosts"
 import { getCoachCalendarConnection } from "@/lib/db/coach-calendar-connections"
 import { platformBusinessId } from "@/lib/tenancy/platform"
+import type { CoachCalendarConnection } from "@/types/database"
 
 /** The one reason `CALENDLY_API_BASE` exists: the acceptance script's local fixture server. */
 function apiBase(): string {
@@ -114,21 +115,43 @@ function platformEnvironmentOffer(businessId: string): CalendlyBookingOffer {
 }
 
 /**
- * Whose calendar `businessId` offers, and whether its times can be read.
+ * What the two IDENTITY reads settle, before anyone asks for a token.
  *
- * @throws whatever the two IDENTITY reads throw. That means "I could not find
- * out whose calendar this is", which is a different answer from "they have
- * nothing to offer" and must not be confused with it — see the file header. A
- * failing TOKEN does not throw: the owner is known by then, so it degrades to
- * their own page with no times.
+ * Both `calendlyBookingOfferForBusiness` and `calendlySchedulingUrlForBusiness`
+ * need exactly this: whose calendar `businessId` offers, and whether it has
+ * chosen a meeting with a public page recorded against it. Sharing this
+ * instead of copying it is what keeps the two functions from silently
+ * disagreeing about the fallback or the broken-row rule.
+ *
+ * @throws whatever the two IDENTITY reads throw — see the file header for why
+ * that must stay true for every caller of this helper, not only the two
+ * exported functions.
  */
-export async function calendlyBookingOfferForBusiness(businessId: string): Promise<CalendlyBookingOffer> {
+type ResolvedCalendlyIdentity =
+  /** No connection of its own; ask `platformEnvironmentOffer`. */
+  | { kind: "fallback" }
+  /** A connection with a chosen meeting but no recorded public page. */
+  | { kind: "broken" }
+  /**
+   * A connection with both a chosen meeting and a public page. Narrowed to
+   * `string`, not `string | null`, on both fields: the checks above already
+   * proved it, and losing that narrowing across the function boundary is
+   * exactly what put `event_type_uri`/`scheduling_url` back to `string | null`
+   * at every call site, forcing a re-check (or a cast) `resolveCalendlyIdentity`
+   * was written to make unnecessary.
+   */
+  | {
+      kind: "ready"
+      connection: CoachCalendarConnection & { event_type_uri: string; scheduling_url: string }
+    }
+
+async function resolveCalendlyIdentity(businessId: string): Promise<ResolvedCalendlyIdentity> {
   const hostId = await getPrimaryBookingHostId(businessId)
-  if (hostId === null) return platformEnvironmentOffer(businessId)
+  if (hostId === null) return { kind: "fallback" }
 
   const connection = await getCoachCalendarConnection(hostId)
   if (!connection || connection.status === "not_connected" || !connection.event_type_uri) {
-    return platformEnvironmentOffer(businessId)
+    return { kind: "fallback" }
   }
 
   // A chosen meeting with no public page recorded alongside it is a row half
@@ -140,8 +163,33 @@ export async function calendlyBookingOfferForBusiness(businessId: string): Promi
     console.warn(
       `[calendly] connection ${connection.id} has an event type but no public booking page — answering no availability`,
     )
-    return NO_OFFER
+    return { kind: "broken" }
   }
+
+  // The two guards above already proved both fields non-null; TS narrows a
+  // property ACCESS (`connection.event_type_uri`), not the object's own type,
+  // so the cast states what was just checked rather than repeating the check.
+  return {
+    kind: "ready",
+    connection: connection as CoachCalendarConnection & { event_type_uri: string; scheduling_url: string },
+  }
+}
+
+/**
+ * Whose calendar `businessId` offers, and whether its times can be read.
+ *
+ * @throws whatever the two IDENTITY reads throw. That means "I could not find
+ * out whose calendar this is", which is a different answer from "they have
+ * nothing to offer" and must not be confused with it — see the file header. A
+ * failing TOKEN does not throw: the owner is known by then, so it degrades to
+ * their own page with no times.
+ */
+export async function calendlyBookingOfferForBusiness(businessId: string): Promise<CalendlyBookingOffer> {
+  const resolved = await resolveCalendlyIdentity(businessId)
+  if (resolved.kind === "fallback") return platformEnvironmentOffer(businessId)
+  if (resolved.kind === "broken") return NO_OFFER
+
+  const connection = resolved.connection
 
   // THE TOKEN IS RESOLVED SEPARATELY, AND ITS FAILURE COSTS THE TIMES ONLY.
   // Inside the object literal below this `await` would throw the coach's own
@@ -185,4 +233,31 @@ export async function calendlyBookingOfferForBusiness(businessId: string): Promi
  */
 export async function calendlyConfigForBusiness(businessId: string): Promise<CalendlyConfig | null> {
   return (await calendlyBookingOfferForBusiness(businessId)).config
+}
+
+/**
+ * The link half alone, for a caller that only ever wants a URL to put in a
+ * button — never the availability config, and NEVER THE TOKEN.
+ *
+ * `calendlyBookingOfferForBusiness` reads the token unconditionally once a
+ * connection is ready, and that read refreshes Calendly's rotating,
+ * single-use OAuth refresh token (`accessTokenForConnection`, an untimed
+ * fetch) on nearly every call. `sendInquiryAutoReply` is awaited by a request
+ * with a hard deadline (`app/api/inquiry/route.ts`, `maxDuration = 45`) and
+ * has no use for `config` at all, so making it go through the booking-offer
+ * resolver cost every applicant a token refresh they never asked for and put
+ * them at risk of a timeout on a slow one. This function shares the same
+ * identity reads and the same platform-environment fallback
+ * (`resolveCalendlyIdentity`, `platformEnvironmentOffer`) so the two resolvers
+ * can never disagree about whose calendar answers or when the fallback fires
+ * — it simply never takes the branch that touches a token.
+ *
+ * @throws whatever the two IDENTITY reads throw, exactly as
+ * `calendlyBookingOfferForBusiness` does — see the file header.
+ */
+export async function calendlySchedulingUrlForBusiness(businessId: string): Promise<string | null> {
+  const resolved = await resolveCalendlyIdentity(businessId)
+  if (resolved.kind === "fallback") return platformEnvironmentOffer(businessId).schedulingUrl
+  if (resolved.kind === "broken") return null
+  return resolved.connection.scheduling_url
 }

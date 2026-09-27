@@ -35,7 +35,11 @@ vi.mock("@/lib/calendly/credentials", () => ({
   accessTokenForConnection: (...args: unknown[]) => accessTokenForConnection(...args),
 }))
 
-import { calendlyBookingOfferForBusiness, calendlyConfigForBusiness } from "@/lib/calendly/config-for-business"
+import {
+  calendlyBookingOfferForBusiness,
+  calendlyConfigForBusiness,
+  calendlySchedulingUrlForBusiness,
+} from "@/lib/calendly/config-for-business"
 
 const BUSINESS = "11111111-1111-1111-1111-111111111111"
 const HOST = "22222222-2222-2222-2222-222222222222"
@@ -371,5 +375,85 @@ describe("calendlyBookingOfferForBusiness", () => {
     // demonstrably answered the "whose calendar" question, and a broken row is
     // not licence to re-answer it from the environment.
     expect(offer).toEqual({ config: null, schedulingUrl: null })
+  })
+})
+
+// The link-only half, for a caller that needs a URL and nothing else --
+// `sendInquiryAutoReply` -- and MUST NOT pay for a token refresh to get it.
+// `calendlyBookingOfferForBusiness` reads the token to build `config`, and
+// that read refreshes a single-use rotating Calendly refresh token on nearly
+// every call (lib/calendly/oauth.ts). A caller that only wants the public
+// page has no use for that token and must never trigger it: every case below
+// asserts `accessTokenForConnection` was not called, not merely that the
+// right URL came back.
+describe("calendlySchedulingUrlForBusiness", () => {
+  it("returns the connection's own scheduling_url, and never touches the token", async () => {
+    getPrimaryBookingHostId.mockResolvedValue(HOST)
+    getCoachCalendarConnection.mockResolvedValue(connectionRow())
+
+    const url = await calendlySchedulingUrlForBusiness(OTHER_BUSINESS)
+
+    expect(url).toBe("https://calendly.com/coach/consult")
+    expect(accessTokenForConnection).not.toHaveBeenCalled()
+  })
+
+  it("returns the platform environment's URL only for the platform business", async () => {
+    getPrimaryBookingHostId.mockResolvedValue(null)
+
+    const url = await calendlySchedulingUrlForBusiness(PLATFORM_BUSINESS)
+
+    expect(url).toBe(PLATFORM.schedulingUrl)
+    expect(accessTokenForConnection).not.toHaveBeenCalled()
+  })
+
+  it("returns null for another business with no connection -- never the platform's page", async () => {
+    getPrimaryBookingHostId.mockResolvedValue(null)
+
+    const url = await calendlySchedulingUrlForBusiness(OTHER_BUSINESS)
+
+    expect(url).toBeNull()
+    expect(accessTokenForConnection).not.toHaveBeenCalled()
+  })
+
+  it("returns null for a connection that chose a meeting but recorded no public page", async () => {
+    getPrimaryBookingHostId.mockResolvedValue(HOST)
+    getCoachCalendarConnection.mockResolvedValue(connectionRow({ scheduling_url: null }))
+
+    const url = await calendlySchedulingUrlForBusiness(OTHER_BUSINESS)
+
+    expect(url).toBeNull()
+    expect(accessTokenForConnection).not.toHaveBeenCalled()
+  })
+
+  it("THROWS when an identity read fails -- it must not answer from another calendar", async () => {
+    getPrimaryBookingHostId.mockRejectedValue(new Error("getPrimaryBookingHostId failed (57014): timeout"))
+
+    await expect(calendlySchedulingUrlForBusiness(BUSINESS)).rejects.toThrow(/getPrimaryBookingHostId failed/)
+    expect(accessTokenForConnection).not.toHaveBeenCalled()
+  })
+
+  it("THROWS when the connection read fails, same as the booking-offer resolver", async () => {
+    getPrimaryBookingHostId.mockResolvedValue(HOST)
+    getCoachCalendarConnection.mockRejectedValue(
+      new Error("getCoachCalendarConnection failed (57014): canceling statement"),
+    )
+
+    await expect(calendlySchedulingUrlForBusiness(BUSINESS)).rejects.toThrow(/getCoachCalendarConnection failed/)
+    expect(accessTokenForConnection).not.toHaveBeenCalled()
+  })
+
+  it("never calls the token/OAuth function even for a connection whose token would need a refresh", async () => {
+    // A connection with a fully expired token is exactly the shape that made
+    // `calendlyBookingOfferForBusiness` refresh Calendly's rotating
+    // single-use refresh token. This resolver must return the page WITHOUT
+    // ever asking.
+    const row = connectionRow({ access_token_expires_at: new Date(Date.now() - 1000).toISOString() })
+    getPrimaryBookingHostId.mockResolvedValue(HOST)
+    getCoachCalendarConnection.mockResolvedValue(row)
+
+    const url = await calendlySchedulingUrlForBusiness(OTHER_BUSINESS)
+
+    expect(url).toBe("https://calendly.com/coach/consult")
+    expect(accessTokenForConnection).not.toHaveBeenCalled()
   })
 })

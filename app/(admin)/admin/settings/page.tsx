@@ -112,7 +112,9 @@ export default async function SettingsPage() {
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground mt-4">Platform settings will be configurable in a future update.</p>
+        <p className="text-xs text-muted-foreground mt-4">
+          Your business name, sender details and sending hours are edited in Business Settings, below.
+        </p>
       </div>
 
       {/* 3. Configuration */}
