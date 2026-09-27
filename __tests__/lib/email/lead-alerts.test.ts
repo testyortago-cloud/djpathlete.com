@@ -29,6 +29,11 @@ vi.mock("@/lib/db/businesses", () => ({
   BusinessSettingsMissingError: class extends Error {},
 }))
 
+const calendlyBookingOfferForBusiness = vi.fn()
+vi.mock("@/lib/calendly/config-for-business", () => ({
+  calendlyBookingOfferForBusiness: (...a: unknown[]) => calendlyBookingOfferForBusiness(...a),
+}))
+
 import {
   sendChatEscalationEmail,
   sendChatLeadAlertEmail,
@@ -78,6 +83,7 @@ beforeEach(() => {
   process.env.RESEND_API_KEY = "re_test"
   sendMock.mockResolvedValue({ data: { id: "e_1" }, error: null })
   getBusinessSettings.mockResolvedValue(OTHER_COACH)
+  calendlyBookingOfferForBusiness.mockResolvedValue({ config: null, schedulingUrl: null })
   vi.spyOn(console, "error").mockImplementation(() => {})
   vi.spyOn(console, "warn").mockImplementation(() => {})
 })
@@ -547,6 +553,81 @@ describe("sendInquiryAutoReply", () => {
 
     await expect(sendInquiryAutoReply(autoReplyArgs)).rejects.toThrow(/postal_address/)
     expect(sendMock).not.toHaveBeenCalled()
+  })
+
+  // G30's carried clause. Until now this button always linked
+  // PLATFORM_BOOKING_LINK -- this platform's own GoHighLevel widget -- for
+  // every applicant of every tenant. It now links the COACH'S OWN calendar,
+  // resolved per business, and degrades to a plain reply-to sentence rather
+  // than ever falling back to that platform link again.
+  describe("the booking link (G30's carried clause)", () => {
+    it("links the coach's own scheduling page when the resolver has one, and drops the old widget", async () => {
+      calendlyBookingOfferForBusiness.mockResolvedValue({
+        config: null,
+        schedulingUrl: "https://calendly.com/coach-b/consult",
+      })
+
+      await sendInquiryAutoReply(autoReplyArgs)
+
+      const html = String(sendMock.mock.calls[0][0].html)
+      expect(html).toContain("https://calendly.com/coach-b/consult")
+      expect(html).toContain("Schedule Your Consultation")
+      expect(html).not.toContain("leadconnectorhq")
+    })
+
+    it("prefills the applicant's own name and email on the link, the way the chat's slot links do", async () => {
+      calendlyBookingOfferForBusiness.mockResolvedValue({
+        config: null,
+        schedulingUrl: "https://calendly.com/coach-b/consult",
+      })
+
+      await sendInquiryAutoReply(autoReplyArgs)
+
+      const html = String(sendMock.mock.calls[0][0].html)
+      expect(html).toContain("name=Sam")
+      expect(html).toContain("email=sam%40example.test")
+    })
+
+    it("falls back to a reply-to sentence, with no button, when the resolver has no URL", async () => {
+      calendlyBookingOfferForBusiness.mockResolvedValue({ config: null, schedulingUrl: null })
+
+      await sendInquiryAutoReply(autoReplyArgs)
+
+      const html = String(sendMock.mock.calls[0][0].html)
+      expect(html).toContain("The next step is a short consultation call. Reply to this email and we&rsquo;ll find a time.")
+      expect(html).not.toContain("Schedule Your Consultation")
+    })
+
+    it("still sends, with the fallback sentence, and logs rather than throws, when the resolver itself throws", async () => {
+      // MUTANT: rethrow the resolver's error -- an applicant who is already
+      // waiting for this email must not get silence because a calendar read
+      // failed on the other side of the world.
+      calendlyBookingOfferForBusiness.mockRejectedValue(new Error("Calendly API 503"))
+
+      await expect(sendInquiryAutoReply(autoReplyArgs)).resolves.toBeUndefined()
+
+      const html = String(sendMock.mock.calls[0][0].html)
+      expect(html).toContain("The next step is a short consultation call. Reply to this email and we&rsquo;ll find a time.")
+      expect(html).not.toContain("Schedule Your Consultation")
+      expect(sendMock).toHaveBeenCalledTimes(1)
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining(`[email] inquiry auto-reply: could not read the booking page for business ${BUSINESS_ID}`),
+        expect.anything(),
+      )
+    })
+
+    it("asks the resolver about the business the reply is FOR, not a hard-coded one", async () => {
+      // MUTANT: pass a fixed business id into the resolver instead of the
+      // one this call was made with.
+      calendlyBookingOfferForBusiness.mockResolvedValue({
+        config: null,
+        schedulingUrl: "https://calendly.com/coach-b/consult",
+      })
+
+      await sendInquiryAutoReply(autoReplyArgs)
+
+      expect(calendlyBookingOfferForBusiness).toHaveBeenCalledWith(BUSINESS_ID)
+    })
   })
 })
 

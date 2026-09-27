@@ -26,6 +26,8 @@
 
 import type { BusinessSettings } from "@/lib/db/businesses"
 import { getBusinessSettings } from "@/lib/db/businesses"
+import { calendlyBookingOfferForBusiness } from "@/lib/calendly/config-for-business"
+import { schedulingLink } from "@/lib/calendly/links"
 import { BusinessNotConfiguredError, alertRecipient, assertSendable, businessFrom } from "@/lib/email/business-identity"
 import {
   ctaButton,
@@ -39,27 +41,6 @@ import {
 } from "@/lib/email/layout"
 import type { LeadAnalysisResult } from "@/lib/ai/lead-analysis"
 import { buildLeadMailtoLink, buildTelLink } from "@/lib/leads/build-mailto-link"
-
-/**
- * THE ONE SINGLE-TENANT ASSUMPTION LEFT IN THIS FILE, named out loud rather
- * than hidden behind an import, because the brand sweep over this file cannot
- * see it: it is a URL, not a word, and no regex for an operator name will ever
- * catch it.
- *
- * It is the booking widget belonging to the business that owns this
- * deployment, offered in the auto-reply below to every applicant regardless of
- * whose coaching they applied for. G30 was scoped to the sender identity and
- * the layout, so it is unchanged here -- but it IS a live gap: another coach's
- * applicant is currently invited into this platform's own diary.
- *
- * What closing it needs is a per-tenant scheduling URL, and there is already a
- * column for one -- `coach_calendar_connections.scheduling_url`, read today by
- * lib/calendly/config-for-business.ts, which resolves a business's own
- * connection and deliberately gives a business without one NOTHING rather than
- * this platform's calendar. That is the shape this CTA wants: the tenant's own
- * link, or no button at all.
- */
-const PLATFORM_BOOKING_LINK = "https://api.leadconnectorhq.com/widget/booking/p9XdK6uz9EC3JKUhpzdA"
 
 /**
  * Resolves the tenant and refuses early if they cannot lawfully send.
@@ -669,6 +650,13 @@ export async function sendInquiryEmail({
  * just applied with silence in order to fix a field that is not in the way.
  * `assertSendable` still applies: this is a commercial message to a member of
  * the public and it needs a postal address on it.
+ *
+ * THE BOOKING LINK IS THE COACH'S OWN (G30's carried clause). Resolved from
+ * `calendlyBookingOfferForBusiness`, inside a try/catch that never reaches the
+ * caller: an applicant who is already waiting on this email must not get
+ * silence because a calendar read failed on the other side of the world. No
+ * URL, for whatever reason, means no button -- the paragraph above it changes
+ * to ask them to reply instead, rather than linking nothing.
  */
 export async function sendInquiryAutoReply({
   businessId,
@@ -684,6 +672,27 @@ export async function sendInquiryAutoReply({
   const settings = await loadSendableSettings(businessId)
   const replyTo = alertRecipient(settings)
 
+  let schedulingUrl: string | null = null
+  try {
+    schedulingUrl = (await calendlyBookingOfferForBusiness(businessId)).schedulingUrl
+  } catch (err) {
+    console.error(`[email] inquiry auto-reply: could not read the booking page for business ${businessId}`, err)
+  }
+
+  const bookingSection = schedulingUrl
+    ? `
+          <p style="margin:0 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:16px; color:#5c5750; line-height:1.8;">
+            The next step is to schedule a consultation call so we can learn more about your goals and create a plan tailored to you.
+          </p>
+
+          ${ctaButton(schedulingLink(schedulingUrl, { prefill: { name: firstName, email: to } }), "Schedule Your Consultation")}
+    `
+    : `
+          <p style="margin:0 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:16px; color:#5c5750; line-height:1.8;">
+            The next step is a short consultation call. Reply to this email and we&rsquo;ll find a time.
+          </p>
+    `
+
   const html = tenantEmailLayout(
     `
     ${heroBanner("Application Received", `We&rsquo;re excited to hear from you, ${firstName}.`)}
@@ -696,11 +705,7 @@ export async function sendInquiryAutoReply({
             Thanks for applying for <strong style="color:#0E3F50;">${serviceLabel}</strong>. We&rsquo;ve received your application and our team will review it shortly.
           </p>
 
-          <p style="margin:0 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:16px; color:#5c5750; line-height:1.8;">
-            The next step is to schedule a consultation call so we can learn more about your goals and create a plan tailored to you.
-          </p>
-
-          ${ctaButton(PLATFORM_BOOKING_LINK, "Schedule Your Consultation")}
+          ${bookingSection}
 
           <p style="margin:36px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:14px; color:#a09b94; line-height:1.7;">
             Looking forward to working with you,<br />

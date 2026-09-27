@@ -75,11 +75,12 @@ const ROOTS = [
   // every tenant at once.
   //
   // WHAT THIS SWEEP STILL CANNOT SEE, so that nobody reads a green run as
-  // more than it is: it matches operator NAMES, so a platform-owned URL
-  // passes it untouched. There is one left, named in lead-alerts.ts --
-  // `PLATFORM_BOOKING_LINK`, the booking widget the inquiry auto-reply
-  // offers every applicant. It is spelled out in the swept file, rather
-  // than imported from outside it, precisely so a reader meets it.
+  // more than it is: it matches operator NAMES, so a platform-owned URL would
+  // pass it untouched. The one that used to live here -- `PLATFORM_BOOKING_LINK`,
+  // the widget the inquiry auto-reply offered every applicant regardless of
+  // whose coaching they applied for -- is gone as of G30's carried clause: the
+  // auto-reply now resolves the coach's OWN scheduling link and degrades to a
+  // reply-to sentence rather than ever falling back to that URL again.
   //
   // lib/email/layout.ts is deliberately NOT swept: it holds the platform's
   // own chrome as the fallback for the ~35 app emails that still want it.
