@@ -1018,6 +1018,12 @@ connected Vercel account can read that team's logs), while the identical commit 
 exit 0) and the three previous commits deployed. This ledger commit re-triggers the build; the outcome is in
 `JOURNAL.md`. Until a build succeeds the site runs the previous code, which is compatible with 00281 (data only).
 
+**Owner's follow-up, 2026-09-27 (later):** "Three days to go" APPROVED as written. `chat_lead_follow_up` SWITCHED ON
+in production at 07:04:40 UTC by `scripts/activate-sequence.mjs .env.prod chat_lead_follow_up` (dry run first;
+compare-and-set draft → active; read back: active, 6 steps, 13 active sequences). New-lead alerts to go to
+`sales@darrenjpaul.com` with `darren@` copied — built as the per-business `business_settings.alert_email` (migration
+00282); leads' replies still go to `reply_to`.
+
 **Rulings made on the owner's behalf (reversible):**
 - The chat follow-up is a draft: 00229's rule, a human reads copy before it sends. **After merge the owner switches it on** at Sequences → Chat Lead Follow-Up.
 - `ai_chat` does NOT supersede: a first cut made it supersede, and the Task 1 review showed one chat question would then end a person's camp countdown or application follow-up, with the camp's 30-day cooldown refusing their re-registration. The coach alert moved into its own email so the coach is told every time regardless.
