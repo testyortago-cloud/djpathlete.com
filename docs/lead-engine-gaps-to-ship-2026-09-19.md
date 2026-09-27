@@ -1,5 +1,7 @@
 # Lead Engine — gaps to ship
 
+**Updated 2026-09-27 (later): the owner answered the "still not done" list** — see [Owner's answers 2026-09-27](#owners-answers-2026-09-27). Built on branch `worktree-lead-engine-owner-answers`, NOT merged; spec `docs/superpowers/specs/2026-09-27-lead-engine-owner-answers-design.md`.
+
 **Updated 2026-09-27:** the owner set the product direction (DJP Athlete is a subscriber, not the platform) and chose what to build next. See [Owner direction 2026-09-27](#owner-direction-2026-09-27--djp-athlete-is-a-subscriber-not-the-platform) and [Next build](#next-build-2026-09-27--g40-g45-g16-sport-g41). The paste-able prompt at [§Paste-able prompt](#paste-able-prompt-for-a-fresh-build-session) was rewritten for that build.
 
 **Date:** 2026-09-19 · **Last re-measured against `main` + production:** 2026-09-21 18:00 UTC (`main` @ `7727bc70`) — see [Finished vs not](#finished-vs-not--the-one-screen-answer) · **Source of every gap:** `docs/lead-engine-verification-2026-09-19.md` (measured on production and on `main` @ `10fef0f0`) · **Quotation:** Full Engine, white-label ready.
@@ -124,7 +126,7 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
   - No producer change can alter which sequences a contact enrols into — `filterMatches` iterates the FILTER's entries, so a new key is invisible to a filter that does not name it, and no key was removed anywhere. Checked against each live `trigger_filter`.
   - **Known and NOT fixed:** a funnel that sells a camp through its own "Register & pay" step records no `event_kind` / `camp_name`, because the capture runs before the event is resolved. Latent only — that path is behind `FUNNEL_CHECKOUT_DEFAULT = false`. The fix is a reordering in a route where ordering has already cost a paying customer their exit once (G06), so it wants its own row rather than a late edit here.
 
-### G11 · Camp deadline is enrolment-relative, not "14/7/3/1 days before the event" · **M**
+### G11 · Camp deadline is enrolment-relative, not "14/7/3/1 days before the event" · **M** · **fourth reminder BUILT 2026-09-27 (migration 00281, branch `worktree-lead-engine-owner-answers`, NOT merged)**
 - **Shipped when:** `sequence_runs.anchor_at timestamptz` (reader: the tick's wait handling) set from `events.start_date` at enrolment for `event_signup`; a `wait` step accepts `config.wait_until = {days_before_anchor: N}`; the tick sets `next_run_at = anchor − N days`, advances straight past a step whose moment has passed, and skips the whole run when no anchor exists; `camp_clinic_deadline` reseeded to 14 → 7 → 3 → 1 with the owner's copy, ON only after G03.
 - **Test:** enrol 20 days out → next at −14 d; enrol 5 days out → first two steps skipped, next at −3 d; no anchor → run completes without sending.
 - **BUILT + MERGED + PUSHED 2026-09-20**, commit `55d6beb4`, merged at `37bc5135`, `origin/main` now `37bc5135`. Migrations **00267** (`sequence_runs.anchor_at`), **00268** (widens `sequence_steps_wait_needs_minutes` so an anchored wait may carry no minutes), **00269** (re-times `camp_clinic_deadline`), **00270** (its description, which had come to say the opposite of what it does). All four applied to the **DEV CLONE ONLY** and read back — **NOT on production**. Whole suite 1053 files / **11096 tests** with the 7-test red baseline; tsc 238/54 per-file identical; build exit 0; **35 mutants across two sweeps, 35 killed**.
@@ -136,7 +138,7 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
   - **The editor warns rather than refuses** when the sequence is not started by an event signup — no run of `newsletter_welcome` can ever carry an anchor, so an anchored wait there ends every run. A warning, not a block, because the coach may be about to change what starts the sequence.
   - **Two limitations recorded, not fixed.** (a) The anchor is read ONCE, at the wait; nothing re-checks it at the send, so `siblingRunDefer` (unbounded, 5 minutes at a time), the daily cap or a cron outage can still shift a reminder off its promised moment. (b) Anchored runs now live months rather than days, which makes `sequence_runs_one_active_per_sequence` refuse a SECOND camp's follow-up while the first is still counting down, and makes G14 refuse non-superseding sources for that whole period.
 
-### G12 · No coach reminder two days after a service application; applicant confirmed twice · **S**
+### G12 · No coach reminder two days after a service application; applicant confirmed twice · **S** · **alert wording APPROVED by the owner 2026-09-27 ("looks good")**
 - **Shipped when:** `service_application_received` = `wait 2880` → `alert` (to `business_settings.reply_to`: "No reply yet to {{name}}'s application", link to the contact) → the existing lead-facing nudges; step 0 removed because `sendInquiryAutoReply` already confirms instantly. Exits on booking/purchase already mean the alert only fires when nothing happened. Confirm in `sequence-tick-runner.ts:~591` that an `alert` does not count against the contact's daily cap.
 - **Decision:** owner approves the alert wording.
 - **Test:** `00255`-style seed test for the new shape; runner test that an alert emails `reply_to` and does not consume the cap.
@@ -211,14 +213,14 @@ Three code comments and two commit messages cite `docs/lead-engine-gaps-to-ship-
   - The editor warning is **advisory, not a save gate**: a blank is already the safe outcome, so refusing the save would block a coach whose sequence is otherwise finished.
   - tsc 238/54 per-file identical; build exit 0; **2 mutants, 2 killed**. Whole suite at the 7-test baseline — see the flake note under "The pre-existing RED baseline" below.
 
-### G17 · Seven sequences have no text step · **S code, owner copy** · CODE DONE (six of seven) — COPY STILL THE OWNER'S
+### G17 · Seven sequences have no text step · **S code, owner copy** · CODE DONE (six of seven) — **COPY APPROVED by the owner 2026-09-27 ("text steps is sequence is good")**
 - `quiz_*` ×4, `service_application_received`, `camp_clinic_deadline`, `sms_repermission`. Once the owner supplies wording, add via the step editor (no deploy). Texts send only to contacts with an SMS consent row — 0 today — so also ship G18 and the email-consent wording decision below.
 - **BUILT BY A PEER SESSION + MERGED + PUSHED 2026-09-20**, commit `c3b507f5`, migration `00272_sequence_text_steps.sql` applied to production. **SIX of the seven**, each behind a wait.
   - **Measured on production 2026-09-21, not read off the commit subject:** eleven of the twelve sequences now hold exactly one `sms` step. The one that does not is **`sms_repermission`** — which is correct rather than an omission, since that sequence's whole job is to ask by EMAIL for permission to text, so a text step in it would be the thing it exists to avoid. The row's "seven" counted it; six is the right number.
   - **STILL THE OWNER'S TO REVIEW.** The copy was drafted, not authored — it is editable at `/admin/sequences/<key>` with no deploy, and the drafting session made judgement calls on the owner's behalf (notably moving the camp text, because the email before it says it will stop).
   - ~~**Texts still reach nobody.**~~ **SUPERSEDED 2026-09-21 12:40 UTC.** `contact_consents` held zero rows of any channel for the whole life of this ledger; the decision-8 re-permission send created the **first 2 `sms / granted` rows**. Texts are sendable to those two people today. The row above predicted the first consent would come from a chat lead ticking a box — it came from the stranded batch instead. G18's consent half now collects them from the chat capture card, but nothing has been captured yet, so every text step in the product remains unsendable in practice. (Email is unaffected: only SMS is consent-gated.) **The first real test of this row is the first chat lead who ticks the box.**
 
-### G18 · Chat collects email consent, not texting consent; no sequence follows a chat lead · **S** · CONSENT HALF DONE — the `ai_chat` SEQUENCE IS THE LAST PHASE 2 ROW OPEN, and needs the owner's copy
+### G18 · Chat collects email consent, not texting consent; no sequence follows a chat lead · **S** · CONSENT HALF DONE — **`chat_lead_follow_up` BUILT 2026-09-27 (migration 00281 + a transactional coach alert, branch `worktree-lead-engine-owner-answers`, NOT merged; seeds as DRAFT — the owner switches it on)**
 - **Shipped when:** the capture card (`components/public/AskCards.tsx:272-296`) shows the SMS consent tick with `renderSmsConsentWording(display_name)` whenever a phone is entered; `app/api/ask/capture/route.ts:388-401` writes `channel:"sms"` as well; a sequence listens to `ai_chat` — either a seeded `chat_lead_follow_up` or `new_lead_nurture` widened to accept a second trigger (decision: seed a separate sequence, so its copy can differ).
 - **Test:** `ask-capture.test.ts` — both consent rows written with the exact wording; enrol fires.
 - **CONSENT HALF BUILT + MERGED + PUSHED 2026-09-20**, same commit as G12 (`672e5583` / `80c9ecbd`). No migration.
@@ -907,13 +909,13 @@ The row as recorded:
 
 | # | Decision | Blocks |
 |---|---|---|
-| 1 | Approve the copy of the eight unreviewed sequences | G03 (live now), G11, G12, G17 |
+| 1 | ~~Approve the copy of the eight unreviewed sequences~~ **CLOSED: G03 (owner approved all 12 as seeded, 2026-09-20); the 6 texts (G17) and the G12 alert added after it were approved 2026-09-27.** This row was stale from 2026-09-20 to 2026-09-27. | ~~G03, G11, G12, G17~~ |
 | 2 | ~~One-sequence-at-a-time: option A, B or C~~ **RULED 2026-09-20: option B**, built and merged the same day at `fe5d51ad`; the superseding set became FOUR sources on the owner's call. | ~~G14~~ closed |
 | 3 | ~~Gate manual texts on consent, with an audited override?~~ **RULED 2026-09-21: YES — gate it, with the audited "Send anyway" override.** See below. | G28 |
 | 4 | ~~Hard bounce suppresses the address?~~ **RULED 2026-09-21: YES — HARD bounces only. Soft bounces are ignored entirely.** See §Rulings. | G09 |
 | 5 | ~~Assessment submitters become contacts?~~ **RULED 2026-09-21: YES — mint the contact, matching the questionnaire.** See below. | G21 |
 | 6 | Chat booking: accept hand-over wording, or schedule native booking | G19 |
-| 7 | Email-consent wording on the funnel, quiz and inquiry forms (0 consent rows today) | G17 in practice |
+| 7 | ~~Email-consent wording on the funnel, quiz and inquiry forms~~ **RULED 2026-09-27 ("yes i want it"): an unticked email-permission tick on all three, BUILT on branch `worktree-lead-engine-owner-answers`, NOT merged.** Records consent only; email stays ungated. | G17 in practice |
 | 8 | ~~The 73 stranded re-permission runs~~ **RULED AND DONE 2026-09-21: re-dated and sent at 12:00 UTC.** 73 sent, 67 delivered, 23 opened, **2 SMS consents created**. See §Rulings. | ~~G28 in practice~~ unblocked |
 | 9 | ~~Notifications: who receives alerts per tenant~~ **RULED 2026-09-21: the tenant's own `reply_to`.** | G30 |
 | 10 | ~~`sms_help_text` and the Twilio HELP auto-reply wording~~ **RULED 2026-09-21: drafted to carrier convention, owner approves the words before it is configured.** | — |
@@ -990,6 +992,35 @@ option over a staged rollout, on the measured basis that no policies are require
 Phase 0 today. Phases 1 and 2 are what make the quotation's sentences true. Phases 3 and 4 are what make "GoHighLevel replacement" and "white-label ready" true.
 
 ---
+
+## Owner's answers 2026-09-27
+
+The owner answered the "still not done" list line by line. Built on branch
+`worktree-lead-engine-owner-answers` (off `main@075cd760`), NOT merged. Spec:
+`docs/superpowers/specs/2026-09-27-lead-engine-owner-answers-design.md`.
+
+| Owner's line | Row | Outcome |
+|---|---|---|
+| "create me a followup for the people who leave their details in the chat" | G18 | `chat_lead_follow_up` (email · wait 2d · email · wait 1d · text · end), trigger `ai_chat`, **seeded DRAFT on every business** via migration 00281 (which re-issues `seed_business_starter_set`). The coach is told by a TRANSACTIONAL `sendChatLeadAlertEmail` on every chat capture, awaited by `/api/ask/capture` — not by a sequence step. `ai_chat` stays NON-superseding. |
+| "text steps is sequence is good" | G17 | The six drafted texts approved as written. No code. |
+| "do whats best" | G11 | 14/7/3/1: the approved "Last one about this" email moves to 1 day before; a NEW "Three days to go" email and a `days_before_anchor: 1` wait are inserted (migration 00281; existing rows keep their ids; in-flight runs moved). The camp description's "next three … 14, 7 and 3" clause was rewritten to match. |
+| "looks good" | G12 | The coach alert wording approved as written. No code. |
+| "yes i want it" | Decision 7 | An unticked email-permission tick on the funnel forms, the quiz gate and the application form (incl. Step Up), filing `contact_consents` (`channel: 'email'`). Email stays ungated. |
+| "i want the autorepply for the booking" | G30 clause | The application auto-reply links the business's own Calendly page (`calendlyBookingOfferForBusiness`), or has no button and asks them to reply; `PLATFORM_BOOKING_LINK` deleted. |
+| "do what is needed" | — | Quiet-hours fields relabelled "Start sending at" / "Stop sending at" with a true hint (the old hint said the opposite of the code); Campaign Revenue in the sidebar; a Business Settings link on Settings. |
+
+**Rulings made on the owner's behalf (reversible):**
+- The chat follow-up is a draft: 00229's rule, a human reads copy before it sends. **After merge the owner switches it on** at Sequences → Chat Lead Follow-Up.
+- `ai_chat` does NOT supersede: a first cut made it supersede, and the Task 1 review showed one chat question would then end a person's camp countdown or application follow-up, with the camp's 30-day cooldown refusing their re-registration. The coach alert moved into its own email so the coach is told every time regardless.
+- The camp's fourth reminder keeps the owner-approved "Last one" email last. "Three days to go" is drafted copy the owner has not read; so is the rewritten camp description clause.
+- sales@: `sales@send.darrenjpaul.com` has no MX record and cannot receive mail, so it was not made a recipient; the question is back with the owner.
+
+**After merge and deploy, read back production:** Primary's `camp_clinic_deadline` has 12 steps ending
+`wait(3) · email "Three days to go" · wait(1) · email "Last one about this" · stop` (a skipped shape
+shows only as a NOTICE), and a 6-step draft `chat_lead_follow_up` exists.
+
+**Still the owner's:** the HELP reply text, logo and brand colour (all empty on production); a lead
+magnet (none exists); an email tick on the camp/clinic signup modal (not asked for).
 
 ## Owner direction 2026-09-27 — DJP Athlete is a subscriber, not the platform
 
@@ -1228,17 +1259,16 @@ scoreboard below moved on.)*
 | G49 | Unsubscribe and consent links land on the platform's pages | **M** | **Done** 2026-09-26 for the page: merged and deployed (`9acc0772`); address bar waits on coach hosts |
 
 **FINISHED IN CODE, NOT FINISHED IN WORDS — these need the owner, not a developer:**
-- **G18's `ai_chat` sequence** — the consent half is live; the follow-up sequence a chat lead enters
-  is not built and needs the owner's copy. **The last Phase 2 row still open.**
-- **G17's six text steps** — drafted, not authored. Editable at `/admin/sequences/<key>`, no deploy.
-  As of 2026-09-21 they can finally reach somebody: 2 SMS consents exist.
-- **G12's alert wording** — shipped as a question, because nothing in the system can know whether
-  the coach replied. Reword in the editor.
+- ~~**G18's `ai_chat` sequence**~~ — **BUILT 2026-09-27** as `chat_lead_follow_up` (draft) plus a
+  transactional coach alert on every chat capture; branch `worktree-lead-engine-owner-answers`, NOT merged. The owner switches it on after merge.
+- ~~**G17's six text steps**~~ — **approved by the owner 2026-09-27**, as written.
+- ~~**G12's alert wording**~~ — **approved by the owner 2026-09-27**, as written.
 - ~~**G16's `{{sport}}`**~~ — **merged 2026-09-27** (see the G16 row). `{{goals}}` still
   needs a different home entirely.
-- **Decisions 1, 6 and 7** in §Decisions are still untouched.
+- **Decision 6** in §Decisions is still untouched (decision 1 closed by G03; decision 7 ruled and built 2026-09-27).
 
 **FINISHED BUT NOT SWITCHED ON:**
+- **SUPERSEDED 2026-09-27: production now has `cron_pipeline_reconcile_enabled = true`** (read-only SELECT, 2026-09-27). Nothing below this line about the switch is current; left as history.
 - **`cron_pipeline_reconcile_enabled` does not exist as a row in `system_settings`** — re-measured
   against production **2026-09-23**, still no row, so the job is off by ABSENCE and
   `defaultEnabled: false` is the only thing holding it. G26 removed the hazard that kept it off and
@@ -1363,24 +1393,23 @@ blocked on an owner decision, were ruled on and built the same day. G29, the las
 built, merged and smoke-tested on production on 2026-09-23. G30 and G31, the first two Phase 4 rows, were merged and pushed on 2026-09-23 and 2026-09-25. G33 was built on 2026-09-25. G35 was merged, pushed and deployed on 2026-09-26. G32 was merged, pushed and applied to production on 2026-09-26, and G46 and G47 were merged and pushed on 2026-09-26. What remains is G34 (a decision, not work), **the ten rows G35's sweep found, G36-G45**, and **two of the four G32's discovery found, G48 and G49**: six wait on an owner decision (G36-G39, G42, G43), three are small fixes that need no owner (G40, G41, G45), G48 waits on G37 (ruled A: a precondition of coach hosts), G49 is done for the page, and G44 is for later.
 
 **Everything still waiting on the owner, in one place:**
-- **G18's `ai_chat` half** — the follow-up sequence a chat lead should enter is NOT built and needs
-  the owner's copy. The consent half is live. This is the only Phase 2 row still open.
-- **G17's text copy** — six sequences have a text step, drafted not authored, editable at
+- ~~**G18's `ai_chat` half**~~ — **BUILT 2026-09-27** (branch `worktree-lead-engine-owner-answers`, NOT merged); the owner switches the draft on.
+- ~~**G17's text copy**~~ — **approved 2026-09-27.** Six sequences have a text step, drafted not authored, editable at
   `/admin/sequences/<key>` with no deploy. This line said `contact_consents` is EMPTY; **measured
   against production 2026-09-23 it holds 2 granted `sms` rows** (latest 2026-09-21) plus one
   `granted:false` email row, which is what the FINISHED-IN-CODE section above already said. So the
   text steps CAN reach somebody — two people — and the blocker is the copy alone.
-- **G12's alert wording** — shipped as a question ("{{name}} applied two days ago — have you
+- ~~**G12's alert wording**~~ — **approved 2026-09-27.** Shipped as a question ("{{name}} applied two days ago — have you
   replied?") because nothing in the system can know whether the coach replied. Reword in the editor.
 - **G16's `{{sport}}`** — one `ENROLMENT_METADATA_KEYS` entry plus one line in
   `app/api/inquiry/route.ts` would make it work, but it also widens what a coach can branch on.
   `{{goals}}` needs a different home entirely. Both render blank today.
-- **G30's booking button** — the inquiry auto-reply still sends every applicant to this platform's
+- ~~**G30's booking button**~~ — **ruled 2026-09-27 ("i want the autorepply for the booking") and BUILT on branch `worktree-lead-engine-owner-answers`, NOT merged:** the auto-reply links the business's own Calendly page, or has no button. Before that: the inquiry auto-reply still sent every applicant to this platform's
   own GoHighLevel widget, whoever they applied to. The tenant-aware version reads
   `coach_calendar_connections.scheduling_url` via `lib/calendly/config-for-business.ts` (a business
   with no connection gets NO button rather than this platform's calendar). It was left out of G30
   because it changes where real DJP traffic books, which is the owner's call, not a refactor.
-- **G30 made `sales@darrenjpaul.com` go quiet** — new-inquiry alerts now go to
+- **G30 made `sales@darrenjpaul.com` go quiet** — (2026-09-27: the owner said "make it sales@send.darrenjpaul.com"; that address has NO MX record and cannot receive mail, so nothing was changed; the question is back with the owner.) New-inquiry alerts now go to
   `business_settings.reply_to` (`darren@`) alone, per decision 9. If `sales@` should still receive
   them, the fix is a recipient list, not a revert.
 - **G35's behaviour change (c) — CONFIRMED, no change in who is alerted.** Read on production

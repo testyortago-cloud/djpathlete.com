@@ -1,3 +1,7 @@
+> **SUPERSEDED 2026-09-19.** This audit's state notes are out of date. The current documents are
+> `docs/lead-engine-verification-2026-09-19.md` and the build ledger
+> `docs/lead-engine-gaps-to-ship-2026-09-19.md`. Kept as history.
+
 # Lead Engine audit — what actually works in production
 
 **Date:** 2026-09-13 (measured 2026-09-12 16:38–17:10 UTC)
