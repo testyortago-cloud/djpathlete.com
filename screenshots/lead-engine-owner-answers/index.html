@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Owner's Answers Build</title>
+<style>
+  :root { --ink:#0e3f50; --text:#223b44; --muted:#5b6b73; --line:#e3e7e9; --accent:#c8763c; --paper:#fff; --wash:#f5f6f7; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--wash); color:var(--text); font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:32px 16px 80px; }
+  h1 { color:var(--ink); font-size:30px; line-height:1.2; margin:0 0 8px; }
+  h2 { color:var(--ink); font-size:22px; margin:44px 0 6px; padding-top:14px; border-top:3px solid var(--accent); }
+  p.lead { color:var(--muted); margin:0 0 20px; }
+  .note { border-left:4px solid var(--accent); padding:10px 14px; background:#fbf4ee; border-radius:0 8px 8px 0; margin:16px 0; }
+  figure { margin:16px 0 8px; }
+  figure img { width:100%; height:auto; border:1px solid var(--line); border-radius:8px; background:var(--paper); display:block; }
+  ol li { margin:4px 0; }
+</style>
+</head>
+<body>
+<main>
+<h1>What changed after your answers of 27 September</h1>
+<p class="lead">Each picture is the real screen with numbered notes burned in. Built on a branch; nothing here is on your live site until you say "merge".</p>
+<div class="note">Pictures are from the development copy, with test people. The admin has no dark mode.</div>
+
+<h2>1. A follow-up for people who leave their details in the chat</h2>
+<p>You now get an email the moment someone leaves their details in the website chat, with their email and phone. The new follow-up sends them an email straight away, another two days later, then a text (only if they agreed to texts). <strong>It starts switched off.</strong> After the merge, read it and switch it on at Sequences → Chat Lead Follow-Up.</p>
+<figure><img src="01-chat-follow-up-on-the-list.png" alt="Sequences list with Chat Lead Follow-Up switched off"></figure>
+<figure><img src="02-chat-follow-up-steps.png" alt="The chat follow-up's steps"></figure>
+
+<h2>2. Camp reminders: 14, 7, 3 and 1 day before</h2>
+<p>Your approved "Last one about this" email is still the last one, now 1 day before. A new "Three days to go" email fills the 3-day slot. Please read it.</p>
+<figure><img src="03-camp-countdown-four-reminders.png" alt="Camp sequence with the new reminder"></figure>
+
+<h2>3. A box to agree to emails, on three forms</h2>
+<p>Funnel forms, the Athlete Quiz and the coaching application form now have an unticked "Yes, … can email me" box beside the email field. Ticking it records their permission with the exact words and the date. Emails still go out either way.</p>
+<figure><img src="04-funnel-form-email-tick.png" alt="Funnel form with the email box"></figure>
+<figure><img src="05-quiz-gate-email-tick.png" alt="Quiz details page with the email box"></figure>
+<figure><img src="06-application-form-email-tick.png" alt="Application form with the email box"></figure>
+
+<h2>4. The application auto-reply books into your Calendly</h2>
+<p>The "Schedule Your Consultation" button in the automatic reply now opens your own Calendly page, with their name and email filled in. If a business has no calendar connected, the button is left out and they are asked to reply instead. (No screenshot: it is an email. It is covered by tests.)</p>
+
+<h2>5. Small fixes</h2>
+<figure><img src="07-sending-hours-labels.png" alt="Business settings sending hours"></figure>
+<figure><img src="08-sidebar-campaign-revenue.png" alt="Campaign Revenue in the sidebar"></figure>
+<figure><img src="09-settings-business-link.png" alt="Business Settings link on Settings"></figure>
+</main>
+</body>
+</html>
