@@ -9,8 +9,9 @@
 --    no sequence had that trigger: nobody followed up, AND nothing told the
 --    coach (the capture writes no notification and sends no email) -- while
 --    the visitor had just been told "someone has your details now". A twelfth
---    starter sequence, `chat_lead_follow_up`, answers both: its first step is
---    an `alert` to the coach, then two emails and a text to the lead.
+--    starter sequence, `chat_lead_follow_up`, follows the lead up: two emails
+--    and a text. Telling the COACH is not this sequence's job -- see "WHY
+--    THERE IS NO ALERT STEP" below.
 --
 -- 2. G11 -- THE CAMP COUNTDOWN BECOMES 14 / 7 / 3 / 1. `camp_clinic_deadline`
 --    ended: wait until 3 days before, "Last one about this", stop. That email
@@ -49,14 +50,22 @@
 -- owner switches it on at Sequences -> Chat Lead Follow-Up with one confirmed
 -- click. Nothing in this file sets any sequence's status.
 --
--- WHY THE COACH ALERT IS STEP 1. It is the only thing that makes "someone has
--- your details now" true. An alert is never held by quiet hours or the daily
--- cap and never consumes the lead's allowance (G12), so the lead's own email
--- still goes out on the next tick. The text sits behind a one-day wait, like
--- every text since 00272: straight after an email, a daily cap of 1 would land
--- it the next morning anyway. The text follows 00272's four rules (plain ASCII,
--- no merge field, no STOP line of its own, one segment with the opt-out
--- appended), counted by the test through the project's own `countSmsSegments`.
+-- WHY THERE IS NO ALERT STEP (revised in review, 2026-09-27; spec section 1).
+-- A sequence can only tell the coach about a person it has ENROLLED, and a
+-- chat lead is often not enrolled: `ai_chat` does not supersede (G14), so
+-- somebody already inside another sequence is refused this one, and somebody
+-- who finished it inside its 30-day cooldown is refused it again. Making
+-- `ai_chat` superseding instead would end a camp countdown the moment its
+-- reader asked the chat one question. So the coach is told by a transactional
+-- email the capture route sends on EVERY capture (`sendChatLeadAlertEmail`,
+-- lib/email/lead-alerts.ts), whatever sequence the person is in, and this
+-- sequence is only the lead's own follow-up.
+--
+-- THE TEXT sits behind a one-day wait, like every text since 00272: straight
+-- after an email, a daily cap of 1 would land it the next morning anyway. It
+-- follows 00272's four rules (plain ASCII, no merge field, no STOP line of its
+-- own, one segment with the opt-out appended), counted by the test through the
+-- project's own `countSmsSegments`.
 --
 -- WHY THE CAMP'S DESCRIPTION CHANGES TOO. It is rendered on /admin/sequences,
 -- and 00270 exists because it once said the opposite of what the sequence
@@ -882,16 +891,11 @@ begin
     {
       "key": "chat_lead_follow_up",
       "name": "Chat Lead Follow-Up",
-      "description": "Follows someone who leaves their details in the chat on your website. It tells you straight away so a person can reply, confirms to them that their question reached you, then checks in two days later.",
+      "description": "Follows someone who leaves their details in the chat on your website. It confirms to them that their question reached you, then checks in two days later.",
       "trigger_source": "ai_chat",
       "trigger_filter": {},
       "reenrol_cooldown_days": 30,
       "steps": [
-        {
-          "kind": "alert",
-          "subject": "{{name}} left their details in your website chat",
-          "body": "{{name}} asked a question in the chat on your website and left their details so someone can get back to them.\n\nThey were told a person would be in touch. Open the chat assistant in your admin to read what they asked, then reply by email or text.\n\nThey also get a short automatic email saying their question reached you."
-        },
         {
           "kind": "email",
           "subject": "Your question reached us",

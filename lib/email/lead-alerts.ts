@@ -3,15 +3,16 @@
 //
 // NO BRAND NAMES ANYWHERE IN THIS FILE, comments included.
 // `__tests__/lib/lead-engine/no-brand-literals.test.ts` sweeps it, the same way
-// it sweeps the sequence engine, and for the same reason: these five messages
+// it sweeps the sequence engine, and for the same reason: these six messages
 // are the first thing a stranger receives from a business, and the first thing
 // a coach reads about a stranger. A hardcoded identity here is a second,
 // un-migratable copy of one `getBusinessSettings()` already owns.
 //
-// WHY THESE FIVE AND NOT THE FORTY NEXT DOOR. lib/email.ts also sends password
+// WHY THESE SIX AND NOT THE FORTY NEXT DOOR. lib/email.ts also sends password
 // resets, verification links, welcome mail and the newsletter. Those go to this
 // platform's OWN athletes, about this platform's own product, and they are
-// correctly this platform's. These five are about somebody else's lead.
+// correctly this platform's. These six are about somebody else's lead (the
+// sixth, the chat lead alert, joined on 2026-09-27 with G18).
 //
 // EVERY ONE TAKES A `businessId` AND RESOLVES SETTINGS ITSELF. The alternative
 // -- taking a pre-resolved settings row -- was rejected because four different
@@ -368,6 +369,108 @@ export async function sendChatEscalationEmail({
   return { delivered: true }
 }
 
+/**
+ * Tells the coach somebody left their details in the website chat (G18).
+ *
+ * WHY THIS IS A TRANSACTIONAL EMAIL AND NOT A SEQUENCE STEP. The chat
+ * follow-up sequence (`chat_lead_follow_up`, migration 00281) can only reach
+ * the coach for a person it ENROLLED, and a chat lead is often not enrolled:
+ * `ai_chat` does not supersede, so somebody already inside another sequence is
+ * refused it, and somebody inside its 30-day cooldown is refused it again.
+ * The visitor has just been told "someone has your details now", so the coach
+ * must hear of EVERY capture. The capture route sends this on each one,
+ * whatever sequence the person is in.
+ *
+ * Shaped like `sendQuizAlertEmail`: `{ delivered }`, never a throw, for an
+ * unconfigured tenant, a blank `reply_to` (each warned on its own line by
+ * `resolveSender`), or a provider refusal. A settings read that fails still
+ * throws, as it does for the chat handover above: an outage is not "nobody to
+ * tell". The capture route catches either way -- the lead is already saved.
+ *
+ * `replyTo` is the LEAD when they gave an email, so replying answers them.
+ * With no email there is nobody to reply to, and it is left unset rather than
+ * pointed at the coach's own inbox, which would mail them their own alert.
+ *
+ * Everything but the labels is visitor-typed, so all of it is escaped. The
+ * subject is a header line, not HTML, so it is not escaped (the other alerts'
+ * subjects are not either) -- but its whitespace is collapsed, because the
+ * name box accepts a line break and a subject is one line.
+ */
+export async function sendChatLeadAlertEmail({
+  businessId,
+  name,
+  email,
+  phone,
+  conversationId,
+}: {
+  businessId: string
+  name: string
+  email?: string | null
+  phone?: string | null
+  conversationId: string
+}): Promise<{ delivered: boolean }> {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn(`[email] RESEND_API_KEY not set -- skipping chat lead alert for conversation ${conversationId}`)
+    return { delivered: false }
+  }
+
+  const sender = await resolveSender(businessId, `chat lead alert for conversation ${conversationId}`)
+  if (!sender) return { delivered: false }
+  const { settings, to } = sender
+
+  // Only the details they actually gave: a row reading "not given" is noise
+  // in an alert whose whole point is how to reach them.
+  const rows: { label: string; value: string }[] = [{ label: "Name", value: escapeHtml(name) }]
+  if (email) rows.push({ label: "Email", value: escapeHtml(email) })
+  if (phone) rows.push({ label: "Phone", value: escapeHtml(phone) })
+
+  const html = tenantEmailLayout(
+    `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          ${sectionLabel("Chat Lead")}
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            ${escapeHtml(name)} left their details
+          </p>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            ${escapeHtml(name)} asked a question in the chat on your website and left their details so someone can get back to them. They were told a person would be in touch.
+          </p>
+
+          ${infoCard(rows)}
+
+          <p style="margin:28px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            Open the chat assistant in your admin to read what they asked, then reply by email or text.
+          </p>
+
+          ${ctaButton(`${getBaseUrl()}/admin/chat/${encodeURIComponent(conversationId)}`, "Open this conversation")}
+
+        </td>
+      </tr>
+    </table>
+  `,
+    settings,
+  )
+
+  const { error } = await resend.emails.send({
+    from: businessFrom(settings),
+    to,
+    ...(email ? { replyTo: email } : {}),
+    subject: `${name.replace(/\s+/g, " ").trim()} left their details in your website chat`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send chat lead alert email:", { message: error.message })
+    return { delivered: false }
+  }
+
+  return { delivered: true }
+}
+
 const PRIORITY_STYLES: Record<LeadAnalysisResult["priority"], { bg: string; color: string; label: string }> = {
   high: { bg: "#dcfce7", color: "#166534", label: "High Priority" },
   medium: { bg: "#fef3c7", color: "#92400e", label: "Medium Priority" },
@@ -556,7 +659,7 @@ export async function sendInquiryEmail({
 /**
  * Tells the applicant their application arrived.
  *
- * THE ONE OF THE FIVE WHOSE RECIPIENT IS NOT THE COACH, which is why `to` is
+ * THE ONE OF THE SIX WHOSE RECIPIENT IS NOT THE COACH, which is why `to` is
  * still a parameter here and is read from settings everywhere else: the
  * destination is the person who just typed their address into a form.
  *

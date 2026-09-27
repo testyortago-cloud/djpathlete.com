@@ -1,4 +1,5 @@
-// The five transactional lead emails, once they stopped being this platform's.
+// The six transactional lead emails, once they stopped being this platform's
+// (the sixth, the chat lead alert, joined with G18 on 2026-09-27).
 //
 // WHAT EACH TEST IS ACTUALLY PINNING. Not "an email was sent" -- that passed
 // before G30 too, from the wrong address in the wrong wordmark. Every case
@@ -30,6 +31,7 @@ vi.mock("@/lib/db/businesses", () => ({
 
 import {
   sendChatEscalationEmail,
+  sendChatLeadAlertEmail,
   sendInquiryAutoReply,
   sendInquiryEmail,
   sendNewFunnelLeadEmail,
@@ -221,7 +223,7 @@ describe("sendChatEscalationEmail", () => {
   })
 
   it("does NOT reply to the tenant's own address -- the visitor is anonymous", async () => {
-    // The one alert of the five that sets no replyTo, and it is not an
+    // The one alert of the six that NEVER sets a replyTo, and it is not an
     // oversight: there may be no address to reply to at all, and the default
     // mail-client reply must not put the coach's answer in front of whoever
     // `reply_to` happens to be rather than the visitor.
@@ -264,6 +266,146 @@ describe("sendChatEscalationEmail", () => {
     getBusinessSettings.mockRejectedValue(new Error("supabase down"))
 
     await expect(sendChatEscalationEmail(escalationArgs)).rejects.toThrow(/supabase down/)
+  })
+})
+
+const chatLeadArgs = {
+  businessId: BUSINESS_ID,
+  name: "Jordan Vale",
+  email: "jordan.vale@example.test",
+  phone: "813-555-0142",
+  conversationId: "22222222-2222-4222-8222-222222222222",
+}
+
+/** True when the info card carries a row with exactly this label. */
+function hasRow(html: string, label: string): boolean {
+  return new RegExp(`>\\s*${label}\\s*<`).test(html)
+}
+
+// G18, revised in review (spec section 1). The coach is told of EVERY chat
+// capture by this email, sent straight from the capture route -- not by a
+// sequence step, which could only reach the coach for a lead the sequence
+// managed to enrol.
+describe("sendChatLeadAlertEmail", () => {
+  it("sends FROM the tenant, TO the tenant's own reply_to, for the business it was given", async () => {
+    const out = await sendChatLeadAlertEmail(chatLeadArgs)
+
+    expect(out).toEqual({ delivered: true })
+    expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.from).toBe("Coach Priya <hello@northfieldstrength.test>")
+    expect(arg.to).toBe("priya@northfieldstrength.test")
+    expect(arg.cc).toBeUndefined()
+  })
+
+  it("names the person in the subject, in the spec's words", async () => {
+    await sendChatLeadAlertEmail(chatLeadArgs)
+
+    expect(sendMock.mock.calls[0][0].subject).toBe("Jordan Vale left their details in your website chat")
+  })
+
+  it("keeps the subject on one line whatever was typed into the name box", async () => {
+    // The name is a public text field (trimmed, up to 120 characters, with no
+    // rule against a line break inside it). A subject is a header line.
+    await sendChatLeadAlertEmail({ ...chatLeadArgs, name: "Jordan\r\nBcc: someone@else.test" })
+
+    expect(sendMock.mock.calls[0][0].subject).toBe(
+      "Jordan Bcc: someone@else.test left their details in your website chat",
+    )
+  })
+
+  it("says what happened and what to do next, and carries the email and phone as given", async () => {
+    await sendChatLeadAlertEmail(chatLeadArgs)
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(html).toContain("asked a question in the chat on your website and left their details")
+    expect(html).toContain("They were told a person would be in touch.")
+    expect(html).toContain(
+      "Open the chat assistant in your admin to read what they asked, then reply by email or text.",
+    )
+    expect(html).toContain("jordan.vale@example.test")
+    expect(html).toContain("813-555-0142")
+    expect(hasRow(html, "Email")).toBe(true)
+    expect(hasRow(html, "Phone")).toBe(true)
+  })
+
+  it("leaves out the email row when only a phone was given", async () => {
+    await sendChatLeadAlertEmail({ ...chatLeadArgs, email: null })
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(hasRow(html, "Phone")).toBe(true) // the presence control
+    expect(hasRow(html, "Email")).toBe(false)
+    expect(html).not.toContain("jordan.vale@example.test")
+  })
+
+  it("leaves out the phone row when only an email was given", async () => {
+    await sendChatLeadAlertEmail({ ...chatLeadArgs, phone: undefined })
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(hasRow(html, "Email")).toBe(true) // the presence control
+    expect(hasRow(html, "Phone")).toBe(false)
+    expect(html).not.toContain("813-555-0142")
+  })
+
+  it("replies to the LEAD when they gave an email, and sets no reply-to when they did not", async () => {
+    await sendChatLeadAlertEmail(chatLeadArgs)
+    expect(sendMock.mock.calls[0][0].replyTo).toBe("jordan.vale@example.test")
+
+    await sendChatLeadAlertEmail({ ...chatLeadArgs, email: null })
+    // Not the coach's own address: hitting reply would mail them their own
+    // alert back.
+    expect(sendMock.mock.calls[1][0].replyTo).toBeUndefined()
+  })
+
+  it("links the conversation in the admin, the way the chat handover email does", async () => {
+    await sendChatLeadAlertEmail(chatLeadArgs)
+
+    expect(String(sendMock.mock.calls[0][0].html)).toContain(`/admin/chat/${chatLeadArgs.conversationId}`)
+  })
+
+  it("escapes everything the visitor typed", async () => {
+    await sendChatLeadAlertEmail({ ...chatLeadArgs, name: '<img src=x onerror="alert(1)">', phone: "<b>1</b>" })
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(html).not.toContain("<img src=x")
+    expect(html).not.toContain("<b>1</b>")
+    expect(html).toContain("&lt;img src=x")
+  })
+
+  it("renders the tenant's wordmark and postal address, and none of the platform's", async () => {
+    await sendChatLeadAlertEmail(chatLeadArgs)
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    expect(html).toContain("Northfield Strength")
+    expect(html).toContain("4 Mill Lane, Northfield, NF1 2AB")
+    expectNoPlatformLiterals(html)
+    expectNoPlatformLiterals(String(sendMock.mock.calls[0][0].subject))
+  })
+
+  it("reports NOT delivered, sends nothing, and says why, when the tenant has no reply_to", async () => {
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, reply_to: "  " })
+
+    const out = await sendChatLeadAlertEmail(chatLeadArgs)
+
+    expect(out).toEqual({ delivered: false })
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("no reply_to"))
+  })
+
+  it("reports NOT delivered, naming the missing field, when the tenant is unconfigured", async () => {
+    getBusinessSettings.mockResolvedValue({ ...OTHER_COACH, postal_address: "" })
+
+    const out = await sendChatLeadAlertEmail(chatLeadArgs)
+
+    expect(out).toEqual({ delivered: false })
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("postal_address"))
+  })
+
+  it("reports NOT delivered when the provider refuses, and does not throw", async () => {
+    sendMock.mockResolvedValue({ data: null, error: { message: "domain is not verified" } })
+
+    await expect(sendChatLeadAlertEmail(chatLeadArgs)).resolves.toEqual({ delivered: false })
   })
 })
 
@@ -348,7 +490,7 @@ describe("sendInquiryAutoReply", () => {
     serviceLabel: "1-to-1 Coaching",
   }
 
-  it("goes to the APPLICANT -- the one alert of the five whose recipient is not the coach", async () => {
+  it("goes to the APPLICANT -- the one alert of the six whose recipient is not the coach", async () => {
     await sendInquiryAutoReply(autoReplyArgs)
 
     const arg = sendMock.mock.calls[0][0]

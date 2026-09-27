@@ -44,6 +44,8 @@ const h = vi.hoisted(() => ({
   isSuppressed: vi.fn(),
   getBusinessSettings: vi.fn(),
   recordAudit: vi.fn(),
+  // G18 (revised): the coach is told of every capture by this email.
+  sendChatLeadAlertEmail: vi.fn(),
 }))
 
 vi.mock("@/lib/db/system-settings", () => ({ getSetting: h.getSetting }))
@@ -56,6 +58,7 @@ vi.mock("@/lib/lead-engine/capture", () => ({ captureLead: h.captureLead }))
 vi.mock("@/lib/db/contact-consents", () => ({ recordConsent: h.recordConsent, isSuppressed: h.isSuppressed }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: h.getBusinessSettings }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: h.recordAudit }))
+vi.mock("@/lib/email/lead-alerts", () => ({ sendChatLeadAlertEmail: h.sendChatLeadAlertEmail }))
 // The ONE Host boundary. Required since G35: the real one calls `headers()`,
 // which throws outside a request scope.
 vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: h.resolvePublicTenant }))
@@ -166,6 +169,7 @@ beforeEach(() => {
   h.getBusinessSettings.mockResolvedValue(SETTINGS)
   h.recordAudit.mockResolvedValue(undefined)
   h.resolvePublicTenant.mockResolvedValue("host-biz")
+  h.sendChatLeadAlertEmail.mockResolvedValue({ delivered: true })
 })
 
 describe("POST /api/ask/capture — the only contact-write path", () => {
@@ -791,5 +795,92 @@ describe("POST /api/ask/capture — the conversation is read under the Host's te
 
     expect(res.status).toBe(429)
     expect(h.resolvePublicTenant).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G18, revised in review (spec section 1). The coach is told of EVERY chat
+// capture by a transactional email from this route. A sequence step could only
+// have told them about a lead the chat follow-up managed to enrol, and `ai_chat`
+// does not supersede, so a lead already in another sequence would never have
+// reached them -- while the visitor is told "someone has your details now".
+// ---------------------------------------------------------------------------
+describe("POST /api/ask/capture — the coach is told of every capture (G18)", () => {
+  /** Lets the route's fire-and-forget `.catch` run before asserting on it. */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+  it("sends the alert for the conversation's own business, with the details as submitted", async () => {
+    // MUTANT: drop the call, and the coach hears of no chat lead at all.
+    h.getConversation.mockResolvedValue(conversation({ business_id: "biz-of-this-chat" }))
+
+    const res = await POST(req(submission()))
+
+    expect(res.status).toBe(200)
+    expect(h.sendChatLeadAlertEmail).toHaveBeenCalledTimes(1)
+    expect(h.sendChatLeadAlertEmail).toHaveBeenCalledWith({
+      businessId: "biz-of-this-chat",
+      name: "Jordan Vale",
+      email: "jordan.vale@example.com",
+      phone: "813-555-0142",
+      conversationId: CONVERSATION_ID,
+    })
+  })
+
+  it("passes null for a detail the visitor left out, rather than inventing one", async () => {
+    await POST(req(submission({ email: "" })))
+
+    expect(h.sendChatLeadAlertEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ email: null, phone: "813-555-0142" }),
+    )
+  })
+
+  it("still answers ok when the alert fails, and logs the failure without the raw error", async () => {
+    // MUTANT: await it without a catch, and a mail outage turns "we have your
+    // details" into an error for somebody whose lead is already saved -- who
+    // then submits again.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const failure = Object.assign(new Error("provider down"), { details: "jordan.vale@example.com" })
+    h.sendChatLeadAlertEmail.mockRejectedValue(failure)
+
+    const res = await POST(req(submission()))
+    await settle()
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true, marketingConsentRecorded: false, smsConsentRecorded: false })
+    const logged = errorSpy.mock.calls.find((call) => String(call[0]).includes("chat lead alert"))
+    expect(logged, "the failure is logged").toBeTruthy()
+    expect(logged!.some((arg) => arg === failure)).toBe(false)
+    expect(JSON.stringify(logged)).not.toContain("jordan.vale@example.com")
+    expect(JSON.stringify(logged)).toContain("provider down")
+    errorSpy.mockRestore()
+  })
+
+  it("does not make the visitor wait on the mail provider", async () => {
+    // Fire and forget, like the funnel form's own coach alert: a send that
+    // never settles must not hold the response.
+    h.sendChatLeadAlertEmail.mockReturnValue(new Promise(() => {}))
+
+    const res = await POST(req(submission()))
+
+    expect(res.status).toBe(200)
+    expect(h.sendChatLeadAlertEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it("sends nothing when the contact could not be saved", async () => {
+    h.captureLead.mockResolvedValue(null)
+
+    const res = await POST(req(submission()))
+
+    expect(res.status).toBe(500)
+    expect(h.sendChatLeadAlertEmail).not.toHaveBeenCalled()
+  })
+
+  it("sends nothing for a conversation that was already captured", async () => {
+    h.getConversation.mockResolvedValue(conversation({ captured_at: "2026-08-23T10:01:00.000Z" }))
+
+    const res = await POST(req(submission()))
+
+    expect(res.status).toBe(409)
+    expect(h.sendChatLeadAlertEmail).not.toHaveBeenCalled()
   })
 })

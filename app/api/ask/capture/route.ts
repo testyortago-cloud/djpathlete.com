@@ -91,6 +91,8 @@ import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-en
 // G18. The same normaliser the contact spine uses, so "is there a number?" has
 // one answer; and the suppression test `confirmSmsConsent` already applies.
 import { normalisePhone } from "@/lib/lead-engine/identity"
+// G18 (revised in review): the coach is told of every capture by email.
+import { sendChatLeadAlertEmail } from "@/lib/email/lead-alerts"
 
 // Type-only, so the closed audit taxonomy is checked at compile time rather
 // than at write time: a slug that is not a row in `AUDIT_ACTIONS` stops the
@@ -307,6 +309,32 @@ export async function POST(request: Request) {
   if (!contactId) {
     return NextResponse.json({ error: COPY.failed }, { status: 500 })
   }
+
+  // 7b. TELL THE COACH (G18, revised in review 2026-09-27). On EVERY capture,
+  //     whatever sequence the person is in. A step in the chat follow-up could
+  //     only have reached the coach for a lead that sequence enrolled, and
+  //     `ai_chat` does not supersede, so a lead already inside another sequence
+  //     would never have been mentioned -- while the visitor is told "someone
+  //     has your details now". This email is what makes that sentence true.
+  //
+  //     FIRE AND FORGET, the funnel form's own shape (app/api/funnels/submit):
+  //     the lead is already saved, and an alert is worth less than the lead it
+  //     is about, so neither a mail outage nor a slow provider may change or
+  //     delay this response. The failure is logged by message only -- a
+  //     provider or database error can carry the submitted address in it.
+  void sendChatLeadAlertEmail({
+    businessId: conversation.business_id,
+    name,
+    email: email ?? null,
+    phone: phone ?? null,
+    conversationId,
+  }).catch((err) => {
+    const e = err as { code?: unknown; message?: unknown } | null | undefined
+    console.error(`[ask/capture] chat lead alert failed for contact ${contactId} (the lead was saved)`, {
+      code: typeof e?.code === "string" ? e.code : undefined,
+      message: typeof e?.message === "string" ? e.message : undefined,
+    })
+  })
 
   // 8. The link back to the conversation. Best effort, deliberately: the
   //    contact above is the durable record and it already exists, so a failure

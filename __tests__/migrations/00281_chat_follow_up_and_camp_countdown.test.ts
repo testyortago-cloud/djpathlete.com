@@ -89,17 +89,15 @@ function literal(list: SequenceLiteral[], key: string): SequenceLiteral {
 }
 
 // ---------------------------------------------------------------------------
-// The spec's copy, verbatim.
+// The spec's copy, verbatim -- as REVISED after review (spec section 1's
+// blockquote): no alert step, because the coach is told by the capture route's
+// transactional alert on every capture, and a description that no longer
+// claims the sequence tells the coach.
 // ---------------------------------------------------------------------------
 const CHAT_DESCRIPTION =
-  "Follows someone who leaves their details in the chat on your website. It tells you straight away so a person can reply, confirms to them that their question reached you, then checks in two days later."
+  "Follows someone who leaves their details in the chat on your website. It confirms to them that their question reached you, then checks in two days later."
 
 const CHAT_STEPS: StepLiteral[] = [
-  {
-    kind: "alert",
-    subject: "{{name}} left their details in your website chat",
-    body: "{{name}} asked a question in the chat on your website and left their details so someone can get back to them.\n\nThey were told a person would be in touch. Open the chat assistant in your admin to read what they asked, then reply by email or text.\n\nThey also get a short automatic email saying their question reached you.",
-  },
   {
     kind: "email",
     subject: "Your question reached us",
@@ -248,13 +246,19 @@ describe("00281 -- the chat lead follow-up (static)", () => {
     })
   })
 
-  it("is exactly the spec's seven steps: alert, email, wait 2 days, email, wait 1 day, text, stop", () => {
-    expect(chat().steps.map((s) => s.kind)).toEqual(["alert", "email", "wait", "email", "wait", "sms", "stop"])
+  it("is exactly the revised spec's six steps: email, wait 2 days, email, wait 1 day, text, stop", () => {
+    expect(chat().steps.map((s) => s.kind)).toEqual(["email", "wait", "email", "wait", "sms", "stop"])
     expect(chat().steps).toEqual(CHAT_STEPS)
   })
 
-  it("tells the coach FIRST -- the only thing that makes 'someone has your details now' true", () => {
-    expect(chat().steps[0].kind).toBe("alert")
+  it("has NO alert step: the coach is told by the capture route on every capture, enrolled or not", () => {
+    // A step can only reach the coach for a person the sequence ENROLLED, and
+    // `ai_chat` does not supersede (G14), so a chat lead already inside
+    // another sequence -- or inside this one's 30-day cooldown -- is never
+    // enrolled here. An alert step would tell the coach about some chat leads
+    // and silently not others. `sendChatLeadAlertEmail` tells them of all.
+    expect(chat().steps.some((s) => s.kind === "alert")).toBe(false)
+    expect(chat().description).not.toMatch(/tells you/i)
   })
 
   it("keeps its text plain ASCII, free of merge fields and STOP, and one segment with the opt-out appended", () => {
@@ -384,15 +388,42 @@ describe("00281 -- converting the camp sequences that already exist (static)", (
     expect(RAW).not.toMatch(/'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'/i)
   })
 
-  it("recognises the shape by structure: the 3-day wait / email / stop tail, and no 1-day wait yet", () => {
+  it("skips with a NOTICE, never an exception, at exactly four guards", () => {
+    // One tenant's edited copy must not block the conversion for everybody
+    // else. Four guards: already has a 1-day wait; positions not contiguous;
+    // branch targets; the tail is not the known shape. Counted EXACTLY, so
+    // deleting one guard is a failure here and not merely one fewer match.
     const b = block()
-    expect(b).toContain("'days_before_anchor' = '3'")
-    expect(b).toContain("'days_before_anchor' = '1'")
-    expect(b).toMatch(/kind = 'stop'/)
-    // Anything else is skipped with a NOTICE, never an exception: one tenant's
-    // edited copy must not block the conversion for everybody else.
-    expect((b.match(/RAISE NOTICE/g) ?? []).length).toBeGreaterThanOrEqual(3)
-    expect((b.match(/\bCONTINUE;/g) ?? []).length).toBeGreaterThanOrEqual(3)
+    // The messages themselves contain semicolons, so the quoted string is
+    // stepped over as a whole before looking for the statement's end.
+    expect((b.match(/RAISE NOTICE '(?:[^']|'')*'[^;']*;\s*CONTINUE;/g) ?? []).length).toBe(4)
+    expect((b.match(/\bCONTINUE;/g) ?? []).length).toBe(4)
+  })
+
+  it("recognises the shape by STRUCTURE, before anything moves: wait 3 days before at p, email at p+1, stop at p+2", () => {
+    // The guard mutant (c) removed survived every static assertion in the
+    // first cut of this file, and only the live half caught it. This pins
+    // the guard itself, and that it sits between computing p and the first
+    // write -- so a guard that moved below the run UPDATE fails too.
+    const b = block()
+    const firstWrite = b.indexOf("UPDATE public.sequence_runs")
+    const pAt = b.indexOf("p := hi - 2;")
+    expect(pAt).toBeGreaterThan(-1)
+    expect(firstWrite).toBeGreaterThan(pAt)
+    expect(norm(b.slice(pAt, firstWrite))).toMatch(
+      new RegExp(
+        "^p := hi - 2; " +
+          "if not exists \\( select 1 from public\\.sequence_steps where sequence_id = seq\\.id and position = p and kind = 'wait' and config->'wait_until'->>'days_before_anchor' = '3'\\) " +
+          "or not exists \\( select 1 from public\\.sequence_steps where sequence_id = seq\\.id and position = p \\+ 1 and kind = 'email'\\) " +
+          "or not exists \\( select 1 from public\\.sequence_steps where sequence_id = seq\\.id and position = p \\+ 2 and kind = 'stop'\\) " +
+          "then raise notice '[^']*', seq\\.id; continue; end if;$",
+      ),
+    )
+    // And "already converted" is asked FIRST, which is what makes a re-run a
+    // quiet no-op rather than a notice from a later guard.
+    const oneDay = b.indexOf("'days_before_anchor' = '1'")
+    expect(oneDay).toBeGreaterThan(-1)
+    expect(oneDay).toBeLessThan(b.indexOf("SELECT count(*), min(position), max(position)"))
   })
 
   it("moves the existing rows through the +1000 park, and deletes nothing", () => {
@@ -536,7 +567,7 @@ describeIf("00281 on the dev clone -- a new business starts with the chat follow
     expect(new Set(data!.map((s) => s.status))).toEqual(new Set(["draft"]))
   })
 
-  it("seeds the chat follow-up's seven steps exactly as the file says, filed under the new business", async () => {
+  it("seeds the chat follow-up's six steps exactly as the file says, filed under the new business", async () => {
     const { data: seq, error } = await db
       .from("sequences")
       .select("id, name, description, trigger_source, trigger_filter, reenrol_cooldown_days")
@@ -553,7 +584,7 @@ describeIf("00281 on the dev clone -- a new business starts with the chat follow
     })
     const steps = await stepsOf(db, seq!.id)
     expect(steps.map(asLiteral)).toEqual(CHAT_STEPS)
-    expect(steps.map((s) => s.position)).toEqual([0, 1, 2, 3, 4, 5, 6])
+    expect(steps.map((s) => s.position)).toEqual([0, 1, 2, 3, 4, 5])
     expect(new Set(steps.map((s) => s.business_id))).toEqual(new Set([businessId]))
   })
 
@@ -571,12 +602,28 @@ describeIf("00281 on the dev clone -- a new business starts with the chat follow
     expect(steps.map((s) => s.position)).toEqual([...Array(12).keys()])
   })
 
-  it("the backfill gave EVERY business on the clone one chat follow-up", async () => {
-    const { data: businesses, error: bErr } = await db.from("businesses").select("id")
-    if (bErr) throw new Error(bErr.message)
-    const { data: chats, error } = await db.from("sequences").select("business_id").eq("key", "chat_lead_follow_up")
+  it("the backfill gave EVERY business on the clone one six-step chat follow-up", async () => {
+    // ONE query, so it reads one snapshot. Two reads (businesses, then
+    // sequences) raced 00279's live half, which creates and deletes its own
+    // throwaway business while this file runs: a business born between the
+    // two reads showed up in one list and not the other. create_business
+    // provisions a business and its sequences in one transaction, so in a
+    // single snapshot every business already has its chat follow-up.
+    const { data, error } = await db
+      .from("businesses")
+      .select("id, name, sequences(key, sequence_steps(id))")
+      .eq("sequences.key", "chat_lead_follow_up")
     if (error) throw new Error(error.message)
-    expect(chats!.map((c) => c.business_id).sort()).toEqual(businesses!.map((b) => b.id).sort())
+    const rows = data as Array<{
+      id: string
+      name: string
+      sequences: Array<{ key: string; sequence_steps: unknown[] }>
+    }>
+    expect(rows.length).toBeGreaterThan(0)
+    const wrong = rows
+      .filter((b) => b.sequences.length !== 1 || b.sequences[0].sequence_steps.length !== CHAT_STEPS.length)
+      .map((b) => `${b.name}: ${b.sequences.map((s) => s.sequence_steps.length).join(",") || "none"}`)
+    expect(wrong).toEqual([])
   })
 })
 
