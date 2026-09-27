@@ -527,7 +527,8 @@ async function notifyCoachOfLead(input: {
     // Set at creation by templates that capture leads. Read here rather than
     // stored on the step, because the owner thinks of it as "who hears about
     // THIS campaign", not about one page of it. Still ADDITIVE since G30: the
-    // coach's own `reply_to` goes first and these are added to it.
+    // coach's own alert address (alert_email or reply_to -- see
+    // alertAddressing, migration 00282) goes first and these are added to it.
     extraRecipients: funnel?.notify_emails ?? null,
   })
 }

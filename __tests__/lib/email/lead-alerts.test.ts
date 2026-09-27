@@ -142,6 +142,28 @@ describe("sendQuizAlertEmail", () => {
     expect(arg.cc).toBe("priya@northfieldstrength.test")
   })
 
+  // Review round 1 (migration 00282). Before alert_email existed, a blank
+  // reply_to meant resolveSender returned null and the whole send was
+  // skipped -- this exact case was unreachable. Now alertAddressing can
+  // succeed on alert_email alone, so `replyTo: settings.reply_to` must be
+  // GUARDED, not unconditional, or Resend gets a broken `replyTo: ""` header.
+  it("goes to alert_email with no reply_to header at all when reply_to is blank -- MUTANT: an unconditional replyTo ships replyTo: ''", async () => {
+    getBusinessSettings.mockResolvedValue({
+      ...OTHER_COACH,
+      alert_email: "sales@northfieldstrength.test",
+      reply_to: "",
+    })
+
+    const out = await sendQuizAlertEmail(quizArgs)
+
+    expect(out).toEqual({ delivered: true })
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.to).toBe("sales@northfieldstrength.test")
+    expect(arg.cc).toBeUndefined()
+    expect(arg.replyTo).toBeUndefined()
+    expect("replyTo" in arg).toBe(false)
+  })
+
   it("renders the tenant's wordmark and postal address, and none of the platform's", async () => {
     await sendQuizAlertEmail(quizArgs)
 
@@ -791,6 +813,9 @@ describe("sendNewFunnelLeadEmail", () => {
     // It used to be addressed to a hardcoded personal mailbox, always first in
     // the list, for every funnel on every tenant.
     expect(arg.to).toEqual(["priya@northfieldstrength.test"])
+    // NO `alert_email` in OTHER_COACH -- this proves NULL/absent is still
+    // today's behaviour, unchanged: one address, no cc.
+    expect(arg.cc).toBeUndefined()
   })
 
   it("still replies to the LEAD, so replying answers the person", async () => {

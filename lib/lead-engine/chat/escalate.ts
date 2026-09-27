@@ -78,7 +78,11 @@ const ESCALATION_AUDIT_ACTION: AuditAction = "chat.escalated"
 export type EscalationNotice =
   /** A message left this process for a real address. */
   | "sent"
-  /** There was nobody to email: no `reply_to`, or no mail provider configured. */
+  /**
+   * There was nobody to email: no alert address (`alert_email` or `reply_to`
+   * -- see `alertAddressing`, migration 00282), or no mail provider
+   * configured.
+   */
   | "not_configured"
   /** There was an address, and telling them failed anyway. */
   | "failed"
@@ -206,9 +210,10 @@ export async function runEscalation(input: RunEscalationInput): Promise<Escalati
     // disagree.
     //
     // The two answers it can give still arrive here distinct, which is what
-    // this block cares about: a tenant with no `reply_to` comes back
-    // `delivered: false` (nobody to tell — `not_configured`), while a settings
-    // read that fails THROWS into the catch below (`failed`).
+    // this block cares about: a tenant with no alert address (`alert_email`
+    // or `reply_to`) comes back `delivered: false` (nobody to tell --
+    // `not_configured`), while a settings read that fails THROWS into the
+    // catch below (`failed`).
     const { delivered } = await sendChatEscalationEmail({
       businessId,
       conversationId,

@@ -242,6 +242,10 @@ describe("BusinessSettingsForm -- the alert email field", () => {
 
     const field = await screen.findByLabelText("Alert email")
     expect(field).toHaveAttribute("aria-invalid", "true")
+    // The error's own TEXT must be on screen, not just the aria-invalid flag
+    // (which a mutant rendering nothing, or a shared/generic message, would
+    // still satisfy) -- matches what zod's `.email()` actually produces.
+    expect(screen.getByText(/invalid email|not an email/i)).toBeInTheDocument()
     // The hint is replaced by the error, same convention as reply_to/logo_url.
     expect(screen.queryByText(ALERT_EMAIL_HINT)).toBeNull()
     expect(vi.mocked(fetch)).not.toHaveBeenCalled()

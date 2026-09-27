@@ -27,7 +27,7 @@
 // never been the primary destination and this change does not make it one.
 // The ONE exception is `sendInquiryAutoReply`'s own `Reply-To` HEADER, which
 // stays on `reply_to` even when `alert_email` is set -- see its own doc
-// comment, and `alertRecipient`'s, for why.
+// comment, and `replyToAddress`'s, for why.
 
 import type { BusinessSettings } from "@/lib/db/businesses"
 import { getBusinessSettings } from "@/lib/db/businesses"
@@ -35,10 +35,10 @@ import { calendlySchedulingUrlForBusiness } from "@/lib/calendly/config-for-busi
 import { schedulingLink } from "@/lib/calendly/links"
 import {
   alertAddressing,
-  alertRecipient,
   assertSendable,
   BusinessNotConfiguredError,
   businessFrom,
+  replyToAddress,
 } from "@/lib/email/business-identity"
 import {
   ctaButton,
@@ -116,7 +116,7 @@ async function loadSendableSettings(businessId: string): Promise<BusinessSetting
  * Separate from `assertSendable` because it answers a different question --
  * "where does this alert GO" rather than "may this tenant send at all" -- and
  * because the auto-reply below needs "the reply_to address" specifically
- * (via `alertRecipient`), not this.
+ * (via `replyToAddress`), not this.
  */
 function requireAlertAddressing(settings: BusinessSettings): { to: string; cc?: string } {
   const addressing = alertAddressing(settings)
@@ -130,8 +130,9 @@ function requireAlertAddressing(settings: BusinessSettings): { to: string; cc?: 
  * IT REPORTS WHETHER IT DELIVERED. The caller writes that flag onto the
  * attempt, so it has to be the truth: an attempt marked `sent` when nothing
  * left the building is worse than one marked `failed`, because nobody goes
- * looking for it. That is why an unconfigured tenant and a missing reply_to
- * both come back `false` here rather than throwing.
+ * looking for it. That is why an unconfigured tenant and no alert address
+ * (`alert_email` or `reply_to`) both come back `false` here rather than
+ * throwing.
  *
  * Every visitor-typed string goes through `escapeHtml`.
  */
@@ -204,7 +205,15 @@ export async function sendQuizAlertEmail({
     from: businessFrom(settings),
     to,
     ...(cc ? { cc } : {}),
-    replyTo: settings.reply_to,
+    // Guarded, not unconditional, since migration 00282: `resolveSender`
+    // above now succeeds whenever EITHER `alert_email` or `reply_to` is set
+    // (via `alertAddressing`), so a tenant with `alert_email` set and a
+    // blank `reply_to` reaches here -- a case that used to be impossible
+    // (resolveSender used to require `reply_to` itself). An unconditional
+    // `replyTo: ""` would ship a broken header, and previously this whole
+    // send would have been skipped rather than shipped, so the bug is a
+    // regression, not a pre-existing gap. Same shape as `sendInquiryAutoReply`.
+    ...(settings.reply_to?.trim() ? { replyTo: settings.reply_to } : {}),
     subject: `[Quiz] ${name} scored ${score}/100 — ${tierKey}`,
     html,
   })
@@ -677,7 +686,7 @@ export async function sendInquiryEmail({
  * still applies: this is a commercial message to a member of the public and
  * it needs a postal address on it.
  *
- * `replyTo` HERE IS `alertRecipient(settings)` -- `reply_to`, ALONE, NEVER
+ * `replyTo` HERE IS `replyToAddress(settings)` -- `reply_to`, ALONE, NEVER
  * `alert_email` -- and that is deliberate, not an oversight left over from
  * before migration 00282. `alert_email` exists to be a mailbox nothing reads
  * FROM (a `sales@` distribution address, forwarding rule, or shared inbox);
@@ -685,10 +694,11 @@ export async function sendInquiryEmail({
  * reply at `alert_email` risks it landing somewhere nobody checks for a
  * human reply, which is precisely the failure mode `alert_email` was
  * invented to route AROUND for the coach's own alerts, not to inherit here.
- * `alertRecipient` (as opposed to `alertAddressing`) is what makes this
+ * `replyToAddress` (as opposed to `alertAddressing`) is what makes this
  * explicit: it returns "the reply_to address" and nothing else, so a future
  * caller reaching for "where do I send a REPLY to a person" cannot
- * accidentally get `alert_email` back.
+ * accidentally get `alert_email` back -- the rename from `alertRecipient`
+ * (review round 1, migration 00282) exists for exactly that reason.
  *
  * THE BOOKING LINK IS THE COACH'S OWN (G30's carried clause). Resolved from
  * `calendlySchedulingUrlForBusiness` -- the LINK-ONLY resolver, never
@@ -720,7 +730,7 @@ export async function sendInquiryAutoReply({
   serviceLabel: string
 }) {
   const settings = await loadSendableSettings(businessId)
-  const replyTo = alertRecipient(settings)
+  const replyTo = replyToAddress(settings)
 
   let schedulingUrl: string | null = null
   try {

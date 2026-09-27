@@ -79,14 +79,18 @@ export function businessFrom(settings: BusinessSettings): string {
 /**
  * The tenant's own `reply_to`, trimmed, or null when nobody has filled one in.
  *
- * NARROWED SCOPE (migration 00282, "Alert email"). Before `alert_email`
- * existed, this WAS the operator-alert destination -- every coach alert went
- * `to: reply_to`. It no longer is: `alertAddressing` below is the one place
- * that decides where a coach alert goes, and it reads `alert_email` first.
+ * NAMED FOR EXACTLY WHAT IT RETURNS, deliberately, since migration 00282
+ * ("Alert email") review round 1: the old name, `alertRecipient`, invited a
+ * future caller to reach for it whenever they wanted "where does a coach
+ * alert go" -- which stopped being `reply_to` alone the day `alert_email`
+ * shipped. Before `alert_email` existed this WAS the operator-alert
+ * destination -- every coach alert went `to: reply_to`. It no longer is:
+ * `alertAddressing` below is the one place that decides where a coach alert
+ * goes, and it reads `alert_email` first.
  *
  * What still needs THIS function, specifically, is
  * `sendInquiryAutoReply`'s `Reply-To` header (lib/email/lead-alerts.ts,
- * `const replyTo = alertRecipient(settings)`): the applicant's auto-reply
+ * `const replyTo = replyToAddress(settings)`): the applicant's auto-reply
  * must keep landing a reply at `reply_to`, never `alert_email`, because
  * `alert_email` can be a distribution mailbox nobody reads FROM (`sales@`
  * cannot receive a reply meant for a human). If another caller needs "the
@@ -101,7 +105,7 @@ export function businessFrom(settings: BusinessSettings): string {
  * which is how "nobody configured an address" gets mistaken for "delivery
  * failed".
  */
-export function alertRecipient(settings: BusinessSettings): string | null {
+export function replyToAddress(settings: BusinessSettings): string | null {
   const replyTo = settings.reply_to?.trim()
   return replyTo ? replyTo : null
 }
@@ -134,7 +138,7 @@ export function alertRecipient(settings: BusinessSettings): string | null {
  *    (undefined covers a `business_settings` row read before the migration
  *    added the column) -- today's behaviour, unchanged.
  *  - `null` when BOTH are blank: there is nobody to tell. Every caller must
- *    treat `null` as "skip the send", the same way `alertRecipient` returning
+ *    treat `null` as "skip the send", the same way `replyToAddress` returning
  *    null always has -- an empty string would satisfy `to: string` and reach
  *    the provider as a rejection, misfiling "nobody configured an address" as
  *    "delivery failed".
