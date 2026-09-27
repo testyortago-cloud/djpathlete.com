@@ -708,6 +708,11 @@ export async function sendInquiryAutoReply({
           </p>
     `
 
+  // serviceLabel is not visitor text: app/api/inquiry/route.ts derives it from
+  // SERVICE_LABELS[service] (lib/validators/inquiry.ts), a fixed Record keyed by a
+  // z.enum. No escaping needed unless that stops being true. NOT an HTML comment:
+  // this template literal ships verbatim as the sent email's HTML, so a `<!--` note
+  // here would put an internal repo path in every applicant's inbox.
   const html = tenantEmailLayout(
     `
     ${heroBanner("Application Received", `We&rsquo;re excited to hear from you, ${escapeHtml(firstName)}.`)}
@@ -717,9 +722,6 @@ export async function sendInquiryAutoReply({
         <td style="padding:48px 48px 52px;">
 
           <p style="margin:0 0 24px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:16px; color:#5c5750; line-height:1.8;">
-            <!-- serviceLabel is not visitor text: app/api/inquiry/route.ts derives it from
-                 SERVICE_LABELS[service] (lib/validators/inquiry.ts), a fixed Record keyed by a
-                 z.enum. No escaping needed unless that stops being true. -->
             Thanks for applying for <strong style="color:#0E3F50;">${serviceLabel}</strong>. We&rsquo;ve received your application and our team will review it shortly.
           </p>
 

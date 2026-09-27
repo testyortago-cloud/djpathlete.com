@@ -654,6 +654,21 @@ describe("sendInquiryAutoReply", () => {
     expect(html).not.toContain('<a href="https://evil.example">x</a>')
     expect(html).toContain("&lt;a href=&quot;https://evil.example&quot;&gt;x&lt;/a&gt;")
   })
+
+  it("ships no HTML comment naming an internal repo path -- an applicant reads this HTML raw", async () => {
+    // A `<!-- ... -->` note inside the template literal is not a code
+    // comment: it is sent verbatim as part of the email's HTML, so anything
+    // written there reaches the applicant's inbox (and their mail client's
+    // "view source"). A comment explaining why serviceLabel is safe belongs
+    // above the template as a `//` comment, never inside it.
+    await sendInquiryAutoReply(autoReplyArgs)
+
+    const html = String(sendMock.mock.calls[0][0].html)
+    const htmlComments = html.match(/<!--[\s\S]*?-->/g) ?? []
+    for (const comment of htmlComments) {
+      expect(comment).not.toMatch(/app\/api|lib\//)
+    }
+  })
 })
 
 describe("sendNewFunnelLeadEmail", () => {
