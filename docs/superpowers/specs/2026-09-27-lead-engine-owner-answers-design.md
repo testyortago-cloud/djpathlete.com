@@ -50,29 +50,24 @@ capture). The visitor is told "Thanks — someone has your details now."
 - key `chat_lead_follow_up`, name **Chat Lead Follow-Up**, `trigger_source = 'ai_chat'`, filter `{}`,
   cooldown 30 days, status **draft** everywhere (including the platform business).
 - Description (coach-facing): "Follows someone who leaves their details in the chat on your website.
-  It tells you straight away so a person can reply, confirms to them that their question reached you,
-  then checks in two days later."
+  It confirms to them that their question reached you, then checks in two days later."
 
 | # | Step | Content |
 |---|---|---|
-| 1 | Tell the coach | Subject: `{{name}} left their details in your website chat` · Body: `{{name}} asked a question in the chat on your website and left their details so someone can get back to them.\n\nThey were told a person would be in touch. Open the chat assistant in your admin to read what they asked, then reply by email or text.\n\nThey also get a short automatic email saying their question reached you.` |
-| 2 | Email | Subject: `Your question reached us` · Body: `Hi {{first_name}}\n\nThanks for leaving your details in the chat. Your question has been passed on, and a real person will get back to you.\n\nIf there's anything you'd like to add in the meantime, such as the sport, the athlete's age, or what you're hoping to fix, just reply to this email. It helps us give you a proper answer rather than a general one.` |
-| 3 | Wait | 2 days (2880) |
-| 4 | Email | Subject: `Did you get what you needed?` · Body: `Hi {{first_name}}\n\nJust checking your question got answered. If it didn't, or if it raised new ones, reply here and it comes straight to us.\n\nIf you're weighing up whether training with us is the right fit, the easiest next step is a short call. Reply with a couple of times that suit you and we'll set it up.` |
-| 5 | Wait | 1 day (1440) — every text sits behind a wait (00272: a text right after an email lands the next morning under the daily cap of 1) |
-| 6 | Text | `Checking your question from the website chat got answered. Reply here if you still need anything.` — plain ASCII, no `{{name}}`, no STOP line (appended automatically), one GSM-7 segment with the opt-out sentence, per 00272's four rules |
-| 7 | End here | |
+| 1 | Email | Subject: `Your question reached us` · Body: `Hi {{first_name}}\n\nThanks for leaving your details in the chat. Your question has been passed on, and a real person will get back to you.\n\nIf there's anything you'd like to add in the meantime, such as the sport, the athlete's age, or what you're hoping to fix, just reply to this email. It helps us give you a proper answer rather than a general one.` |
+| 2 | Wait | 2 days (2880) |
+| 3 | Email | Subject: `Did you get what you needed?` · Body: `Hi {{first_name}}\n\nJust checking your question got answered. If it didn't, or if it raised new ones, reply here and it comes straight to us.\n\nIf you're weighing up whether training with us is the right fit, the easiest next step is a short call. Reply with a couple of times that suit you and we'll set it up.` |
+| 4 | Wait | 1 day (1440) — every text sits behind a wait (00272: a text right after an email lands the next morning under the daily cap of 1) |
+| 5 | Text | `Checking your question from the website chat got answered. Reply here if you still need anything.` — plain ASCII, no `{{name}}`, no STOP line (appended automatically), one GSM-7 segment with the opt-out sentence, per 00272's four rules |
+| 6 | End here | |
 
-Why the coach alert comes first: it is the only thing that makes "someone has your details now" true.
-An `alert` is never held by quiet hours or the daily cap and never consumes the lead's allowance
-(G12), so step 2 still goes out on the next tick. In an alert, `{{name}}` is the person it concerns.
+**The coach alert** is `sendChatLeadAlertEmail`, sent and awaited by `POST /api/ask/capture` on every
+capture (see the blockquote above for why it is not a sequence step).
 
-**Superseding.** `IS_SUPERSEDING_SOURCE.ai_chat` becomes `true`. Leaving details and asking to be
-contacted is the same kind of act as the application form (`inquiry: true`), and with `false` a chat
-lead already inside, say, the newsletter welcome would be REFUSED the follow-up (G14 option B refuses
-non-superseding sources while another run is active), so the coach would never be told. Check the G14
-cooldown-forgiveness narrowing ("forgiveness is narrowed to triggers that do not themselves
-supersede") still holds, and pin `ai_chat` in `enroll.test.ts`.
+**Superseding.** `IS_SUPERSEDING_SOURCE.ai_chat` stays `false`. A chat lead already inside another
+sequence keeps that sequence and is refused the chat follow-up (G14 option B); the coach is still told
+by the transactional alert. `enroll.test.ts` pins that an `ai_chat` event does not exit an active
+`camp_clinic_deadline` run.
 
 **Why a draft, not live.** 00229's rule: the gate on a sequence reaching the public is a human reading
 it. The owner switches it on at Sequences → Chat Lead Follow-Up with one confirmed click.
