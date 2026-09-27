@@ -95,6 +95,10 @@ const ROOTS = [
   // migration is exactly where a brand word left in by mistake would reach
   // every future tenant's drafts.
   "supabase/migrations/00279_business_starter_set.sql",
+  // G18/G11 -- 00281 re-issues that whole starter set (twelve sequences now,
+  // with the chat follow-up and the camp's fourth reminder), so it is the file
+  // every future tenant's drafts actually come from.
+  "supabase/migrations/00281_chat_follow_up_and_camp_countdown.sql",
   // G47 -- the built-in quiz, "Athlete Quiz — the original", which any business
   // can clone into its own quiz funnel (`copyFrom: "builtin:rpi"`). Two of its
   // result buttons named the operator until 2026-09-26. The platform's own

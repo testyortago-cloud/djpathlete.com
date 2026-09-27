@@ -75,9 +75,10 @@ export type EnrolmentSkipReason = (typeof ENROLMENT_SKIP_REASONS)[keyof typeof E
  *
  * THE SOURCES THAT MAY INTERRUPT A FOLLOW-UP ALREADY IN FLIGHT. Each one is
  * a direct, deliberate act by the person in the last few seconds — they took
- * the quiz, sent an application, abandoned a checkout, signed up for a camp
- * — so what they just did is more relevant than whatever they were being
- * sent before, and the older run is exited `superseded`.
+ * the quiz, sent an application, abandoned a checkout, signed up for a camp,
+ * asked in the chat for a person to reply — so what they just did is more
+ * relevant than whatever they were being sent before, and the older run is
+ * exited `superseded`.
  *
  * A trigger NOT on this list is refused instead: subscribing to the
  * newsletter or filling a funnel form while already mid-sequence is not a
@@ -121,6 +122,20 @@ export const IS_SUPERSEDING_SOURCE: Record<ContactEventSource, boolean> = {
   // the day somebody writes a booking-triggered sequence, and the Record type
   // is what forced the question to be asked at all.
   booking: true,
+  // G18, 2026-09-27 (migration 00281). Leaving your details in the chat and
+  // asking to be contacted is the same kind of act as the application form
+  // (`inquiry`, above): a person asking, in the last few seconds, for a
+  // person to reply. And with `false` the cost would land on the coach, not
+  // just the lead: somebody already inside, say, `newsletter_welcome` would be
+  // REFUSED `chat_lead_follow_up`, whose first step is the alert that tells
+  // the coach they exist -- the only thing that does. The visitor has just
+  // been told "someone has your details now".
+  //
+  // It also means the cooldown's forgiveness of a `superseded` run (see
+  // `hasRunFinishedWithin`) no longer applies to a chat capture: a chat
+  // follow-up cut short by, say, a quiz still holds the next chat capture for
+  // its 30 days, exactly as a completed one does. enroll.test.ts pins both.
+  ai_chat: true,
 
   funnel_form: false,
   funnel_checkout: false,
@@ -131,7 +146,6 @@ export const IS_SUPERSEDING_SOURCE: Record<ContactEventSource, boolean> = {
   assessment: false,
   questionnaire: false,
   step_up: false,
-  ai_chat: false,
   purchase: false,
   // G29. UNREACHABLE TODAY, same as `booking` above but for the opposite
   // reason: a hand-made card never calls `enrollIfTriggered` at all (see
@@ -595,9 +609,10 @@ export async function enrollIfTriggered(args: {
 
   // Nothing matched this source, so nothing below can change the outcome.
   // Returning here keeps the two extra reads G14 adds off every lead capture
-  // whose source has no sequence at all (`shop`, `assessment`, `ai_chat`,
-  // `purchase`, …) — and, more than a round-trip, keeps their failure paths
-  // away from an enrolment that was never going to happen.
+  // whose source has no ACTIVE sequence (`shop`, `assessment`, `purchase`, …;
+  // `ai_chat` too, until a coach switches on the draft 00281 gave them) — and,
+  // more than a round-trip, keeps their failure paths away from an enrolment
+  // that was never going to happen.
   if (candidates.length === 0) return { enrolled: [] }
 
   // G14. Every run this contact is partway through RIGHT NOW, read once

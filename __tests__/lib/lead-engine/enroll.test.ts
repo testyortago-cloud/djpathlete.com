@@ -1092,11 +1092,37 @@ describe("enrollIfTriggered — one sequence at a time", () => {
       expect(store.sequence_runs.filter((r) => r.status === "active")).toHaveLength(1)
     })
 
+    it("a chat capture supersedes too, or the coach is never told about the chat lead (G18)", async () => {
+      // 00281 gave every business `chat_lead_follow_up`, whose FIRST step is
+      // the alert that tells the coach somebody left their details in the
+      // chat -- nothing else does. Were `ai_chat` refused like the newsletter,
+      // somebody already inside `newsletter_welcome` who then asked for a
+      // person in the chat would get no follow-up, and the coach would never
+      // hear of them: the visitor was just told "someone has your details now".
+      seedSequence("seq-newsletter", { trigger_source: "newsletter", key: "newsletter_welcome" })
+      seedSequence("seq-chat", { trigger_source: "ai_chat", key: "chat_lead_follow_up" })
+      seedActiveRun("run-old", "contact-1", "seq-newsletter")
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "ai_chat",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual(["seq-chat"])
+      const old = store.sequence_runs.find((r) => r.id === "run-old")
+      expect(old?.status).toBe("exited")
+      expect(old?.exit_reason).toBe("superseded")
+      const active = store.sequence_runs.filter((r) => r.status === "active")
+      expect(active.map((r) => r.sequence_id)).toEqual(["seq-chat"])
+      expect(skipRows()).toHaveLength(0)
+    })
+
     it("supersedes for every source the rule names, and for no other", async () => {
       // Driven off the exported set rather than a list written here, so a
       // source added to the rule without a test goes to the `refused` half
       // and fails loudly.
-      for (const source of ["quiz", "inquiry", "checkout_abandoned", "event_signup"] as const) {
+      for (const source of ["quiz", "inquiry", "checkout_abandoned", "event_signup", "ai_chat"] as const) {
         store.sequences = []
         store.sequence_runs = []
         store.contact_timeline_events = []
@@ -1146,7 +1172,7 @@ describe("enrollIfTriggered — one sequence at a time", () => {
   })
 
   describe("which sources supersede is a product decision, so it is pinned exactly", () => {
-    it("is exactly these five, and nothing has been added to it quietly", () => {
+    it("is exactly these six, and nothing has been added to it quietly", () => {
       // Membership is the owner's call (2026-09-20), not an implementation
       // detail: each entry decides whether a real person's live follow-up
       // gets thrown away. Asserting the whole set — rather than only that
@@ -1165,8 +1191,13 @@ describe("enrollIfTriggered — one sequence at a time", () => {
       // so a booking capture enrols nobody and there is nothing to supersede.
       // The live mechanism by which a booking ends a follow-up is
       // `exitRunsForContact(contactId, "booking", …)` in lib/bookings/ingest.ts.
+      //
+      // `ai_chat` joined on 2026-09-27 (G18, migration 00281): leaving your
+      // details in the chat and asking to be contacted is the same kind of act
+      // as the application form, and the chat follow-up's first step is the
+      // only thing that tells the coach. Refused, the coach would never hear.
       expect([...SUPERSEDING_SOURCES].sort()).toEqual(
-        ["booking", "checkout_abandoned", "event_signup", "inquiry", "quiz"].sort(),
+        ["ai_chat", "booking", "checkout_abandoned", "event_signup", "inquiry", "quiz"].sort(),
       )
     })
 
@@ -1257,8 +1288,7 @@ describe("enrollIfTriggered — one sequence at a time", () => {
   describe("the cost it adds to a lead capture", () => {
     it("reads no runs at all when no sequence matches the source", async () => {
       // `enrollIfTriggered` runs on EVERY lead capture, and most sources
-      // (`shop`, `assessment`, `ai_chat`, `purchase`, …) have no sequence at
-      // all. Two extra round-trips that cannot change the outcome is the
+      // (`shop`, `assessment`, `purchase`, …) have no active sequence at all. Two extra round-trips that cannot change the outcome is the
       // small cost; the real one is that their failure paths would reach an
       // enrolment that was never going to happen — `recordContactEvent`
       // swallows a throw, so a transient read error would silently lose it.
@@ -1572,6 +1602,43 @@ describe("enrollIfTriggered — one sequence at a time", () => {
 
       expect(result.enrolled).toEqual([])
       expect(skipRows()[0]?.metadata).toMatchObject({ reason: "cooldown" })
+    })
+
+    it("which now includes a chat capture: a superseded chat follow-up still holds the next one for its 30 days (G18)", async () => {
+      // The narrowing above applies to `ai_chat` since it became a superseding
+      // source (00281), and this pins what that costs, stated rather than
+      // discovered later:
+      //
+      //   day 0  they leave details in the chat -> chat_lead_follow_up starts,
+      //          and its first step tells the coach
+      //   day 1  they take the quiz -> the chat run is exited `superseded`
+      //   day 8  they leave details in the chat AGAIN -> refused by the
+      //          30-day cooldown, so the coach is NOT alerted a second time
+      //
+      // That is the same answer a COMPLETED chat run inside 30 days already
+      // gets, so it is the cooldown working, not a new hole. Forgiving it
+      // instead would let the chat follow-up re-arm itself inside its own
+      // window -- the loop the narrowing exists to stop.
+      seedSequence("seq-chat", { trigger_source: "ai_chat", key: "chat_lead_follow_up", reenrol_cooldown_days: 30 })
+      store.sequence_runs.push({
+        id: "run-superseded",
+        business_id: SINGLETON_BUSINESS_ID,
+        sequence_id: "seq-chat",
+        contact_id: "contact-1",
+        status: "exited",
+        exit_reason: "superseded",
+        current_position: 2,
+        completed_at: daysAgo(7),
+      })
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "ai_chat",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual([])
+      expect(skipRows()[0]?.metadata).toMatchObject({ reason: "cooldown", sequence_key: "chat_lead_follow_up" })
     })
 
     it("but an ordinary exit inside the window still does — the control", async () => {

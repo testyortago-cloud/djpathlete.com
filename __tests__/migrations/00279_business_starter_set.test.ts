@@ -492,11 +492,26 @@ const describeIf = url && key ? describe : describe.skip
 const DEV_REF = "anjvztjiokcgiyhobknq"
 const PLATFORM_ID = "00000000-0000-0000-0000-000000000001"
 
+/**
+ * RETARGETED BY 00281, not loosened. 00281 re-issued `seed_business_starter_set`
+ * WHOLE (as this file's header tells every later copy migration to) with a
+ * twelfth sequence, `chat_lead_follow_up`, and the camp's 14/7/3/1 tail. So the
+ * live database now provisions what 00281's literals say, not 00279's: comparing
+ * against 00279's own eleven would fail on a database that is exactly right.
+ * The static half above still pins 00279's file as written. When a later
+ * migration re-issues the function again, this is the one line to move.
+ */
+const CURRENT_STARTER_SET = "supabase/migrations/00281_chat_follow_up_and_camp_countdown.sql"
+function currentSequenceLiterals(): SequenceLiteral[] {
+  const raw = readFileSync(join(process.cwd(), CURRENT_STARTER_SET), "utf8")
+  return [...raw.matchAll(/\$seq\$([\s\S]*?)\$seq\$/g)].map((m) => JSON.parse(m[1]) as SequenceLiteral)
+}
+
 describeIf("00279 on the dev clone -- create_business provisions a whole business", () => {
   let db: SupabaseClient
   let businessId: string
   let platformBefore: Record<string, number>
-  const literals = sequenceLiterals()
+  const literals = currentSequenceLiterals()
 
   async function counts(id: string): Promise<Record<string, number>> {
     const out: Record<string, number> = {}
@@ -550,9 +565,11 @@ describeIf("00279 on the dev clone -- create_business provisions a whole busines
     }
   })
 
-  it("gives it the eleven sequences, every one a draft", async () => {
+  it("gives it the starter sequences -- twelve since 00281 added the chat follow-up -- every one a draft", async () => {
     const { data, error } = await db.from("sequences").select("key, status").eq("business_id", businessId)
     if (error) throw new Error(error.message)
+    // Exact, not derived alone: the eleven 00279 seeded plus 00281's one.
+    expect(literals.map((s) => s.key).sort()).toEqual([...STARTER_KEYS, "chat_lead_follow_up"].sort())
     expect(data!.map((s) => s.key).sort()).toEqual(literals.map((s) => s.key).sort())
     expect(new Set(data!.map((s) => s.status))).toEqual(new Set(["draft"]))
   })

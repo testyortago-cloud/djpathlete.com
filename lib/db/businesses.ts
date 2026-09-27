@@ -128,11 +128,11 @@ const SLUG_UNIQUE_CONSTRAINT = "businesses_slug_key"
 
 /**
  * Creates a whole tenant -- the business, its settings, booking host and
- * owner membership, then, through `seed_business_starter_set` (00279), the
- * three boards and eleven draft sequences -- in ONE transaction, via the
- * plpgsql function of migration 00244. Separate inserts from here could not
- * be atomic (supabase-js opens no transaction) and any subset is a broken
- * tenant.
+ * owner membership, then, through `seed_business_starter_set` (00279, last
+ * re-issued by 00281), the three boards and twelve draft sequences -- in ONE
+ * transaction, via the plpgsql function of migration 00244. Separate inserts
+ * from here could not be atomic (supabase-js opens no transaction) and any
+ * subset is a broken tenant.
  *
  * Takes NO default businessId and never will: a new function that defaults
  * the tenant is how the next leak ships.
