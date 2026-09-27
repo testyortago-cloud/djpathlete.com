@@ -50,6 +50,7 @@ import { recordContactEvent } from "@/lib/db/contacts"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { hasEmailConsentDisplayName, renderEmailConsentWording } from "@/lib/lead-engine/email-consent-wording"
 import { sanitiseAnswers, scoreQuiz } from "@/lib/quizzes/score"
 import { quizSubmitterRole } from "@/lib/quizzes/submitter-role"
 import type { QuizDefinition } from "@/lib/quizzes/types"
@@ -91,6 +92,8 @@ const bodySchema = z.object({
   email: z.string().email().max(200),
   phone: z.string().max(40).optional(),
   smsConsent: z.boolean().optional().default(false),
+  // Same reasoning, mirrored for the email tick's checkbox.
+  emailConsent: z.boolean().optional().default(false),
   // G06: see lib/validators/timezone.ts.
   timezone: submittedTimezone,
   website: z.string().optional(),
@@ -500,6 +503,32 @@ async function handoff(input: {
           // Re-rendered here from the same function the island used, never
           // relayed from the client: evidence of consent is what was SHOWN.
           wordingShown: renderSmsConsentWording(settings.display_name),
+          ip,
+          userAgent: request.headers.get("user-agent"),
+        })
+      }
+    } catch (error) {
+      logFailure("recordConsent", error, correlation)
+    }
+  }
+
+  // 5b (decision 7). The email tick's own consent write, same fire-and-forget
+  // shape as the SMS block above. `body.email` needs no presence check —
+  // unlike phone, the schema REQUIRES an email on every submission — so this
+  // only ever gates on the box having been ticked and a contact existing.
+  if (contactId && body.emailConsent) {
+    try {
+      const settings = await getBusinessSettings(businessId)
+      if (!hasEmailConsentDisplayName(settings.display_name)) {
+        console.warn("[quiz/submit] email consent skipped: business_settings.display_name is blank")
+      } else {
+        await recordConsent({
+          businessId,
+          contactId,
+          channel: "email",
+          granted: true,
+          source: "quiz",
+          wordingShown: renderEmailConsentWording(settings.display_name),
           ip,
           userAgent: request.headers.get("user-agent"),
         })

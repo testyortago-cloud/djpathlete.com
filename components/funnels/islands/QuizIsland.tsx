@@ -5,6 +5,7 @@ import { getQuizDefinition } from "@/lib/db/quizzes"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { publicQuizDefinition } from "@/lib/quizzes/public-definition"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { hasEmailConsentDisplayName, renderEmailConsentWording } from "@/lib/lead-engine/email-consent-wording"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
 import { QuizRunner } from "./QuizRunner"
 import type { FunnelRenderContext } from "./index"
@@ -61,6 +62,9 @@ export async function QuizIsland({ props, context }: QuizIslandProps) {
   const settings = await getBusinessSettings(businessId).catch(() => null)
   const displayName = settings?.display_name
   const smsConsentWording = hasSmsConsentDisplayName(displayName) ? renderSmsConsentWording(displayName) : undefined
+  const emailConsentWording = hasEmailConsentDisplayName(displayName)
+    ? renderEmailConsentWording(displayName)
+    : undefined
 
   return (
     <QuizRunner
@@ -68,6 +72,7 @@ export async function QuizIsland({ props, context }: QuizIslandProps) {
       submitLabel={typeof props.submitLabel === "string" ? props.submitLabel : "See my result"}
       consentText={typeof props.consentText === "string" ? props.consentText : undefined}
       smsConsentWording={smsConsentWording}
+      emailConsentWording={emailConsentWording}
       isPreview={context.isPreview}
       testRun={context.testRun === true}
       // The context has carried these since the island registry existed, and

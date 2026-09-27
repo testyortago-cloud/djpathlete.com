@@ -212,6 +212,112 @@ describe("QuizRunner — the walk", () => {
     expect(screen.getByText("I agree to receive text messages from DJP Athlete.")).toBeTruthy()
   })
 
+  it("shows no email consent checkbox when no wording was supplied", () => {
+    renderRunner()
+    start()
+    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0)
+  })
+
+  it("shows the email consent checkbox, UNCHECKED, with the exact wording it was given", () => {
+    renderRunner({
+      emailConsentWording:
+        "Yes, DJP Athlete can email me training tips, news and offers. I can unsubscribe at any time.",
+    })
+    start()
+    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    const checkbox = screen.getByRole("checkbox") as HTMLInputElement
+    expect(checkbox.checked).toBe(false)
+    expect(
+      screen.getByText("Yes, DJP Athlete can email me training tips, news and offers. I can unsubscribe at any time."),
+    ).toBeTruthy()
+  })
+
+  it("shows BOTH the SMS and email checkboxes, independently, when both wordings are given", () => {
+    renderRunner({
+      smsConsentWording: "I agree to receive text messages from DJP Athlete.",
+      emailConsentWording:
+        "Yes, DJP Athlete can email me training tips, news and offers. I can unsubscribe at any time.",
+    })
+    start()
+    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2)
+  })
+
+  it("posts emailConsent: true when the box is ticked before submit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (String(url).includes("/api/quiz/progress")) {
+          return new Response(JSON.stringify({ attemptId: "att-1" }), { status: 200 })
+        }
+        return new Response(
+          JSON.stringify({ score: 0, tier: null, profile: null, branch: null }),
+          { status: 200 },
+        )
+      }),
+    )
+    renderRunner({
+      emailConsentWording:
+        "Yes, DJP Athlete can email me training tips, news and offers. I can unsubscribe at any time.",
+    })
+    start()
+    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    fireEvent.click(screen.getByRole("checkbox"))
+    fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Sam" } })
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sam@example.com" } })
+    fireEvent.click(screen.getByRole("button", { name: "See my result" }))
+
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      expect(calls.some((c) => String(c[0]).includes("/api/quiz/submit"))).toBe(true)
+    })
+    const submitCall = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find((c) =>
+      String(c[0]).includes("/api/quiz/submit"),
+    )!
+    const body = JSON.parse((submitCall[1] as RequestInit).body as string)
+    expect(body.emailConsent).toBe(true)
+  })
+
+  it("posts emailConsent: false when the box is left unchecked", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (String(url).includes("/api/quiz/progress")) {
+          return new Response(JSON.stringify({ attemptId: "att-1" }), { status: 200 })
+        }
+        return new Response(
+          JSON.stringify({ score: 0, tier: null, profile: null, branch: null }),
+          { status: 200 },
+        )
+      }),
+    )
+    renderRunner({
+      emailConsentWording:
+        "Yes, DJP Athlete can email me training tips, news and offers. I can unsubscribe at any time.",
+    })
+    start()
+    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Sam" } })
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sam@example.com" } })
+    fireEvent.click(screen.getByRole("button", { name: "See my result" }))
+
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      expect(calls.some((c) => String(c[0]).includes("/api/quiz/submit"))).toBe(true)
+    })
+    const submitCall = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find((c) =>
+      String(c[0]).includes("/api/quiz/submit"),
+    )!
+    const body = JSON.parse((submitCall[1] as RequestInit).body as string)
+    expect(body.emailConsent).toBe(false)
+  })
+
   it("refuses to submit in a plain preview that is not a test run", async () => {
     renderRunner({ isPreview: true })
     start()

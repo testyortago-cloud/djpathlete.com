@@ -59,6 +59,10 @@ export const inquiryFormSchema = z.object({
   /** SMS opt-in checkbox next to the phone field (Lead Engine Stage 4).
    * Unchecked by default — wire name matches what the checkbox posts. */
   sms_consent: z.boolean().optional().default(false),
+  /** Email opt-in checkbox next to the email field (decision 7). Same
+   * "unchecked by default, wire name matches the checkbox" contract as
+   * `sms_consent` above. */
+  email_consent: z.boolean().optional().default(false),
   /** Which form actually submitted this — StepUpInquiryForm is the one
    * source of "step_up" spine events; every other inquiry surface omits
    * this field and the route defaults to "inquiry". See

@@ -363,6 +363,53 @@ describe("POST /api/quiz/submit", () => {
     expect(recordConsent).not.toHaveBeenCalled()
   })
 
+  it("9a. files the email consent wording byte-for-byte as renderEmailConsentWording renders it", async () => {
+    const { renderEmailConsentWording } = await import("@/lib/lead-engine/email-consent-wording")
+    await post({ emailConsent: true })
+    expect(recordConsent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contactId: CONTACT_ID,
+        channel: "email",
+        granted: true,
+        source: "quiz",
+        wordingShown: renderEmailConsentWording("DJP Athlete"),
+      }),
+    )
+  })
+
+  it("9b. files no email consent row when the display name is blank, and still answers 200", async () => {
+    getBusinessSettings.mockResolvedValue({ display_name: "" })
+    const res = await post({ emailConsent: true })
+    expect(res.status).toBe(200)
+    expect(recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("9c. files no email consent row when the visitor did not tick the box", async () => {
+    await post({ emailConsent: false })
+    expect(recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("9d. files no email consent row when emailConsent is absent from the payload", async () => {
+    await post()
+    expect(recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("9e. still returns the result when the email recordConsent throws, logging that step by name", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+    recordConsent.mockRejectedValue(new Error("consent table is down"))
+    const res = await post({ emailConsent: true })
+    expect(res.status).toBe(200)
+    expect(spy.mock.calls.map((c) => String(c[0])).join(" | ")).toContain("recordConsent failed")
+    spy.mockRestore()
+  })
+
+  it("9f. files BOTH an sms and an email consent row, independently, when both are ticked", async () => {
+    await post({ phone: "+18135551234", smsConsent: true, emailConsent: true })
+    expect(recordConsent).toHaveBeenCalledWith(expect.objectContaining({ channel: "sms" }))
+    expect(recordConsent).toHaveBeenCalledWith(expect.objectContaining({ channel: "email" }))
+    expect(recordConsent).toHaveBeenCalledTimes(2)
+  })
+
   it("9. 404s for a quiz that is not active", async () => {
     getQuizDefinition.mockResolvedValue(definition("draft"))
     expect((await post()).status).toBe(404)
@@ -455,6 +502,11 @@ describe("POST /api/quiz/submit", () => {
     expect(applyPipelineEvent.mock.calls[0][0]).toMatchObject({ businessId: ATTEMPT_BUSINESS_ID })
     expect(getBusinessSettings).toHaveBeenCalledWith(ATTEMPT_BUSINESS_ID)
     expect(recordConsent.mock.calls[0][0]).toMatchObject({ businessId: ATTEMPT_BUSINESS_ID })
+  })
+
+  it("files the email consent row under the ATTEMPT's business too", async () => {
+    await post({ emailConsent: true })
+    expect(recordConsent.mock.calls[0][0]).toMatchObject({ businessId: ATTEMPT_BUSINESS_ID, channel: "email" })
   })
 
   it("refuses an attempt belonging to a different quiz", async () => {

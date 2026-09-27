@@ -51,6 +51,14 @@ const FIELDS_WITH_PHONE: FunnelFormField[] = [
 
 const FIELDS_NO_PHONE: FunnelFormField[] = [{ name: "email", label: "Email", type: "email", required: true }]
 
+// Neither a `tel` nor an `email` field — the ONE case where the settings read
+// (widened, since decision 7, to `tel` OR `email`) still has nothing to fetch
+// for. A fixture with an email field alone no longer proves this: since the
+// email consent tick shipped, that form DOES trigger the read.
+const FIELDS_NO_PHONE_NO_EMAIL: FunnelFormField[] = [
+  { name: "notes", label: "Anything else?", type: "textarea", required: false },
+]
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function wordingOf(element: any): string | undefined {
   return element.props.smsConsentWording
@@ -103,9 +111,24 @@ describe("FormIsland — SMS consent wording gate", () => {
     )
   })
 
-  it("never reads business_settings for a form with no tel field", async () => {
+  it("still reads business_settings for a form with an email field but no tel field — decision 7 widened the gate", async () => {
+    // The condition used to be "has a `tel` field" alone. Decision 7 widens it
+    // to `tel` OR `email` so a form with only an email field still gets the
+    // email consent tick — this fixture has no phone field at all, and the
+    // read must still happen (for the email tick's own wording).
+    getBusinessSettings.mockResolvedValue({ display_name: "Acme Fitness" })
     const element = await FormIsland({
       props: { fields: FIELDS_NO_PHONE, successMode: "message" },
+      context: CONTEXT,
+    })
+    expect(getBusinessSettings).toHaveBeenCalled()
+    // No `tel` field on the form, so no SMS wording regardless of the read.
+    expect(wordingOf(element)).toBeUndefined()
+  })
+
+  it("never reads business_settings for a form with neither a tel nor an email field", async () => {
+    const element = await FormIsland({
+      props: { fields: FIELDS_NO_PHONE_NO_EMAIL, successMode: "message" },
       context: CONTEXT,
     })
     expect(getBusinessSettings).not.toHaveBeenCalled()

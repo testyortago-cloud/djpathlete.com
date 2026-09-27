@@ -404,6 +404,104 @@ describe("POST /api/inquiry — SMS consent", () => {
   })
 })
 
+describe("POST /api/inquiry — email consent", () => {
+  it("writes a consent row quoting the exact rendered wording when email_consent is true", async () => {
+    const res = await post(
+      { ...VALID_BODY, email_consent: true },
+      { "x-forwarded-for": "203.0.113.9", "user-agent": "test-agent/1.0" },
+    )
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(mocks.recordConsent).toHaveBeenCalledWith({
+      contactId: "contact-1",
+      channel: "email",
+      granted: true,
+      source: "inquiry",
+      wordingShown: "Yes, Acme Fitness can email me training tips, news and offers. I can unsubscribe at any time.",
+      ip: "203.0.113.9",
+      userAgent: "test-agent/1.0",
+      businessId: "host-biz",
+    })
+  })
+
+  it("consent row's source follows the same step_up mapping as the spine event", async () => {
+    const res = await post(
+      { ...VALID_BODY, email_consent: true, form_context: "step_up" },
+      { "x-forwarded-for": "203.0.113.9", "user-agent": "test-agent/1.0" },
+    )
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(mocks.recordConsent).toHaveBeenCalledWith(expect.objectContaining({ source: "step_up", channel: "email" }))
+  })
+
+  it("writes no consent row when email_consent is false", async () => {
+    const res = await post({ ...VALID_BODY, email_consent: false })
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(mocks.recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("writes no consent row when email_consent is absent from the payload", async () => {
+    const res = await post(VALID_BODY)
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(mocks.recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("writes no consent row when email_consent is true but no contact was captured", async () => {
+    mocks.recordContactEvent.mockRejectedValueOnce(new Error("db down"))
+    const res = await post({ ...VALID_BODY, email_consent: true })
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(mocks.recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("writes no consent row when business_settings.display_name is blank, even though email_consent is true — the lead is still captured", async () => {
+    mocks.getBusinessSettings.mockResolvedValue({ business_id: "biz-1", display_name: "" })
+    const res = await post({ ...VALID_BODY, email_consent: true })
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(mocks.recordContactEvent).toHaveBeenCalledTimes(1)
+    expect(mocks.recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("writes no consent row when business_settings.display_name is whitespace-only", async () => {
+    mocks.getBusinessSettings.mockResolvedValue({ business_id: "biz-1", display_name: "   " })
+    const res = await post({ ...VALID_BODY, email_consent: true })
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(mocks.recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("still returns success, and the lead is still captured, when the consent write itself throws", async () => {
+    mocks.recordConsent.mockRejectedValue(new Error("db is down"))
+    const res = await post({ ...VALID_BODY, email_consent: true })
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true })
+    expect(mocks.recordContactEvent).toHaveBeenCalled()
+    expect(mocks.recordConsent).toHaveBeenCalled()
+  })
+
+  it("writes BOTH an sms and an email consent row, independently, when both are ticked", async () => {
+    const res = await post({ ...VALID_BODY, sms_consent: true, email_consent: true })
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(mocks.recordConsent).toHaveBeenCalledWith(expect.objectContaining({ channel: "sms" }))
+    expect(mocks.recordConsent).toHaveBeenCalledWith(expect.objectContaining({ channel: "email" }))
+    expect(mocks.recordConsent).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe("POST /api/inquiry — tenant", () => {
   it("resolves the tenant once through the seam and threads it into the contact, the settings read and the consent row", async () => {
     await post({ ...VALID_BODY, sms_consent: true })

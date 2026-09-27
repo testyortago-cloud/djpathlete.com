@@ -18,6 +18,7 @@ import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { hasEmailConsentDisplayName, renderEmailConsentWording } from "@/lib/lead-engine/email-consent-wording"
 import type { ContactEventSource } from "@/lib/db/contacts"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
 import { LEAD_ALERT_ROLES, listBusinessMemberUserIds } from "@/lib/db/business-members"
@@ -78,6 +79,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       how_heard,
       gclid: submittedGclid,
       sms_consent,
+      email_consent,
       form_context,
     } = result.data
     const serviceLabel = SERVICE_LABELS[service]
@@ -231,6 +233,18 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       const userAgent = request.headers.get("user-agent")
       void recordInquirySmsConsent({ contactId, ip, userAgent, source: contactSource, businessId }).catch((err) => {
         console.error("Inquiry sms consent write failed (the lead was saved):", err)
+      })
+    }
+
+    // Email consent (decision 7). Same fire-and-forget shape as the SMS block
+    // above. `email` needs no presence check — the schema REQUIRES one on
+    // every inquiry — so this only ever gates on a contact existing and the
+    // box having been ticked.
+    if (contactId && email_consent === true) {
+      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null
+      const userAgent = request.headers.get("user-agent")
+      void recordInquiryEmailConsent({ contactId, ip, userAgent, source: contactSource, businessId }).catch((err) => {
+        console.error("Inquiry email consent write failed (the lead was saved):", err)
       })
     }
 
@@ -529,6 +543,42 @@ async function recordInquirySmsConsent(input: {
     granted: true,
     source: input.source,
     wordingShown: renderSmsConsentWording(settings.display_name),
+    ip: input.ip,
+    userAgent: input.userAgent,
+    businessId: input.businessId,
+  })
+}
+
+/**
+ * Writes the email consent row for an inquiry submission whose visitor
+ * ticked the opt-in box next to the email field.
+ *
+ * Mirrors `recordInquirySmsConsent` exactly — the wording is re-rendered
+ * HERE, never relayed from the client, and the same
+ * `hasEmailConsentDisplayName` gate is checked before filing, so a blank
+ * `display_name` skips (logged, never thrown) rather than filing a row that
+ * misrepresents what the checkbox actually said. `source` is the same
+ * resolved value (`resolveContactSource`) the caller fed `captureLead` for
+ * this request, for the same reason the SMS row's does.
+ */
+async function recordInquiryEmailConsent(input: {
+  contactId: string
+  ip: string | null
+  userAgent: string | null
+  source: ContactEventSource
+  businessId: string
+}): Promise<void> {
+  const settings = await getBusinessSettings(input.businessId)
+  if (!hasEmailConsentDisplayName(settings.display_name)) {
+    console.warn("[inquiry] email consent skipped: business_settings.display_name is blank")
+    return
+  }
+  await recordConsent({
+    contactId: input.contactId,
+    channel: "email",
+    granted: true,
+    source: input.source,
+    wordingShown: renderEmailConsentWording(settings.display_name),
     ip: input.ip,
     userAgent: input.userAgent,
     businessId: input.businessId,

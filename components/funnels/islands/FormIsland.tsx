@@ -5,6 +5,7 @@ import { getActiveDocument } from "@/lib/db/legal-documents"
 import { renderLegalContent } from "@/lib/legal-content"
 import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { hasEmailConsentDisplayName, renderEmailConsentWording } from "@/lib/lead-engine/email-consent-wording"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
 import { FunnelForm } from "./FunnelForm"
 import type { FunnelRenderContext } from "./index"
@@ -28,9 +29,11 @@ export async function FormIsland({ props, context }: FormIslandProps) {
   const waiverDoc = props.successMode === "checkout" ? await getActiveDocument("liability_waiver") : null
   const waiverHtml = waiverDoc?.content ? renderLegalContent(waiverDoc.content) : null
 
-  // THE SMS CONSENT WORDING IS FETCHED ONLY WHEN THE FORM HAS A PHONE FIELD —
+  // THE SMS/EMAIL CONSENT WORDING IS FETCHED ONLY WHEN THE FORM HAS A PHONE
+  // OR AN EMAIL FIELD (decision 7 widened this from "a phone field" alone,
+  // so a form with only an email field still gets the email consent tick) —
   // same reasoning as the waiver above, a business_settings read bought for
-  // nothing on a form with no phone to text.
+  // nothing on a form with neither to attach a tick to.
   //
   // `/go` (the funnel page component) does not load business_settings today,
   // so this island — already an async server component doing exactly this
@@ -53,13 +56,23 @@ export async function FormIsland({ props, context }: FormIslandProps) {
   // both resolve it from the request's Host through lib/tenancy/public.ts, so
   // the wording shown and the wording filed cannot name different businesses.
   // Resolved only when there is a phone field — a form with none costs no read.
+  // Each wording is gated on its OWN field type, not merely on the read
+  // having happened: a form with an email field but no tel field must not
+  // get a defined `smsConsentWording` just because the (now-widened) read
+  // fired for the email tick's sake, and vice versa.
+  const hasTelField = fields.some((field) => field.type === "tel")
+  const hasEmailField = fields.some((field) => field.type === "email")
+
   let businessSettings: BusinessSettings | null = null
-  if (fields.some((field) => field.type === "tel")) {
+  if (hasTelField || hasEmailField) {
     const businessId = await resolvePublicTenant()
     businessSettings = await getBusinessSettings(businessId).catch(() => null)
   }
   const displayName = businessSettings?.display_name
-  const smsConsentWording = hasSmsConsentDisplayName(displayName) ? renderSmsConsentWording(displayName) : undefined
+  const smsConsentWording =
+    hasTelField && hasSmsConsentDisplayName(displayName) ? renderSmsConsentWording(displayName) : undefined
+  const emailConsentWording =
+    hasEmailField && hasEmailConsentDisplayName(displayName) ? renderEmailConsentWording(displayName) : undefined
 
   return (
     <FunnelForm
@@ -75,6 +88,7 @@ export async function FormIsland({ props, context }: FormIslandProps) {
       }
       waiverHtml={waiverHtml}
       smsConsentWording={smsConsentWording}
+      emailConsentWording={emailConsentWording}
       successMessage={typeof props.successMessage === "string" ? props.successMessage : "Thanks — you're in."}
       redirectUrl={typeof props.redirectUrl === "string" ? props.redirectUrl : undefined}
       consentText={typeof props.consentText === "string" ? props.consentText : undefined}

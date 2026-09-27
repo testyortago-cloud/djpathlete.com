@@ -112,3 +112,31 @@ describe("QuizIsland", () => {
     expect((element.props as { definition?: { id?: string } }).definition?.id).toBe(QUIZ_ID)
   })
 })
+
+describe("QuizIsland — email consent wording gate", () => {
+  it("passes the rendered email wording when display_name is set", async () => {
+    getBusinessSettings.mockResolvedValue({ display_name: "DJP Athlete" })
+    const element = (await QuizIsland({ props: { quizId: QUIZ_ID }, context: CONTEXT })) as ReactElement
+    expect((element.props as { emailConsentWording?: string }).emailConsentWording).toBe(
+      "Yes, DJP Athlete can email me training tips, news and offers. I can unsubscribe at any time.",
+    )
+  })
+
+  it("passes no email wording when display_name is blank", async () => {
+    getBusinessSettings.mockResolvedValue({ display_name: "" })
+    const element = (await QuizIsland({ props: { quizId: QUIZ_ID }, context: CONTEXT })) as ReactElement
+    expect((element.props as { emailConsentWording?: string }).emailConsentWording).toBeUndefined()
+  })
+
+  it("passes no email wording when display_name is whitespace-only", async () => {
+    getBusinessSettings.mockResolvedValue({ display_name: "   " })
+    const element = (await QuizIsland({ props: { quizId: QUIZ_ID }, context: CONTEXT })) as ReactElement
+    expect((element.props as { emailConsentWording?: string }).emailConsentWording).toBeUndefined()
+  })
+
+  it("passes no email wording when the settings read fails", async () => {
+    getBusinessSettings.mockRejectedValue(new Error("db unreachable"))
+    const element = (await QuizIsland({ props: { quizId: QUIZ_ID }, context: CONTEXT })) as ReactElement
+    expect((element.props as { emailConsentWording?: string }).emailConsentWording).toBeUndefined()
+  })
+})

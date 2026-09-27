@@ -58,12 +58,21 @@ vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-
 
 import { POST } from "@/app/api/funnels/submit/route"
 import { renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { renderEmailConsentWording } from "@/lib/lead-engine/email-consent-wording"
 
 const FUNNEL_ID = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"
 const STEP_ID = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb"
 const CONTACT_ID = "cccccccc-3333-4333-8333-cccccccccccc"
 
 const FIELDS = [{ name: "phone", label: "Phone number", type: "tel", required: true }]
+
+// Both a phone AND an email field, for the email consent describe block below
+// — the funnel form's email tick needs an email in the payload to attach a
+// row to, the same way the SMS tick needs a phone.
+const FIELDS_WITH_EMAIL = [
+  { name: "email", label: "Email", type: "email", required: true },
+  { name: "phone", label: "Phone number", type: "tel", required: false },
+]
 
 let ipCounter = 0
 function request(overrides: Record<string, unknown> = {}) {
@@ -196,6 +205,122 @@ describe("POST /api/funnels/submit — SMS consent", () => {
 
     expect(res.status).toBe(200)
     expect(recordConsent).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/funnels/submit — email consent", () => {
+  beforeEach(() => {
+    getPublishedFormConfig.mockReset().mockResolvedValue({
+      formKey: "optin",
+      successMode: "message",
+      fields: FIELDS_WITH_EMAIL,
+    })
+  })
+
+  function emailRequest(overrides: Record<string, unknown> = {}) {
+    return request({ values: { email: "ada@example.com", phone: "5551234567" }, ...overrides })
+  }
+
+  it("writes a consent row quoting the exact rendered wording when email_consent is true and an email is present", async () => {
+    const res = await POST(emailRequest({ email_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(200)
+    // `ip` is not asserted to a fixed literal here — unlike the SMS test
+    // above, this describe block is not the first to run in the file, so the
+    // shared `ipCounter` has already advanced. What matters is that it is the
+    // request's own IP, format-checked, not a hard-coded value copied wrong.
+    expect(recordConsent).toHaveBeenCalledWith({
+      contactId: CONTACT_ID,
+      channel: "email",
+      granted: true,
+      source: "funnel_form",
+      wordingShown: renderEmailConsentWording("Acme Fitness"),
+      ip: expect.stringMatching(/^203\.0\.113\.\d+$/),
+      userAgent: "test-agent",
+      businessId: "host-biz",
+    })
+  })
+
+  it("writes no consent row when email_consent is false", async () => {
+    const res = await POST(emailRequest({ email_consent: false }))
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("writes no consent row when email_consent is absent from the payload", async () => {
+    const res = await POST(emailRequest())
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("writes no consent row when email_consent is true but no contact was captured", async () => {
+    captureContactFromSubmission.mockResolvedValue(null)
+    const res = await POST(emailRequest({ email_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("writes no consent row when business_settings.display_name is blank, even though email_consent is true and an email is present — the lead is still captured", async () => {
+    getBusinessSettings.mockResolvedValue({ business_id: "biz-1", display_name: "" })
+    const res = await POST(emailRequest({ email_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true })
+    expect(createSubmission).toHaveBeenCalled()
+    expect(recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("writes no consent row when business_settings.display_name is whitespace-only", async () => {
+    getBusinessSettings.mockResolvedValue({ business_id: "biz-1", display_name: "   " })
+    const res = await POST(emailRequest({ email_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("still captures the lead, and still responds success, when the consent write throws", async () => {
+    recordConsent.mockRejectedValue(new Error("db is down"))
+    const res = await POST(emailRequest({ email_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true })
+    expect(createSubmission).toHaveBeenCalled()
+    expect(recordConsent).toHaveBeenCalled()
+  })
+
+  it("writes BOTH an sms and an email consent row, independently, when both boxes are ticked", async () => {
+    const res = await POST(emailRequest({ email_consent: true, sms_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(recordConsent).toHaveBeenCalledWith(expect.objectContaining({ channel: "sms" }))
+    expect(recordConsent).toHaveBeenCalledWith(expect.objectContaining({ channel: "email" }))
+    expect(recordConsent).toHaveBeenCalledTimes(2)
+  })
+
+  it("writes no email consent row when the form has no email field, even though email_consent is true", async () => {
+    // A form with a phone field only cannot have had an email tick shown next
+    // to a field that does not exist — decision 7's own review focus item 4.
+    getPublishedFormConfig.mockResolvedValue({
+      formKey: "optin",
+      successMode: "message",
+      fields: FIELDS,
+    })
+    const res = await POST(request({ email_consent: true, sms_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(recordConsent).not.toHaveBeenCalledWith(expect.objectContaining({ channel: "email" }))
   })
 })
 

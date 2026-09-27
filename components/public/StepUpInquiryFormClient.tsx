@@ -58,9 +58,16 @@ interface StepUpInquiryFormClientProps {
    * which is identical here.
    */
   smsConsentWording?: string
+  /**
+   * The email opt-in sentence, already rendered server-side by the
+   * `StepUpInquiryForm` server wrapper — see InquiryFormClient's own prop
+   * doc for the full "undefined means no usable business name" contract,
+   * identical here.
+   */
+  emailConsentWording?: string
 }
 
-export function StepUpInquiryFormClient({ smsConsentWording }: StepUpInquiryFormClientProps) {
+export function StepUpInquiryFormClient({ smsConsentWording, emailConsentWording }: StepUpInquiryFormClientProps) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -84,6 +91,7 @@ export function StepUpInquiryFormClient({ smsConsentWording }: StepUpInquiryForm
     // (the browser default value for a checkbox with no `value` attribute)
     // is what a tick actually posts.
     const smsConsent = formData.get("sms_consent") === "on"
+    const emailConsent = formData.get("email_consent") === "on"
 
     const selected = SUFS_SERVICES.find((s) => s.key === serviceKey)
     if (!selected) {
@@ -114,6 +122,7 @@ export function StepUpInquiryFormClient({ smsConsentWording }: StepUpInquiryForm
       how_heard: "Step Up For Students page",
       gclid: readCookie("gclid"),
       sms_consent: smsConsent,
+      email_consent: emailConsent,
       // This is the one surface that emits "step_up" spine events — the
       // route maps this to contact_timeline_events.source (and the SMS
       // consent row's source, if one is filed) instead of the plain
@@ -197,6 +206,26 @@ export function StepUpInquiryFormClient({ smsConsentWording }: StepUpInquiryForm
           />
         </div>
       </div>
+
+      {/* Email opt-in checkbox, beside the Email field, UNCHECKED by
+          default. `emailConsentWording` is undefined whenever the
+          `StepUpInquiryForm` server wrapper found no usable business name. */}
+      {emailConsentWording ? (
+        <label
+          htmlFor="sufs-email-consent"
+          className="flex items-start gap-2 text-xs text-muted-foreground leading-relaxed cursor-pointer"
+        >
+          <input
+            id="sufs-email-consent"
+            name="email_consent"
+            type="checkbox"
+            disabled={isSubmitting}
+            defaultChecked={false}
+            className="mt-0.5 size-4 accent-primary shrink-0"
+          />
+          <span>{emailConsentWording}</span>
+        </label>
+      ) : null}
 
       {/* Phone + Athlete age */}
       <div className="grid sm:grid-cols-2 gap-5">

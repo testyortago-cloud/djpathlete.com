@@ -33,6 +33,12 @@ interface QuizRunnerProps {
   consentText?: string
   /** Rendered beside the phone field. Absent means no SMS checkbox at all. */
   smsConsentWording?: string
+  /**
+   * Rendered beside the email field. Absent means no email consent checkbox
+   * at all — mirrors `smsConsentWording` exactly, decision 7's email
+   * equivalent of the same tick.
+   */
+  emailConsentWording?: string
   /** The builder iframe and `/go?preview=1`: refuse outright. */
   isPreview?: boolean
   /** `/preview/<slug>`: score for real, write nothing. */
@@ -54,6 +60,7 @@ export function QuizRunner({
   submitLabel,
   consentText,
   smsConsentWording,
+  emailConsentWording,
   isPreview = false,
   testRun = false,
   funnelId,
@@ -72,6 +79,7 @@ export function QuizRunner({
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [smsConsent, setSmsConsent] = useState(false)
+  const [emailConsent, setEmailConsent] = useState(false)
   const [website, setWebsite] = useState("")
 
   /**
@@ -184,6 +192,7 @@ export function QuizRunner({
                 email,
                 phone: phone || undefined,
                 smsConsent,
+                emailConsent,
                 website,
                 elapsedMs: Date.now() - startedAt,
                 // G06. Deliberately NOT on the test-run branch above, which
@@ -283,6 +292,15 @@ export function QuizRunner({
             required
           />
         </div>
+
+        {/* Absent wording means no checkbox at all — never a checkbox whose
+            sentence cannot name the business. Mirrors the SMS tick below. */}
+        {emailConsentWording ? (
+          <label className="djp-quiz-consent">
+            <input type="checkbox" checked={emailConsent} onChange={(e) => setEmailConsent(e.target.checked)} />
+            <span>{emailConsentWording}</span>
+          </label>
+        ) : null}
 
         <div className="djp-quiz-field">
           <label className="djp-quiz-label" htmlFor="djp-quiz-phone">

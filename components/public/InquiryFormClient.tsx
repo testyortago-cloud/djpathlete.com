@@ -69,6 +69,14 @@ interface InquiryFormClientProps {
    * no prop" contract the funnel form island's `smsConsentWording` follows.
    */
   smsConsentWording?: string
+  /**
+   * The email opt-in sentence, already rendered server-side
+   * (`renderEmailConsentWording` fed `business_settings.display_name`) by the
+   * `InquiryForm` server wrapper — mirrors `smsConsentWording` exactly.
+   * `undefined` whenever the business has no usable name, the same "no
+   * pixel, no prop" contract `smsConsentWording` follows.
+   */
+  emailConsentWording?: string
 }
 
 export function InquiryFormClient({
@@ -76,6 +84,7 @@ export function InquiryFormClient({
   heading = "Apply Now",
   description = "Tell us about yourself and your goals. We review every application and respond within 48 hours.",
   smsConsentWording,
+  emailConsentWording,
 }: InquiryFormClientProps) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -106,6 +115,7 @@ export function InquiryFormClient({
       // is what a tick actually posts — never truthiness of the raw string,
       // since a present-but-empty entry would otherwise read as true.
       sms_consent: formData.get("sms_consent") === "on",
+      email_consent: formData.get("email_consent") === "on",
     }
 
     const result = inquiryFormSchema.safeParse(data)
@@ -195,6 +205,27 @@ export function InquiryFormClient({
             {errors.email && <p className="text-xs text-destructive">{errors.email[0]}</p>}
           </div>
         </div>
+
+        {/* Email opt-in checkbox, beside the Email field, UNCHECKED by
+            default. `emailConsentWording` is undefined whenever the
+            `InquiryForm` server wrapper found no usable business name — a
+            form with no wording must render no checkbox at all. */}
+        {emailConsentWording ? (
+          <label
+            htmlFor="inq-email-consent"
+            className="flex items-start gap-2 text-xs text-muted-foreground leading-relaxed cursor-pointer"
+          >
+            <input
+              id="inq-email-consent"
+              name="email_consent"
+              type="checkbox"
+              disabled={isSubmitting}
+              defaultChecked={false}
+              className="mt-0.5 size-4 accent-primary shrink-0"
+            />
+            <span>{emailConsentWording}</span>
+          </label>
+        ) : null}
 
         {/* Phone + Service */}
         <div className="grid sm:grid-cols-2 gap-5">

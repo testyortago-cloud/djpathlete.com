@@ -28,6 +28,7 @@ import { captureContactFromSubmission } from "@/lib/funnels/capture-contact"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { hasEmailConsentDisplayName, renderEmailConsentWording } from "@/lib/lead-engine/email-consent-wording"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 /** Bots submit instantly; a person cannot read and fill a form this fast. */
@@ -57,6 +58,8 @@ const bodySchema = z.object({
   // Wire name matches what the checkbox posts (FunnelForm) — see the funnel
   // form's `sms_consent` FormData field, not a `smsConsent`-style rename.
   sms_consent: z.boolean().optional().default(false),
+  // Same reasoning, mirrored for the email tick's checkbox.
+  email_consent: z.boolean().optional().default(false),
   // G06: see lib/validators/timezone.ts.
   timezone: submittedTimezone,
 })
@@ -227,6 +230,23 @@ export async function POST(request: Request) {
       businessId,
     }).catch((error) => {
       console.error("[funnels/submit] sms consent write failed (the lead was saved):", error)
+    })
+  }
+
+  // Email consent (decision 7). Same fire-and-forget shape as the SMS block
+  // above, for the same reason: the lead is already captured, and a
+  // consent-row failure must never turn "we have your details" into an error.
+  // Only fires when there is a contact to attach the row to and an email that
+  // was actually captured — an unchecked or absent box, or a form with no
+  // email field at all, writes no row.
+  if (contactId && email && parsedBody.email_consent === true) {
+    void recordFunnelEmailConsent({
+      contactId,
+      ip: ip === "unknown" ? null : ip,
+      userAgent: request.headers.get("user-agent"),
+      businessId,
+    }).catch((error) => {
+      console.error("[funnels/submit] email consent write failed (the lead was saved):", error)
     })
   }
 
@@ -411,6 +431,39 @@ async function recordFunnelSmsConsent(input: {
     granted: true,
     source: "funnel_form",
     wordingShown: renderSmsConsentWording(settings.display_name),
+    ip: input.ip,
+    userAgent: input.userAgent,
+    businessId: input.businessId,
+  })
+}
+
+/**
+ * Writes the email consent row for a submission whose visitor ticked the
+ * opt-in box next to an email field.
+ *
+ * Mirrors `recordFunnelSmsConsent` exactly — the wording is re-rendered HERE,
+ * never relayed from the client, and the same `hasEmailConsentDisplayName`
+ * gate is checked before filing, so a blank `display_name` skips (logged,
+ * never thrown) rather than filing a row that misrepresents what the
+ * checkbox actually said.
+ */
+async function recordFunnelEmailConsent(input: {
+  contactId: string
+  ip: string | null
+  userAgent: string | null
+  businessId: string
+}): Promise<void> {
+  const settings = await getBusinessSettings(input.businessId)
+  if (!hasEmailConsentDisplayName(settings.display_name)) {
+    console.warn("[funnels/submit] email consent skipped: business_settings.display_name is blank")
+    return
+  }
+  await recordConsent({
+    contactId: input.contactId,
+    channel: "email",
+    granted: true,
+    source: "funnel_form",
+    wordingShown: renderEmailConsentWording(settings.display_name),
     ip: input.ip,
     userAgent: input.userAgent,
     businessId: input.businessId,

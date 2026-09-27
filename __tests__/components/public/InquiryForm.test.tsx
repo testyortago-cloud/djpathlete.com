@@ -83,3 +83,44 @@ describe("InquiryForm (server wrapper) — SMS consent wording gate", () => {
     expect(getBusinessSettings).toHaveBeenCalledWith("host-biz")
   })
 })
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function emailWordingOf(element: any): string | undefined {
+  return element.props.emailConsentWording
+}
+
+describe("InquiryForm (server wrapper) — email consent wording gate", () => {
+  it("passes no wording when the settings read fails", async () => {
+    getBusinessSettings.mockRejectedValue(new Error("db unreachable"))
+    const element = await InquiryForm({ defaultService: "assessment" })
+    expect(emailWordingOf(element)).toBeUndefined()
+  })
+
+  it("passes no wording when display_name is blank", async () => {
+    getBusinessSettings.mockResolvedValue({ display_name: "" })
+    const element = await InquiryForm({ defaultService: "assessment" })
+    expect(emailWordingOf(element)).toBeUndefined()
+  })
+
+  it("passes no wording when display_name is whitespace-only", async () => {
+    getBusinessSettings.mockResolvedValue({ display_name: "   " })
+    const element = await InquiryForm({ defaultService: "assessment" })
+    expect(emailWordingOf(element)).toBeUndefined()
+  })
+
+  it("passes the rendered wording when display_name is set", async () => {
+    getBusinessSettings.mockResolvedValue({ display_name: "Acme Fitness" })
+    const element = await InquiryForm({ defaultService: "assessment" })
+    expect(emailWordingOf(element)).toBe(
+      "Yes, Acme Fitness can email me training tips, news and offers. I can unsubscribe at any time.",
+    )
+  })
+
+  it("reads the business settings only ONCE for both the sms and the email wording", async () => {
+    // MUTANT KILLED: a naive implementation that reads business_settings a
+    // second time for the email wording rather than reusing the one read.
+    getBusinessSettings.mockResolvedValue({ display_name: "Acme Fitness" })
+    await InquiryForm({ defaultService: "assessment" })
+    expect(getBusinessSettings).toHaveBeenCalledTimes(1)
+  })
+})

@@ -291,6 +291,109 @@ describe("FunnelForm — SMS consent checkbox", () => {
   })
 })
 
+describe("FunnelForm — email consent checkbox", () => {
+  const FIELDS_WITH_EMAIL: FunnelFormField[] = [
+    { name: "email", label: "Email", type: "email", required: true },
+    { name: "phone", label: "Phone number", type: "tel", required: true },
+  ]
+  const WORDING = "Yes, Acme Fitness can email me training tips, news and offers. I can unsubscribe at any time."
+
+  it("renders an UNCHECKED checkbox with the rendered wording under an email field", () => {
+    renderForm({ fields: FIELDS_WITH_EMAIL, emailConsentWording: WORDING })
+    const field = document.querySelector<HTMLElement>('[data-djp-field="email_email_consent"]')!
+    expect(field).not.toBeNull()
+    expect(field.getAttribute("data-djp-field-type")).toBe("checkbox")
+    const checkbox = field.querySelector<HTMLInputElement>('input[name="email_consent"]')!
+    expect(checkbox).not.toBeNull()
+    expect(checkbox.type).toBe("checkbox")
+    expect(checkbox.checked).toBe(false)
+    expect(field).toHaveTextContent(WORDING)
+  })
+
+  it("renders no checkbox when emailConsentWording is not provided", () => {
+    // MUTANT KILLED: rendering the checkbox unconditionally off the email
+    // field alone. FormIsland only fetches business_settings (and so only
+    // ever passes this prop) when the form has a usable business name — a
+    // form with no wording must render no checkbox at all, not a
+    // broken/empty one.
+    renderForm({ fields: FIELDS_WITH_EMAIL })
+    expect(document.querySelector('[name="email_consent"]')).toBeNull()
+  })
+
+  it("renders no checkbox next to a non-email field even when wording is provided", () => {
+    renderForm({ fields: FIELDS_WITH_EMAIL, emailConsentWording: WORDING })
+    const phoneField = document.querySelector<HTMLElement>('[data-djp-field="phone"]')!
+    expect(phoneField.querySelector('[name="email_consent"]')).toBeNull()
+  })
+
+  it("stamps no editing anchor on the consent wording — it is not owner-editable copy", () => {
+    renderForm({ fields: FIELDS_WITH_EMAIL, emailConsentWording: WORDING, editable: true })
+    const field = document.querySelector<HTMLElement>('[data-djp-field="email_email_consent"]')!
+    expect(field.querySelector("[data-edit]")).toBeNull()
+  })
+
+  it("posts email_consent: true when the box is ticked before submit", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true }),
+      clone: () => ({ json: async () => ({ ok: true }) }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderForm({ fields: FIELDS_WITH_EMAIL, emailConsentWording: WORDING, isPreview: false })
+    const checkbox = document.querySelector<HTMLInputElement>('input[name="email_consent"]')!
+    fireEvent.click(checkbox)
+    expect(checkbox.checked).toBe(true)
+
+    fireEvent.submit(document.querySelector("form")!)
+    await screen.findByRole("status")
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.email_consent).toBe(true)
+  })
+
+  it("posts email_consent: false when the box is left unchecked", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true }),
+      clone: () => ({ json: async () => ({ ok: true }) }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderForm({ fields: FIELDS_WITH_EMAIL, emailConsentWording: WORDING, isPreview: false })
+    fireEvent.submit(document.querySelector("form")!)
+    await screen.findByRole("status")
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.email_consent).toBe(false)
+  })
+
+  it("posts both sms_consent and email_consent independently on a form with both checkboxes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true }),
+      clone: () => ({ json: async () => ({ ok: true }) }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderForm({
+      fields: FIELDS_WITH_EMAIL,
+      emailConsentWording: WORDING,
+      smsConsentWording: "I agree to receive text messages from Acme Fitness about my inquiry.",
+      isPreview: false,
+    })
+    const emailCheckbox = document.querySelector<HTMLInputElement>('input[name="email_consent"]')!
+    fireEvent.click(emailCheckbox)
+
+    fireEvent.submit(document.querySelector("form")!)
+    await screen.findByRole("status")
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.email_consent).toBe(true)
+    expect(body.sms_consent).toBe(false)
+  })
+})
+
 describe("FunnelForm — submitting", () => {
   it("stays silent when the owner is editing the page", async () => {
     // THE FIRST CLICK OF A DOUBLE-CLICK ON THE BUTTON IS A SUBMIT. Without the

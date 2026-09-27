@@ -7,6 +7,7 @@
 
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { hasEmailConsentDisplayName, renderEmailConsentWording } from "@/lib/lead-engine/email-consent-wording"
 import { StepUpInquiryFormClient } from "./StepUpInquiryFormClient"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
 
@@ -20,6 +21,9 @@ export async function StepUpInquiryForm() {
   const businessSettings = await getBusinessSettings(businessId).catch(() => null)
   const displayName = businessSettings?.display_name
   const smsConsentWording = hasSmsConsentDisplayName(displayName) ? renderSmsConsentWording(displayName) : undefined
+  const emailConsentWording = hasEmailConsentDisplayName(displayName)
+    ? renderEmailConsentWording(displayName)
+    : undefined
 
-  return <StepUpInquiryFormClient smsConsentWording={smsConsentWording} />
+  return <StepUpInquiryFormClient smsConsentWording={smsConsentWording} emailConsentWording={emailConsentWording} />
 }

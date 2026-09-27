@@ -78,6 +78,61 @@ describe("StepUpInquiryFormClient — SMS consent checkbox", () => {
   })
 })
 
+describe("StepUpInquiryFormClient — email consent checkbox", () => {
+  const EMAIL_WORDING =
+    "Yes, Acme Fitness can email me training tips, news and offers. I can unsubscribe at any time."
+
+  it("renders no checkbox when emailConsentWording is not provided", () => {
+    render(<StepUpInquiryFormClient />)
+    expect(document.querySelector('[name="email_consent"]')).toBeNull()
+  })
+
+  it("renders an UNCHECKED checkbox with the rendered wording when emailConsentWording is provided", () => {
+    render(<StepUpInquiryFormClient emailConsentWording={EMAIL_WORDING} />)
+    const checkbox = document.querySelector<HTMLInputElement>('input[name="email_consent"]')!
+    expect(checkbox).not.toBeNull()
+    expect(checkbox.type).toBe("checkbox")
+    expect(checkbox.checked).toBe(false)
+    expect(screen.getByText(EMAIL_WORDING)).toBeInTheDocument()
+  })
+
+  it("posts email_consent: true when the box is ticked before submit", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<StepUpInquiryFormClient emailConsentWording={EMAIL_WORDING} />)
+    fillRequiredFields()
+    const checkbox = document.querySelector<HTMLInputElement>('input[name="email_consent"]')!
+    fireEvent.click(checkbox)
+    expect(checkbox.checked).toBe(true)
+
+    fireEvent.submit(document.querySelector("form")!)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.email_consent).toBe(true)
+  })
+
+  it("posts email_consent: false when the box is left unchecked", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<StepUpInquiryFormClient emailConsentWording={EMAIL_WORDING} />)
+    fillRequiredFields()
+    fireEvent.submit(document.querySelector("form")!)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.email_consent).toBe(false)
+  })
+})
+
 describe("StepUpInquiryFormClient — form identity", () => {
   it('posts form_context: "step_up" — the route maps this to the step_up spine source', async () => {
     const fetchMock = vi.fn().mockResolvedValue({

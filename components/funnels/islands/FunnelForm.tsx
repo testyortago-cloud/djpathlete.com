@@ -67,6 +67,15 @@ interface FunnelFormProps {
    * no prop" contract `waiverHtml`/`consentText` already follow.
    */
   smsConsentWording?: string
+  /**
+   * The email opt-in sentence, already rendered server-side (`renderEmailConsentWording`
+   * fed `business_settings.display_name`) by the FormIsland wrapper — never
+   * built here, mirroring `smsConsentWording` exactly. `undefined` when the
+   * form has no `email` field, OR when the business has no usable name; see
+   * `smsConsentWording`'s doc comment for the full "no pixel, no prop"
+   * reasoning, which applies identically here.
+   */
+  emailConsentWording?: string
   isPreview: boolean
   /**
    * The builder canvas is editing this page. Stamps `data-edit` anchors and
@@ -135,6 +144,7 @@ export function FunnelForm({
   consentText,
   waiverHtml,
   smsConsentWording,
+  emailConsentWording,
   isPreview,
   editable = false,
   testRun = false,
@@ -188,6 +198,8 @@ export function FunnelForm({
     // for a checkbox with no `value` attribute), never truthiness of the
     // string, since a present-but-empty entry would otherwise read as true.
     const smsConsent = formData.getAll("sms_consent").some((entry) => entry === "on")
+    // Same reasoning, same "on" comparison, mirrored for the email tick.
+    const emailConsent = formData.getAll("email_consent").some((entry) => entry === "on")
 
     try {
       const response = await fetch(endpoint, {
@@ -201,6 +213,7 @@ export function FunnelForm({
           website: String(formData.get("website") ?? ""),
           elapsedMs: Date.now() - mountedAt.current,
           sms_consent: smsConsent,
+          email_consent: emailConsent,
           // G06: this visitor's own clock, so their follow-up respects their
           // morning rather than the coach's.
           timezone: browserTimezone(),
@@ -348,6 +361,31 @@ export function FunnelForm({
               <input
                 id={`${formKey}-${field.name}-sms-consent`}
                 name="sms_consent"
+                type="checkbox"
+                className="djp-control"
+                defaultChecked={false}
+              />
+            </div>
+          ) : null}
+          {/* THE EMAIL CONSENT CHECKBOX, under every email field, UNCHECKED by
+              default. Mirrors the SMS checkbox above exactly — same
+              `.djp-field[data-djp-field-type="checkbox"]` structure, so it
+              inherits the published funnel CSS with no new rule and no
+              re-publish required. `emailConsentWording` is undefined whenever
+              FormIsland found no usable business name to fetch, or the form
+              has no `email` field to attach the tick to. */}
+          {field.type === "email" && emailConsentWording ? (
+            <div
+              className="djp-field"
+              data-djp-field={`${field.name}_email_consent`}
+              data-djp-field-type="checkbox"
+            >
+              <label className="djp-field-label" htmlFor={`${formKey}-${field.name}-email-consent`}>
+                {emailConsentWording}
+              </label>
+              <input
+                id={`${formKey}-${field.name}-email-consent`}
+                name="email_consent"
                 type="checkbox"
                 className="djp-control"
                 defaultChecked={false}
