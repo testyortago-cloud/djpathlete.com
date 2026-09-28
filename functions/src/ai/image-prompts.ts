@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { callAgent, MODEL_SONNET_5 } from "./anthropic.js"
-import { getCategoryStyleModule } from "./category-style-modules.js"
+import { getStyleModuleForPost } from "./category-style-modules.js"
 
 export const imagePromptsSchema = z.object({
   hero_prompt: z.string().min(10).max(800),
@@ -18,15 +18,14 @@ export type ImagePromptsResult = z.infer<typeof imagePromptsSchema>
 
 // Bump this when BRAND_TREATMENT or SYSTEM_PROMPT changes. Persisted per
 // image so we can compare quality across prompt revisions later.
-export const PROMPT_VERSION = "v2"
+export const PROMPT_VERSION = "v3"
 
 // Brand treatment fed into every prompt so heroes have a consistent DJP look
 // instead of looking like a different stock-photo studio per post.
 //
-// Future upgrade: a LoRA fine-tune of fal's flux model on DJP photography
-// would lock the look harder than text instructions can. Documented for when
-// publishing volume justifies the training run. Until then, this string is
-// the cheap version.
+// Images are rendered by GPT Image 2.5 through OpenRouter (see
+// blog-image-generation.ts); fal Flux was retired on 2026-09-23. This string is
+// the only brand lock there is, so it carries the whole look.
 export const BRAND_TREATMENT = `
 DJP visual treatment — apply to every prompt, harder on the hero:
 
@@ -103,7 +102,7 @@ OUTPUT (strict JSON, nothing else):
 
 RULES:
 - The hero prompt MUST hit every slot of the grammar above. It's the OG card.
-- Inline prompts MUST reference the specific section's content, not just the post topic. Reading the section's first paragraph tells you what to show.
+- Inline prompts MUST reference the specific section's content, not just the post topic. The text under each section heading in the user message is the start of that section — it tells you what to show. A section about a phase of rehab shows that phase being worked on, not a generic lifestyle moment.
 - Use the EXACT h2 text supplied in the user message — do not paraphrase.
 - If fewer qualifying sections are provided, emit fewer inline_prompts. Never invent sections.
 - Vary camera/lens/lighting across the inline prompts so the post doesn't look like one shoot from one angle.
@@ -113,29 +112,84 @@ export interface ExtractImagePromptsInput {
   title: string
   content: string
   category: string
+  tags?: readonly string[]
   qualifyingSections: string[]
 }
 
+const INTRO_CHARS = 1500
+const SECTION_EXCERPT_CHARS = 700
+
+function plainText(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+/**
+ * The opening of each section, keyed by its h2 text EXACTLY as
+ * findQualifyingSections reports it (tags replaced by spaces, trimmed, entities
+ * left alone). The key is what the model must echo back as section_h2, and a
+ * normalised key would silently lose the excerpt.
+ *
+ * The prompt writer used to get the first 4000 characters of raw HTML, which
+ * on a long post ends two or three sections in. Every later section was
+ * illustrated from its heading alone — "Nutrition Belongs Inside the Rehab
+ * Protocol" became a stock shot of someone eating a salad — even though the
+ * system prompt tells the writer to read each section's first paragraph.
+ */
+export function sectionExcerpts(html: string): { intro: string; sections: Map<string, string> } {
+  const h2 = /<h2[^>]*>([\s\S]*?)<\/h2>/g
+  const heads: { text: string; start: number; end: number }[] = []
+  let m: RegExpExecArray | null
+  while ((m = h2.exec(html)) !== null) {
+    heads.push({
+      text: m[1]
+        .trim()
+        .replace(/<[^>]+>/g, " ")
+        .trim(),
+      start: m.index,
+      end: m.index + m[0].length,
+    })
+  }
+  const intro = plainText(html.slice(0, heads[0]?.start ?? html.length)).slice(0, INTRO_CHARS)
+  const sections = new Map<string, string>()
+  heads.forEach((h, i) => {
+    const body = html.slice(h.end, heads[i + 1]?.start ?? html.length)
+    if (!sections.has(h.text)) sections.set(h.text, plainText(body).slice(0, SECTION_EXCERPT_CHARS))
+  })
+  return { intro, sections }
+}
+
 export async function extractImagePrompts(input: ExtractImagePromptsInput): Promise<ImagePromptsResult> {
+  const { intro, sections } = sectionExcerpts(input.content)
   const sectionList = input.qualifyingSections.length
-    ? input.qualifyingSections.map((s) => `- ${s}`).join("\n")
+    ? input.qualifyingSections
+        .map((s) => {
+          const excerpt = sections.get(s)
+          return excerpt ? `## ${s}\n${excerpt}` : `## ${s}`
+        })
+        .join("\n\n")
     : "(none — emit empty inline_prompts array)"
 
-  const categoryModule = getCategoryStyleModule(input.category)
+  const categoryModule = getStyleModuleForPost({ category: input.category, title: input.title, tags: input.tags })
 
   const userMessage = [
     `# POST`,
     `Title: ${input.title}`,
     `Category: ${input.category}`,
+    ...(input.tags?.length ? [`Tags: ${input.tags.join(", ")}`] : []),
     "",
     `# CATEGORY-SPECIFIC STYLE MODULE`,
     categoryModule,
     "",
-    `# QUALIFYING SECTIONS (use these exact strings as section_h2)`,
-    sectionList,
+    `# INTRO (the post's opening, before the first h2)`,
+    intro || "(none)",
     "",
-    `# CONTENT (first 4000 chars)`,
-    input.content.slice(0, 4000),
+    `# QUALIFYING SECTIONS (each "## " line is an exact section_h2 string, followed by the start of that section)`,
+    sectionList,
     "",
     `# INSTRUCTIONS`,
     `Generate one hero_prompt and one inline prompt per qualifying section. Use the exact h2 strings above for section_h2. Honor the category-specific style module above when choosing settings, equipment, casting, and mood.`,

@@ -6,6 +6,7 @@ import { getAdminFirestore } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { findInFlightBlogGeneration } from "@/lib/ai-jobs"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { MAX_REFERENCE_FILES, MAX_REFERENCE_FILE_CHARS } from "@/lib/blog/reference-limits"
 
 const RATE_LIMIT_MAX = 5
 const RATE_LIMIT_WINDOW_MS = 60_000
@@ -35,22 +36,38 @@ const blogGenerateSchema = z.object({
   length: z.enum(["short", "medium", "long"]).optional().default("medium"),
   references: z
     .object({
-      urls: z.array(z.string().url()).max(5).optional().default([]),
-      notes: z.string().max(10_000).optional().default(""),
+      urls: z
+        .array(z.string().url("One of the links is not a valid web address"))
+        .max(5, "Add at most 5 links")
+        .optional()
+        .default([]),
+      notes: z.string().max(10_000, "Notes must be under 10,000 characters").optional().default(""),
       file_contents: z
         .array(
           z.object({
             name: z.string(),
-            content: z.string().max(50_000),
+            content: z
+              .string()
+              .max(
+                MAX_REFERENCE_FILE_CHARS,
+                `Each document must be under ${MAX_REFERENCE_FILE_CHARS.toLocaleString("en-US")} characters`,
+              ),
           }),
         )
-        .max(3)
+        .max(MAX_REFERENCE_FILES, `Attach at most ${MAX_REFERENCE_FILES} documents`)
         .optional()
         .default([]),
     })
     .optional(),
-  primary_keyword: z.string().min(2).max(120, "Primary keyword must be under 120 characters"),
-  secondary_keywords: z.array(z.string().min(1).max(120)).max(5).optional().default([]),
+  primary_keyword: z
+    .string()
+    .min(2, "Primary keyword must be at least 2 characters")
+    .max(120, "Primary keyword must be under 120 characters"),
+  secondary_keywords: z
+    .array(z.string().min(1).max(120, "Each secondary keyword must be under 120 characters"))
+    .max(5, "Add at most 5 secondary keywords")
+    .optional()
+    .default([]),
   search_intent: z.enum(["informational", "commercial", "transactional"]).optional(),
   target_word_count: z.number().int().min(200).max(5000).optional(),
 })
@@ -70,9 +87,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = blogGenerateSchema.safeParse(body)
     if (!parsed.success) {
+      // Name the reason. The dialog shows `error` verbatim, and a bare
+      // "Invalid request." left the coach retrying the same doomed request
+      // with no idea that it was the fourth attached document.
+      const issue = parsed.error.issues[0]
       return NextResponse.json(
         {
-          error: "Invalid request.",
+          error: issue?.message ? `Couldn't start: ${issue.message}.` : "Invalid request.",
           details: parsed.error.issues.map((i) => ({
             path: i.path.join("."),
             message: i.message,

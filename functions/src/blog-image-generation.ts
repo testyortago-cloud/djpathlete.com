@@ -13,6 +13,18 @@ import { getSupabase } from "./lib/supabase.js"
 const HERO_MODEL = "openai/gpt-image-2.5-sunburst"
 const INLINE_MODEL = "openai/gpt-image-2.5-flare"
 
+// Appended to every prompt the image model receives. BRAND_TREATMENT's
+// "no text, no logos" rule is given to the prompt WRITER, never to the image
+// model, and GPT Image fills a clinic wall with slogans and puts a swoosh on
+// every shirt unless it is told otherwise (seen rendering the owner's rehab
+// post, 2026-09-29). The stored prompt stays the writer's own.
+export const IMAGE_GUARDS =
+  "No text, lettering, signs, posters or slogans anywhere in the frame. No logos or brand marks on clothing, equipment or bottles."
+
+function withImageGuards(prompt: string): string {
+  return `${prompt.trim()} ${IMAGE_GUARDS}`
+}
+
 // Mirrors the CHECK constraint on blog_posts.category (migration 00043).
 // Kept as a local alias because functions/ has rootDir:"src" and cannot
 // import from project-root types/database.ts — if the schema changes, both
@@ -86,7 +98,7 @@ async function generateJudgeAndRetry(args: GenerateAndJudgeArgs): Promise<Genera
     attempts++
     const img = await generateOpenRouterImage({
       model: args.model,
-      prompt: args.prompt,
+      prompt: withImageGuards(args.prompt),
       width: args.renderWidth,
       height: args.renderHeight,
     })
@@ -161,7 +173,7 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
 
     const { data: post, error: postErr } = await supabase
       .from("blog_posts")
-      .select("id, title, slug, content, category")
+      .select("id, title, slug, content, category, tags")
       .eq("id", blogPostId)
       .single()
     if (postErr || !post) {
@@ -179,6 +191,7 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
       title: post.title as string,
       content: html,
       category: post.category as BlogCategory,
+      tags: (post.tags as string[] | null) ?? [],
       qualifyingSections: qualifyingTitles,
     })
 

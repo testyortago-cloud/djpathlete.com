@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { looksImageOnly, readPdfWithAstra } from "@/lib/ai/read-document"
+import { MAX_REFERENCE_FILE_CHARS } from "@/lib/blog/reference-limits"
+
+// A scanned PDF goes to Astra, which reads a page in seconds; a long one can
+// take minutes.
+export const maxDuration = 300
 
 const MAX_SIZE = 15 * 1024 * 1024 // 15 MB
 const ALLOWED_TYPES = [
@@ -35,12 +41,37 @@ export async function POST(request: Request) {
 
     const buffer = Buffer.from(await file.arrayBuffer())
     let text = ""
+    let readWith: "text" | "ai" = "text"
+    let aiTruncated = false
 
     if (file.type === "application/pdf") {
       // Import inner lib to avoid pdf-parse's default test file read
       const pdfParse = require("pdf-parse/lib/pdf-parse.js")
       const result = await pdfParse(buffer)
       text = result.text
+
+      if (looksImageOnly(text, result.numpages ?? 1)) {
+        try {
+          const read = await readPdfWithAstra(buffer, file.name, { signal: request.signal })
+          // Keep whichever found more. Astra coming back emptier than the
+          // text layer means it failed quietly, not that the page is blank.
+          if (read.text.length > text.trim().length) {
+            text = read.text
+            readWith = "ai"
+            aiTruncated = read.truncated
+          }
+        } catch (err) {
+          console.error(`[extract-text] AI read of ${file.name} failed:`, err)
+          if (!text.trim()) {
+            return NextResponse.json(
+              {
+                error: `${file.name} looks like a scanned document, and the AI reader couldn't read it. Try again, or paste the text into Notes.`,
+              },
+              { status: 502 },
+            )
+          }
+        }
+      }
     } else {
       // DOC / DOCX
       const mammoth = await import("mammoth")
@@ -48,16 +79,23 @@ export async function POST(request: Request) {
       text = result.value
     }
 
+    if (!text.trim()) {
+      return NextResponse.json(
+        { error: `No readable text found in ${file.name}. Paste the text into Notes instead.` },
+        { status: 422 },
+      )
+    }
+
     // Truncate to avoid sending huge payloads to the AI
-    const maxChars = 50_000
-    const truncated = text.length > maxChars
-    const content = truncated ? text.slice(0, maxChars) : text
+    const truncated = aiTruncated || text.length > MAX_REFERENCE_FILE_CHARS
+    const content = text.length > MAX_REFERENCE_FILE_CHARS ? text.slice(0, MAX_REFERENCE_FILE_CHARS) : text
 
     return NextResponse.json({
       name: file.name,
       content,
       truncated,
       originalLength: text.length,
+      read_with: readWith,
     })
   } catch (error) {
     console.error("Text extraction error:", error)

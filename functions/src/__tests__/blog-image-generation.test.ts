@@ -37,7 +37,7 @@ vi.mock("firebase-admin/firestore", () => ({
 }))
 vi.mock("../lib/supabase.js", () => ({ getSupabase: mocks.getSupabase }))
 
-import { handleBlogImageGeneration } from "../blog-image-generation.js"
+import { handleBlogImageGeneration, IMAGE_GUARDS } from "../blog-image-generation.js"
 
 describe("handleBlogImageGeneration", () => {
   let jobUpdate: ReturnType<typeof vi.fn>
@@ -202,5 +202,38 @@ describe("handleBlogImageGeneration", () => {
     expect(mocks.generateOpenRouterImage).toHaveBeenCalledTimes(2)
     expect(mocks.transcodeAndUpload).toHaveBeenCalledTimes(2)
     expect(mocks.judgeImageQuality).toHaveBeenCalledTimes(2)
+  })
+
+  it("tells the image model no text and no logos, and stores the writer's prompt unchanged", async () => {
+    // 2026-09-29: GPT Image put slogans on the clinic walls and a swoosh on
+    // every shirt — the brand's no-text rule only ever reached the prompt writer.
+    // MUTANT: pass args.prompt straight through — no guard reaches the model.
+    await handleBlogImageGeneration("job-1")
+    const sent = mocks.generateOpenRouterImage.mock.calls.map((c) => c[0].prompt as string)
+    expect(sent).toEqual([`hero prompt ${IMAGE_GUARDS}`, `a prompt ${IMAGE_GUARDS}`])
+    expect(IMAGE_GUARDS).toMatch(/No text/)
+    expect(IMAGE_GUARDS).toMatch(/No logos/)
+    expect(postUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ cover_image_meta: expect.objectContaining({ prompt: "hero prompt" }) }),
+    )
+  })
+
+  it("hands the post's tags to the prompt writer", async () => {
+    // The tags are how a rehab post filed under Recovery is recognised.
+    postSelectSingle.mockResolvedValueOnce({
+      data: {
+        id: "post-1",
+        title: "What Actually Gets You Back",
+        slug: "test-slug",
+        content: `<h2>Section A</h2>${longPara}`,
+        category: "Recovery",
+        tags: ["sports rehab", "return to sport"],
+      },
+      error: null,
+    })
+    await handleBlogImageGeneration("job-1")
+    expect(mocks.extractImagePrompts).toHaveBeenCalledWith(
+      expect.objectContaining({ category: "Recovery", tags: ["sports rehab", "return to sport"] }),
+    )
   })
 })

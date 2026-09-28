@@ -9,6 +9,7 @@ import { useAiJob } from "@/hooks/use-ai-job"
 import { cn } from "@/lib/utils"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 import { summarizeApiError } from "@/lib/errors/humanize"
+import { MAX_REFERENCE_FILES, MAX_REFERENCE_FILE_CHARS } from "@/lib/blog/reference-limits"
 
 interface GeneratedBlogData {
   title: string
@@ -189,9 +190,13 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
   const dragCounter = useRef(0)
 
   async function processFiles(files: File[]) {
+    // Counted locally: `refFiles` is this render's snapshot and does not grow
+    // while the loop runs, so checking it let one drop of six files past the
+    // limit — which the generate route then refused as a whole.
+    let count = refFiles.length
     for (const file of files) {
-      if (refFiles.length >= 5) {
-        toast.error("Maximum 5 files allowed")
+      if (count >= MAX_REFERENCE_FILES) {
+        toast.error(`Maximum ${MAX_REFERENCE_FILES} files allowed`)
         break
       }
 
@@ -217,13 +222,26 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
             body: formData,
           })
           if (!res.ok) {
-            const data = await res.json()
-            throw new Error(data.error ?? "Extraction failed")
+            // A body over the host's request limit is refused before the
+            // route runs, as a 413 with no JSON — say so rather than showing
+            // a JSON parse error.
+            const data = await res.json().catch(() => ({}))
+            const fallback =
+              res.status === 413
+                ? `${file.name} is too large to upload. Try a smaller file, or paste the text into Notes.`
+                : `Couldn't read ${file.name}`
+            throw new Error(data.error ?? fallback)
           }
-          const { name, content, truncated } = await res.json()
+          const { name, content, truncated, read_with } = await res.json()
           setRefFiles((prev) => [...prev, { name, content }])
+          count++
+          if (read_with === "ai") {
+            toast.info(`${file.name} is a scanned document, so AI read the text from it`)
+          }
           if (truncated) {
-            toast.info(`${file.name} was truncated to 50,000 characters`)
+            toast.info(
+              `${file.name} was cut to its first ${MAX_REFERENCE_FILE_CHARS.toLocaleString("en-US")} characters`,
+            )
           }
         } catch (err) {
           toast.error(err instanceof Error ? err.message : "Failed to extract text")
@@ -235,8 +253,21 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
           toast.error(`${file.name} exceeds 5MB limit`)
           continue
         }
-        const content = await file.text()
+        const text = await file.text()
+        if (!text.trim()) {
+          toast.error(`${file.name} is empty`)
+          continue
+        }
+        // Cut here as the extraction route does for PDFs: an uncut 5MB text
+        // file would exceed the generate route's per-document limit.
+        const content = text.slice(0, MAX_REFERENCE_FILE_CHARS)
         setRefFiles((prev) => [...prev, { name: file.name, content }])
+        count++
+        if (text.length > MAX_REFERENCE_FILE_CHARS) {
+          toast.info(
+            `${file.name} was cut to its first ${MAX_REFERENCE_FILE_CHARS.toLocaleString("en-US")} characters`,
+          )
+        }
       }
     }
   }
@@ -276,7 +307,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
     e.stopPropagation()
     dragCounter.current = 0
     setDragging(false)
-    if (refFiles.length >= 5 || extracting) return
+    if (refFiles.length >= MAX_REFERENCE_FILES || extracting) return
     const files = Array.from(e.dataTransfer.files)
     if (files.length > 0) {
       await processFiles(files)
@@ -579,20 +610,20 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
                       onDragOver={handleDragOver}
                       onDrop={handleDrop}
                       onClick={() => {
-                        if (refFiles.length < 5 && !extracting) fileInputRef.current?.click()
+                        if (refFiles.length < MAX_REFERENCE_FILES && !extracting) fileInputRef.current?.click()
                       }}
                       className={cn(
                         "flex flex-col items-center justify-center gap-1.5 px-4 py-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors",
                         dragging
                           ? "border-primary bg-primary/5 text-primary"
                           : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30",
-                        (refFiles.length >= 5 || extracting) && "opacity-40 cursor-not-allowed",
+                        (refFiles.length >= MAX_REFERENCE_FILES || extracting) && "opacity-40 cursor-not-allowed",
                       )}
                     >
                       {extracting ? (
                         <>
                           <Loader2 className="size-5 animate-spin" />
-                          <span className="text-xs">Extracting text...</span>
+                          <span className="text-xs">Reading document...</span>
                         </>
                       ) : dragging ? (
                         <>

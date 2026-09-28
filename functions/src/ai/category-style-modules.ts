@@ -1,9 +1,10 @@
 // As of 2026-05-19, BLOG_CATEGORIES (lib/validators/blog-post.ts) restricts new
 // posts to Performance/Recovery/Coaching/Youth Development — so today only the
 // "recovery" and "youth" modules below fire in production via the formal category
-// field. The "rotational"/"comeback"/"strength"/"mobility" modules are kept ready
-// for when BLOG_CATEGORIES expands, and for the substring match to opportunistically
-// catch free-text categories on legacy posts.
+// field. The "rotational"/"strength"/"mobility" modules are kept ready for when
+// BLOG_CATEGORIES expands, and for the substring match to opportunistically catch
+// free-text categories on legacy posts. "comeback" also fires by TOPIC — see
+// getStyleModuleForPost below.
 
 // Order is precedence — first match wins. When a post category contains multiple
 // keywords (e.g. "Recovery & Mobility"), the earlier entry here wins. Today this
@@ -78,4 +79,30 @@ export function getCategoryStyleModule(category: string): string {
   const key = normalize(category)
   if (!key) return GENERIC
   return MODULES[key]
+}
+
+// A post about injury and getting back to sport. Word-bounded so "strain" does
+// not match "constraint" and "acl" does not match "oracle".
+const REHAB_TOPIC =
+  /\b(rehab\w*|injur\w*|return[\s-]to[\s-](sport|play|training|running|competition)|post[\s-]injury|comeback|acl|meniscus|tendon\w*|tendinopathy|sprain\w*|strain\w*|surgery|surgical|physio\w*|physical therapy)\b/i
+
+/**
+ * The style module for a whole post: its category, overridden by its topic
+ * when that is rehab.
+ *
+ * There is no Rehab category, so a rehab post is filed under Recovery — and
+ * the Recovery module asks for home settings, hoodies and "not gym
+ * equipment". That is how "Sports Rehab Has a Methodology Problem" came back
+ * with a man in a recliner on its cover and a woman eating a salad in a
+ * kitchen (owner's report, 2026-09-29). The comeback module (rehab gyms, PT
+ * studios, banded rehab work) is the one that fits, so the topic wins.
+ *
+ * Youth keeps its own module: the casting (adolescents) matters more there
+ * than the setting.
+ */
+export function getStyleModuleForPost(post: { category: string; title: string; tags?: readonly string[] }): string {
+  if (normalize(post.category) !== "youth" && REHAB_TOPIC.test([post.title, ...(post.tags ?? [])].join(" "))) {
+    return MODULES.comeback
+  }
+  return getCategoryStyleModule(post.category)
 }

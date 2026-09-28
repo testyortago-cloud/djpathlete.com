@@ -1,0 +1,17 @@
+{
+  "hero_prompt": "Middle-aged male athlete in a knee sleeve and worn training clothes, performing a slow controlled single-leg balance hold on a foam pad beside parallel bars, clinical rehab studio, soft daylight through clinic windows, shot on Canon R5 with 35mm f/1.4, natural window light, Kodak Portra 400 color science, muted warm tones, eye-level three-quarter composition with negative space camera-right, editorial documentary style of Walter Iooss Jr.",
+  "inline_prompts": [
+    {
+      "section_h2": "The Phases That Actually Matter",
+      "prompt": "Female athlete with taped ankle performing banded resisted knee extension on a treatment table, PT guiding tempo with a hand cue, low-stim rehab gym, soft window light, shot on Canon R6 with 85mm f/1.8, natural daylight, Fuji Pro 400H grade, tight crop with shallow depth of field, documentary coaching style of Platon."
+    },
+    {
+      "section_h2": "Nutrition Belongs Inside the Rehab Protocol",
+      "prompt": "Young adult athlete with wrist brace seated at a clinic table eating a protein-rich meal between rehab sets, resistance bands and foam roller nearby, natural daylight through clinic windows, shot on Leica Q3 28mm fixed, hip-level angle, Kodak Portra 400 grade, quiet documentary framing, editorial style of Annie Leibovitz."
+    },
+    {
+      "section_h2": "Sport-Specific Benchmarks Before You Clear Anyone",
+      "prompt": "Athletic woman in a knee brace performing a controlled single-leg hop landing on a low box, PT observing with a clipboard, rehab facility with parallel bars, morning light through windows, shot on Sony A7IV with 50mm f/1.8 slight low angle, Fuji Pro 400H color, rule-of-thirds composition, documentary style of Walter Iooss Jr."
+    }
+  ]
+}
