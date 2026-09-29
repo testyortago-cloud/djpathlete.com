@@ -11,6 +11,7 @@ import type {
   AnalyticsResult,
   ConnectResult,
 } from "./types"
+import sharp from "sharp"
 import { escapeLittleText } from "../linkedin-little-text"
 
 // Every call goes through /rest with this header. LinkedIn sunset the
@@ -186,12 +187,17 @@ async function uploadThumbnailUnsafe(args: ArticlePostArgs): Promise<string | nu
     console.warn(`[linkedin] card image fetch failed (${binary.error}); posting the card without it`)
     return null
   }
+  const bytes = await toLinkedInImageFormat(binary.data)
+  if (!bytes.ok) {
+    console.warn(`[linkedin] card image conversion failed (${bytes.error}); posting the card without it`)
+    return null
+  }
   const init = await initializeImageUpload(args.accessToken, args.organizationId)
   if (!init.ok) {
     console.warn(`[linkedin] card image init failed (${init.error}); posting the card without it`)
     return null
   }
-  const put = await putImageBytes(args.accessToken, init.uploadUrl, binary.data)
+  const put = await putImageBytes(args.accessToken, init.uploadUrl, bytes.data)
   if (!put.ok) {
     console.warn(`[linkedin] card image upload failed (${put.error}); posting the card without it`)
     return null
@@ -202,6 +208,29 @@ async function uploadThumbnailUnsafe(args: ArticlePostArgs): Promise<string | nu
     return null
   }
   return init.imageUrn
+}
+
+// LinkedIn's Images API accepts JPG, GIF and PNG only, and every AI-generated blog
+// cover is WebP (functions/src/lib/image-pipeline.ts). Sniff the magic bytes, pass
+// the three accepted formats through untouched, and re-encode anything else as JPEG.
+function isLinkedInImageFormat(data: ArrayBuffer): boolean {
+  const b = new Uint8Array(data, 0, Math.min(4, data.byteLength))
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return true // JPEG
+  if (b.length >= 4 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return true // PNG
+  if (b.length >= 4 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return true // GIF
+  return false
+}
+
+async function toLinkedInImageFormat(
+  data: ArrayBuffer,
+): Promise<{ ok: true; data: ArrayBuffer } | { ok: false; error: string }> {
+  if (isLinkedInImageFormat(data)) return { ok: true, data }
+  try {
+    const jpeg = await sharp(Buffer.from(data)).jpeg({ quality: 85 }).toBuffer()
+    return { ok: true, data: jpeg.buffer.slice(jpeg.byteOffset, jpeg.byteOffset + jpeg.byteLength) as ArrayBuffer }
+  } catch (err) {
+    return { ok: false, error: (err as Error).message }
+  }
 }
 
 async function publishArticlePost(args: ArticlePostArgs): Promise<PublishResult> {
@@ -633,6 +662,8 @@ async function waitForImageReady(
     if (response.ok) {
       const data = (await response.json().catch(() => null)) as { status?: string } | null
       if (data?.status === "AVAILABLE") return { ok: true }
+      // Terminal: polling on would only spend the remaining ~7 s to reach the same answer.
+      if (data?.status === "PROCESSING_FAILED") return { ok: false, error: "LinkedIn image PROCESSING_FAILED" }
     }
     if (attempt < POLL_MAX_ATTEMPTS - 1) {
       await sleep(delay)
