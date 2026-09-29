@@ -125,6 +125,16 @@ export async function buildPluginInput(
       mediaUrls,
       postType: post.post_type,
       scheduledAt: null,
+      ...(post.link_url && post.link_title
+        ? {
+            link: {
+              url: post.link_url,
+              title: post.link_title,
+              description: post.link_description ?? null,
+              imageUrl: post.link_image_url ?? null,
+            },
+          }
+        : {}),
     },
   }
 }
