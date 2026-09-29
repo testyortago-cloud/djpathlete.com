@@ -45,8 +45,9 @@ box can also create a plain Text post.
   - Blog: cover image, title, excerpt → `https://www.darrenjpaul.com/blog/<slug>`.
   - Newsletter: a teaser of the issue's main idea ending in an invitation to subscribe; card uses the site's
     default share image → `https://www.darrenjpaul.com/#newsletter`.
-- **Twice:** if an un-posted LinkedIn draft from the same source exists, the button reads
-  **"Draft already in Social"** and links there instead of writing another. Once posted, sharing again is allowed.
+- **Twice:** if an un-posted LinkedIn draft from the same source exists, clicking the button turns it into
+  **"Draft already in Social"** linking there, instead of writing another. (Checked on click, not on page load, so
+  the blog list does not run a query per row.) Once posted, sharing again is allowed.
 - **Failures:** LinkedIn not connected / agent failed → a plain-words message, nothing created.
 - **Manual:** the New manual post box gets **Text**, available WITHOUT the multimedia flag.
 
