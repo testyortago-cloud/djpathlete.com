@@ -8,7 +8,8 @@ The owner wants to promote blog posts and newsletter issues on LinkedIn as text 
 videos. LinkedIn (Company Page "DJP Athlete") has been connected in production since 2026-09-29 15:02 UTC.
 
 Done means: from a published blog post or a sent/scheduled newsletter issue, one click produces a LinkedIn
-draft in Darren's voice, in the existing approval queue (`/admin/social`), which publishes as a post with a
+draft in Darren's voice, in the existing approval queue (the Content Studio's posts list, which
+`/admin/social` redirects to while `CONTENT_STUDIO_ENABLED` is on), which publishes as a post with a
 **link card** (image, title, description) pointing back to darrenjpaul.com. The Content Studio's manual post
 box can also create a plain Text post.
 
@@ -30,8 +31,11 @@ box can also create a plain Text post.
   escape them today, so every LinkedIn post containing e.g. "(ACL)" is at risk of being mangled or truncated.
 - Newsletters have **no public web page**. Prod: 2 sent, 2 scheduled, 10 drafts; none of the sent/scheduled
   came from a blog. The homepage newsletter section has no anchor id.
-- `CS_MULTIMEDIA_ENABLED` is **unset in production**, so `ManualPostDialog` shows no post-type picker at all
-  (video only), and the create route refuses any non-video type. This is why the owner saw "just videos".
+- `CS_MULTIMEDIA_ENABLED` is set in Production (Sensitive, so its value could not be read); why the owner saw
+  only videos is unconfirmed. The Text option is added regardless and does not depend on the flag.
+  (Corrected 2026-09-29: an earlier draft of this spec claimed the flag was unset in production. It is not.)
+- `CONTENT_STUDIO_ENABLED` is on in production: `/admin/social` redirects to `/admin/content?tab=posts`, and
+  the nav calls that page "Content Studio". The owner never sees a page called "Social".
 - `social_posts` has no `business_id` and no link/source columns. RLS is enabled (00076).
 
 ## 2. What the owner sees (approved)
@@ -39,14 +43,20 @@ box can also create a plain Text post.
 - **Blog:** a **Share to LinkedIn** button on each *published* post — in the blog list row and in the edit page
   header. Not on drafts.
 - **Newsletter:** the same button on each *sent* or *scheduled* issue (list row + edit page).
-- **Click →** "Writing LinkedIn post…" (the agent, ~1 min) → **"Draft ready → review in Social"** linking to
-  `/admin/social`. Review, edit, approve, post now or schedule there as with any draft.
+- **Click →** "Writing LinkedIn post…" (the agent, ~1 min) → **"Draft ready → review in Content Studio"**
+  linking straight to the new draft, `/admin/content/post/<id>` (the posts list, `/admin/content?tab=posts`, if
+  the job names no post). Review, edit, approve, post now or schedule there as with any draft.
+  - Which page is named comes from the share route, because `CONTENT_STUDIO_ENABLED` is server-only: both
+    success bodies carry `review { label, listHref, postHrefPrefix }`. With the studio off it is
+    `{ "Social", "/admin/social", null }`, and the link reads "Draft ready → review in Social" → `/admin/social`
+    (that page has no per-post route, so there is no deep link).
 - **On LinkedIn:** Darren's words, then a link card.
   - Blog: cover image, title, excerpt → `https://www.darrenjpaul.com/blog/<slug>`.
   - Newsletter: a teaser of the issue's main idea ending in an invitation to subscribe; card uses the site's
     default share image → `https://www.darrenjpaul.com/#newsletter`.
 - **Twice:** if an un-posted LinkedIn draft from the same source exists, clicking the button turns it into
-  **"Draft already in Social"** linking there, instead of writing another. (Checked on click, not on page load, so
+  **"Draft already in Content Studio"** linking to that draft (`/admin/content/post/<id>`; with the studio off,
+  "Draft already in Social" → `/admin/social`), instead of writing another. (Checked on click, not on page load, so
   the blog list does not run a query per row.) Once posted, sharing again is allowed.
 - **Failures:** LinkedIn not connected / agent failed → a plain-words message, nothing created.
 - **Manual:** the New manual post box gets **Text**, available WITHOUT the multimedia flag.
@@ -85,9 +95,13 @@ null; see memory "a DB-defaulted column must be optional").
    - newsletter: 404 if missing; 409 `"Only sent or scheduled issues can be shared"` unless `sent`/`scheduled`.
 3. LinkedIn must be `connected` in `platform_connections`, else 409 `"Connect LinkedIn first (Platform connections)"`.
 4. Dedupe: newest `social_posts` row with the same source column, `platform='linkedin'`, and
-   `approval_status` NOT IN (`published`, `rejected`). If found → 200 `{ existingPostId }`, no job.
+   `approval_status` NOT IN (`published`, `rejected`). If found → 200 `{ existingPostId, review }`, no job.
 5. Else `createAiJob({ type: "social_agent_run", userId, input: { platform: "linkedin", blogPostId | newsletterId,
-   siteUrl: SITE_URL, businessId: platformBusinessId() } })` → 202 `{ jobId }`.
+   siteUrl: SITE_URL, businessId: platformBusinessId() } })` → 202 `{ jobId, review }`.
+
+`review` (both success bodies) is derived from `isContentStudioEnabled()`: on →
+`{ label: "Content Studio", listHref: "/admin/content?tab=posts", postHrefPrefix: "/admin/content/post/" }`;
+off → `{ label: "Social", listHref: "/admin/social", postHrefPrefix: null }`. See §2.
 
 Dedupe is check-then-enqueue, not atomic: two fast clicks can create two drafts. Acceptable (the owner deletes
 one); the button disables itself while a request is in flight. Do not describe it as airtight.
@@ -124,6 +138,11 @@ one); the button disables itself while a request is in flight. Do not describe i
 - LinkedIn plugin: when `input.link` is set and the post has no media → **article post**:
   1. If `imageUrl`: download → `initializeUpload` → PUT → wait AVAILABLE (existing image helpers) → thumbnail URN.
      If any step fails, log and post the article **without** a thumbnail rather than failing the post.
+     LinkedIn's Images API accepts JPG, GIF and PNG only, and every AI-generated blog cover is WebP
+     (`functions/src/lib/image-pipeline.ts`), so the downloaded bytes are sniffed (`FF D8 FF`, `89 50 4E 47`,
+     `47 49 46 38`) and anything else is re-encoded to JPEG through `sharp` (quality 85) before the upload. A
+     conversion failure is one more step that degrades to a card without an image. `PROCESSING_FAILED` from the
+     image poll is terminal: it stops polling at once (image posts share the helper).
   2. `POST /rest/posts` with `content.article { source, title, description?, thumbnail? }`.
   If the post has media (image/video/carousel), media wins and the link is ignored (a post cannot carry both).
 - **Little-text escaping** for every LinkedIn `commentary` (text, image, multi-image, video, article): backslash-
@@ -173,3 +192,11 @@ one); the button disables itself while a request is in flight. Do not describe i
 Order matters: apply `00283` to **production** before the code that writes the columns deploys, or the agent's
 insert fails. Push to `main` deploys Vercel AND the functions (CI on `functions/**`). Both steps wait for the
 owner's go-ahead.
+
+- **`00283` goes to production FIRST.** If it is missing, every social agent insert fails — including the
+  scheduled Tue/Thu cron's, not only shares — and the share route 500s (its dedupe query names the new source
+  columns).
+- **The two deploys are separate, and the window between them is a race.** A push to `main` deploys Vercel and
+  the Firebase functions independently. Until the functions CI deploy has finished, a newsletter share reaches
+  the OLD agent, which ignores `newsletterId` and drafts about an auto-picked blog post instead. Do not click
+  Share until the functions deploy has completed.
