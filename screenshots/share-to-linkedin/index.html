@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Share to LinkedIn — review sheet</title>
+<style>
+  :root { --ink:#0f2a33; --muted:#5b6b70; --line:#e3e7e8; --bg:#f6f7f7; --accent:#c8743a; }
+  body { margin:0; font:16px/1.5 -apple-system, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg); }
+  main { max-width:1100px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { margin:0 0 4px; font-size:28px; }
+  p.lede { margin:0 0 24px; color:var(--muted); }
+  .note { background:#fff; border:1px solid var(--line); border-left:4px solid var(--accent); padding:12px 16px; margin:0 0 28px; }
+  figure { margin:0 0 36px; background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  figcaption { padding:12px 16px; border-bottom:1px solid var(--line); }
+  figcaption b { color:var(--accent); margin-right:6px; }
+  img { display:block; width:100%; height:auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Share to LinkedIn</h1>
+  <p class="lede">The real admin on the test database, 2026-09-30. Each picture has its numbered notes burned in.</p>
+  <div class="note">
+    <b>How these were taken.</b> Shot 3 is the server's real answer (LinkedIn is not connected on the test database).
+    For shots 4 and 5 the share request was answered by the capture script, because a real request starts the
+    writing job on the live system, which works on production data. "Draft ready" is not shown for the same
+    reason; shot 5b shows the draft that link opens. The draft in 5b and 7 was added to the test database by hand.
+  </div>
+
+  <figure><figcaption><b>1</b>Blog list: a LinkedIn button on each published post, none on drafts.</figcaption><img src="01-blog-list.png" alt="Blog list with LinkedIn buttons on published rows"></figure>
+  <figure><figcaption><b>2</b>The same button at the top of a published post.</figcaption><img src="02-blog-edit-header.png" alt="Blog edit page header with Share to LinkedIn"></figure>
+  <figure><figcaption><b>3</b>LinkedIn not connected: a plain message, nothing created.</figcaption><img src="03-not-connected.png" alt="Toast: Connect LinkedIn first"></figure>
+  <figure><figcaption><b>4</b>While the post is being written the button is locked.</figcaption><img src="04-writing.png" alt="Writing LinkedIn post state"></figure>
+  <figure><figcaption><b>5</b>Already shared and not yet posted: it links to that draft.</figcaption><img src="05-already-in-content-studio.png" alt="Draft already in Content Studio link"></figure>
+  <figure><figcaption><b>5b</b>Following that link opens the draft itself, ready to edit, schedule or post.</figcaption><img src="05b-the-draft.png" alt="The LinkedIn draft in Content Studio"></figure>
+  <figure><figcaption><b>6</b>Newsletter list: the button on sent and scheduled issues.</figcaption><img src="06-newsletter-list.png" alt="Newsletter list with LinkedIn button on the scheduled issue"></figure>
+  <figure><figcaption><b>7</b>Where drafts wait: Content Studio, Posts.</figcaption><img src="07-drafts-in-content-studio.png" alt="Content Studio posts list with the LinkedIn draft"></figure>
+  <figure><figcaption><b>8</b>Content Studio: a Text post with no photo or video.</figcaption><img src="08-manual-text-post.png" alt="New manual post dialog with Text selected and LinkedIn ticked"></figure>
+</main>
+</body>
+</html>
