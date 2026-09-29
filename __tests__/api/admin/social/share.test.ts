@@ -127,16 +127,42 @@ describe("POST /api/admin/social/share", () => {
     expect(h.createAiJob).not.toHaveBeenCalled()
   })
 
-  it("404s an unknown blog post and an unknown newsletter", async () => {
-    h.getBlogPostById.mockRejectedValue(new Error("not found"))
-    let res = await call({ blogPostId: "nope" })
+  it("404s an unknown blog post (PGRST116)", async () => {
+    h.getBlogPostById.mockRejectedValue({ code: "PGRST116", message: "The result contains 0 rows" })
+    const res = await call({ blogPostId: "nope" })
     expect(res.status).toBe(404)
     expect(await res.json()).toEqual({ error: "Blog post not found" })
-    h.getNewsletterById.mockRejectedValue(new Error("not found"))
-    res = await call({ newsletterId: "nope" })
+    expect(h.createAiJob).not.toHaveBeenCalled()
+  })
+
+  it("404s an unknown newsletter (PGRST116)", async () => {
+    h.getNewsletterById.mockRejectedValue({ code: "PGRST116", message: "The result contains 0 rows" })
+    const res = await call({ newsletterId: "nope" })
     expect(res.status).toBe(404)
     expect(await res.json()).toEqual({ error: "Newsletter not found" })
     expect(h.createAiJob).not.toHaveBeenCalled()
+  })
+
+  it("500s, and logs, when the blog post lookup fails for another reason", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+    h.getBlogPostById.mockRejectedValue({ code: "57014", message: "canceling statement due to statement timeout" })
+    const res = await call({ blogPostId: "b1" })
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: "Couldn't load the blog post" })
+    expect(h.createAiJob).not.toHaveBeenCalled()
+    expect(spy).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
+  })
+
+  it("500s, and logs, when the newsletter lookup fails for another reason", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+    h.getNewsletterById.mockRejectedValue({ code: "57014", message: "canceling statement due to statement timeout" })
+    const res = await call({ newsletterId: "n1" })
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: "Couldn't load the newsletter" })
+    expect(h.createAiJob).not.toHaveBeenCalled()
+    expect(spy).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
   })
 
   it("401s without a session", async () => {

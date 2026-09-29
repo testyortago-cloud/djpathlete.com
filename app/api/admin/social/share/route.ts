@@ -19,6 +19,12 @@ import { getNewsletterById } from "@/lib/db/newsletters"
 import { listPlatformConnections } from "@/lib/db/platform-connections"
 import { findOpenShareDraft, type ShareSource } from "@/lib/db/social-posts"
 
+// The getters use .single() and throw the raw PostgREST error; zero rows is
+// PGRST116. Anything else (timeout, outage) is a failure, not a missing row.
+function isNotFound(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "PGRST116"
+}
+
 export async function POST(request: NextRequest) {
   const session = await auth()
   if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
@@ -40,15 +46,27 @@ export async function POST(request: NextRequest) {
 
   let source: ShareSource
   if (blogPostId) {
-    const post = await getBlogPostById(blogPostId).catch(() => null)
-    if (!post) return NextResponse.json({ error: "Blog post not found" }, { status: 404 })
+    let post
+    try {
+      post = await getBlogPostById(blogPostId)
+    } catch (err) {
+      if (isNotFound(err)) return NextResponse.json({ error: "Blog post not found" }, { status: 404 })
+      console.error("[social/share] blog post lookup failed", err)
+      return NextResponse.json({ error: "Couldn't load the blog post" }, { status: 500 })
+    }
     if (post.status !== "published") {
       return NextResponse.json({ error: "Only published posts can be shared" }, { status: 409 })
     }
     source = { blogPostId }
   } else {
-    const issue = await getNewsletterById(newsletterId!).catch(() => null)
-    if (!issue) return NextResponse.json({ error: "Newsletter not found" }, { status: 404 })
+    let issue
+    try {
+      issue = await getNewsletterById(newsletterId!)
+    } catch (err) {
+      if (isNotFound(err)) return NextResponse.json({ error: "Newsletter not found" }, { status: 404 })
+      console.error("[social/share] newsletter lookup failed", err)
+      return NextResponse.json({ error: "Couldn't load the newsletter" }, { status: 500 })
+    }
     if (issue.status !== "sent" && issue.status !== "scheduled") {
       return NextResponse.json({ error: "Only sent or scheduled issues can be shared" }, { status: 409 })
     }
