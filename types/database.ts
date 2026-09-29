@@ -1775,6 +1775,13 @@ export interface SocialPost {
   rejection_notes: string | null
   platform_post_id: string | null
   created_by: string | null
+  /** Share to LinkedIn (00283). Optional: DB-defaulted null, and older rows/fakes omit them. */
+  source_blog_post_id?: string | null
+  source_newsletter_id?: string | null
+  link_url?: string | null
+  link_title?: string | null
+  link_description?: string | null
+  link_image_url?: string | null
   created_at: string
   updated_at: string
 }

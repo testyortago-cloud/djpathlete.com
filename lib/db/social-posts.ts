@@ -6,6 +6,32 @@ function getClient() {
   return createServiceRoleClient()
 }
 
+export type ShareSource = { blogPostId: string } | { newsletterId: string }
+
+/**
+ * The newest LinkedIn draft made from this blog post / issue that has not been
+ * posted or rejected. The share route returns it instead of drafting a second one.
+ * A `failed` draft counts as open on purpose: retry it rather than write another.
+ */
+export async function findOpenShareDraft(source: ShareSource): Promise<SocialPost | null> {
+  const supabase = getClient()
+  const [column, id] =
+    "blogPostId" in source
+      ? (["source_blog_post_id", source.blogPostId] as const)
+      : (["source_newsletter_id", source.newsletterId] as const)
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select("*")
+    .eq("platform", "linkedin")
+    .eq(column, id)
+    .not("approval_status", "in", "(published,rejected)")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data as SocialPost | null) ?? null
+}
+
 /**
  * Create a social post. `post_type` is optional — omitting it falls through to
  * the DB default `'video'`. Callers creating non-video posts (image/carousel/

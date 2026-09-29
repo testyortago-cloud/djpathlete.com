@@ -111,6 +111,17 @@ const KNOWN_UNRESOLVED: {
     // findContactWithBusinessByIdentifiers' `pick(column: "user_id" | "email")`.
     checkedAs: { table: "contacts", orders: ["created_at"], filters: ["user_id", "email"] },
   },
+  {
+    file: "lib/db/social-posts.ts",
+    reason: "filter column is not a constant: column",
+    count: 1,
+    // findOpenShareDraft picks `column` from "source_blog_post_id" | "source_newsletter_id" (00283).
+    checkedAs: {
+      table: "social_posts",
+      orders: ["created_at"],
+      filters: ["platform", "source_blog_post_id", "source_newsletter_id", "approval_status"],
+    },
+  },
 ]
 
 /**
