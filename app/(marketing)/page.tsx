@@ -436,7 +436,7 @@ export default async function HomePage() {
       </section>
 
       {/* ─── Newsletter Section ─── */}
-      <section className="py-20 lg:py-32 px-4 sm:px-8 bg-primary">
+      <section id="newsletter" className="scroll-mt-20 py-20 lg:py-32 px-4 sm:px-8 bg-primary">
         <FadeIn className="max-w-2xl mx-auto text-center">
           <Mail className="size-10 text-accent mx-auto mb-6" />
           <h2 className="text-3xl sm:text-4xl font-heading font-semibold text-primary-foreground tracking-tight mb-4">

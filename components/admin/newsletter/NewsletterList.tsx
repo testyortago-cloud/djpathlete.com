@@ -17,6 +17,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { Newsletter } from "@/types/database"
 import { SchedulePicker } from "@/components/admin/shared/SchedulePicker"
+import { ShareToLinkedInButton } from "@/components/admin/social/ShareToLinkedInButton"
 
 interface NewsletterListProps {
   newsletters: Newsletter[]
@@ -219,6 +220,9 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
                     </DataTableCell>
                     <DataTableCell>
                       <div className="flex items-center justify-end gap-1">
+                        {(nl.status === "sent" || nl.status === "scheduled") && (
+                          <ShareToLinkedInButton source={{ newsletterId: nl.id }} />
+                        )}
                         {(nl.status === "draft" || nl.status === "scheduled") && (
                           <button
                             onClick={() => setSchedulingId(nl.id)}

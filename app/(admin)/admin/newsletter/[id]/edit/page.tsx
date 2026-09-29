@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import { requirePermission } from "@/lib/permissions/guard"
 import { getNewsletterById } from "@/lib/db/newsletters"
 import { NewsletterForm } from "@/components/admin/newsletter/NewsletterForm"
+import { ShareToLinkedInButton } from "@/components/admin/social/ShareToLinkedInButton"
 import type { Newsletter } from "@/types/database"
 
 interface Props {
@@ -23,9 +24,14 @@ export default async function EditNewsletterPage({ params }: Props) {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-6">
-        {newsletter.status === "sent" ? "View Newsletter" : "Edit Newsletter"}
-      </h1>
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <h1 className="text-2xl font-semibold text-primary">
+          {newsletter.status === "sent" ? "View Newsletter" : "Edit Newsletter"}
+        </h1>
+        {(newsletter.status === "sent" || newsletter.status === "scheduled") && (
+          <ShareToLinkedInButton source={{ newsletterId: newsletter.id }} variant="full" />
+        )}
+      </div>
       <NewsletterForm newsletter={newsletter} authorId={newsletter.author_id} />
     </div>
   )

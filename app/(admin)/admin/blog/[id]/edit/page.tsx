@@ -3,6 +3,7 @@ import { requirePermission } from "@/lib/permissions/guard"
 import { getBlogPostById } from "@/lib/db/blog-posts"
 import { BlogPostForm } from "@/components/admin/blog/BlogPostForm"
 import { BlogPostImageWatcher } from "@/components/admin/blog/BlogPostImageWatcher"
+import { ShareToLinkedInButton } from "@/components/admin/social/ShareToLinkedInButton"
 import type { BlogPost } from "@/types/database"
 
 interface Props {
@@ -24,7 +25,10 @@ export default async function EditBlogPostPage({ params }: Props) {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-6">Edit Blog Post</h1>
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <h1 className="text-2xl font-semibold text-primary">Edit Blog Post</h1>
+        {post.status === "published" && <ShareToLinkedInButton source={{ blogPostId: post.id }} variant="full" />}
+      </div>
       <BlogPostImageWatcher postId={post.id} hasCoverImage={Boolean(post.cover_image_url)} />
       <BlogPostForm post={post} authorId={session.user!.id!} />
     </div>

@@ -17,6 +17,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { BlogPost } from "@/types/database"
 import { SchedulePicker } from "@/components/admin/shared/SchedulePicker"
+import { ShareToLinkedInButton } from "@/components/admin/social/ShareToLinkedInButton"
 
 interface BlogPostListProps {
   posts: BlogPost[]
@@ -236,6 +237,7 @@ export function BlogPostList({ posts }: BlogPostListProps) {
                     </DataTableCell>
                     <DataTableCell>
                       <div className="flex items-center justify-end gap-1">
+                        {post.status === "published" && <ShareToLinkedInButton source={{ blogPostId: post.id }} />}
                         {post.status === "draft" &&
                           (confirmPublishId === post.id ? (
                             <div className="flex items-center gap-1">
