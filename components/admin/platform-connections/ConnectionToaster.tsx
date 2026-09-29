@@ -24,7 +24,7 @@ const PLATFORM_ERROR_COPY: Record<string, Record<string, string>> = {
     pages_lookup:
       "Couldn't read your LinkedIn Company Pages. Check the app has the Community Management API approved.",
     no_pages:
-      "This LinkedIn account isn't an admin of any Company Page. Sign in as a Page admin and try again.",
+      "This LinkedIn account can't post as any Company Page. It needs to be a Super admin or Content admin of the Page.",
     unauthorized_scope_error:
       "LinkedIn hasn't approved this app for Company Page posting yet. Request the Community Management API on the app's Products tab.",
     user_cancelled_authorize: "You cancelled the connection before finishing.",

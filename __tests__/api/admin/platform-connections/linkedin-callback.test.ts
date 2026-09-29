@@ -135,6 +135,53 @@ describe("LinkedIn OAuth callback", () => {
     expect(connectCalls).toHaveLength(0)
   })
 
+  it("connects a Content admin, whom a role=ADMINISTRATOR query would never see", async () => {
+    aclElements = [
+      { role: "CONTENT_ADMINISTRATOR", state: "APPROVED", organizationTarget: "urn:li:organization:2414183" },
+    ]
+    const res = await callback(`code=auth-code&state=${STATE}`)
+
+    expect(redirectParams(res).get("connected")).toBe("linkedin")
+    expect(connectCalls[0]?.[1]).toMatchObject({ credentials: { organization_id: "2414183" } })
+    const aclCall = fetched.find((f) => f.url.includes("/rest/organizationAcls"))
+    expect(new URL(aclCall!.url).searchParams.has("role")).toBe(false)
+  })
+
+  it("prefers a Page the member is Super admin of over one they are Content admin of", async () => {
+    aclElements = [
+      { role: "CONTENT_ADMINISTRATOR", state: "APPROVED", organizationTarget: "urn:li:organization:111" },
+      { role: "ADMINISTRATOR", state: "APPROVED", organizationTarget: "urn:li:organization:2414183" },
+    ]
+    await callback(`code=auth-code&state=${STATE}`)
+
+    expect(connectCalls[0]?.[1]).toMatchObject({ credentials: { organization_id: "2414183" } })
+  })
+
+  it("refuses a Page the member can only analyse, and logs the roles it saw", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    aclElements = [{ role: "ANALYST", state: "APPROVED", organizationTarget: "urn:li:organization:2414183" }]
+    const res = await callback(`code=auth-code&state=${STATE}`)
+
+    expect(Object.fromEntries(redirectParams(res))).toEqual({ error: "linkedin", reason: "no_pages" })
+    expect(connectCalls).toHaveLength(0)
+    expect(warn).toHaveBeenCalledWith("[linkedin/callback] no_pages", [
+      { role: "ANALYST", state: "APPROVED", target: "urn:li:organization:2414183" },
+    ])
+  })
+
+  it("logs which half of the security check was missing", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const res = await callback(`code=auth-code&state=${STATE}`, "")
+
+    expect(Object.fromEntries(redirectParams(res))).toEqual({ error: "linkedin", reason: "state_mismatch" })
+    expect(warn).toHaveBeenCalledWith("[linkedin/callback] state_mismatch", {
+      hasCode: true,
+      hasState: true,
+      hasCookie: false,
+    })
+    expect(fetched).toHaveLength(0)
+  })
+
   it("passes LinkedIn's own refusal through as the reason, without calling the API", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {})
     const res = await callback(

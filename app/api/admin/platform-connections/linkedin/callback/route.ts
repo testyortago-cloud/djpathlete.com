@@ -21,9 +21,28 @@ const TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 // Versioned /rest, never /v2: LinkedIn sunset the unversioned marketing
 // endpoints on 2024-12-16, and a /v2 lookup here failed every connection at
 // the last step, after the admin had already approved it.
-const ORG_ACLS_URL =
-  "https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED"
+// No role= filter: LinkedIn's "Content admin" is CONTENT_ADMINISTRATOR, which
+// can post as the Page, and a role=ADMINISTRATOR query answers such a member
+// with an empty list. The role is picked below instead.
+const ORG_ACLS_URL = "https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&state=APPROVED"
 const ORGANIZATIONS_URL = "https://api.linkedin.com/rest/organizations"
+// Page roles that may publish as the Page, best first ("Super admin", then
+// "Content admin"). Analysts, recruiters and the rest cannot.
+const POSTING_ROLES = ["ADMINISTRATOR", "CONTENT_ADMINISTRATOR"]
+
+interface OrgAcl {
+  role?: string
+  state?: string
+  // The versioned API names the Page `organizationTarget` (its own docs also
+  // show `organization`); `organizationalTarget` is the unversioned name.
+  organizationTarget?: string
+  organization?: string
+  organizationalTarget?: string
+}
+
+function aclTarget(acl: OrgAcl): string | undefined {
+  return acl.organizationTarget ?? acl.organization ?? acl.organizationalTarget
+}
 
 function siteUrl() {
   return (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "")
@@ -63,7 +82,15 @@ export async function GET(request: NextRequest) {
     console.error("[linkedin/callback] authorization refused", errorParam, url.searchParams.get("error_description"))
     return redirectHome("error", { reason: errorParam })
   }
+  // Every exit below logs. Vercel's request log does not keep the redirect's
+  // query string, so an exit that logs nothing cannot be told apart from the
+  // others after the fact: that is how three failed attempts went undiagnosed.
   if (!code || !stateParam || !stateCookie || stateParam !== stateCookie) {
+    console.warn("[linkedin/callback] state_mismatch", {
+      hasCode: Boolean(code),
+      hasState: Boolean(stateParam),
+      hasCookie: Boolean(stateCookie),
+    })
     return redirectHome("error", { reason: "state_mismatch" })
   }
 
@@ -71,6 +98,11 @@ export async function GET(request: NextRequest) {
   const clientSecret = process.env.LINKEDIN_CLIENT_SECRET
   const base = siteUrl()
   if (!clientId || !clientSecret || !base) {
+    console.error("[linkedin/callback] env_missing", {
+      LINKEDIN_CLIENT_ID: Boolean(clientId),
+      LINKEDIN_CLIENT_SECRET: Boolean(clientSecret),
+      NEXTAUTH_URL: Boolean(base),
+    })
     return redirectHome("error", { reason: "env_missing" })
   }
 
@@ -101,30 +133,34 @@ export async function GET(request: NextRequest) {
   }
 
   if (!tokenData.access_token) {
+    console.error("[linkedin/callback] token response had no access_token", Object.keys(tokenData))
     return redirectHome("error", { reason: "token_exchange" })
   }
 
-  // Find the first Company Page the admin manages.
+  // Find a Company Page this member can post as.
   const aclsResp = await fetch(ORG_ACLS_URL, { headers: versionedHeaders(tokenData.access_token) })
   if (!aclsResp.ok) {
     const text = await aclsResp.text().catch(() => "")
     console.error("[linkedin/callback] organizationAcls lookup failed", aclsResp.status, text)
     return redirectHome("error", { reason: "pages_lookup" })
   }
-  // The versioned API names the Page `organizationTarget` (its own docs also
-  // show `organization`); `organizationalTarget` is the unversioned name.
-  const aclsData = (await aclsResp.json()) as {
-    elements?: Array<{
-      organizationTarget?: string
-      organization?: string
-      organizationalTarget?: string
-    }>
+  const aclsData = (await aclsResp.json()) as { elements?: OrgAcl[] }
+  const acls = aclsData.elements ?? []
+  let organizationId: string | null = null
+  for (const role of POSTING_ROLES) {
+    const acl = acls.find((a) => a.role === role && parseOrgId(aclTarget(a)))
+    if (acl) {
+      organizationId = parseOrgId(aclTarget(acl))
+      break
+    }
   }
-  const firstAcl = aclsData.elements?.[0]
-  const organizationId = parseOrgId(
-    firstAcl?.organizationTarget ?? firstAcl?.organization ?? firstAcl?.organizationalTarget,
-  )
   if (!organizationId) {
+    // Roles and Page URNs only — enough to say "Analyst, not admin" or
+    // "a showcase page", with nothing secret in it.
+    console.warn(
+      "[linkedin/callback] no_pages",
+      acls.map((a) => ({ role: a.role, state: a.state, target: aclTarget(a) })),
+    )
     return redirectHome("error", { reason: "no_pages" })
   }
 
