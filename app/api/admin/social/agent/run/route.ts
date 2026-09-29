@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth"
 import { createAiJob } from "@/lib/ai-jobs"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { platformBusinessId } from "@/lib/tenancy/platform"
+import { SITE_URL } from "@/lib/constants"
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -35,7 +36,9 @@ export async function POST(request: NextRequest) {
   // is about darrenjpaul.com's blog whichever business is selected. Stamping
   // the selected one would alert a coach's owners about the platform's posts.
   // lib/tenancy/platform.ts lists this route under CORRECT BY CONSTRUCTION.
-  const input: Record<string, unknown> = { platform, businessId: platformBusinessId() }
+  // siteUrl: the agent writes the link card (link_* columns) only when the job
+  // carries it, so without it a manual run's draft publishes as bare text.
+  const input: Record<string, unknown> = { platform, businessId: platformBusinessId(), siteUrl: SITE_URL }
   if (body?.blogPostId) input.blogPostId = body.blogPostId
 
   const { jobId, status } = await createAiJob({

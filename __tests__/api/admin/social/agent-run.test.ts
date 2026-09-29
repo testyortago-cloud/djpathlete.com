@@ -56,7 +56,7 @@ describe("POST /api/admin/social/agent/run", () => {
     expect(h.createAiJob).toHaveBeenCalledWith({
       type: "social_agent_run",
       userId: "admin-1",
-      input: { platform: "linkedin", businessId: "platform-biz-g35" },
+      input: { platform: "linkedin", businessId: "platform-biz-g35", siteUrl: "https://www.darrenjpaul.com" },
     })
   })
 
@@ -65,8 +65,20 @@ describe("POST /api/admin/social/agent/run", () => {
     expect(h.createAiJob).toHaveBeenCalledWith({
       type: "social_agent_run",
       userId: "admin-1",
-      input: { platform: "linkedin", businessId: "platform-biz-g35", blogPostId: "post-1" },
+      input: {
+        platform: "linkedin",
+        businessId: "platform-biz-g35",
+        siteUrl: "https://www.darrenjpaul.com",
+        blogPostId: "post-1",
+      },
     })
+  })
+
+  // The agent builds the link card only when the job carries siteUrl; without it a
+  // manual run's draft publishes as bare text (functions/src/social-share-link.ts).
+  it("passes siteUrl so a manual run's draft gets a link card", async () => {
+    await call({})
+    expect(h.createAiJob.mock.calls[0][0].input.siteUrl).toBe("https://www.darrenjpaul.com")
   })
 
   // Absence; the first test is its presence control (same mocks, a session).
