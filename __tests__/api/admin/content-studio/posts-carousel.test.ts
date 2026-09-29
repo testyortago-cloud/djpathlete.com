@@ -143,9 +143,24 @@ describe("POST /api/admin/content-studio/posts — carousel path", () => {
     expect(mockCreate).not.toHaveBeenCalled()
   })
 
-  it("rejects IG carousel when an asset is not JPEG", async () => {
+  // Instagram published a PNG single-image post from this app on 2026-09-21, and
+  // carousel slides go through the same image_url container. A JPEG-only gate
+  // here refused the owner's all-PNG carousel before it ever reached Instagram.
+  it("accepts IG carousel with PNG slides", async () => {
+    mockGetAsset.mockImplementation(async (id: string) => ({ id, kind: "image", mime_type: "image/png" }))
+    const res = await call({
+      platform: "instagram",
+      caption: "x",
+      postType: "carousel",
+      mediaAssetIds: ["a-1", "a-2", "a-3"],
+    })
+    expect(res.status).toBe(200)
+    expect(mockCreate).toHaveBeenCalledOnce()
+  })
+
+  it("rejects IG carousel when an asset is WebP", async () => {
     mockGetAsset.mockImplementation(async (id: string) =>
-      id === "a-2" ? { id, kind: "image", mime_type: "image/png" } : { id, kind: "image", mime_type: "image/jpeg" },
+      id === "a-2" ? { id, kind: "image", mime_type: "image/webp" } : { id, kind: "image", mime_type: "image/png" },
     )
     const res = await call({
       platform: "instagram",
@@ -154,6 +169,9 @@ describe("POST /api/admin/content-studio/posts — carousel path", () => {
       mediaAssetIds: ["a-1", "a-2", "a-3"],
     })
     expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({
+      error: "Instagram carousels require JPEG or PNG images — a-2 is image/webp",
+    })
     expect(mockCreate).not.toHaveBeenCalled()
   })
 

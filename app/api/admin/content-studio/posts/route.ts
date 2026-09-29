@@ -113,9 +113,11 @@ export async function POST(request: NextRequest) {
           { status: 400 },
         )
       }
-      if (platform === "instagram" && asset.mime_type !== "image/jpeg") {
+      // PNG is allowed: Instagram published a PNG single-image post from this
+      // app (2026-09-21), and carousel slides use the same image_url container.
+      if (platform === "instagram" && asset.mime_type !== "image/jpeg" && asset.mime_type !== "image/png") {
         return NextResponse.json(
-          { error: `Instagram carousels require JPEG images — ${id} is ${asset.mime_type}` },
+          { error: `Instagram carousels require JPEG or PNG images — ${id} is ${asset.mime_type}` },
           { status: 400 },
         )
       }
