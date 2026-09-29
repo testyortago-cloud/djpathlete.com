@@ -19,9 +19,13 @@
 //      Per-platform failures are logged and skipped; the run continues.
 //   4. One aggregate social_agent_memos row records all platforms.
 //
-// Input: { platform?: AgentPlatform; blogPostId?: string; businessId?: string }
+// Input: { platform?: AgentPlatform; blogPostId?: string; newsletterId?: string;
+//          siteUrl?: string; businessId?: string }
 //   platform — if set, only that platform runs (overrides connection filter).
 //   blogPostId — manual topic override.
+//   newsletterId — manual topic override from a newsletter issue (Share to
+//     LinkedIn). Mutually exclusive with blogPostId; skips the brief likewise.
+//   siteUrl — the origin the draft's link card points at.
 //   businessId — whose owners get the "no eligible topic" alert (G35).
 
 import { FieldValue, getFirestore } from "firebase-admin/firestore"
@@ -32,6 +36,7 @@ import { getSupabase } from "./lib/supabase.js"
 import { fewShotsBlock } from "./lib/few-shots.js"
 import { notifyBusinessOwners } from "./lib/notify-business-owners.js"
 import { scoreBlogVsBrief } from "./strategy/brief-blog-scorer.js"
+import { buildShareLink, htmlToText, type ShareTopic } from "./social-share-link.js"
 
 export const SUPPORTED_PLATFORMS = [
   "linkedin",
@@ -54,15 +59,24 @@ export interface SocialAgentInput {
    * alert rather than guessing a business.
    */
   businessId?: string
+  /** A newsletter issue to draft from, in place of a blog post. Never both. */
+  newsletterId?: string
+  /**
+   * The site the link card points at, stamped by the Next enqueue routes from
+   * SITE_URL. Absent on jobs from older code → the draft gets no card (it
+   * still records its source).
+   */
+  siteUrl?: string
 }
 
-export interface BlogTopic {
-  id: string
-  title: string
-  slug: string
-  excerpt: string | null
-  content: string | null
-}
+/** A topic the agent drafts from. Kept under its old name; it may now be a newsletter issue. */
+export type BlogTopic = ShareTopic
+
+// blog_posts rows as selected below ("id, title, slug, excerpt, content,
+// cover_image_url" — written out at each select, since the PostgREST select
+// probe reads string literals), stamped as blog topics.
+type BlogPostRow = Omit<ShareTopic, "kind">
+const asBlogTopic = (row: BlogPostRow): BlogTopic => ({ ...row, kind: "blog" as const })
 
 const captionSchema = z.object({
   caption_text: z.string().min(1),
@@ -242,20 +256,46 @@ export async function pickTopic(args: {
   if (blogPostId) {
     const { data } = await supabase
       .from("blog_posts")
-      .select("id, title, slug, excerpt, content")
+      .select("id, title, slug, excerpt, content, cover_image_url")
       .eq("id", blogPostId)
       .maybeSingle()
-    return (data as BlogTopic | null) ?? null
+    return data ? asBlogTopic(data as BlogPostRow) : null
   }
 
   const { data: candidates } = await supabase
     .from("blog_posts")
-    .select("id, title, slug, excerpt, content")
+    .select("id, title, slug, excerpt, content, cover_image_url")
     .eq("status", "published")
     .order("published_at", { ascending: false, nullsFirst: false })
     .limit(1)
 
-  return ((candidates as BlogTopic[] | null) ?? [])[0] ?? null
+  const newest = ((candidates as BlogPostRow[] | null) ?? [])[0]
+  return newest ? asBlogTopic(newest) : null
+}
+
+// A newsletter issue as a topic (Share to LinkedIn). Its body is stored as
+// HTML, so the copywriter gets it as text. An issue has no slug and no cover;
+// its card points at the site's sign-up section (buildShareLink).
+export async function pickNewsletterTopic(args: {
+  supabase: SupabaseClient
+  newsletterId: string
+}): Promise<ShareTopic | null> {
+  const { data } = await args.supabase
+    .from("newsletters")
+    .select("id, subject, preview_text, content")
+    .eq("id", args.newsletterId)
+    .maybeSingle()
+  if (!data) return null
+  const row = data as { id: string; subject: string; preview_text: string | null; content: string | null }
+  return {
+    kind: "newsletter",
+    id: row.id,
+    title: row.subject,
+    slug: "",
+    excerpt: row.preview_text || null,
+    content: row.content ? htmlToText(row.content) : null,
+    cover_image_url: null,
+  }
 }
 
 // ─── Strategist (brief-aware) ──────────────────────────────────────────────
@@ -305,11 +345,11 @@ export async function pickTopicWithBrief(args: {
   const brief = await fetchLatestApprovedBrief(supabase)
   const { data } = await supabase
     .from("blog_posts")
-    .select("id, title, slug, excerpt, content")
+    .select("id, title, slug, excerpt, content, cover_image_url")
     .eq("status", "published")
     .order("published_at", { ascending: false, nullsFirst: false })
     .limit(20)
-  const list = (data as BlogTopic[] | null) ?? []
+  const list = ((data as BlogPostRow[] | null) ?? []).map(asBlogTopic)
   if (list.length === 0) return { topic: null, brief, alignmentScore: null }
   if (!brief) return { topic: list[0], brief: null, alignmentScore: null }
 
@@ -345,7 +385,9 @@ export function buildCopywriterUserMessage(input: BuildCopywriterMessageInput): 
   const source = (input.topic.content ?? input.topic.excerpt ?? "").slice(0, 4000)
   return [
     `Platform: ${input.platform}`,
-    `Source blog post title: ${input.topic.title}`,
+    input.topic.kind === "newsletter"
+      ? `Source newsletter issue subject: ${input.topic.title}`
+      : `Source blog post title: ${input.topic.title}`,
     input.topic.excerpt ? `Source excerpt: ${input.topic.excerpt}` : "",
     "",
     "Source material (use as fact base, do not copy verbatim):",
@@ -353,6 +395,11 @@ export function buildCopywriterUserMessage(input: BuildCopywriterMessageInput): 
     source,
     "---",
     "",
+    "A link card to the source is attached beneath this post automatically.",
+    "Do not paste a URL and do not write 'link below' or 'link in comments'.",
+    input.topic.kind === "newsletter"
+      ? "End with one short line inviting the reader to subscribe to the newsletter."
+      : "",
     "Write the post for this platform. Return JSON only.",
   ]
     .filter((line) => line !== "")
@@ -430,6 +477,8 @@ async function draftForPlatform(args: {
   toolPerfBlock: string
   trendingBlock: string
   fewShotsRendered: string
+  /** The link card's origin; undefined (a job from older code) writes no card. */
+  siteUrl?: string
 }): Promise<PlatformDraftResult | PlatformDraftError> {
   const {
     supabase,
@@ -441,6 +490,7 @@ async function draftForPlatform(args: {
     toolPerfBlock,
     trendingBlock,
     fewShotsRendered,
+    siteUrl,
   } = args
 
   try {
@@ -486,6 +536,7 @@ async function draftForPlatform(args: {
         content: finalCaption.caption_text,
         approval_status: "draft",
         post_type: "text",
+        ...buildShareLink(topic, siteUrl),
       })
       .select()
       .single()
@@ -540,6 +591,13 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
     }
     const input = (data.input as SocialAgentInput | undefined) ?? {}
 
+    // A share names one source. Refuse an ambiguous job before reading or
+    // drafting anything, rather than let one id silently win.
+    if (input.blogPostId && input.newsletterId) {
+      await failJob("A share names one source: blogPostId or newsletterId, not both")
+      return
+    }
+
     // Determine target platforms.
     // - Explicit input.platform → that platform only (manual-trigger override).
     // - Otherwise: every platform currently `connected` in platform_connections.
@@ -562,11 +620,26 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
 
     await jobRef.update({ status: "processing", updatedAt: FieldValue.serverTimestamp() })
 
-    // 1. Strategist
-    const { topic, brief, alignmentScore } = await pickTopicWithBrief({
-      supabase,
-      blogPostId: input.blogPostId,
-    })
+    // 1. Strategist. An explicit newsletter issue skips the brief exactly like
+    //    an explicit blogPostId does (pickTopicWithBrief returns brief=null for
+    //    that case too): the coach chose the topic, so there is nothing to score.
+    let topic: BlogTopic | null
+    let brief: MinimalBriefRow | null
+    let alignmentScore: number | null
+    if (input.newsletterId) {
+      topic = await pickNewsletterTopic({ supabase, newsletterId: input.newsletterId })
+      if (!topic) {
+        await failJob("Newsletter not found")
+        return
+      }
+      brief = null
+      alignmentScore = null
+    } else {
+      const picked = await pickTopicWithBrief({ supabase, blogPostId: input.blogPostId })
+      topic = picked.topic
+      brief = picked.brief
+      alignmentScore = picked.alignmentScore
+    }
     if (!topic) {
       // Distinguish two empty-result cases:
       //   a) No published blog posts at all (or no brief + nothing recent) →
@@ -640,7 +713,7 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
       return
     }
     console.log(
-      `[social-agent] platforms=[${targetPlatforms.join(",")}] topic=${topic.slug} brief=${brief?.id ?? "none"} alignment=${alignmentScore ?? "n/a"}`,
+      `[social-agent] platforms=[${targetPlatforms.join(",")}] topic=${topic.kind === "newsletter" ? `newsletter:${topic.id}` : topic.slug} brief=${brief?.id ?? "none"} alignment=${alignmentScore ?? "n/a"}`,
     )
 
     // 2. Load prompt rows — voice profile + reviewer + every per-platform
@@ -694,6 +767,7 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
         toolPerfBlock,
         trendingBlock,
         fewShotsRendered,
+        siteUrl: input.siteUrl,
       })
       results.push(r)
     }
@@ -729,7 +803,12 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
       },
       actions: succeeded.map((r) => ({
         kind: "drafted_social_post",
-        payload: { social_post_id: r.socialPostId, platform: r.platform, blog_post_id: topic.id },
+        payload: {
+          social_post_id: r.socialPostId,
+          platform: r.platform,
+          blog_post_id: topic.kind === "blog" ? topic.id : null,
+          newsletter_id: topic.kind === "newsletter" ? topic.id : null,
+        },
         rationale: r.notes,
       })),
       rationale:
@@ -755,7 +834,8 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
           reviewer_score: r.reviewerScore,
         })),
         failed_platforms: failures.map((f) => ({ platform: f.platform, error: f.error })),
-        blog_post_id: topic.id,
+        blog_post_id: topic.kind === "blog" ? topic.id : null,
+        newsletter_id: topic.kind === "newsletter" ? topic.id : null,
         brief_id: brief?.id ?? null,
         brief_alignment_score: alignmentScore,
         agent_confidence: Math.round(avgScore),

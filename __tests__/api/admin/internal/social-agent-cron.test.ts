@@ -52,14 +52,15 @@ beforeEach(() => {
 
 describe("POST /api/admin/internal/social-agent-cron", () => {
   // MUTANTS: no businessId (the route before G35); `businessId: "system"`
-  // (the job's userId). The exact-object assertion catches both.
-  it("stamps the platform business into the job input, read from the seam (G35)", async () => {
+  // (the job's userId); no siteUrl (the agent would draft with no link card).
+  // The exact-object assertion catches all three.
+  it("stamps the platform business and the site origin into the job input (G35, Share to LinkedIn)", async () => {
     const res = await call()
     expect(await res.json()).toEqual({ jobId: "job-1", status: "pending" })
     expect(h.createAiJob).toHaveBeenCalledWith({
       type: "social_agent_run",
       userId: "system",
-      input: { platform: "linkedin", businessId: "platform-biz-g35" },
+      input: { platform: "linkedin", businessId: "platform-biz-g35", siteUrl: "https://www.darrenjpaul.com" },
     })
   })
 

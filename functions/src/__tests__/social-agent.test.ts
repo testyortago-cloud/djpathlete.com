@@ -3,12 +3,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 // G35. handleSocialAgentRun is driven end to end at the bottom of this file,
 // so the job document and the Supabase client are faked for the whole file.
 // The helper suites above never reach either: each passes its own `supabase`.
-const h = vi.hoisted(() => ({ jobGet: vi.fn(), jobUpdate: vi.fn(), from: vi.fn() }))
+const h = vi.hoisted(() => ({ jobGet: vi.fn(), jobUpdate: vi.fn(), from: vi.fn(), callAgent: vi.fn() }))
 vi.mock("firebase-admin/firestore", () => ({
   getFirestore: () => ({ collection: () => ({ doc: () => ({ get: h.jobGet, update: h.jobUpdate }) }) }),
   FieldValue: { serverTimestamp: () => "server-ts" },
 }))
 vi.mock("../lib/supabase.js", () => ({ getSupabase: () => ({ from: h.from }) }))
+// Only the Share-to-LinkedIn handler suites at the bottom reach the writer and
+// reviewer; social-agent.ts imports nothing else from this module.
+vi.mock("../ai/anthropic.js", () => ({ callAgent: h.callAgent, MODEL_SONNET: "model-sonnet" }))
 
 import {
   buildCopywriterUserMessage,
@@ -17,6 +20,7 @@ import {
   handleSocialAgentRun,
   latestTavilyTopics,
   listConnectedSocialPlatforms,
+  pickNewsletterTopic,
   pickTopic,
   pickTopicWithBrief,
   SUPPORTED_PLATFORMS,
@@ -24,17 +28,20 @@ import {
   type BlogTopic,
   type TavilyTopicRow,
 } from "../social-agent.js"
+import { NEWSLETTER_CARD_DESCRIPTION } from "../social-share-link.js"
 
 describe("social-agent helpers", () => {
   it("buildCopywriterUserMessage includes platform, blog title, excerpt, and source body", () => {
     const msg = buildCopywriterUserMessage({
       platform: "linkedin",
       topic: {
+        kind: "blog",
         id: "b1",
         title: "Why your sprint mechanics suck after a hamstring strain",
         slug: "sprint-mechanics-hamstring",
         excerpt: "Most return-to-sport programs skip the eccentric phase.",
         content: "Long body content about hamstring rehab and force absorption.",
+        cover_image_url: null,
       },
     })
     expect(msg).toContain("Platform: linkedin")
@@ -48,14 +55,60 @@ describe("social-agent helpers", () => {
     const msg = buildCopywriterUserMessage({
       platform: "linkedin",
       topic: {
+        kind: "blog",
         id: "b1",
         title: "Title",
         slug: "title",
         excerpt: "Excerpt body used as source.",
         content: null,
+        cover_image_url: null,
       },
     })
     expect(msg).toContain("Excerpt body used as source.")
+  })
+
+  // The card is attached by the publisher, so the writer must not paste a URL.
+  // MUTANT: the subscribe line emitted for every kind (the blog case's
+  // not.toContain catches it); the kind-labelled source line missing (the
+  // newsletter case catches it).
+  it("buildCopywriterUserMessage tells a blog writer the card is attached, and does not ask for a subscribe line", () => {
+    const msg = buildCopywriterUserMessage({
+      platform: "linkedin",
+      topic: {
+        kind: "blog",
+        id: "b1",
+        title: "ACL return",
+        slug: "acl-return",
+        excerpt: null,
+        content: "Body.",
+        cover_image_url: null,
+      },
+    })
+    expect(msg).toContain("Source blog post title: ACL return")
+    expect(msg).toContain("A link card to the source is attached beneath this post automatically.")
+    expect(msg).toContain("Do not paste a URL")
+    expect(msg).not.toContain("subscribe")
+    // The guidance lands before the closing instruction, not after it.
+    expect(msg.indexOf("Do not paste a URL")).toBeLessThan(msg.indexOf("Write the post for this platform"))
+  })
+
+  it("buildCopywriterUserMessage labels a newsletter issue as such and asks for one subscribe line", () => {
+    const msg = buildCopywriterUserMessage({
+      platform: "linkedin",
+      topic: {
+        kind: "newsletter",
+        id: "n1",
+        title: "Issue 12",
+        slug: "",
+        excerpt: null,
+        content: "Rest & recover",
+        cover_image_url: null,
+      },
+    })
+    expect(msg).toContain("Source newsletter issue subject: Issue 12")
+    expect(msg).not.toContain("Source blog post title")
+    expect(msg).toContain("Do not paste a URL")
+    expect(msg).toContain("End with one short line inviting the reader to subscribe to the newsletter.")
   })
 
   it("buildReviewerUserMessage exposes writer rules, draft text, and hashtags", () => {
@@ -86,9 +139,12 @@ describe("social-agent helpers", () => {
 })
 
 describe("pickTopic", () => {
+  // What blog_posts answers: the row as stored, with no `kind`. pickTopic adds
+  // kind: "blog", so each expectation below is the row plus that one key.
+  type BlogRow = Omit<BlogTopic, "kind">
   function mockSupabase(opts: {
-    byId?: BlogTopic | null
-    recent?: BlogTopic[]
+    byId?: BlogRow | null
+    recent?: BlogRow[]
   }) {
     const maybeSingle = vi.fn().mockResolvedValue({ data: opts.byId ?? null, error: null })
     const eqById = vi.fn().mockReturnValue({ maybeSingle })
@@ -122,31 +178,40 @@ describe("pickTopic", () => {
   }
 
   it("returns the row matching an explicit blogPostId", async () => {
-    const target: BlogTopic = {
+    const target: BlogRow = {
       id: "abc",
       title: "Deload weeks",
       slug: "deload-weeks",
       excerpt: null,
       content: "body",
+      cover_image_url: "https://cdn.example.com/deload.jpg",
     }
     const fake = mockSupabase({ byId: target })
     // @ts-expect-error: minimal mock — SupabaseClient surface we use is narrow.
     const result = await pickTopic({ supabase: { from: fake.from }, blogPostId: "abc" })
-    expect(result).toEqual(target)
+    expect(result).toEqual({ ...target, kind: "blog" })
   })
 
   it("returns the most recent published post when no blogPostId is given", async () => {
-    const newest: BlogTopic = {
+    const newest: BlogRow = {
       id: "n",
       title: "Newest",
       slug: "newest",
       excerpt: null,
       content: null,
+      cover_image_url: null,
     }
     const fake = mockSupabase({ recent: [newest] })
     // @ts-expect-error: minimal mock — SupabaseClient surface we use is narrow.
     const result = await pickTopic({ supabase: { from: fake.from } })
-    expect(result).toEqual(newest)
+    expect(result).toEqual({ ...newest, kind: "blog" })
+  })
+
+  it("returns null when an explicit blogPostId matches nothing", async () => {
+    const fake = mockSupabase({ byId: null })
+    // @ts-expect-error: minimal mock — SupabaseClient surface we use is narrow.
+    const result = await pickTopic({ supabase: { from: fake.from }, blogPostId: "gone" })
+    expect(result).toBeNull()
   })
 
   it("returns null when there are no published posts", async () => {
@@ -156,6 +221,41 @@ describe("pickTopic", () => {
     expect(result).toBeNull()
   })
 
+})
+
+describe("pickNewsletterTopic", () => {
+  function fakeNewsletters(row: Record<string, unknown> | null) {
+    const eq = vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: row, error: null }) })
+    const select = vi.fn().mockReturnValue({ eq })
+    const from = vi.fn((table: string) => {
+      if (table !== "newsletters") throw new Error(`unexpected table ${table}`)
+      return { select }
+    })
+    return { supabase: { from } as never, select, eq }
+  }
+
+  // MUTANTS: content passed through as HTML (the writer would see "<p>" and
+  // "&amp;"); "" preview_text kept as "" instead of null (the copywriter
+  // would print an empty "Source excerpt:" line).
+  it("maps the issue to a newsletter topic, with its HTML body as readable text", async () => {
+    const fake = fakeNewsletters({ id: "n1", subject: "Issue 12", preview_text: "", content: "<p>Rest &amp; recover</p>" })
+    expect(await pickNewsletterTopic({ supabase: fake.supabase, newsletterId: "n1" })).toEqual({
+      kind: "newsletter",
+      id: "n1",
+      title: "Issue 12",
+      slug: "",
+      excerpt: null,
+      content: "Rest & recover",
+      cover_image_url: null,
+    })
+    expect(fake.select).toHaveBeenCalledWith("id, subject, preview_text, content")
+    expect(fake.eq).toHaveBeenCalledWith("id", "n1")
+  })
+
+  it("returns null when the issue does not exist", async () => {
+    const fake = fakeNewsletters(null)
+    expect(await pickNewsletterTopic({ supabase: fake.supabase, newsletterId: "gone" })).toBeNull()
+  })
 })
 
 describe("Tavily trending topics", () => {
@@ -522,5 +622,197 @@ describe("handleSocialAgentRun — no eligible topic (G35)", () => {
     )
     expect(inserted).toEqual([])
     expect(h.jobUpdate.mock.calls.at(-1)?.[0]).toMatchObject({ status: "completed" })
+  })
+})
+
+describe("handleSocialAgentRun — Share to LinkedIn (newsletter source, link card)", () => {
+  const SITE = "https://www.darrenjpaul.com"
+  const PROMPTS = [
+    { scope: "global", category: "voice_profile", prompt: "Voice.", few_shot_examples: [] },
+    { scope: "global", category: "social_caption_reviewer", prompt: "Review.", few_shot_examples: [] },
+    { scope: "linkedin", category: "social_caption", prompt: "LinkedIn rules.", few_shot_examples: [] },
+  ]
+  let postInserts: Array<Record<string, unknown>> = []
+  let memoInserts: Array<Record<string, unknown>> = []
+
+  // A chainable read/write builder whose every terminal answers `result`.
+  function table(result: { data: unknown; error: unknown }, onInsert?: (row: Record<string, unknown>) => void) {
+    const b: Record<string, unknown> = {}
+    for (const m of ["select", "eq", "in", "gte", "order", "limit"]) b[m] = () => b
+    b.insert = (row: Record<string, unknown>) => {
+      onInsert?.(row)
+      return b
+    }
+    b.maybeSingle = async () => result
+    b.single = async () => result
+    b.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+      Promise.resolve(result).then(resolve, reject)
+    return b
+  }
+
+  function route(opts: { newsletter?: Record<string, unknown> | null; blog?: Record<string, unknown> | null } = {}) {
+    postInserts = []
+    memoInserts = []
+    h.from.mockImplementation((t: string) => {
+      switch (t) {
+        case "newsletters":
+          return table({ data: opts.newsletter ?? null, error: null })
+        case "blog_posts":
+          return table({ data: opts.blog ?? null, error: null })
+        case "prompt_templates":
+          return table({ data: PROMPTS, error: null })
+        case "agent_tool_baselines":
+        case "content_calendar":
+          return table({ data: [], error: null })
+        case "social_posts":
+          return table({ data: { id: "sp-1" }, error: null }, (row) => postInserts.push(row))
+        case "social_captions":
+          return table({ data: null, error: null })
+        case "social_agent_memos":
+          return table({ data: null, error: null }, (row) => memoInserts.push(row))
+        default:
+          throw new Error(`unexpected table ${t}`)
+      }
+    })
+  }
+  const job = (input: Record<string, unknown>) =>
+    h.jobGet.mockResolvedValue({ data: () => ({ status: "pending", type: "social_agent_run", input }) })
+  const lastUpdate = () => h.jobUpdate.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined
+  const tables = () => h.from.mock.calls.map((c) => c[0])
+
+  beforeEach(() => {
+    h.from.mockReset()
+    h.jobGet.mockReset()
+    h.jobUpdate.mockReset()
+    h.jobUpdate.mockResolvedValue(undefined)
+    h.callAgent.mockReset()
+    h.callAgent
+      .mockResolvedValueOnce({ content: { caption_text: "Writer draft.", hashtags: ["recovery"] } })
+      .mockResolvedValueOnce({
+        content: { revised_caption_text: "Final post.", revised_hashtags: ["recovery"], score: 8, notes: "ok" },
+      })
+    vi.spyOn(console, "log").mockImplementation(() => {})
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // MUTANTS, each caught by the exact insert row: the spread of
+  // buildShareLink dropped (no card, no source); siteUrl not threaded into
+  // draftForPlatform (link_* all null); the newsletter id written to
+  // source_blog_post_id.
+  it("drafts from a newsletter issue: the card points at the sign-up section and the brief is skipped", async () => {
+    route({ newsletter: { id: "n1", subject: "Issue 12", preview_text: "Rest week.", content: "<p>Rest &amp; recover</p>" } })
+    job({ platform: "linkedin", newsletterId: "n1", siteUrl: SITE, businessId: "biz-1" })
+    await handleSocialAgentRun("job-nl")
+
+    expect(postInserts).toEqual([
+      {
+        platform: "linkedin",
+        content: "Final post.",
+        approval_status: "draft",
+        post_type: "text",
+        source_blog_post_id: null,
+        source_newsletter_id: "n1",
+        link_url: `${SITE}/#newsletter`,
+        link_title: "Issue 12",
+        link_description: NEWSLETTER_CARD_DESCRIPTION,
+        link_image_url: `${SITE}/images/gym-training-01.jpg`,
+      },
+    ])
+    // An explicit share skips the strategist and its brief, like an explicit blogPostId.
+    expect(tables()).not.toContain("strategy_briefs")
+    expect(tables()).not.toContain("blog_posts")
+    // The writer saw the issue as text, labelled as a newsletter.
+    const writerMessage = String(h.callAgent.mock.calls[0][1])
+    expect(writerMessage).toContain("Source newsletter issue subject: Issue 12")
+    expect(writerMessage).toContain("Rest & recover")
+    expect(writerMessage).not.toContain("&amp;")
+
+    expect(memoInserts).toHaveLength(1)
+    expect(memoInserts[0]).toMatchObject({ brief_id: null, ran_without_brief: true })
+    expect(memoInserts[0].actions).toEqual([
+      {
+        kind: "drafted_social_post",
+        payload: { social_post_id: "sp-1", platform: "linkedin", blog_post_id: null, newsletter_id: "n1" },
+        rationale: "ok",
+      },
+    ])
+    // The UI reads result.platforms[0].social_post_id; that shape is kept.
+    expect(lastUpdate()).toMatchObject({
+      status: "completed",
+      error: null,
+      result: {
+        platforms: [{ platform: "linkedin", social_post_id: "sp-1", reviewer_score: 8 }],
+        failed_platforms: [],
+        blog_post_id: null,
+        newsletter_id: "n1",
+        brief_id: null,
+      },
+    })
+  })
+
+  // Review focus 5: a job enqueued by code older than this feature carries no
+  // siteUrl. It still drafts and records the source; it just gets no card.
+  // Presence control for the null link fields: the test above.
+  it("drafts a blog post for a job with no siteUrl, recording the source but no card", async () => {
+    route({
+      blog: {
+        id: "b1",
+        title: "ACL return",
+        slug: "acl-return",
+        excerpt: "What the research says.",
+        content: "Body.",
+        cover_image_url: "https://cdn.example.com/c.jpg",
+      },
+    })
+    job({ platform: "linkedin", blogPostId: "b1" })
+    await handleSocialAgentRun("job-old")
+
+    expect(postInserts).toEqual([
+      {
+        platform: "linkedin",
+        content: "Final post.",
+        approval_status: "draft",
+        post_type: "text",
+        source_blog_post_id: "b1",
+        source_newsletter_id: null,
+        link_url: null,
+        link_title: null,
+        link_description: null,
+        link_image_url: null,
+      },
+    ])
+    expect(lastUpdate()).toMatchObject({
+      status: "completed",
+      result: { blog_post_id: "b1", newsletter_id: null },
+    })
+  })
+
+  it("fails the job when the newsletter issue does not exist, and drafts nothing", async () => {
+    route({ newsletter: null })
+    job({ platform: "linkedin", newsletterId: "gone", siteUrl: SITE })
+    await handleSocialAgentRun("job-missing")
+    expect(lastUpdate()).toMatchObject({ status: "failed", error: "Newsletter not found" })
+    expect(tables()).not.toContain("social_posts")
+    expect(h.callAgent).not.toHaveBeenCalled()
+  })
+
+  // MUTANT: the guard removed (newsletterId silently wins, or blogPostId does).
+  // Either way a draft would be written, so social_posts would be touched.
+  it("refuses a job naming both a blog post and a newsletter issue", async () => {
+    route({
+      newsletter: { id: "n1", subject: "Issue 12", preview_text: "", content: "" },
+      blog: { id: "b1", title: "T", slug: "t", excerpt: null, content: null, cover_image_url: null },
+    })
+    job({ platform: "linkedin", blogPostId: "b1", newsletterId: "n1", siteUrl: SITE })
+    await handleSocialAgentRun("job-both")
+    expect(lastUpdate()).toEqual({
+      status: "failed",
+      error: "A share names one source: blogPostId or newsletterId, not both",
+      updatedAt: "server-ts",
+    })
+    expect(h.from).not.toHaveBeenCalledWith("social_posts")
+    expect(h.callAgent).not.toHaveBeenCalled()
   })
 })

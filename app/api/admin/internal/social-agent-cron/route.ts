@@ -3,6 +3,7 @@ import { headers } from "next/headers"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { createAiJob } from "@/lib/ai-jobs"
 import { platformBusinessId } from "@/lib/tenancy/platform"
+import { SITE_URL } from "@/lib/constants"
 
 export async function POST(_req: NextRequest) {
   const auth = (await headers()).get("authorization") ?? ""
@@ -24,7 +25,9 @@ export async function POST(_req: NextRequest) {
     // nothing the social agent reads or writes (blog_posts, strategy_briefs,
     // social_posts, social_agent_memos) has a business_id. lib/tenancy/platform.ts
     // lists this route under CORRECT BY CONSTRUCTION.
-    input: { platform: "linkedin", businessId: platformBusinessId() },
+    // siteUrl: the origin the draft's link card points at (the agent cannot
+    // import lib/constants).
+    input: { platform: "linkedin", businessId: platformBusinessId(), siteUrl: SITE_URL },
   })
   return NextResponse.json({ jobId, status: "pending" })
 }
