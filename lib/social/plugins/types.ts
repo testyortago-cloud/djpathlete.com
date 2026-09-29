@@ -1,9 +1,19 @@
 // lib/social/plugins/types.ts
 import type { SocialPlatform, PlatformConnection, PostType } from "@/types/database"
 
+/** A link card (LinkedIn "article" content). LinkedIn's API never scrapes a URL itself. */
+export interface PublishLink {
+  url: string
+  title: string
+  description: string | null
+  /** https image for the card; uploaded as the thumbnail. Null → card without image. */
+  imageUrl: string | null
+}
+
 export interface PublishInput {
   content: string
   mediaUrl: string | null
+  link?: PublishLink
   /**
    * Ordered signed URLs for carousel slides. Populated by the publish runner
    * when post_type === "carousel". Non-carousel posts omit this field.

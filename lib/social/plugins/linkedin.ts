@@ -1,10 +1,17 @@
 // lib/social/plugins/linkedin.ts
 // LinkedIn Company Page publishing via the versioned REST API.
 // Docs: https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api
-// Phase 1c: text and single-image posts supported. Video and article posts are
-// not supported in this release.
+// Text, image, multi-image, video and article (link card) posts are supported.
 
-import type { PublishPlugin, PublishInput, PublishResult, AnalyticsResult, ConnectResult } from "./types"
+import type {
+  PublishPlugin,
+  PublishInput,
+  PublishResult,
+  PublishLink,
+  AnalyticsResult,
+  ConnectResult,
+} from "./types"
+import { escapeLittleText } from "../linkedin-little-text"
 
 // Every call goes through /rest with this header. LinkedIn sunset the
 // unversioned /v2 marketing endpoints on 2024-12-16, and a version is itself
@@ -49,7 +56,7 @@ export function createLinkedInPlugin(credentials: LinkedInCredentials): PublishP
     },
 
     async publish(input: PublishInput): Promise<PublishResult> {
-      const { content, mediaUrl, mediaUrls } = input
+      const { content, mediaUrl, mediaUrls, link } = input
 
       // Multi-image carousel — must come before the single-media branches
       if (mediaUrls && mediaUrls.length >= 2) {
@@ -76,6 +83,15 @@ export function createLinkedInPlugin(credentials: LinkedInCredentials): PublishP
           organizationId: organization_id,
           caption: content,
           imageUrl: mediaUrl,
+        })
+      }
+
+      if (link) {
+        return publishArticlePost({
+          accessToken: access_token,
+          organizationId: organization_id,
+          caption: content,
+          link,
         })
       }
 
@@ -127,7 +143,7 @@ async function publishTextPost(args: TextPostArgs): Promise<PublishResult> {
     headers: versionedHeaders(args.accessToken),
     body: JSON.stringify({
       author: `urn:li:organization:${args.organizationId}`,
-      commentary: args.caption,
+      commentary: escapeLittleText(args.caption),
       visibility: "PUBLIC",
       distribution: {
         feedDistribution: "MAIN_FEED",
@@ -136,6 +152,70 @@ async function publishTextPost(args: TextPostArgs): Promise<PublishResult> {
       },
       lifecycleState: "PUBLISHED",
       isReshareDisabledByAuthor: false,
+    }),
+  })
+  return extractPostResult(response)
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Article (link card) post. LinkedIn's API does not scrape URLs, so the card's
+// title, description and thumbnail are supplied here. A thumbnail that cannot
+// be fetched or uploaded degrades to a card without an image, never a failed post.
+// ──────────────────────────────────────────────────────────────────────────
+
+interface ArticlePostArgs {
+  accessToken: string
+  organizationId: string
+  caption: string
+  link: PublishLink
+}
+
+async function uploadThumbnail(args: ArticlePostArgs): Promise<string | null> {
+  if (!args.link.imageUrl) return null
+  const binary = await fetchBinary(args.link.imageUrl)
+  if (!binary.ok) {
+    console.warn(`[linkedin] card image fetch failed (${binary.error}); posting the card without it`)
+    return null
+  }
+  const init = await initializeImageUpload(args.accessToken, args.organizationId)
+  if (!init.ok) {
+    console.warn(`[linkedin] card image init failed (${init.error}); posting the card without it`)
+    return null
+  }
+  const put = await putImageBytes(args.accessToken, init.uploadUrl, binary.data)
+  if (!put.ok) {
+    console.warn(`[linkedin] card image upload failed (${put.error}); posting the card without it`)
+    return null
+  }
+  const ready = await waitForImageReady(args.accessToken, init.imageUrn)
+  if (!ready.ok) {
+    console.warn(`[linkedin] card image not ready (${ready.error}); posting the card without it`)
+    return null
+  }
+  return init.imageUrn
+}
+
+async function publishArticlePost(args: ArticlePostArgs): Promise<PublishResult> {
+  const thumbnail = await uploadThumbnail(args)
+  const article: Record<string, string> = { source: args.link.url, title: args.link.title }
+  if (args.link.description) article.description = args.link.description
+  if (thumbnail) article.thumbnail = thumbnail
+
+  const response = await fetch(POSTS_URL, {
+    method: "POST",
+    headers: versionedHeaders(args.accessToken),
+    body: JSON.stringify({
+      author: `urn:li:organization:${args.organizationId}`,
+      commentary: escapeLittleText(args.caption),
+      visibility: "PUBLIC",
+      distribution: {
+        feedDistribution: "MAIN_FEED",
+        targetEntities: [],
+        thirdPartyDistributionChannels: [],
+      },
+      lifecycleState: "PUBLISHED",
+      isReshareDisabledByAuthor: false,
+      content: { article },
     }),
   })
   return extractPostResult(response)
@@ -177,7 +257,7 @@ async function publishImagePost(args: ImagePostArgs): Promise<PublishResult> {
     headers: versionedHeaders(args.accessToken),
     body: JSON.stringify({
       author: `urn:li:organization:${args.organizationId}`,
-      commentary: args.caption,
+      commentary: escapeLittleText(args.caption),
       visibility: "PUBLIC",
       distribution: {
         feedDistribution: "MAIN_FEED",
@@ -240,7 +320,7 @@ async function publishMultiImagePost(args: MultiImageArgs): Promise<PublishResul
     headers: versionedHeaders(accessToken),
     body: JSON.stringify({
       author: `urn:li:organization:${organizationId}`,
-      commentary: caption,
+      commentary: escapeLittleText(caption),
       visibility: "PUBLIC",
       distribution: {
         feedDistribution: "MAIN_FEED",
@@ -318,7 +398,7 @@ async function publishVideoPost(args: VideoPostArgs): Promise<PublishResult> {
     headers: versionedHeaders(accessToken),
     body: JSON.stringify({
       author: `urn:li:organization:${organizationId}`,
-      commentary: caption,
+      commentary: escapeLittleText(caption),
       visibility: "PUBLIC",
       distribution: {
         feedDistribution: "MAIN_FEED",
