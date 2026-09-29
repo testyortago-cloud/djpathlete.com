@@ -20,11 +20,20 @@ ALTER TABLE public.social_posts
   ADD COLUMN IF NOT EXISTS link_description text,
   ADD COLUMN IF NOT EXISTS link_image_url text;
 
+-- Each ADD CONSTRAINT is preceded by a DROP ... IF EXISTS so a partial or manual re-apply
+-- does not error (ADD CONSTRAINT has no IF NOT EXISTS).
+ALTER TABLE public.social_posts DROP CONSTRAINT IF EXISTS social_posts_link_url_https;
 ALTER TABLE public.social_posts
   ADD CONSTRAINT social_posts_link_url_https
-    CHECK (link_url IS NULL OR link_url LIKE 'https://%'),
+    CHECK (link_url IS NULL OR link_url LIKE 'https://%');
+
+ALTER TABLE public.social_posts DROP CONSTRAINT IF EXISTS social_posts_link_image_url_https;
+ALTER TABLE public.social_posts
   ADD CONSTRAINT social_posts_link_image_url_https
-    CHECK (link_image_url IS NULL OR link_image_url LIKE 'https://%'),
+    CHECK (link_image_url IS NULL OR link_image_url LIKE 'https://%');
+
+ALTER TABLE public.social_posts DROP CONSTRAINT IF EXISTS social_posts_one_share_source;
+ALTER TABLE public.social_posts
   ADD CONSTRAINT social_posts_one_share_source
     CHECK (source_blog_post_id IS NULL OR source_newsletter_id IS NULL);
 
