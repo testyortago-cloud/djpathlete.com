@@ -70,6 +70,26 @@ describe("LinkedIn article (link card) posts", () => {
     })
   })
 
+  it("still posts the card, without a thumbnail, when a thumbnail upload call throws", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === LINK.imageUrl) return mockResponse({ status: 200 })
+      if (url.includes("/rest/images?action=initializeUpload")) throw new TypeError("fetch failed")
+      if (url === "https://api.linkedin.com/rest/posts" && init?.method === "POST")
+        return mockResponse({ status: 201, headers: { "x-restli-id": "urn:li:share:6" } })
+      throw new Error(`unexpected ${url}`)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const plugin = createLinkedInPlugin({ access_token: "tok", organization_id: "123" })
+    const res = await plugin.publish({ content: "x", mediaUrl: null, scheduledAt: null, link: LINK })
+
+    expect(res.success).toBe(true)
+    expect(postBody(fetchMock).content).toEqual({
+      article: { source: LINK.url, title: LINK.title, description: LINK.description },
+    })
+  })
+
   it("omits description and thumbnail when the link has neither", async () => {
     const fetchMock = vi.fn(async () => mockResponse({ status: 201, headers: { "x-restli-id": "urn:li:share:3" } }))
     vi.stubGlobal("fetch", fetchMock)

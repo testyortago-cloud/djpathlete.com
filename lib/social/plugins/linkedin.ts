@@ -171,6 +171,15 @@ interface ArticlePostArgs {
 }
 
 async function uploadThumbnail(args: ArticlePostArgs): Promise<string | null> {
+  try {
+    return await uploadThumbnailUnsafe(args)
+  } catch (err) {
+    console.warn(`[linkedin] card image upload threw (${(err as Error).message}); posting the card without it`)
+    return null
+  }
+}
+
+async function uploadThumbnailUnsafe(args: ArticlePostArgs): Promise<string | null> {
   if (!args.link.imageUrl) return null
   const binary = await fetchBinary(args.link.imageUrl)
   if (!binary.ok) {
