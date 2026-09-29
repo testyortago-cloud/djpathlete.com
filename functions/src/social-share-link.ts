@@ -3,6 +3,11 @@
 // newsletter HTML → text for the copywriter. functions/ cannot import lib/, and
 // nothing in lib/ needs these, so there is no twin.
 
+// These two are the platform tenant's (DJP's) own copy and image, not platform
+// text: they sit inside the platform seam the social agent already runs in
+// (lib/tenancy/platform.ts), because social_posts has no business_id yet. They
+// are tenant-owned, and move to per-tenant settings when social becomes
+// per-tenant; do not treat them as defaults every coach should inherit.
 export const DEFAULT_SHARE_IMAGE_PATH = "/images/gym-training-01.jpg"
 export const NEWSLETTER_CARD_DESCRIPTION = "Free newsletter from Darren Paul. Sign up to get the next issue."
 const MAX_DESCRIPTION = 200
