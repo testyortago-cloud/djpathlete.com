@@ -228,6 +228,21 @@ describe("LinkedInPlugin — versioned API", () => {
     expect(result.error).toContain("Token expired")
   })
 
+  it("connect() checks the Page through the versioned /rest API, not the sunset /v2", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockResponse({ status: 200, body: { localizedName: "DJP Athlete" } }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const plugin = createLinkedInPlugin({ access_token: "tok", organization_id: "123456" })
+    const result = await plugin.connect({})
+
+    expect(result).toEqual({ status: "connected", account_handle: "DJP Athlete" })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe("https://api.linkedin.com/rest/organizations/123456")
+    expect(init.headers["LinkedIn-Version"]).toMatch(/^\d{6}$/)
+  })
+
   it("getSetupInstructions() mentions Company Page + Marketing Developer Platform", async () => {
     const plugin = createLinkedInPlugin({ access_token: "tok", organization_id: "123456" })
     const instructions = await plugin.getSetupInstructions()

@@ -17,6 +17,25 @@ const ERROR_COPY: Record<string, string> = {
   db_write: "Connected successfully, but saving the tokens failed. Try again.",
 }
 
+// Wording that differs by platform. pages_lookup / no_pages above are
+// Facebook's; LinkedIn reaches the same two codes through its Company Pages.
+const PLATFORM_ERROR_COPY: Record<string, Record<string, string>> = {
+  linkedin: {
+    pages_lookup:
+      "Couldn't read your LinkedIn Company Pages. Check the app has the Community Management API approved.",
+    no_pages:
+      "This LinkedIn account isn't an admin of any Company Page. Sign in as a Page admin and try again.",
+    unauthorized_scope_error:
+      "LinkedIn hasn't approved this app for Company Page posting yet. Request the Community Management API on the app's Products tab.",
+    user_cancelled_authorize: "You cancelled the connection before finishing.",
+    user_cancelled_login: "You cancelled the connection before finishing.",
+  },
+}
+
+export function errorCopyFor(platform: string, reason: string): string {
+  return PLATFORM_ERROR_COPY[platform]?.[reason] ?? ERROR_COPY[reason] ?? `(${reason})`
+}
+
 export function ConnectionToaster() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -40,7 +59,7 @@ export function ConnectionToaster() {
       toast.success(`${labelFor(disconnected)} disconnected.`)
     } else if (error) {
       toast.error(
-        `Couldn't connect ${labelFor(error)}. ${reason ? (ERROR_COPY[reason] ?? `(${reason})`) : ""}`.trim(),
+        `Couldn't connect ${labelFor(error)}. ${reason ? errorCopyFor(error, reason) : ""}`.trim(),
       )
     }
 

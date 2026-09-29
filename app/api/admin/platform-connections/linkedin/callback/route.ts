@@ -14,11 +14,16 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { connectPlatform } from "@/lib/db/platform-connections"
 import { recordAudit } from "@/lib/audit/record"
+import { versionedHeaders } from "@/lib/social/plugins/linkedin"
 
 const STATE_COOKIE = "li_oauth_state"
 const TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
+// Versioned /rest, never /v2: LinkedIn sunset the unversioned marketing
+// endpoints on 2024-12-16, and a /v2 lookup here failed every connection at
+// the last step, after the admin had already approved it.
 const ORG_ACLS_URL =
-  "https://api.linkedin.com/v2/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED"
+  "https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED"
+const ORGANIZATIONS_URL = "https://api.linkedin.com/rest/organizations"
 
 function siteUrl() {
   return (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "")
@@ -52,6 +57,10 @@ export async function GET(request: NextRequest) {
   const stateCookie = request.cookies.get(STATE_COOKIE)?.value
 
   if (errorParam) {
+    // e.g. unauthorized_scope_error: 'Scope "w_organization_social" is not
+    // authorized for your application' — the description names the missing
+    // product, so it belongs in the logs.
+    console.error("[linkedin/callback] authorization refused", errorParam, url.searchParams.get("error_description"))
     return redirectHome("error", { reason: errorParam })
   }
   if (!code || !stateParam || !stateCookie || stateParam !== stateCookie) {
@@ -96,22 +105,25 @@ export async function GET(request: NextRequest) {
   }
 
   // Find the first Company Page the admin manages.
-  const aclsResp = await fetch(ORG_ACLS_URL, {
-    headers: {
-      Authorization: `Bearer ${tokenData.access_token}`,
-      "X-Restli-Protocol-Version": "2.0.0",
-    },
-  })
+  const aclsResp = await fetch(ORG_ACLS_URL, { headers: versionedHeaders(tokenData.access_token) })
   if (!aclsResp.ok) {
     const text = await aclsResp.text().catch(() => "")
     console.error("[linkedin/callback] organizationAcls lookup failed", aclsResp.status, text)
     return redirectHome("error", { reason: "pages_lookup" })
   }
+  // The versioned API names the Page `organizationTarget` (its own docs also
+  // show `organization`); `organizationalTarget` is the unversioned name.
   const aclsData = (await aclsResp.json()) as {
-    elements?: Array<{ organizationalTarget?: string; role?: string; state?: string }>
+    elements?: Array<{
+      organizationTarget?: string
+      organization?: string
+      organizationalTarget?: string
+    }>
   }
-  const firstOrgUrn = aclsData.elements?.[0]?.organizationalTarget
-  const organizationId = parseOrgId(firstOrgUrn)
+  const firstAcl = aclsData.elements?.[0]
+  const organizationId = parseOrgId(
+    firstAcl?.organizationTarget ?? firstAcl?.organization ?? firstAcl?.organizationalTarget,
+  )
   if (!organizationId) {
     return redirectHome("error", { reason: "no_pages" })
   }
@@ -119,15 +131,9 @@ export async function GET(request: NextRequest) {
   // Best-effort: fetch the Page's localized name for display.
   let accountHandle: string | null = null
   try {
-    const orgResp = await fetch(
-      `https://api.linkedin.com/v2/organizations/${organizationId}?projection=(localizedName,vanityName)`,
-      {
-        headers: {
-          Authorization: `Bearer ${tokenData.access_token}`,
-          "X-Restli-Protocol-Version": "2.0.0",
-        },
-      },
-    )
+    const orgResp = await fetch(`${ORGANIZATIONS_URL}/${organizationId}`, {
+      headers: versionedHeaders(tokenData.access_token),
+    })
     if (orgResp.ok) {
       const orgData = (await orgResp.json()) as { localizedName?: string; vanityName?: string }
       accountHandle = orgData.localizedName ?? (orgData.vanityName ? `@${orgData.vanityName}` : null)

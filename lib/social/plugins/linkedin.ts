@@ -6,7 +6,11 @@
 
 import type { PublishPlugin, PublishInput, PublishResult, AnalyticsResult, ConnectResult } from "./types"
 
+// Every call goes through /rest with this header. LinkedIn sunset the
+// unversioned /v2 marketing endpoints on 2024-12-16, and a version is itself
+// sunset a year after release (202604 → 2027-04-15).
 const API_VERSION = "202604"
+const ORGANIZATIONS_URL = "https://api.linkedin.com/rest/organizations"
 const POSTS_URL = "https://api.linkedin.com/rest/posts"
 const IMAGES_URL = "https://api.linkedin.com/rest/images"
 const VIDEOS_URL = "https://api.linkedin.com/rest/videos"
@@ -33,12 +37,8 @@ export function createLinkedInPlugin(credentials: LinkedInCredentials): PublishP
     displayName: "LinkedIn",
 
     async connect(): Promise<ConnectResult> {
-      // Classic /v2/organizations still works for the connect check.
-      const response = await fetch(`https://api.linkedin.com/v2/organizations/${organization_id}`, {
-        headers: {
-          Authorization: `Bearer ${access_token}`,
-          "X-Restli-Protocol-Version": "2.0.0",
-        },
+      const response = await fetch(`${ORGANIZATIONS_URL}/${organization_id}`, {
+        headers: versionedHeaders(access_token),
       })
       if (!response.ok) {
         const text = await response.text().catch(() => "")
@@ -570,7 +570,7 @@ async function fetchBinary(
 // Shared helpers
 // ──────────────────────────────────────────────────────────────────────────
 
-function versionedHeaders(accessToken: string): Record<string, string> {
+export function versionedHeaders(accessToken: string): Record<string, string> {
   return {
     Authorization: `Bearer ${accessToken}`,
     "X-Restli-Protocol-Version": "2.0.0",
