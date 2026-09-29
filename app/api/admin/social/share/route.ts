@@ -2,8 +2,8 @@
 // POST { blogPostId } | { newsletterId } — "Share to LinkedIn". Returns an
 // existing un-posted LinkedIn draft from the same source if there is one;
 // otherwise queues the social agent (functions/src/social-agent.ts), which
-// drafts the post in the brand voice with a link card and lands it in
-// /admin/social for review. Spec: docs/superpowers/specs/2026-09-29-share-to-linkedin-design.md
+// drafts the post in the brand voice with a link card and lands it in the
+// posts queue for review. Spec: docs/superpowers/specs/2026-09-29-share-to-linkedin-design.md
 //
 // The dedupe is check-then-enqueue, not atomic: two concurrent requests can
 // both draft. The button disables itself while a request is in flight.
@@ -18,11 +18,22 @@ import { getBlogPostById } from "@/lib/db/blog-posts"
 import { getNewsletterById } from "@/lib/db/newsletters"
 import { listPlatformConnections } from "@/lib/db/platform-connections"
 import { findOpenShareDraft, type ShareSource } from "@/lib/db/social-posts"
+import { isContentStudioEnabled } from "@/lib/content-studio/feature-flag"
 
 // The getters use .single() and throw the raw PostgREST error; zero rows is
 // PGRST116. Anything else (timeout, outage) is a failure, not a missing row.
 function isNotFound(err: unknown): boolean {
   return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "PGRST116"
+}
+
+// Where the draft is reviewed, for the button's link. With the studio on,
+// /admin/social redirects to /admin/content?tab=posts and the owner knows the
+// page only as "Content Studio", so naming "Social" would send them looking for
+// a page they never see. The flag is server-only, so the route answers it.
+function reviewTarget() {
+  return isContentStudioEnabled()
+    ? { label: "Content Studio", listHref: "/admin/content?tab=posts", postHrefPrefix: "/admin/content/post/" }
+    : { label: "Social", listHref: "/admin/social", postHrefPrefix: null }
 }
 
 export async function POST(request: NextRequest) {
@@ -79,7 +90,7 @@ export async function POST(request: NextRequest) {
   }
 
   const existing = await findOpenShareDraft(source)
-  if (existing) return NextResponse.json({ existingPostId: existing.id }, { status: 200 })
+  if (existing) return NextResponse.json({ existingPostId: existing.id, review: reviewTarget() }, { status: 200 })
 
   // businessId: the PLATFORM's, for the same reason as agent/run (see
   // lib/tenancy/platform.ts): nothing the social agent reads or writes has a
@@ -89,5 +100,5 @@ export async function POST(request: NextRequest) {
     userId: session.user.id,
     input: { platform: "linkedin", ...source, siteUrl: SITE_URL, businessId: platformBusinessId() },
   })
-  return NextResponse.json({ jobId }, { status: 202 })
+  return NextResponse.json({ jobId, review: reviewTarget() }, { status: 202 })
 }

@@ -15,6 +15,10 @@ vi.mock("sonner", () => ({ toast: { error: (m: string) => toastError(m), success
 
 import { ShareToLinkedInButton } from "@/components/admin/social/ShareToLinkedInButton"
 
+// The two shapes POST /api/admin/social/share returns in `review`, one per CONTENT_STUDIO_ENABLED state.
+const STUDIO_REVIEW = { label: "Content Studio", listHref: "/admin/content?tab=posts", postHrefPrefix: "/admin/content/post/" }
+const SOCIAL_REVIEW = { label: "Social", listHref: "/admin/social", postHrefPrefix: null }
+
 function reply(status: number, body: unknown) {
   return Promise.resolve({ status, ok: status >= 200 && status < 300, json: () => Promise.resolve(body) })
 }
@@ -51,26 +55,50 @@ describe("ShareToLinkedInButton", () => {
     await waitFor(() => expect(toastError).toHaveBeenCalled())
   })
 
-  it("shows writing, then a review link when the job completes", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => reply(202, { jobId: "j1" })))
+  async function completeJob(review: unknown, result: unknown) {
+    vi.stubGlobal("fetch", vi.fn(() => reply(202, { jobId: "j1", review })))
     const { rerender } = render(<ShareToLinkedInButton source={{ blogPostId: "b1" }} />)
     fireEvent.click(screen.getByRole("button", { name: "Share to LinkedIn" }))
     await screen.findByRole("button", { name: "Writing LinkedIn post…" })
     expect(useAiJobMock).toHaveBeenLastCalledWith("j1")
     jobState.status = "completed"
-    jobState.result = { platforms: [{ social_post_id: "p1" }] }
+    jobState.result = result
     rerender(<ShareToLinkedInButton source={{ blogPostId: "b1" }} />)
-    const link = await screen.findByRole("link", { name: /Draft ready → review in Social/ })
+  }
+
+  it("shows writing, then deep-links to the new draft in the Content Studio", async () => {
+    await completeJob(STUDIO_REVIEW, { platforms: [{ platform: "linkedin", social_post_id: "p1" }] })
+    const link = await screen.findByRole("link", { name: "Draft ready → review in Content Studio" })
+    expect(link.getAttribute("href")).toBe("/admin/content/post/p1")
+  })
+
+  it("falls back to the Content Studio's post list when the job names no post", async () => {
+    await completeJob(STUDIO_REVIEW, { platforms: [] })
+    const link = await screen.findByRole("link", { name: "Draft ready → review in Content Studio" })
+    expect(link.getAttribute("href")).toBe("/admin/content?tab=posts")
+  })
+
+  it("links to the Social page when the Content Studio is off", async () => {
+    await completeJob(SOCIAL_REVIEW, { platforms: [{ platform: "linkedin", social_post_id: "p1" }] })
+    const link = await screen.findByRole("link", { name: "Draft ready → review in Social" })
     expect(link.getAttribute("href")).toBe("/admin/social")
   })
 
-  it("links to Social when a draft already exists, without a job", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => reply(200, { existingPostId: "p9" })))
+  it("deep-links to the existing draft in the Content Studio, without a job", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => reply(200, { existingPostId: "p9", review: STUDIO_REVIEW })))
     render(<ShareToLinkedInButton source={{ newsletterId: "n1" }} />)
     fireEvent.click(screen.getByRole("button", { name: "Share to LinkedIn" }))
-    const link = await screen.findByRole("link", { name: /Draft already in Social/ })
-    expect(link.getAttribute("href")).toBe("/admin/social")
+    const link = await screen.findByRole("link", { name: "Draft already in Content Studio" })
+    expect(link.getAttribute("href")).toBe("/admin/content/post/p9")
     for (const call of useAiJobMock.mock.calls) expect(call[0]).toBeNull()
+  })
+
+  it("links to the Social page for an existing draft when the Content Studio is off", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => reply(200, { existingPostId: "p9", review: SOCIAL_REVIEW })))
+    render(<ShareToLinkedInButton source={{ newsletterId: "n1" }} />)
+    fireEvent.click(screen.getByRole("button", { name: "Share to LinkedIn" }))
+    const link = await screen.findByRole("link", { name: "Draft already in Social" })
+    expect(link.getAttribute("href")).toBe("/admin/social")
   })
 
   it("toasts the route's message on an error and goes back to idle", async () => {

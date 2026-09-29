@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   getNewsletterById: vi.fn(),
   listPlatformConnections: vi.fn(),
   findOpenShareDraft: vi.fn(),
+  isContentStudioEnabled: vi.fn(),
 }))
 
 vi.mock("@/lib/auth", () => ({ auth: h.auth }))
@@ -19,6 +20,7 @@ vi.mock("@/lib/db/blog-posts", () => ({ getBlogPostById: h.getBlogPostById }))
 vi.mock("@/lib/db/newsletters", () => ({ getNewsletterById: h.getNewsletterById }))
 vi.mock("@/lib/db/platform-connections", () => ({ listPlatformConnections: h.listPlatformConnections }))
 vi.mock("@/lib/db/social-posts", () => ({ findOpenShareDraft: h.findOpenShareDraft }))
+vi.mock("@/lib/content-studio/feature-flag", () => ({ isContentStudioEnabled: h.isContentStudioEnabled }))
 
 import { NextRequest } from "next/server"
 import { POST } from "@/app/api/admin/social/share/route"
@@ -48,13 +50,19 @@ beforeEach(() => {
   h.listPlatformConnections.mockResolvedValue([{ plugin_name: "linkedin", status: "connected" }])
   h.findOpenShareDraft.mockReset()
   h.findOpenShareDraft.mockResolvedValue(null)
+  // Production has CONTENT_STUDIO_ENABLED on, so that is the default here.
+  h.isContentStudioEnabled.mockReset()
+  h.isContentStudioEnabled.mockReturnValue(true)
 })
+
+const STUDIO_REVIEW = { label: "Content Studio", listHref: "/admin/content?tab=posts", postHrefPrefix: "/admin/content/post/" }
+const SOCIAL_REVIEW = { label: "Social", listHref: "/admin/social", postHrefPrefix: null }
 
 describe("POST /api/admin/social/share", () => {
   it("queues a draft for a published blog post", async () => {
     const res = await call({ blogPostId: "b1" })
     expect(res.status).toBe(202)
-    expect(await res.json()).toEqual({ jobId: "job-1" })
+    expect(await res.json()).toEqual({ jobId: "job-1", review: STUDIO_REVIEW })
     expect(h.createAiJob).toHaveBeenCalledTimes(1)
     expect(h.createAiJob).toHaveBeenCalledWith({
       type: "social_agent_run",
@@ -86,8 +94,22 @@ describe("POST /api/admin/social/share", () => {
     h.findOpenShareDraft.mockResolvedValue({ id: "sp-9" })
     const res = await call({ blogPostId: "b1" })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ existingPostId: "sp-9" })
+    expect(await res.json()).toEqual({ existingPostId: "sp-9", review: STUDIO_REVIEW })
     expect(h.createAiJob).not.toHaveBeenCalled()
+  })
+
+  // /admin/social redirects to the Content Studio when the studio is on, and the owner
+  // knows that page only as "Content Studio", so the button must be told which one to name.
+  it("names the old Social page when the Content Studio is off, on both success bodies", async () => {
+    h.isContentStudioEnabled.mockReturnValue(false)
+    const queued = await call({ blogPostId: "b1" })
+    expect(queued.status).toBe(202)
+    expect(await queued.json()).toEqual({ jobId: "job-1", review: SOCIAL_REVIEW })
+
+    h.findOpenShareDraft.mockResolvedValue({ id: "sp-9" })
+    const existing = await call({ blogPostId: "b1" })
+    expect(existing.status).toBe(200)
+    expect(await existing.json()).toEqual({ existingPostId: "sp-9", review: SOCIAL_REVIEW })
   })
 
   it("refuses a draft blog post", async () => {

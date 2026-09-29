@@ -10,9 +10,25 @@ import { cn } from "@/lib/utils"
 type Source = { blogPostId: string } | { newsletterId: string }
 type State = "idle" | "requesting" | "writing" | "ready" | "exists"
 
+// Where the draft is reviewed. POST /api/admin/social/share answers it, because
+// the Content Studio flag that decides it is server-only.
+type Review = { label: string; listHref: string; postHrefPrefix: string | null }
+
+// Only used if a response ever lacks `review`: the page that exists whichever way the flag is set.
+const FALLBACK_REVIEW: Review = { label: "Social", listHref: "/admin/social", postHrefPrefix: null }
+
+function draftIdFromJob(result: Record<string, unknown> | null): string | null {
+  const platforms = result?.platforms
+  if (!Array.isArray(platforms)) return null
+  const id = (platforms[0] as { social_post_id?: unknown } | undefined)?.social_post_id
+  return typeof id === "string" && id ? id : null
+}
+
 export function ShareToLinkedInButton({ source, variant = "icon" }: { source: Source; variant?: "icon" | "full" }) {
   const [state, setState] = useState<State>("idle")
   const [jobId, setJobId] = useState<string | null>(null)
+  const [review, setReview] = useState<Review>(FALLBACK_REVIEW)
+  const [existingPostId, setExistingPostId] = useState<string | null>(null)
   const job = useAiJob(jobId)
 
   useEffect(() => {
@@ -41,11 +57,18 @@ export function ShareToLinkedInButton({ source, variant = "icon" }: { source: So
         headers: { "content-type": "application/json" },
         body: JSON.stringify(source),
       })
-      const data = (await res.json().catch(() => ({}))) as { jobId?: string; existingPostId?: string; error?: string }
+      const data = (await res.json().catch(() => ({}))) as {
+        jobId?: string
+        existingPostId?: string
+        review?: Review
+        error?: string
+      }
+      if (data.review) setReview(data.review)
       if (res.status === 202 && data.jobId) {
         setJobId(data.jobId)
         setState("writing")
       } else if (res.ok && data.existingPostId) {
+        setExistingPostId(data.existingPostId)
         setState("exists")
       } else {
         toast.error(data.error ?? "Couldn't start the LinkedIn post")
@@ -58,12 +81,14 @@ export function ShareToLinkedInButton({ source, variant = "icon" }: { source: So
   }
 
   if (state === "ready" || state === "exists") {
+    const postId = state === "exists" ? existingPostId : draftIdFromJob(job.result)
+    const href = review.postHrefPrefix && postId ? `${review.postHrefPrefix}${postId}` : review.listHref
     return (
       <Link
-        href="/admin/social"
+        href={href}
         className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors"
       >
-        {state === "ready" ? "Draft ready → review in Social" : "Draft already in Social"}
+        {state === "ready" ? `Draft ready → review in ${review.label}` : `Draft already in ${review.label}`}
         <ArrowRight className="size-3" />
       </Link>
     )
