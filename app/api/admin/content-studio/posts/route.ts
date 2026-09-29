@@ -60,11 +60,17 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  if (postType !== "video" && !isContentStudioMultimediaEnabled()) {
+  // Text needs no media pipeline, so the multimedia flag (which gates photo,
+  // carousel and story uploads) does not apply to it.
+  if (postType !== "video" && postType !== "text" && !isContentStudioMultimediaEnabled()) {
     return NextResponse.json(
       { error: "Multimedia posts are disabled. Set CS_MULTIMEDIA_ENABLED=true." },
       { status: 400 },
     )
+  }
+
+  if (postType === "text" && caption === "") {
+    return NextResponse.json({ error: "Write the post text first" }, { status: 400 })
   }
 
   if (postType === "image" && !body?.mediaAssetId) {

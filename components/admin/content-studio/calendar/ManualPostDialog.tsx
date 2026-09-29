@@ -67,7 +67,11 @@ export function ManualPostDialog({
       ((storyMediaType === "image" && mediaAssetId !== null) ||
         (storyMediaType === "video" && sourceVideoId !== null)))
 
-  const canSubmit = !busy && supportedSelected.length > 0 && mediaReady
+  const canSubmit =
+    !busy &&
+    supportedSelected.length > 0 &&
+    mediaReady &&
+    (postType !== "text" || caption.trim() !== "")
 
   function togglePlatform(p: SocialPlatform) {
     setSelectedPlatforms((prev) =>
@@ -174,28 +178,31 @@ export function ManualPostDialog({
           </div>
         )}
 
-        {multimediaEnabled ? (
-          <label className="block text-xs text-muted-foreground mb-3">
-            Post type
-            <select
-              aria-label="Post type"
-              value={postType}
-              onChange={(e) => {
-                setPostType(e.target.value as PostType)
-                setMediaAssetId(null)
-                setMediaAssetIds([])
-                setStoryMediaType("image")
-                setSourceVideoId(null)
-              }}
-              className="mt-1 block w-full rounded border border-border px-2 py-1 text-sm"
-            >
-              <option value="video">Video</option>
-              <option value="image">Photo</option>
-              <option value="carousel">Carousel</option>
-              <option value="story">Story</option>
-            </select>
-          </label>
-        ) : null}
+        <label className="block text-xs text-muted-foreground mb-3">
+          Post type
+          <select
+            aria-label="Post type"
+            value={postType}
+            onChange={(e) => {
+              setPostType(e.target.value as PostType)
+              setMediaAssetId(null)
+              setMediaAssetIds([])
+              setStoryMediaType("image")
+              setSourceVideoId(null)
+            }}
+            className="mt-1 block w-full rounded border border-border px-2 py-1 text-sm"
+          >
+            <option value="video">Video</option>
+            <option value="text">Text</option>
+            {multimediaEnabled ? (
+              <>
+                <option value="image">Photo</option>
+                <option value="carousel">Carousel</option>
+                <option value="story">Story</option>
+              </>
+            ) : null}
+          </select>
+        </label>
 
         <fieldset className="mb-3">
           <legend className="text-xs text-muted-foreground mb-1.5">
@@ -287,7 +294,7 @@ export function ManualPostDialog({
         ) : null}
 
         <label className="block text-xs text-muted-foreground mb-3">
-          Caption
+          {postType === "text" ? "Post text" : "Caption"}
           <textarea
             aria-label="Caption"
             value={caption}

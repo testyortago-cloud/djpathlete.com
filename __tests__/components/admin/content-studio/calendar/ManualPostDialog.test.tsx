@@ -70,12 +70,14 @@ describe("<ManualPostDialog>", () => {
     expect(onCreated).toHaveBeenCalledWith("new-1")
   })
 
-  it("hides the post-type picker when multimediaEnabled is false", () => {
+  // Retargeted: the picker is always shown (spec §7); it used to be hidden when the flag was off.
+  it("shows the post-type picker with only Video and Text when multimediaEnabled is false", () => {
     render(<ManualPostDialog dayKey="2026-05-01" onClose={() => {}} onCreated={() => {}} />)
-    expect(screen.queryByLabelText(/post type/i)).not.toBeInTheDocument()
+    const select = screen.getByLabelText(/post type/i) as HTMLSelectElement
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["Video", "Text"])
   })
 
-  it("shows the post-type picker when multimediaEnabled is true", () => {
+  it("shows Video, Text, Photo, Carousel, Story when multimediaEnabled is true", () => {
     render(
       <ManualPostDialog
         dayKey="2026-05-01"
@@ -84,7 +86,42 @@ describe("<ManualPostDialog>", () => {
         multimediaEnabled
       />,
     )
-    expect(screen.getByLabelText(/post type/i)).toBeInTheDocument()
+    const select = screen.getByLabelText(/post type/i) as HTMLSelectElement
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "Video",
+      "Text",
+      "Photo",
+      "Carousel",
+      "Story",
+    ])
+  })
+
+  it("posts postType text for LinkedIn without the multimedia flag", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: "t-1" }), { status: 200 }))
+    render(<ManualPostDialog dayKey="2099-01-01" onClose={vi.fn()} onCreated={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "text" } })
+    fireEvent.click(screen.getByLabelText(/Post to instagram/i))
+    fireEvent.click(screen.getByLabelText(/Post to linkedin/i))
+    fireEvent.change(screen.getByLabelText(/Caption/i), { target: { value: "Hello LinkedIn" } })
+    fireEvent.click(screen.getByRole("button", { name: /create/i }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.platform).toBe("linkedin")
+    expect(body.postType).toBe("text")
+    expect(body.caption).toBe("Hello LinkedIn")
+  })
+
+  it("text submit is disabled until there is post text", () => {
+    render(<ManualPostDialog dayKey="2099-01-01" onClose={vi.fn()} onCreated={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "text" } })
+    fireEvent.click(screen.getByLabelText(/Post to instagram/i))
+    fireEvent.click(screen.getByLabelText(/Post to linkedin/i))
+    const submit = screen.getByRole("button", { name: /create/i })
+    expect(submit).toBeDisabled()
+    fireEvent.change(screen.getByLabelText(/Caption/i), { target: { value: "   " } })
+    expect(submit).toBeDisabled()
+    fireEvent.change(screen.getByLabelText(/Caption/i), { target: { value: "Hi" } })
+    expect(submit).not.toBeDisabled()
   })
 
   it("shows the CarouselComposer when postType=carousel and flag is on", () => {
