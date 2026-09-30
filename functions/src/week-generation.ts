@@ -78,6 +78,9 @@ export async function handleWeekGeneration(jobId: string, budgetMs: number): Pro
       token_usage: result.token_usage,
       duration_ms: result.duration_ms,
       warnings: result.warnings ?? [],
+      // Same reason, same rule: the dialog's "How the AI read your
+      // instructions" reads only this. null, never undefined, when absent.
+      instructions_used: result.instructions_used ?? null,
     }
 
     await jobRef.update({

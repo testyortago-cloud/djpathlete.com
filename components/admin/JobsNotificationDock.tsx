@@ -6,7 +6,12 @@ import { doc, onSnapshot, getDoc } from "firebase/firestore"
 import { Loader2, CheckCircle2, XCircle, X, Sparkles, ChevronDown, ChevronUp } from "lucide-react"
 import { db } from "@/lib/firebase"
 import { useAiJobsDock, type DockedJob } from "@/hooks/use-ai-jobs-dock"
-import { GenerationWarnings, extractWarnings } from "@/components/admin/GenerationWarnings"
+import {
+  GenerationWarnings,
+  extractWarnings,
+  InstructionsUsedPanel,
+  extractInstructionsUsed,
+} from "@/components/admin/GenerationWarnings"
 
 /**
  * Floating bottom-right notification dock for AI generation jobs.
@@ -137,12 +142,16 @@ function JobCard({ job }: { job: DockedJob }) {
   const warnings = isDone ? extractWarnings(state.result) : []
 
   // Auto-dismiss after grace period once resolved — never while it has
-  // something to say; the coach dismisses those by hand.
+  // something to say; the coach dismisses those by hand. Armed only once the
+  // job doc has LOADED: a card rehydrated after a reload knows it finished but
+  // not yet what it said, and arming on that empty state could dismiss a card
+  // whose warnings were still in flight.
+  const docLoaded = state.status === "completed" || state.status === "failed" || state.status === "cancelled"
   useEffect(() => {
-    if (!job.resolvedState || warnings.length > 0) return
+    if (!job.resolvedState || !docLoaded || warnings.length > 0) return
     const t = setTimeout(() => removeJob(job.jobId), AUTO_DISMISS_AFTER_MS)
     return () => clearTimeout(t)
-  }, [job.resolvedState, job.jobId, removeJob, warnings.length])
+  }, [job.resolvedState, job.jobId, removeJob, warnings.length, docLoaded])
 
   const result = state.result as { program_id?: string; new_week_number?: number } | null
   const programId = result?.program_id ?? job.programId
@@ -208,6 +217,12 @@ function JobCard({ job }: { job: DockedJob }) {
           {warnings.length > 0 ? (
             <div className="mt-2">
               <GenerationWarnings warnings={warnings} />
+            </div>
+          ) : null}
+
+          {isDone && extractInstructionsUsed(state.result) ? (
+            <div className="mt-2">
+              <InstructionsUsedPanel used={extractInstructionsUsed(state.result)} />
             </div>
           ) : null}
 

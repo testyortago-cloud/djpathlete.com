@@ -63,6 +63,7 @@ import {
   buildMovementFamilyWarning,
   buildHallucinatedIdWarning,
 } from "./program-quality.js"
+import { enrichCoachInstructions, type InstructionsUsed } from "./instruction-enrich.js"
 import {
   findUnassignedSlots,
   buildUnassignedSlotsFeedback,
@@ -163,6 +164,12 @@ export interface WeekGenerationResult {
    * identical to a good one.
    */
   warnings: string[]
+  /**
+   * How the coach's instructions were read: their words, and the Opus rewrite
+   * the agents were given (or why there was none). null when the coach wrote
+   * nothing. Shown as "How the AI read your instructions".
+   */
+  instructions_used: InstructionsUsed | null
 }
 
 // ─── Local Supabase helpers (not shared — specific to week orchestrator) ────
@@ -666,6 +673,7 @@ export async function generateWeekSync(
       token_usage: tokenUsage,
       duration_ms: Date.now() - startTime,
       warnings: [],
+      instructions_used: null,
     }
   }
 
@@ -694,6 +702,27 @@ export async function generateWeekSync(
         }))
     : []
 
+  // The coach's words, rewritten by Opus 5.5 into counts and areas the
+  // architect reads without guessing. `agentInstructions` is what the three
+  // PLANNING agents read (analyzer, architect, selector). The instruction
+  // parser below keeps `request.admin_instructions` — the coach's own words —
+  // so a rewrite can never unlock or ban an exercise.
+  const instructionsUsed = await enrichCoachInstructions(
+    request.admin_instructions,
+    {
+      scope: isSingleDay ? "day" : "week",
+      targetLabel: isSingleDay ? `${targetDayName}, Week ${newWeekNumber}` : `Week ${newWeekNumber}`,
+      splitType: String(program.split_type),
+    },
+    { signal: deadline?.signal },
+  )
+  const agentInstructions = instructionsUsed?.enriched ?? request.admin_instructions
+  if (instructionsUsed?.enriched) {
+    console.log(`[week-orchestrator] Coach instructions enriched:\n${instructionsUsed.enriched}`)
+  } else if (instructionsUsed?.note) {
+    console.log(`[week-orchestrator] ${instructionsUsed.note}`)
+  }
+
   const architectMessage = `## Program Overview
 ${JSON.stringify(programSummary)}
 
@@ -721,8 +750,8 @@ ${progressSummary.length > 0 ? JSON.stringify(progressSummary) : "No logs yet �
 ${isSingleDay ? `${targetDayName} (day_of_week=${request.target_day_of_week}) in Week ${newWeekNumber}` : newWeekNumber}
 
 ## Coach Instructions (HIGHEST PRIORITY — these override ALL default rules)
-${request.admin_instructions || "No specific instructions — use standard progression logic based on the client's performance data."}
-${request.admin_instructions ? "\nYou MUST follow these instructions. If they conflict with default technique, structure, or progression rules, the coach's instructions WIN." : ""}${buildPoolPatternSection(
+${agentInstructions || "No specific instructions — use standard progression logic based on the client's performance data."}
+${agentInstructions ? "\nYou MUST follow these instructions. If they conflict with default technique, structure, or progression rules, the coach's instructions WIN." : ""}${buildPoolPatternSection(
     // Mirror the injury filter the selector applies below, so the architect is
     // never told the pool covers a pattern whose only exercises get injury-pruned.
     poolActive
@@ -807,6 +836,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
       token_usage: tokenUsage,
       duration_ms: Date.now() - startTime,
       warnings: [],
+      instructions_used: instructionsUsed,
     }
   }
 
@@ -831,8 +861,12 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
   // ── Step 2.5: Real Agent 1 (Profile Analyzer, week-scoped) ───────────────
   const policyInstructions = formatCoachPolicyAsInstructions(coachPolicy)
+  // Two texts on purpose: the analyzer PLANS, so it reads the rewrite; the
+  // instruction parser turns named exercises and equipment into unlock/ban
+  // sets, so it reads only what the coach actually wrote.
   const combinedInstructions = [request.admin_instructions, policyInstructions].filter(Boolean).join("\n\n")
-  const coachInstructionsSectionForAnalyzer = buildCoachInstructionsSection(combinedInstructions)
+  const analyzerInstructions = [agentInstructions, policyInstructions].filter(Boolean).join("\n\n")
+  const coachInstructionsSectionForAnalyzer = buildCoachInstructionsSection(analyzerInstructions)
 
   // Coach instructions become concrete unlock/ban sets against the FULL library,
   // before any filtering narrows it — the exercises a coach names are exactly the
@@ -1134,7 +1168,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   let hallucinatedIdCount = 0
 
   // Invariant across the retry loop — request-level inputs don't change between attempts.
-  const coachInstructionsSection = buildCoachInstructionsSection(request.admin_instructions)
+  const coachInstructionsSection = buildCoachInstructionsSection(agentInstructions)
   const poolNote = buildPoolNote(poolIds, filtered.length, poolMode, poolIds?.length)
 
   // Stable across attempts AND day-chunks: the multi-KB blocks (library, prior
@@ -1571,5 +1605,6 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     token_usage: tokenUsage,
     duration_ms: durationMs,
     warnings,
+    instructions_used: instructionsUsed,
   }
 }

@@ -76,3 +76,38 @@ describe("JobsNotificationDock shows a finished run's warnings", () => {
     expect(dock.removeJob).toHaveBeenCalledWith("job-1")
   })
 })
+
+describe("JobsNotificationDock shows how the instructions were read", () => {
+  beforeEach(() => {
+    dock.removeJob.mockReset()
+    dock.jobs = [
+      {
+        jobId: "job-2",
+        kind: "day",
+        label: "Week 2 / Monday",
+        programId: "prog-1",
+        startedAt: new Date().toISOString(),
+        resolvedState: "completed",
+      },
+    ]
+  })
+
+  it("offers the rewrite on a finished run's card", async () => {
+    jobDoc.current = {
+      status: "completed",
+      result: {
+        exercises_added: 12,
+        warnings: [],
+        instructions_used: {
+          original: "12 exercises, mainly shoulder",
+          enriched: "Exactly 12 exercises: 7 shoulder, 3 upper back, 2 chest.",
+          model: "claude-opus-5-5",
+          note: null,
+        },
+      },
+    }
+    render(<JobsNotificationDock />)
+    expect(await screen.findByText("How the AI read your instructions")).toBeTruthy()
+    expect(screen.getByText(/Exactly 12 exercises/)).toBeTruthy()
+  })
+})

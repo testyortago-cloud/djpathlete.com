@@ -164,6 +164,34 @@ describe("handleWeekGeneration — the job doc's result payload", () => {
     expect(rendered).toHaveLength(2)
   })
 
+  it("writes how the coach's instructions were read into ai_jobs.result", async () => {
+    // Same trap as warnings: this object is built field by field, so a field
+    // the orchestrator returns but this handler skips never reaches the coach.
+    const used = {
+      original: "12 exercises, mainly shoulder",
+      enriched: "Exactly 12 exercises: 7 shoulder, 3 upper back, 2 chest.",
+      model: "claude-opus-5-5",
+      note: null,
+    }
+    mockGenerateWeekSync.mockResolvedValue({ ...resultFrom([]), instructions_used: used })
+
+    await handleWeekGeneration("job-1", BUDGET_MS)
+
+    expect(completedPayload()?.instructions_used).toEqual(used)
+  })
+
+  it("writes null — never undefined — when the coach gave no instructions", async () => {
+    // Firestore rejects undefined outright; the whole completion write would fail.
+    const { ...noField } = resultFrom([])
+    mockGenerateWeekSync.mockResolvedValue(noField)
+
+    await handleWeekGeneration("job-1", BUDGET_MS)
+
+    const payload = completedPayload()
+    expect(payload).toHaveProperty("instructions_used")
+    expect(payload?.instructions_used).toBeNull()
+  })
+
   it("does not write a result payload when generation fails", async () => {
     mockGenerateWeekSync.mockRejectedValue(new Error("boom"))
 

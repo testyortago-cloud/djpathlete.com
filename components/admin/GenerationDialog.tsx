@@ -21,7 +21,12 @@ import { useAiJob } from "@/hooks/use-ai-job"
 import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
 import { NotifyWhenDoneToggle } from "@/components/admin/NotifyWhenDoneToggle"
-import { GenerationWarnings, extractWarnings } from "@/components/admin/GenerationWarnings"
+import {
+  GenerationWarnings,
+  extractWarnings,
+  InstructionsUsedPanel,
+  extractInstructionsUsed,
+} from "@/components/admin/GenerationWarnings"
 import { EquipmentOverrideField } from "@/components/admin/EquipmentOverrideField"
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -471,6 +476,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
             {isFailed && <XCircle className="size-8 text-destructive" />}
             <p className="text-sm text-center text-muted-foreground">{getProgressMessage()}</p>
             {isComplete && <GenerationWarnings warnings={extractWarnings(result)} />}
+            {isComplete && <InstructionsUsedPanel used={extractInstructionsUsed(result)} defaultOpen />}
             {isGenerating && (
               <p className="text-xs text-center text-muted-foreground/70">
                 Usually takes 1–2 minutes. You can keep this tab open or come back later.
