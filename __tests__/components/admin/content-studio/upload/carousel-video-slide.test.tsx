@@ -34,6 +34,7 @@ describe("CarouselComposer video slides", () => {
     expect(video).toHaveAttribute("src", "blob:preview-1")
     fireEvent.click(screen.getByRole("button", { name: "Remove" }))
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:preview-1")
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith([], { hasVideo: false }))
   })
 
   it("rejects a WebM without uploading it", async () => {

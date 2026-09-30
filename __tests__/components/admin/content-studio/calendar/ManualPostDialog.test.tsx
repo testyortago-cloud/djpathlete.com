@@ -16,8 +16,14 @@ vi.mock("@/components/admin/videos/VideoUploader", () => ({
 }))
 
 vi.mock("@/components/admin/content-studio/upload/CarouselComposer", () => ({
-  CarouselComposer: ({ onChange }: { onChange: (ids: string[], meta: { hasVideo: boolean }) => void }) => (
-    <div>
+  CarouselComposer: ({
+    onChange,
+    allowVideo,
+  }: {
+    onChange: (ids: string[], meta: { hasVideo: boolean }) => void
+    allowVideo?: boolean
+  }) => (
+    <div data-testid="carousel-composer" data-allow-video={String(allowVideo === true)}>
       <button type="button" onClick={() => onChange(["i1", "i2"], { hasVideo: false })}>Fake two photos</button>
       <button type="button" onClick={() => onChange(["i1", "v1"], { hasVideo: true })}>Fake photo and video</button>
     </div>
@@ -215,6 +221,7 @@ describe("<ManualPostDialog>", () => {
     fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "carousel" } })
     expect(screen.getByRole("button", { name: "Fake two photos" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Fake photo and video" })).toBeInTheDocument()
+    expect(screen.getByTestId("carousel-composer")).toHaveAttribute("data-allow-video", "true")
   })
 
   it("carousel submit is disabled until 2+ slides uploaded", () => {
