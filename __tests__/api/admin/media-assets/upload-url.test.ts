@@ -52,8 +52,8 @@ describe("POST /api/admin/media-assets/upload-url", () => {
     expect(res.status).toBe(401)
   })
 
-  it("returns 400 for invalid payload (non-image)", async () => {
-    const res = await call({ filename: "x.mp4", contentType: "video/mp4" })
+  it("returns 400 for invalid payload (unsupported type)", async () => {
+    const res = await call({ filename: "x.webm", contentType: "video/webm" })
     expect(res.status).toBe(400)
   })
 

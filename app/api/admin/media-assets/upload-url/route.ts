@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import { createMediaAsset } from "@/lib/db/media-assets"
-import { mediaAssetUploadUrlSchema } from "@/lib/validators/media-asset"
+import { mediaAssetUploadUrlSchema, isVideoMime } from "@/lib/validators/media-asset"
 import { createAiJob } from "@/lib/ai-jobs"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 
@@ -29,7 +29,10 @@ export async function POST(request: NextRequest) {
 
   const { filename, contentType } = parsed.data
   const safeFilename = sanitizeFilename(filename)
-  const storagePath = `images/${session.user.id}/${Date.now()}-${safeFilename}`
+  const isVideo = isVideoMime(contentType)
+  const storagePath = isVideo
+    ? `media-videos/${session.user.id}/${Date.now()}-${safeFilename}`
+    : `images/${session.user.id}/${Date.now()}-${safeFilename}`
 
   const bucket = getAdminStorage().bucket()
   const file = bucket.file(storagePath)
@@ -41,7 +44,7 @@ export async function POST(request: NextRequest) {
   })
 
   const asset = await createMediaAsset({
-    kind: "image",
+    kind: isVideo ? "video" : "image",
     storage_path: storagePath,
     public_url: storagePath,
     mime_type: contentType,
@@ -58,14 +61,17 @@ export async function POST(request: NextRequest) {
   // Fire-and-forget: kick off vision AI alt-text. Failure must not block the
   // upload response — the asset row is fine without ai metadata and a later
   // manual "regenerate" could populate it.
-  try {
-    await createAiJob({
-      type: "image_vision",
-      userId: session.user.id,
-      input: { mediaAssetId: asset.id },
-    })
-  } catch (err) {
-    console.error("[upload-url] failed to enqueue image_vision job", err)
+  // The vision alt-text job reads photos only.
+  if (!isVideo) {
+    try {
+      await createAiJob({
+        type: "image_vision",
+        userId: session.user.id,
+        input: { mediaAssetId: asset.id },
+      })
+    } catch (err) {
+      console.error("[upload-url] failed to enqueue image_vision job", err)
+    }
   }
 
   return NextResponse.json(

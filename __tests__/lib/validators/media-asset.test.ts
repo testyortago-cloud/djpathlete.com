@@ -13,10 +13,10 @@ describe("mediaAssetUploadUrlSchema", () => {
     expect(result.success).toBe(true)
   })
 
-  it("rejects non-image mime types", () => {
+  it("rejects unsupported mime types", () => {
     const result = mediaAssetUploadUrlSchema.safeParse({
-      filename: "squat.mp4",
-      contentType: "video/mp4",
+      filename: "squat.webm",
+      contentType: "video/webm",
     })
     expect(result.success).toBe(false)
   })
