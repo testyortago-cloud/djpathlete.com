@@ -72,9 +72,14 @@ export async function runScheduledPublish(
   let failed = 0
 
   for (const post of due) {
-    const result = await publishOnePost(post, now)
-    if (result === "published") published++
-    else if (result === "failed") failed++
+    try {
+      const result = await publishOnePost(post, now)
+      if (result === "published") published++
+      else if (result === "failed") failed++
+    } catch (err) {
+      // Leave the post exactly as saved: a lost media_publish response must not fail a post that went live.
+      console.error(`[publish-runner] post ${post.id} threw; will retry next run`, err)
+    }
   }
 
   return { considered: scheduledPosts.length, published, failed }

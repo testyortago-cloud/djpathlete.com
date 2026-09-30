@@ -472,6 +472,31 @@ describe("runScheduledPublish — platform still processing", () => {
     })
   })
 
+  it("a post whose publish throws is left as is and the others still publish", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const second = { ...base, id: "p10" }
+    listSocialPostsMock.mockResolvedValue([base, second])
+    listPlatformConnectionsMock.mockResolvedValue([])
+    getSocialPostWithMediaMock.mockImplementation(async (id: string) => ({ ...(id === "p9" ? base : second), media: [] }))
+    resolveMediaUrlMock.mockResolvedValue("https://signed.example/v9.mp4")
+    const publish = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValueOnce({ success: true, platform_post_id: "IG_2" })
+    registryGetMock.mockReturnValue({ publish, displayName: "Instagram" })
+    try {
+      const result = await runScheduledPublish({ now: new Date("2026-10-01T10:05:00.000Z") })
+      expect(result).toEqual({ considered: 2, published: 1, failed: 0 })
+      expect(updateSocialPostMock).toHaveBeenCalledWith("p10", expect.objectContaining({
+        approval_status: "published",
+        platform_post_id: "IG_2",
+      }))
+      expect(updateSocialPostMock.mock.calls.some((c) => c[0] === "p9")).toBe(false)
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
   it("tells the plugin which carousel slides are videos", async () => {
     const post = { ...base, post_type: "carousel", source_video_id: null }
     const publish = setup(post, { success: true, platform_post_id: "IG_C" })
