@@ -389,3 +389,100 @@ describe("runScheduledPublish", () => {
     expect(updateSocialPostMock).not.toHaveBeenCalled()
   })
 })
+
+describe("runScheduledPublish — platform still processing", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const base = {
+    id: "p9",
+    platform: "instagram",
+    content: "reel",
+    media_url: null,
+    source_video_id: "v9",
+    post_type: "video",
+    approval_status: "scheduled",
+    scheduled_at: "2026-10-01T10:00:00.000Z",
+    published_at: null,
+    rejection_notes: null,
+    platform_post_id: null,
+    created_by: null,
+    created_at: "",
+    updated_at: "",
+  }
+
+  function setup(post: Record<string, unknown>, answer: unknown) {
+    listSocialPostsMock.mockResolvedValue([post])
+    listPlatformConnectionsMock.mockResolvedValue([])
+    getSocialPostWithMediaMock.mockResolvedValue({ ...post, media: [] })
+    resolveMediaUrlMock.mockResolvedValue("https://signed.example/v9.mp4")
+    const publish = vi.fn().mockResolvedValue(answer)
+    registryGetMock.mockReturnValue({ publish, displayName: "Instagram" })
+    return publish
+  }
+
+  it("saves a pending answer and leaves the post scheduled", async () => {
+    const pending = { startedAt: "2026-10-01T10:05:00.000Z", data: { step: "publish", containerId: "c" } }
+    setup(base, { success: true, pending })
+    const result = await runScheduledPublish({ now: new Date("2026-10-01T10:05:00.000Z") })
+    expect(result).toEqual({ considered: 1, published: 0, failed: 0 })
+    expect(updateSocialPostMock).toHaveBeenCalledWith("p9", {
+      platform_publish_state: { ...pending, scheduledFor: "2026-10-01T10:00:00.000Z" },
+    })
+  })
+
+  it("hands the saved state back on the next run and publishes, clearing it", async () => {
+    const saved = { startedAt: "2026-10-01T10:05:00.000Z", scheduledFor: "2026-10-01T10:00:00.000Z", data: { step: "publish", containerId: "c" } }
+    const publish = setup({ ...base, platform_publish_state: saved }, { success: true, platform_post_id: "IG_9" })
+    await runScheduledPublish({ now: new Date("2026-10-01T10:10:00.000Z") })
+    expect(publish.mock.calls[0][0].resumeState).toEqual({ startedAt: saved.startedAt, data: saved.data })
+    expect(updateSocialPostMock).toHaveBeenCalledWith("p9", expect.objectContaining({
+      approval_status: "published",
+      platform_post_id: "IG_9",
+      platform_publish_state: null,
+    }))
+  })
+
+  it("ignores saved state from an earlier schedule (rescheduled or Publish now)", async () => {
+    const saved = { startedAt: "2026-10-01T09:00:00.000Z", scheduledFor: "2026-10-01T08:55:00.000Z", data: { step: "publish", containerId: "old" } }
+    const publish = setup({ ...base, platform_publish_state: saved }, { success: true, platform_post_id: "IG_10" })
+    await runScheduledPublish({ now: new Date("2026-10-01T10:10:00.000Z") })
+    expect(publish.mock.calls[0][0].resumeState).toBeUndefined()
+  })
+
+  it("fails the post after 30 minutes of processing, clearing the state", async () => {
+    const pending = { startedAt: "2026-10-01T10:00:00.000Z", data: { step: "publish", containerId: "c" } }
+    setup({ ...base, platform_publish_state: { ...pending, scheduledFor: base.scheduled_at } }, { success: true, pending })
+    const result = await runScheduledPublish({ now: new Date("2026-10-01T10:30:01.000Z") })
+    expect(result).toEqual({ considered: 1, published: 0, failed: 1 })
+    expect(updateSocialPostMock).toHaveBeenCalledWith("p9", {
+      approval_status: "failed",
+      rejection_notes: "Instagram is still processing the video after 30 minutes.",
+      platform_publish_state: null,
+    })
+  })
+
+  it("a platform failure clears saved state so a retry starts fresh", async () => {
+    const saved = { startedAt: "2026-10-01T10:05:00.000Z", scheduledFor: base.scheduled_at, data: { step: "publish", containerId: "c" } }
+    setup({ ...base, platform_publish_state: saved }, { success: false, error: "Instagram could not process the media (ERROR)" })
+    await runScheduledPublish({ now: new Date("2026-10-01T10:10:00.000Z") })
+    expect(updateSocialPostMock).toHaveBeenCalledWith("p9", {
+      approval_status: "failed",
+      rejection_notes: "Instagram could not process the media (ERROR)",
+      platform_publish_state: null,
+    })
+  })
+
+  it("tells the plugin which carousel slides are videos", async () => {
+    const post = { ...base, post_type: "carousel", source_video_id: null }
+    const publish = setup(post, { success: true, platform_post_id: "IG_C" })
+    getSocialPostWithMediaMock.mockResolvedValue({
+      ...post,
+      media: [
+        { position: 0, asset: { kind: "image", public_url: "images/u/a.jpg" } },
+        { position: 1, asset: { kind: "video", public_url: "media-videos/u/b.mp4" } },
+      ],
+    })
+    await runScheduledPublish({ now: new Date("2026-10-01T10:10:00.000Z") })
+    expect(publish.mock.calls[0][0].mediaKinds).toEqual(["image", "video"])
+  })
+})
