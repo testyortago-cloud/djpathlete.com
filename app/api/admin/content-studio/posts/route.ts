@@ -122,6 +122,22 @@ export async function POST(request: NextRequest) {
       if (!asset) {
         return NextResponse.json({ error: `mediaAsset ${id} not found` }, { status: 400 })
       }
+      if (asset.kind === "video") {
+        if (platform !== "instagram") {
+          const name = platform === "linkedin" ? "LinkedIn" : platform === "facebook" ? "Facebook" : platform
+          return NextResponse.json(
+            { error: `${name} carousels can only hold photos — videos in a carousel post to Instagram only.` },
+            { status: 400 },
+          )
+        }
+        if (asset.mime_type !== "video/mp4" && asset.mime_type !== "video/quicktime") {
+          return NextResponse.json(
+            { error: `Instagram carousel videos must be MP4 or MOV — ${id} is ${asset.mime_type}` },
+            { status: 400 },
+          )
+        }
+        continue
+      }
       if (asset.kind !== "image") {
         return NextResponse.json(
           { error: `mediaAsset ${id} is not an image (kind=${asset.kind})` },

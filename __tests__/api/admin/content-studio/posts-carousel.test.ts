@@ -131,7 +131,7 @@ describe("POST /api/admin/content-studio/posts — carousel path", () => {
 
   it("rejects carousel when an asset is not an image", async () => {
     mockGetAsset.mockImplementation(async (id: string) =>
-      id === "a-2" ? { id, kind: "video", mime_type: "video/mp4" } : { id, kind: "image", mime_type: "image/jpeg" },
+      id === "a-2" ? { id, kind: "audio", mime_type: "audio/mpeg" } : { id, kind: "image", mime_type: "image/jpeg" },
     )
     const res = await call({
       platform: "instagram",
@@ -140,6 +140,58 @@ describe("POST /api/admin/content-studio/posts — carousel path", () => {
       mediaAssetIds: ["a-1", "a-2", "a-3"],
     })
     expect(res.status).toBe(400)
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  const VIDEO_ROWS: Record<string, { id: string; kind: string; mime_type: string }> = {
+    i1: { id: "i1", kind: "image", mime_type: "image/jpeg" },
+    v1: { id: "v1", kind: "video", mime_type: "video/mp4" },
+    v2: { id: "v2", kind: "video", mime_type: "video/quicktime" },
+    v3: { id: "v3", kind: "video", mime_type: "video/webm" },
+  }
+  function useVideoRows() {
+    mockGetAsset.mockImplementation(async (id: string) => VIDEO_ROWS[id] ?? null)
+  }
+
+  it("accepts a video slide on Instagram", async () => {
+    useVideoRows()
+    const res = await call({ platform: "instagram", postType: "carousel", caption: "c", mediaAssetIds: ["i1", "v1"] })
+    expect(res.status).toBe(200)
+    expect(mockCreate).toHaveBeenCalledOnce()
+  })
+
+  it("accepts a MOV slide on Instagram", async () => {
+    useVideoRows()
+    const res = await call({ platform: "instagram", postType: "carousel", caption: "c", mediaAssetIds: ["i1", "v2"] })
+    expect(res.status).toBe(200)
+    expect(mockCreate).toHaveBeenCalledOnce()
+  })
+
+  it("refuses a video slide on Facebook with a plain reason", async () => {
+    useVideoRows()
+    const res = await call({ platform: "facebook", postType: "carousel", caption: "c", mediaAssetIds: ["i1", "v1"] })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe(
+      "Facebook carousels can only hold photos — videos in a carousel post to Instagram only.",
+    )
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it("refuses a video slide on LinkedIn", async () => {
+    useVideoRows()
+    const res = await call({ platform: "linkedin", postType: "carousel", caption: "c", mediaAssetIds: ["i1", "v1"] })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe(
+      "LinkedIn carousels can only hold photos — videos in a carousel post to Instagram only.",
+    )
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it("refuses a non-MP4/MOV video slide on Instagram", async () => {
+    useVideoRows()
+    const res = await call({ platform: "instagram", postType: "carousel", caption: "c", mediaAssetIds: ["i1", "v3"] })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/MP4 or MOV/)
     expect(mockCreate).not.toHaveBeenCalled()
   })
 
