@@ -6,6 +6,14 @@ import { ManualPostDialog } from "@/components/admin/content-studio/calendar/Man
 vi.mock("@/lib/firebase-client-upload", () => ({
   uploadImageFile: vi.fn(),
 }))
+// The real uploader PUTs to Firebase; this stand-in reports a finished upload on click.
+vi.mock("@/components/admin/videos/VideoUploader", () => ({
+  VideoUploader: ({ onUploaded }: { onUploaded: (id: string) => void }) => (
+    <button type="button" onClick={() => onUploaded("vid-1")}>
+      Fake video upload
+    </button>
+  ),
+}))
 
 const fetchMock = vi.fn()
 beforeEach(() => {
@@ -29,6 +37,7 @@ describe("<ManualPostDialog>", () => {
     render(<ManualPostDialog dayKey="2099-02-02" onClose={vi.fn()} onCreated={vi.fn()} />)
     // instagram is pre-selected; add facebook
     fireEvent.click(screen.getByLabelText(/Post to facebook/i))
+    fireEvent.click(screen.getByRole("button", { name: /fake video upload/i }))
     fireEvent.click(screen.getByRole("button", { name: /create/i }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     const platforms = fetchMock.mock.calls.map(
@@ -61,6 +70,7 @@ describe("<ManualPostDialog>", () => {
     const onCreated = vi.fn()
     render(<ManualPostDialog dayKey="2099-01-01" onClose={vi.fn()} onCreated={onCreated} />)
     fireEvent.change(screen.getByLabelText(/Caption/i), { target: { value: "hello" } })
+    fireEvent.click(screen.getByRole("button", { name: /fake video upload/i }))
     fireEvent.click(screen.getByRole("button", { name: /Create/i }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
@@ -68,6 +78,58 @@ describe("<ManualPostDialog>", () => {
     expect(body.caption).toBe("hello")
     expect(body.scheduled_at).toMatch(/^2099-01-/)
     expect(onCreated).toHaveBeenCalledWith("new-1")
+  })
+
+  // Reported 2026-09-30: Photo had an upload box, Video had none, and the post was
+  // created anyway with nothing attached.
+  it("video offers an upload, and Create waits for it — with or without the multimedia flag", () => {
+    for (const multimediaEnabled of [false, true]) {
+      const { unmount } = render(
+        <ManualPostDialog
+          dayKey="2099-01-01"
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
+          multimediaEnabled={multimediaEnabled}
+        />,
+      )
+      expect((screen.getByLabelText(/post type/i) as HTMLSelectElement).value).toBe("video")
+      const submit = screen.getByRole("button", { name: /create/i })
+      expect(submit).toBeDisabled()
+      fireEvent.click(screen.getByRole("button", { name: /fake video upload/i }))
+      expect(submit).not.toBeDisabled()
+      unmount()
+    }
+  })
+
+  it("sends the uploaded video with every video post", async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ id: "post-v" }), { status: 200 })),
+    )
+    render(<ManualPostDialog dayKey="2099-02-02" onClose={vi.fn()} onCreated={vi.fn()} />)
+    fireEvent.click(screen.getByLabelText(/Post to facebook/i))
+    fireEvent.click(screen.getByRole("button", { name: /fake video upload/i }))
+    fireEvent.click(screen.getByRole("button", { name: /create/i }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    for (const call of fetchMock.mock.calls) {
+      const body = JSON.parse((call[1] as { body: string }).body)
+      expect(body.postType).toBe("video")
+      expect(body.source_video_id).toBe("vid-1")
+    }
+  })
+
+  it("switching away from Video drops the uploaded video", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: "t-2" }), { status: 200 }))
+    render(<ManualPostDialog dayKey="2099-01-01" onClose={vi.fn()} onCreated={vi.fn()} />)
+    fireEvent.click(screen.getByRole("button", { name: /fake video upload/i }))
+    fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "text" } })
+    fireEvent.click(screen.getByLabelText(/Post to instagram/i))
+    fireEvent.click(screen.getByLabelText(/Post to facebook/i))
+    fireEvent.change(screen.getByLabelText(/Caption/i), { target: { value: "Just words" } })
+    fireEvent.click(screen.getByRole("button", { name: /create/i }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.postType).toBe("text")
+    expect(body.source_video_id).toBeUndefined()
   })
 
   // Retargeted: the picker is always shown (spec §7); it used to be hidden when the flag was off.

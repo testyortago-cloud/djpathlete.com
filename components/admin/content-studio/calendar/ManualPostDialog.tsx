@@ -60,7 +60,8 @@ export function ManualPostDialog({
   )
 
   const mediaReady =
-    (postType !== "image" && postType !== "story" && postType !== "carousel") ||
+    postType === "text" ||
+    (postType === "video" && sourceVideoId !== null) ||
     (postType === "image" && mediaAssetId !== null) ||
     (postType === "carousel" && mediaAssetIds.length >= 2) ||
     (postType === "story" &&
@@ -96,7 +97,9 @@ export function ManualPostDialog({
               ? mediaAssetId
               : undefined,
           source_video_id:
-            postType === "story" && storyMediaType === "video" ? sourceVideoId : undefined,
+            postType === "video" || (postType === "story" && storyMediaType === "video")
+              ? sourceVideoId
+              : undefined,
           mediaAssetIds: postType === "carousel" ? mediaAssetIds : undefined,
         }),
       })
@@ -250,6 +253,17 @@ export function ManualPostDialog({
             </p>
           ) : null}
         </fieldset>
+
+        {/* Video needs no multimedia flag: the video pipeline predates it. */}
+        {postType === "video" ? (
+          <div className="mb-3">
+            <VideoUploader
+              onUploaded={(id) => setSourceVideoId(id)}
+              needsEditDefault={false}
+              showNeedsEditToggle={false}
+            />
+          </div>
+        ) : null}
 
         {postType === "image" && multimediaEnabled ? (
           <div className="mb-3">

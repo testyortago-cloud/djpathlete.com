@@ -7,6 +7,9 @@ const createMock = vi.fn()
 vi.mock("@/lib/db/social-posts", () => ({
   createSocialPost: (...args: unknown[]) => createMock(...args),
 }))
+vi.mock("@/lib/content-studio/edit-gate", () => ({
+  assertSourceVideoPostable: async () => ({ ok: true }),
+}))
 
 import { POST } from "@/app/api/admin/content-studio/posts/route"
 
@@ -31,16 +34,29 @@ describe("POST /api/admin/content-studio/posts", () => {
     expect(res.status).toBe(400)
   })
 
-  it("creates a manual post with source_video_id=null", async () => {
+  // A "video" post with no video used to be accepted and scheduled: Facebook then
+  // published the caption as a text-only post, and Instagram failed at post time.
+  it("refuses a video post that has no video", async () => {
+    const future = new Date(Date.now() + 24 * 3600 * 1000).toISOString()
+    const res = await POST(req({ platform: "facebook", caption: "hello world", scheduled_at: future }) as never)
+    expect(res.status).toBe(400)
+    expect(await res.text()).toMatch(/upload the video/i)
+    expect(createMock).not.toHaveBeenCalled()
+  })
+
+  it("creates a video post carrying the uploaded video", async () => {
     createMock.mockResolvedValueOnce({ id: "new-1", approval_status: "scheduled" })
     const future = new Date(Date.now() + 24 * 3600 * 1000).toISOString()
-    const res = await POST(req({ platform: "instagram", caption: "hello world", scheduled_at: future }) as never)
+    const res = await POST(
+      req({ platform: "instagram", caption: "hello world", scheduled_at: future, source_video_id: "vid-1" }) as never,
+    )
     expect(res.status).toBe(200)
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         platform: "instagram",
         content: "hello world",
-        source_video_id: null,
+        post_type: "video",
+        source_video_id: "vid-1",
         approval_status: "scheduled",
       }),
     )
@@ -48,7 +64,7 @@ describe("POST /api/admin/content-studio/posts", () => {
 
   it("saves as 'approved' (unscheduled) when no scheduled_at provided", async () => {
     createMock.mockResolvedValueOnce({ id: "new-1", approval_status: "approved" })
-    const res = await POST(req({ platform: "instagram", caption: "hello" }) as never)
+    const res = await POST(req({ platform: "instagram", caption: "hello", source_video_id: "vid-1" }) as never)
     expect(res.status).toBe(200)
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({ approval_status: "approved", scheduled_at: null }),

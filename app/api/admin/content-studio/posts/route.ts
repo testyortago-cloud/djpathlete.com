@@ -73,6 +73,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Write the post text first" }, { status: 400 })
   }
 
+  // Without this a video post with nothing attached was scheduled anyway: Facebook
+  // published the caption as a text-only post and Instagram failed at post time.
+  if (postType === "video" && !body?.source_video_id) {
+    return NextResponse.json(
+      { error: "Upload the video first — a video post needs its video." },
+      { status: 400 },
+    )
+  }
+
   if (postType === "image" && !body?.mediaAssetId) {
     return NextResponse.json({ error: "mediaAssetId is required for image posts" }, { status: 400 })
   }
