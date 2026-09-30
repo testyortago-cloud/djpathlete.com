@@ -84,6 +84,21 @@ describe("Instagram plugin — video processing", () => {
     expect(result.error).toBe("Instagram could not process the media (ERROR: Error: unsupported codec)")
   })
 
+  it("resuming a container Instagram already published fails without publishing again", async () => {
+    const fetchMock = mockFetchSequence([() => jsonResp({ status_code: "PUBLISHED" })])
+    const result = await plugin().publish({
+      content: "c",
+      mediaUrl: "https://s.example/r.mp4",
+      scheduledAt: null,
+      resumeState: { startedAt: NOW.toISOString(), data: { step: "publish", containerId: "reel-c" } },
+    })
+    expect(result).toEqual({
+      success: false,
+      error: "Instagram shows this post as already published — check the account before retrying.",
+    })
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/media_publish"))).toBe(false)
+  })
+
   it("a video Story still processing answers pending", async () => {
     mockFetchSequence([() => jsonResp({ id: "story-c" }), inProgress, inProgress, inProgress, inProgress, inProgress])
     const result = await plugin().publish({ content: "", mediaUrl: "https://s.example/s.mp4", postType: "story", scheduledAt: null })

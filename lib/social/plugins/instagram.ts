@@ -71,6 +71,12 @@ export function createInstagramPlugin(
     if (!response.ok) return { state: "in_progress" } // a failed status read is retried next tick
     const code = response.data?.status_code
     if (code === "FINISHED") return { state: "finished" }
+    if (code === "PUBLISHED") {
+      return {
+        state: "error",
+        error: "Instagram shows this post as already published — check the account before retrying.",
+      }
+    }
     if (code === "ERROR" || code === "EXPIRED") {
       const status = response.data?.status
       return { state: "error", error: `Instagram could not process the media (${code}${status ? `: ${status}` : ""})` }
