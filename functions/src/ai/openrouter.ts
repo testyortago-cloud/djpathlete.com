@@ -59,6 +59,8 @@ export const OPENROUTER_MODEL_MAP: Record<string, string> = {
   "claude-opus-4-6": "anthropic/claude-opus-4.6",
   "claude-opus-4-8": "anthropic/claude-opus-4.8",
   "claude-opus-5": "anthropic/claude-opus-5",
+  // Verified present 2026-09-30.
+  "claude-opus-5-5": "anthropic/claude-opus-5.5",
   "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
   "claude-sonnet-5": "anthropic/claude-sonnet-5",
   "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4.5",

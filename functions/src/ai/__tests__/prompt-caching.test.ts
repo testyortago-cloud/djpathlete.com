@@ -10,9 +10,11 @@ vi.mock("@anthropic-ai/sdk", () => {
       this.status = status
     }
   }
-  const Anthropic = vi.fn().mockImplementation(() => ({
-    messages: { stream: streamMock },
-  })) as unknown as { new (): unknown } & { APIError: typeof APIError }
+  // A `function`, not an arrow: callAgent does `new Anthropic(...)`, and an
+  // arrow cannot be constructed (every test here failed on it, found 2026-09-30).
+  const Anthropic = vi.fn().mockImplementation(function () {
+    return { messages: { stream: streamMock } }
+  }) as unknown as { new (): unknown } & { APIError: typeof APIError }
   ;(Anthropic as unknown as { APIError: typeof APIError }).APIError = APIError
   return { default: Anthropic, Anthropic }
 })

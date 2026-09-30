@@ -27,7 +27,12 @@ const h = vi.hoisted(() => ({
 vi.mock("@anthropic-ai/sdk", async (importOriginal) => {
   const real = await importOriginal<typeof import("@anthropic-ai/sdk")>()
   const Anthropic = Object.assign(
-    vi.fn().mockImplementation(() => ({ messages: { stream: h.anthropicStream } })),
+    // A `function`, not an arrow: callAgent does `new Anthropic(...)`, and an
+    // arrow cannot be constructed — the mock threw, the client was never built,
+    // and 8 tests here failed with "called 0 times" (found 2026-09-30).
+    vi.fn().mockImplementation(function () {
+      return { messages: { stream: h.anthropicStream } }
+    }),
     {
       APIError: real.APIError,
       APIUserAbortError: real.APIUserAbortError,
@@ -206,6 +211,23 @@ describe("callAgent: OpenRouter first, on every attempt", () => {
     expect(error).toBeUndefined()
     expect(value?.content).toEqual({ ok: true })
     expect(orModels()).toEqual([...Array(5).fill(MODEL_SONNET), MODEL_HAIKU])
+  })
+
+  it("skips the Haiku last resort when the caller opts out, and surfaces the primary's error", async () => {
+    // Coach-instruction enrichment asked for Opus 5.5 specifically; a Haiku
+    // rewrite would be passed off as it. The caller has its own fallback (the
+    // coach's original words), so it wants the error, not a substitute.
+    const outage = httpError(503, "503 Service Unavailable")
+    h.orAgent.mockImplementation(async (model: string) => {
+      if (model === MODEL_SONNET) throw outage
+      return OPENROUTER_OK
+    })
+    h.anthropicStream.mockImplementation(() => anthropicFails(creditError()))
+
+    const { error } = await settle(callAgent("sys", "user", schema, { allowHaikuFallback: false }))
+
+    expect(error).toBeDefined()
+    expect(orModels()).toEqual(Array(5).fill(MODEL_SONNET))
   })
 
   it("does not hand the primary's effort to the Haiku fallback, and keeps every other option", async () => {

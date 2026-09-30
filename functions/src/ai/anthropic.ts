@@ -45,6 +45,13 @@ export const MODEL_SONNET_5 = "claude-sonnet-5"
 export const MODEL_FABLE = "claude-fable-5-1"
 
 /**
+ * Rewrites the coach's free-text instructions into the shape the program
+ * architect reads best, before a week/day generation (instruction-enrich.ts).
+ * Chosen by the owner, 2026-09-30. One short call per generation.
+ */
+export const MODEL_OPUS_5_5 = "claude-opus-5-5"
+
+/**
  * The two agents that decide what a training week actually contains: the
  * Architect (slot structure) and the Exercise Selector (which exercise fills
  * each slot). Both orchestrators — new-program and add-a-week — read these, so
@@ -119,9 +126,13 @@ export const PROGRAM_AGENT_EFFORT = "medium" as const
  * `claude-fable-5-2` is handled correctly on the day it is first passed in,
  * rather than failing in production with a 400 that looks like an outage.
  * Mythos shares Fable's surface and is included for the same reason.
+ *
+ * Opus 5.5 too (measured 2026-09-30 through OpenRouter: 400 "Provider returned
+ * error", Fable's exact response) — and any later Opus 5 point release. Plain
+ * `claude-opus-5` still takes the tool path, so this matches 5-5 onward only.
  */
 export function modelRejectsForcedToolChoice(modelId: string): boolean {
-  return /^claude-(fable|mythos)-/.test(modelId)
+  return /^claude-(fable|mythos)-/.test(modelId) || /^claude-opus-5-([5-9]|\d{2,})/.test(modelId)
 }
 const DEFAULT_MAX_TOKENS = 32000
 
@@ -692,6 +703,12 @@ export async function callAgent<T>(
      */
     effort?: "low" | "medium" | "high" | "max"
     signal?: AbortSignal
+    /**
+     * Default true. Pass false when a Haiku answer would be passed off as the
+     * requested model's and the caller has a better fallback of its own —
+     * coach-instruction enrichment falls back to the coach's original words.
+     */
+    allowHaikuFallback?: boolean
   },
 ): Promise<AgentCallResult<T>> {
   const modelId = options?.model ?? MODEL_SONNET
@@ -708,7 +725,12 @@ export async function callAgent<T>(
     // program the owner chose astra for, or the effort it inherited made it
     // 400 and that 400 replaced astra's 503. A non-Claude primary's own error
     // is the one worth seeing.
-    if (modelId !== MODEL_HAIKU && canFallBackToAnthropic(modelId) && isTransientError(error)) {
+    if (
+      options?.allowHaikuFallback !== false &&
+      modelId !== MODEL_HAIKU &&
+      canFallBackToAnthropic(modelId) &&
+      isTransientError(error)
+    ) {
       console.warn(`[callAgent] ${modelId} exhausted all retries — falling back to ${MODEL_HAIKU}`)
       return callAgentWithModel(MODEL_HAIKU, systemPrompt, userMessage, schema, { ...options, effort: undefined })
     }

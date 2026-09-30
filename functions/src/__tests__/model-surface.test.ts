@@ -7,6 +7,7 @@ import {
   MODEL_SONNET_5,
   MODEL_OPUS,
   MODEL_HAIKU,
+  MODEL_OPUS_5_5,
 } from "../ai/anthropic.js"
 
 describe("modelRejectsForcedToolChoice", () => {
@@ -26,6 +27,14 @@ describe("modelRejectsForcedToolChoice", () => {
     expect(modelRejectsForcedToolChoice("claude-fable-5-2")).toBe(true)
     expect(modelRejectsForcedToolChoice("claude-fable-6")).toBe(true)
     expect(modelRejectsForcedToolChoice("claude-mythos-5-1")).toBe(true)
+  })
+
+  it("is true for Opus 5.5, which 400s on forced tool choice through OpenRouter", () => {
+    // Measured 2026-09-30: callAgent → 400 "Provider returned error", the same
+    // response Fable gives. Opus 5 (no point release) still takes the tool path.
+    expect(modelRejectsForcedToolChoice(MODEL_OPUS_5_5)).toBe(true)
+    expect(modelRejectsForcedToolChoice("claude-opus-5-6")).toBe(true)
+    expect(modelRejectsForcedToolChoice("claude-opus-5")).toBe(false)
   })
 
   it("does not match a model that merely contains the word", () => {
