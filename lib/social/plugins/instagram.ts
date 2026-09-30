@@ -2,7 +2,14 @@
 // Instagram Business/Creator publishing via IG Graph API (two-step: create container, publish).
 // Docs: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media
 
-import type { PublishPlugin, PublishInput, PublishResult, AnalyticsResult, ConnectResult } from "./types"
+import type {
+  PublishPlugin,
+  PublishInput,
+  PublishResult,
+  AnalyticsResult,
+  ConnectResult,
+  PendingPublish,
+} from "./types"
 import { fetchJson, buildQueryString } from "./shared/fetch-helpers"
 
 const GRAPH_API_VERSION = "v22.0"
@@ -22,8 +29,177 @@ function isVideoUrl(url: string): boolean {
   return VIDEO_EXTENSIONS.test(url)
 }
 
-export function createInstagramPlugin(credentials: InstagramCredentials): PublishPlugin {
+export interface InstagramDeps {
+  sleep?: (ms: number) => Promise<void>
+  now?: () => Date
+}
+
+type ContainerState = { state: "finished" } | { state: "in_progress" } | { state: "error"; error: string }
+
+type IgPending =
+  | { step: "publish"; containerId: string }
+  | { step: "children"; childIds: string[]; caption: string }
+
+function readIgPending(data: Record<string, unknown>): IgPending | null {
+  if (data.step === "publish" && typeof data.containerId === "string") {
+    return { step: "publish", containerId: data.containerId }
+  }
+  if (
+    data.step === "children" &&
+    Array.isArray(data.childIds) &&
+    data.childIds.every((id) => typeof id === "string") &&
+    typeof data.caption === "string"
+  ) {
+    return { step: "children", childIds: data.childIds as string[], caption: data.caption }
+  }
+  return null
+}
+
+export function createInstagramPlugin(
+  credentials: InstagramCredentials,
+  deps: InstagramDeps = {},
+): PublishPlugin {
   const { access_token, ig_user_id } = credentials
+  const sleep = deps.sleep ?? defaultSleep
+  const now = deps.now ?? (() => new Date())
+
+  async function statusOf(containerId: string): Promise<ContainerState> {
+    const response = await fetchJson<{ status_code?: string; status?: string }>(
+      `${GRAPH_API_BASE}/${containerId}?fields=status_code,status&access_token=${encodeURIComponent(access_token)}`,
+      { method: "GET" },
+    )
+    if (!response.ok) return { state: "in_progress" } // a failed status read is retried next tick
+    const code = response.data?.status_code
+    if (code === "FINISHED") return { state: "finished" }
+    if (code === "ERROR" || code === "EXPIRED") {
+      const status = response.data?.status
+      return { state: "error", error: `Instagram could not process the media (${code}${status ? `: ${status}` : ""})` }
+    }
+    return { state: "in_progress" }
+  }
+
+  async function checkOnce(ids: string[]): Promise<ContainerState> {
+    let pending = false
+    for (const id of ids) {
+      const s = await statusOf(id)
+      if (s.state === "error") return s
+      if (s.state === "in_progress") pending = true
+    }
+    return pending ? { state: "in_progress" } : { state: "finished" }
+  }
+
+  async function waitBriefly(ids: string[]): Promise<ContainerState> {
+    let delay = CAROUSEL_POLL_INITIAL_DELAY_MS
+    for (let attempt = 0; attempt < CAROUSEL_POLL_MAX_ATTEMPTS; attempt += 1) {
+      const s = await checkOnce(ids)
+      if (s.state !== "in_progress") return s
+      if (attempt < CAROUSEL_POLL_MAX_ATTEMPTS - 1) {
+        await sleep(delay)
+        delay *= 2
+      }
+    }
+    return { state: "in_progress" }
+  }
+
+  function pendingResult(data: IgPending, startedAt: string): PublishResult {
+    return { success: true, pending: { startedAt, data: data as unknown as Record<string, unknown> } }
+  }
+
+  async function publishContainer(creationId: string): Promise<PublishResult> {
+    const res = await fetchJson<{ id?: string }>(`${GRAPH_API_BASE}/${ig_user_id}/media_publish`, {
+      method: "POST",
+      body: { creation_id: creationId, access_token },
+    })
+    if (!res.ok || !res.data?.id) return { success: false, error: extractIgError(res.errorText) }
+    return { success: true, platform_post_id: res.data.id }
+  }
+
+  /** Waits on one container, then publishes it or answers pending. */
+  async function finishSingle(
+    containerId: string,
+    startedAt: string,
+    wait: (ids: string[]) => Promise<ContainerState>,
+  ): Promise<PublishResult> {
+    const s = await wait([containerId])
+    if (s.state === "error") return { success: false, error: s.error }
+    if (s.state === "in_progress") return pendingResult({ step: "publish", containerId }, startedAt)
+    return publishContainer(containerId)
+  }
+
+  async function createParent(
+    childIds: string[],
+    caption: string,
+    hasVideo: boolean,
+    startedAt: string,
+  ): Promise<PublishResult> {
+    const parent = await fetchJson<{ id?: string; error?: { message: string } }>(
+      `${GRAPH_API_BASE}/${ig_user_id}/media`,
+      {
+        method: "POST",
+        body: { media_type: "CAROUSEL", children: childIds.join(","), caption, access_token },
+      },
+    )
+    if (!parent.ok || !parent.data?.id) return { success: false, error: extractIgError(parent.errorText) }
+    if (!hasVideo) return publishContainer(parent.data.id) // photo-only: unchanged from before
+    return finishSingle(parent.data.id, startedAt, waitBriefly)
+  }
+
+  async function resume(saved: PendingPublish): Promise<PublishResult> {
+    const state = readIgPending(saved.data)
+    if (!state) return { success: false, error: "Saved Instagram publish state is unreadable — schedule the post again." }
+    if (state.step === "publish") return finishSingle(state.containerId, saved.startedAt, checkOnce)
+    const s = await checkOnce(state.childIds)
+    if (s.state === "error") return { success: false, error: s.error }
+    if (s.state === "in_progress") return { success: true, pending: saved }
+    return createParent(state.childIds, state.caption, true, saved.startedAt)
+  }
+
+  async function publishStory(mediaUrl: string, startedAt: string): Promise<PublishResult> {
+    // Caption NOT sent — IG ignores it on stories.
+    const containerBody: Record<string, unknown> = { media_type: "STORIES", access_token }
+    if (isVideoUrl(mediaUrl)) containerBody.video_url = mediaUrl
+    else containerBody.image_url = mediaUrl
+
+    const container = await fetchJson<{ id?: string; error?: { message: string } }>(
+      `${GRAPH_API_BASE}/${ig_user_id}/media`,
+      { method: "POST", body: containerBody },
+    )
+    if (!container.ok || !container.data?.id) {
+      return { success: false, error: extractIgError(container.errorText) }
+    }
+    return finishSingle(container.data.id, startedAt, waitBriefly)
+  }
+
+  async function publishCarousel(
+    caption: string,
+    slideUrls: string[],
+    kinds: PublishInput["mediaKinds"],
+    startedAt: string,
+  ): Promise<PublishResult> {
+    const childIds: string[] = []
+    let hasVideo = false
+    for (let i = 0; i < slideUrls.length; i += 1) {
+      const url = slideUrls[i]
+      const isVideo = kinds?.[i] === "video"
+      if (isVideo) hasVideo = true
+      const body: Record<string, unknown> = isVideo
+        ? { media_type: "VIDEO", video_url: url, is_carousel_item: true, access_token }
+        : { image_url: url, is_carousel_item: true, access_token }
+      const child = await fetchJson<{ id?: string; error?: { message: string } }>(
+        `${GRAPH_API_BASE}/${ig_user_id}/media`,
+        { method: "POST", body },
+      )
+      if (!child.ok || !child.data?.id) {
+        return { success: false, error: extractIgError(child.errorText) }
+      }
+      childIds.push(child.data.id)
+    }
+
+    const s = await waitBriefly(childIds)
+    if (s.state === "error") return { success: false, error: s.error }
+    if (s.state === "in_progress") return pendingResult({ step: "children", childIds, caption }, startedAt)
+    return createParent(childIds, caption, hasVideo, startedAt)
+  }
 
   return {
     name: "instagram",
@@ -41,6 +217,8 @@ export function createInstagramPlugin(credentials: InstagramCredentials): Publis
     },
 
     async publish(input: PublishInput): Promise<PublishResult> {
+      if (input.resumeState) return resume(input.resumeState)
+      const startedAt = now().toISOString()
       const { content, mediaUrl, mediaUrls, postType } = input
 
       // Story branch — single image or video, media_type=STORIES
@@ -48,21 +226,12 @@ export function createInstagramPlugin(credentials: InstagramCredentials): Publis
         if (!mediaUrl) {
           return { success: false, error: "Instagram stories require a media URL" }
         }
-        return publishStoryPost({
-          accessToken: access_token,
-          igUserId: ig_user_id,
-          mediaUrl,
-        })
+        return publishStory(mediaUrl, startedAt)
       }
 
       // Carousel branch — 2+ slides
       if (mediaUrls && mediaUrls.length >= 2) {
-        return publishCarousel({
-          accessToken: access_token,
-          igUserId: ig_user_id,
-          caption: content,
-          slideUrls: mediaUrls,
-        })
+        return publishCarousel(content, mediaUrls, input.mediaKinds, startedAt)
       }
 
       if (!mediaUrl) {
@@ -91,14 +260,8 @@ export function createInstagramPlugin(credentials: InstagramCredentials): Publis
         return { success: false, error: extractIgError(container.errorText) }
       }
 
-      const publishRes = await fetchJson<{ id?: string }>(
-        `${GRAPH_API_BASE}/${ig_user_id}/media_publish`,
-        { method: "POST", body: { creation_id: container.data.id, access_token } },
-      )
-      if (!publishRes.ok || !publishRes.data?.id) {
-        return { success: false, error: extractIgError(publishRes.errorText) }
-      }
-      return { success: true, platform_post_id: publishRes.data.id }
+      if (isVideoUrl(mediaUrl)) return finishSingle(container.data.id, startedAt, waitBriefly)
+      return publishContainer(container.data.id)
     },
 
     async fetchAnalytics(platformPostId: string): Promise<AnalyticsResult> {
@@ -152,158 +315,6 @@ function extractIgError(raw: string | null): string {
   }
 }
 
-interface StoryArgs {
-  accessToken: string
-  igUserId: string
-  mediaUrl: string
-}
-
-async function publishStoryPost(args: StoryArgs): Promise<PublishResult> {
-  const { accessToken, igUserId, mediaUrl } = args
-  const isVideo = VIDEO_EXTENSIONS.test(mediaUrl)
-
-  // Step 1: create Story container (caption NOT sent — IG ignores it on stories).
-  // Container body differs for image vs video: image_url vs video_url; media_type=STORIES for both.
-  const containerBody: Record<string, unknown> = {
-    media_type: "STORIES",
-    access_token: accessToken,
-  }
-  if (isVideo) {
-    containerBody.video_url = mediaUrl
-  } else {
-    containerBody.image_url = mediaUrl
-  }
-
-  const container = await fetchJson<{ id?: string; error?: { message: string } }>(
-    `${GRAPH_API_BASE}/${igUserId}/media`,
-    { method: "POST", body: containerBody },
-  )
-  if (!container.ok || !container.data?.id) {
-    return { success: false, error: extractIgError(container.errorText) }
-  }
-
-  // Step 2: poll until FINISHED (reuse existing carousel poller)
-  const ready = await waitForContainerFinished({ accessToken, containerId: container.data.id })
-  if (!ready.ok) return { success: false, error: ready.error }
-
-  // Step 3: publish
-  const publishRes = await fetchJson<{ id?: string }>(
-    `${GRAPH_API_BASE}/${igUserId}/media_publish`,
-    { method: "POST", body: { creation_id: container.data.id, access_token: accessToken } },
-  )
-  if (!publishRes.ok || !publishRes.data?.id) {
-    return { success: false, error: extractIgError(publishRes.errorText) }
-  }
-  return { success: true, platform_post_id: publishRes.data.id }
-}
-
-interface CarouselArgs {
-  accessToken: string
-  igUserId: string
-  caption: string
-  slideUrls: string[]
-}
-
-async function publishCarousel(args: CarouselArgs): Promise<PublishResult> {
-  const { accessToken, igUserId, caption, slideUrls } = args
-
-  // Step 1: create a child container for each slide
-  const childIds: string[] = []
-  for (const url of slideUrls) {
-    const child = await fetchJson<{ id?: string; error?: { message: string } }>(
-      `${GRAPH_API_BASE}/${igUserId}/media`,
-      {
-        method: "POST",
-        body: {
-          image_url: url,
-          is_carousel_item: true,
-          access_token: accessToken,
-        },
-      },
-    )
-    if (!child.ok || !child.data?.id) {
-      return { success: false, error: extractIgError(child.errorText) }
-    }
-    childIds.push(child.data.id)
-  }
-
-  // Step 2: poll each child until FINISHED
-  for (const childId of childIds) {
-    const ready = await waitForContainerFinished({ accessToken, containerId: childId })
-    if (!ready.ok) return { success: false, error: ready.error }
-  }
-
-  // Step 3: create the parent CAROUSEL container
-  const parent = await fetchJson<{ id?: string; error?: { message: string } }>(
-    `${GRAPH_API_BASE}/${igUserId}/media`,
-    {
-      method: "POST",
-      body: {
-        media_type: "CAROUSEL",
-        children: childIds.join(","),
-        caption,
-        access_token: accessToken,
-      },
-    },
-  )
-  if (!parent.ok || !parent.data?.id) {
-    return { success: false, error: extractIgError(parent.errorText) }
-  }
-
-  // Step 4: publish
-  const publishRes = await fetchJson<{ id?: string }>(
-    `${GRAPH_API_BASE}/${igUserId}/media_publish`,
-    {
-      method: "POST",
-      body: { creation_id: parent.data.id, access_token: accessToken },
-    },
-  )
-  if (!publishRes.ok || !publishRes.data?.id) {
-    return { success: false, error: extractIgError(publishRes.errorText) }
-  }
-  return { success: true, platform_post_id: publishRes.data.id }
-}
-
-interface WaitArgs {
-  accessToken: string
-  containerId: string
-}
-
-async function waitForContainerFinished(
-  args: WaitArgs,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  let delay = CAROUSEL_POLL_INITIAL_DELAY_MS
-  for (let attempt = 0; attempt < CAROUSEL_POLL_MAX_ATTEMPTS; attempt += 1) {
-    const response = await fetchJson<{
-      status_code?: string
-      status?: string
-      error?: { message: string }
-    }>(
-      `${GRAPH_API_BASE}/${args.containerId}?fields=status_code,status&access_token=${encodeURIComponent(args.accessToken)}`,
-      { method: "GET" },
-    )
-    if (response.ok) {
-      const code = response.data?.status_code
-      if (code === "FINISHED") return { ok: true }
-      if (code === "ERROR" || code === "EXPIRED") {
-        return {
-          ok: false,
-          error: `Container ${args.containerId} ${code}: ${response.data?.status ?? ""}`.trim(),
-        }
-      }
-      // IN_PROGRESS or PUBLISHED — keep polling (shouldn't be PUBLISHED yet for a child)
-    }
-    if (attempt < CAROUSEL_POLL_MAX_ATTEMPTS - 1) {
-      await sleep(delay)
-      delay *= 2
-    }
-  }
-  return {
-    ok: false,
-    error: `Container ${args.containerId} did not reach FINISHED before timeout`,
-  }
-}
-
-function sleep(ms: number): Promise<void> {
+function defaultSleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }

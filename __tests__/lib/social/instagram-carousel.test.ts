@@ -108,23 +108,20 @@ describe("Instagram plugin — carousel", () => {
     expect(fetchMock.mock.calls.length).toBe(2)
   })
 
-  it("returns failure when a child never reaches FINISHED (poll timeout)", async () => {
-    // 2 children created, then both poll forever in PROCESSING. We expect the
-    // implementation to bail after the poll-budget (5 attempts with backoff).
-    // Since each poll attempt hits the same child, we need enough mocked responses.
-    // Poll budget: 5 attempts per child, then stops. For 2 children sequentially:
-    // child-1 polled 5× (all PROCESSING), returns error before moving on.
-    const fetchMock = mockFetchSequence([
+  it("answers pending when a child is still processing after the short wait", async () => {
+    // 2 children created, then both stay IN_PROGRESS. The short wait polls all
+    // children round-robin (5 rounds x 2 children), then hands the work to a later run.
+    const NOW = new Date("2026-10-01T10:00:00.000Z")
+    mockFetchSequence([
       () => jsonResp({ id: "child-1" }),
       () => jsonResp({ id: "child-2" }),
-      () => jsonResp({ status_code: "IN_PROGRESS" }),
-      () => jsonResp({ status_code: "IN_PROGRESS" }),
-      () => jsonResp({ status_code: "IN_PROGRESS" }),
-      () => jsonResp({ status_code: "IN_PROGRESS" }),
-      () => jsonResp({ status_code: "IN_PROGRESS" }),
+      ...Array.from({ length: 10 }, () => () => jsonResp({ status_code: "IN_PROGRESS" })),
     ])
 
-    const plugin = createInstagramPlugin({ access_token: "tok", ig_user_id: "ig-user-1" })
+    const plugin = createInstagramPlugin(
+      { access_token: "tok", ig_user_id: "ig-user-1" },
+      { sleep: async () => {}, now: () => NOW },
+    )
     const result = await plugin.publish({
       content: "x",
       mediaUrl: "https://signed.example/1-a.jpg",
@@ -134,8 +131,13 @@ describe("Instagram plugin — carousel", () => {
       ],
       scheduledAt: null,
     })
-    expect(result.success).toBe(false)
-    expect(result.error).toMatch(/not ready|timeout|FINISHED/i)
+    expect(result).toEqual({
+      success: true,
+      pending: {
+        startedAt: NOW.toISOString(),
+        data: { step: "children", childIds: ["child-1", "child-2"], caption: "x" },
+      },
+    })
   }, 30000)
 
   it("returns failure when a child status returns ERROR", async () => {

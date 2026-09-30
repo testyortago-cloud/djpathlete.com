@@ -54,12 +54,19 @@ describe("InstagramPlugin", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
+        text: async () => JSON.stringify({ status_code: "FINISHED" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
         text: async () => JSON.stringify({ id: "media_reel" }),
       })
     vi.stubGlobal("fetch", fetchMock)
 
-    const plugin = createInstagramPlugin({ access_token: "tok", ig_user_id: "ig123" })
+    const plugin = createInstagramPlugin({ access_token: "tok", ig_user_id: "ig123" }, { sleep: async () => {} })
     await plugin.publish({ content: "caption", mediaUrl: "https://example.com/vid.mp4", scheduledAt: null })
+
+    expect(String(fetchMock.mock.calls[1][0])).toContain("?fields=status_code")
 
     const createBody = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)
     expect(createBody.video_url).toBe("https://example.com/vid.mp4")
