@@ -8,8 +8,8 @@ vi.mock("@/lib/firebase-client-upload", () => ({
 }))
 // The real uploader PUTs to Firebase; this stand-in reports a finished upload on click.
 vi.mock("@/components/admin/videos/VideoUploader", () => ({
-  VideoUploader: ({ onUploaded }: { onUploaded: (id: string) => void }) => (
-    <button type="button" onClick={() => onUploaded("vid-1")}>
+  VideoUploader: ({ onUploaded, showPreview }: { onUploaded: (id: string) => void; showPreview?: boolean }) => (
+    <button type="button" data-preview={String(showPreview === true)} onClick={() => onUploaded("vid-1")}>
       Fake video upload
     </button>
   ),
@@ -99,6 +99,14 @@ describe("<ManualPostDialog>", () => {
       expect(submit).not.toBeDisabled()
       unmount()
     }
+  })
+
+  it("asks the uploader for a player, for Video and for Story → Video", () => {
+    render(<ManualPostDialog dayKey="2099-01-01" onClose={vi.fn()} onCreated={vi.fn()} multimediaEnabled />)
+    expect(screen.getByRole("button", { name: /fake video upload/i })).toHaveAttribute("data-preview", "true")
+    fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "story" } })
+    fireEvent.change(screen.getByLabelText(/story media type/i), { target: { value: "video" } })
+    expect(screen.getByRole("button", { name: /fake video upload/i })).toHaveAttribute("data-preview", "true")
   })
 
   it("sends the uploaded video with every video post", async () => {

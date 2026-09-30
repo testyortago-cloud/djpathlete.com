@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Upload, Loader2, CheckCircle, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { uploadVideoFile, type UploadProgressEvent } from "@/lib/firebase-client-upload"
@@ -13,6 +13,8 @@ interface VideoUploaderProps {
   needsEditDefault?: boolean
   /** Whether to show the toggle at all. Default true. */
   showNeedsEditToggle?: boolean
+  /** Show a player for the uploaded file, played from the computer (nothing extra is uploaded). Default false. */
+  showPreview?: boolean
 }
 
 type UploadState =
@@ -25,11 +27,19 @@ export function VideoUploader({
   onUploaded,
   needsEditDefault = true,
   showNeedsEditToggle = true,
+  showPreview = false,
 }: VideoUploaderProps) {
   const [state, setState] = useState<UploadState>({ status: "idle" })
   const [dragging, setDragging] = useState(false)
   const [needsEdit, setNeedsEdit] = useState(needsEditDefault)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Each chosen file's local URL is freed when it is replaced or the box closes.
+  useEffect(() => {
+    if (!previewUrl) return
+    return () => URL.revokeObjectURL(previewUrl)
+  }, [previewUrl])
 
   async function handleFile(file: File) {
     if (!file.type.startsWith("video/")) {
@@ -37,6 +47,7 @@ export function VideoUploader({
       return
     }
 
+    setPreviewUrl(null)
     setState({ status: "uploading", filename: file.name, percent: 0 })
 
     try {
@@ -48,6 +59,7 @@ export function VideoUploader({
         },
       })
       setState({ status: "done", filename: file.name })
+      if (showPreview) setPreviewUrl(URL.createObjectURL(file))
       toast.success(`${file.name} uploaded`)
       onUploaded(videoUploadId)
       // Best-effort: generate a Kanban thumbnail in the background. A failure
@@ -125,6 +137,19 @@ export function VideoUploader({
           </>
         )}
       </label>
+      {/* Outside the label: a click on the player must not reopen the file picker. */}
+      {previewUrl && state.status === "done" && (
+        <div className="mx-3 mb-3 overflow-hidden rounded-lg border border-border bg-black">
+          <video
+            src={previewUrl}
+            controls
+            playsInline
+            preload="metadata"
+            aria-label={`Preview of ${state.filename}`}
+            className="mx-auto max-h-64 w-full bg-black object-contain"
+          />
+        </div>
+      )}
       {showNeedsEditToggle && (
         <label className="flex items-center gap-2.5 border-t border-border bg-muted/20 px-4 py-3 text-xs text-muted-foreground cursor-pointer select-none transition-colors hover:bg-muted/40">
           <input

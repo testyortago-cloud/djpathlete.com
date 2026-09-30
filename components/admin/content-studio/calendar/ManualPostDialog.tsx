@@ -261,6 +261,7 @@ export function ManualPostDialog({
               onUploaded={(id) => setSourceVideoId(id)}
               needsEditDefault={false}
               showNeedsEditToggle={false}
+              showPreview
             />
           </div>
         ) : null}
@@ -302,6 +303,7 @@ export function ManualPostDialog({
                 onUploaded={(id) => setSourceVideoId(id)}
                 needsEditDefault={false}
                 showNeedsEditToggle={false}
+                showPreview
               />
             )}
           </div>
