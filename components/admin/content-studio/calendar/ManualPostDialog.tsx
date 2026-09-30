@@ -47,16 +47,35 @@ export function ManualPostDialog({
   const [mediaAssetIds, setMediaAssetIds] = useState<string[]>([])
   const [storyMediaType, setStoryMediaType] = useState<"image" | "video">("image")
   const [sourceVideoId, setSourceVideoId] = useState<string | null>(null)
+  const [carouselHasVideo, setCarouselHasVideo] = useState(false)
   const [busy, setBusy] = useState(false)
   const [perPlatformErrors, setPerPlatformErrors] = useState<Record<string, string>>({})
 
+  // A carousel that holds a video can only go to Instagram.
+  const videoBlocks = (p: SocialPlatform) => postType === "carousel" && carouselHasVideo && p !== "instagram"
   const supportedSelected = useMemo(
-    () => selectedPlatforms.filter((p) => isPlatformPostTypeSupported(p, postType)),
-    [selectedPlatforms, postType],
+    () =>
+      selectedPlatforms.filter(
+        (p) =>
+          isPlatformPostTypeSupported(p, postType) &&
+          !(postType === "carousel" && carouselHasVideo && p !== "instagram"),
+      ),
+    [selectedPlatforms, postType, carouselHasVideo],
   )
   const unsupportedSelected = useMemo(
     () => selectedPlatforms.filter((p) => !isPlatformPostTypeSupported(p, postType)),
     [selectedPlatforms, postType],
+  )
+  const videoSkipped = useMemo(
+    () =>
+      selectedPlatforms.filter(
+        (p) =>
+          isPlatformPostTypeSupported(p, postType) &&
+          postType === "carousel" &&
+          carouselHasVideo &&
+          p !== "instagram",
+      ),
+    [selectedPlatforms, postType, carouselHasVideo],
   )
 
   const mediaReady =
@@ -192,6 +211,7 @@ export function ManualPostDialog({
               setMediaAssetIds([])
               setStoryMediaType("image")
               setSourceVideoId(null)
+              setCarouselHasVideo(false)
             }}
             className="mt-1 block w-full rounded border border-border px-2 py-1 text-sm"
           >
@@ -216,7 +236,7 @@ export function ManualPostDialog({
           </legend>
           <div className="grid grid-cols-2 gap-1.5">
             {PLATFORMS.map((p) => {
-              const supported = isPlatformPostTypeSupported(p, postType)
+              const supported = isPlatformPostTypeSupported(p, postType) && !videoBlocks(p)
               const checked = selectedPlatforms.includes(p)
               return (
                 <label
@@ -228,7 +248,13 @@ export function ManualPostDialog({
                         : "border-warning/60 bg-warning/5"
                       : "border-border hover:bg-surface/50"
                   } ${!supported ? "opacity-60" : ""}`}
-                  title={supported ? "" : `${p} does not support ${postType} posts`}
+                  title={
+                    supported
+                      ? ""
+                      : videoBlocks(p)
+                        ? `${p} does not support videos in a carousel`
+                        : `${p} does not support ${postType} posts`
+                  }
                 >
                   <input
                     type="checkbox"
@@ -250,6 +276,13 @@ export function ManualPostDialog({
               {unsupportedSelected.map((p) => p.replace(/_/g, " ")).join(", ")}{" "}
               {unsupportedSelected.length === 1 ? "doesn't" : "don't"} support {postType} posts and
               will be skipped.
+            </p>
+          ) : null}
+          {videoSkipped.length > 0 ? (
+            <p className="mt-1.5 text-[11px] text-warning">
+              {videoSkipped.map((p) => p.replace(/_/g, " ")).join(", ")}{" "}
+              {videoSkipped.length === 1 ? "doesn't" : "don't"} support videos in a carousel and will be
+              skipped.
             </p>
           ) : null}
         </fieldset>
@@ -274,7 +307,13 @@ export function ManualPostDialog({
 
         {postType === "carousel" && multimediaEnabled ? (
           <div className="mb-3">
-            <CarouselComposer onChange={setMediaAssetIds} />
+            <CarouselComposer
+              allowVideo
+              onChange={(ids, meta) => {
+                setMediaAssetIds(ids)
+                setCarouselHasVideo(meta.hasVideo)
+              }}
+            />
           </div>
         ) : null}
 

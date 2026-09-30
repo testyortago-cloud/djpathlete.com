@@ -33,6 +33,7 @@ describe("ImageUploader", () => {
     expect(onUploaded).toHaveBeenCalledWith({
       mediaAssetId: "asset-1",
       storagePath: "images/u/1-photo.jpg",
+      kind: "image",
     })
   })
 

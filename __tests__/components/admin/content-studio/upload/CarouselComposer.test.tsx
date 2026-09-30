@@ -29,7 +29,7 @@ describe("CarouselComposer", () => {
     const { CarouselComposer } = await import("@/components/admin/content-studio/upload/CarouselComposer")
     const onChange = vi.fn()
     render(<CarouselComposer onChange={onChange} />)
-    expect(onChange).toHaveBeenLastCalledWith([])
+    expect(onChange).toHaveBeenLastCalledWith([], { hasVideo: false })
     expect(screen.getAllByLabelText(/photo/i, { selector: 'input[type="file"]' })).toHaveLength(1)
   })
 
@@ -49,7 +49,7 @@ describe("CarouselComposer", () => {
     render(<CarouselComposer onChange={onChange} />)
     await uploadIntoSlot(0, "a.jpg", "asset-a")
     expect(screen.getByText("a.jpg")).toBeInTheDocument()
-    expect(onChange).toHaveBeenLastCalledWith(["asset-a"])
+    expect(onChange).toHaveBeenLastCalledWith(["asset-a"], { hasVideo: false })
   })
 
   it("reorders filled slots via move-up / move-down", async () => {
@@ -62,14 +62,14 @@ describe("CarouselComposer", () => {
     // add slot, slot 1 upload
     fireEvent.click(screen.getByRole("button", { name: /add slide/i }))
     await uploadIntoSlot(0 /* only one empty uploader remains */, "b.jpg", "asset-b")
-    expect(onChange).toHaveBeenLastCalledWith(["asset-a", "asset-b"])
+    expect(onChange).toHaveBeenLastCalledWith(["asset-a", "asset-b"], { hasVideo: false })
 
     // Move slot 1 (b.jpg) up — there are two move-up buttons rendered, one per filled row; the
     // first is disabled (slot 0) and the second is enabled (slot 1). Click the enabled one.
     const upButtons = screen.getAllByRole("button", { name: /move up/i })
     fireEvent.click(upButtons[1])
 
-    expect(onChange).toHaveBeenLastCalledWith(["asset-b", "asset-a"])
+    expect(onChange).toHaveBeenLastCalledWith(["asset-b", "asset-a"], { hasVideo: false })
   })
 
   it("removes a filled slot and drops it from the emitted array", async () => {
@@ -83,7 +83,7 @@ describe("CarouselComposer", () => {
     const removeButtons = screen.getAllByRole("button", { name: /remove/i })
     fireEvent.click(removeButtons[0]) // remove slot 0 (a.jpg)
 
-    expect(onChange).toHaveBeenLastCalledWith(["asset-b"])
+    expect(onChange).toHaveBeenLastCalledWith(["asset-b"], { hasVideo: false })
     expect(screen.queryByText("a.jpg")).not.toBeInTheDocument()
   })
 

@@ -25,10 +25,14 @@ interface Slot {
   id: string
   assetId: string | null
   fileName: string | null
+  kind: "image" | "video"
+  previewUrl: string | null
 }
 
 interface CarouselComposerProps {
-  onChange: (mediaAssetIds: string[]) => void
+  onChange: (mediaAssetIds: string[], meta: { hasVideo: boolean }) => void
+  /** Lets a slide be an MP4 or MOV as well as a photo. */
+  allowVideo?: boolean
   minSlides?: number
   maxSlides?: number
 }
@@ -36,7 +40,7 @@ interface CarouselComposerProps {
 let slotSeq = 0
 function newSlot(): Slot {
   slotSeq += 1
-  return { id: `slot-${slotSeq}`, assetId: null, fileName: null }
+  return { id: `slot-${slotSeq}`, assetId: null, fileName: null, kind: "image", previewUrl: null }
 }
 
 interface SortableSlotProps {
@@ -46,7 +50,8 @@ interface SortableSlotProps {
   onMoveUp: (index: number) => void
   onMoveDown: (index: number) => void
   onRemove: (id: string) => void
-  onUploaded: (id: string, assetId: string, fileName: string) => void
+  onUploaded: (id: string, assetId: string, fileName: string, kind: "image" | "video", previewUrl: string | null) => void
+  allowVideo: boolean
 }
 
 function SortableSlot({
@@ -57,6 +62,7 @@ function SortableSlot({
   onMoveDown,
   onRemove,
   onUploaded,
+  allowVideo,
 }: SortableSlotProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: slot.id,
@@ -116,12 +122,23 @@ function SortableSlot({
         </div>
       ) : (
         <ImageUploader
+          allowVideo={allowVideo}
           onUploaded={(e) => {
             const fileName = e.storagePath.split("/").pop() ?? "image"
-            onUploaded(slot.id, e.mediaAssetId, fileName)
+            onUploaded(slot.id, e.mediaAssetId, fileName, e.kind, e.previewUrl ?? null)
           }}
         />
       )}
+      {slot.assetId && slot.kind === "video" && slot.previewUrl ? (
+        <video
+          src={slot.previewUrl}
+          controls
+          playsInline
+          preload="metadata"
+          aria-label={`Preview of ${slot.fileName}`}
+          className="mt-2 max-h-40 w-full rounded bg-black object-contain"
+        />
+      ) : null}
     </div>
   )
 }
@@ -130,6 +147,7 @@ export function CarouselComposer({
   onChange,
   minSlides = 2,
   maxSlides = 10,
+  allowVideo = false,
 }: CarouselComposerProps) {
   const [slots, setSlots] = useState<Slot[]>(() => [newSlot()])
   // Use a sentinel (null) for "never emitted" so the initial empty-array emission fires.
@@ -141,12 +159,23 @@ export function CarouselComposer({
   // Emit only when the filled-asset list actually changes, to avoid infinite onChange loops.
   useEffect(() => {
     const ids = slots.filter((s) => s.assetId).map((s) => s.assetId as string)
-    const key = ids.join("|")
+    const filled = slots.filter((s) => s.assetId)
+    const hasVideo = filled.some((s) => s.kind === "video")
+    const key = filled.map((s) => `${s.assetId}:${s.kind}`).join("|")
     if (key !== lastEmittedRef.current) {
       lastEmittedRef.current = key
-      onChange(ids)
+      onChange(ids, { hasVideo })
     }
   }, [slots, onChange])
+
+  // Object URLs outlive the component unless revoked; free whatever is left on unmount.
+  const slotsRef = useRef(slots)
+  slotsRef.current = slots
+  useEffect(() => {
+    return () => {
+      for (const s of slotsRef.current) if (s.previewUrl) URL.revokeObjectURL(s.previewUrl)
+    }
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -175,6 +204,8 @@ export function CarouselComposer({
   const removeSlot = useCallback(
     (id: string) =>
       setSlots((s) => {
+        const removed = s.find((slot) => slot.id === id)
+        if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl)
         const next = s.filter((slot) => slot.id !== id)
         return next.length === 0 ? [newSlot()] : next
       }),
@@ -199,9 +230,12 @@ export function CarouselComposer({
     })
   }, [])
 
-  const markUploaded = useCallback((id: string, assetId: string, fileName: string) => {
-    setSlots((s) => s.map((slot) => (slot.id === id ? { ...slot, assetId, fileName } : slot)))
-  }, [])
+  const markUploaded = useCallback(
+    (id: string, assetId: string, fileName: string, kind: "image" | "video", previewUrl: string | null) => {
+      setSlots((s) => s.map((slot) => (slot.id === id ? { ...slot, assetId, fileName, kind, previewUrl } : slot)))
+    },
+    [],
+  )
 
   return (
     <div className="space-y-2">
@@ -217,6 +251,7 @@ export function CarouselComposer({
               onMoveDown={moveDown}
               onRemove={removeSlot}
               onUploaded={markUploaded}
+              allowVideo={allowVideo}
             />
           ))}
         </SortableContext>

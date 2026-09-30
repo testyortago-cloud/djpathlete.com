@@ -15,6 +15,15 @@ vi.mock("@/components/admin/videos/VideoUploader", () => ({
   ),
 }))
 
+vi.mock("@/components/admin/content-studio/upload/CarouselComposer", () => ({
+  CarouselComposer: ({ onChange }: { onChange: (ids: string[], meta: { hasVideo: boolean }) => void }) => (
+    <div>
+      <button type="button" onClick={() => onChange(["i1", "i2"], { hasVideo: false })}>Fake two photos</button>
+      <button type="button" onClick={() => onChange(["i1", "v1"], { hasVideo: true })}>Fake photo and video</button>
+    </div>
+  ),
+}))
+
 const fetchMock = vi.fn()
 beforeEach(() => {
   fetchMock.mockReset()
@@ -204,7 +213,8 @@ describe("<ManualPostDialog>", () => {
       />,
     )
     fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "carousel" } })
-    expect(screen.getByRole("button", { name: /add slide/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Fake two photos" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Fake photo and video" })).toBeInTheDocument()
   })
 
   it("carousel submit is disabled until 2+ slides uploaded", () => {
@@ -246,5 +256,27 @@ describe("<ManualPostDialog>", () => {
     fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "story" } })
     const submit = screen.getByRole("button", { name: /create/i })
     expect(submit).toBeDisabled()
+  })
+
+  it("a carousel with a video posts to Instagram only and says why Facebook is skipped", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: "c-1" }), { status: 200 }))
+    render(<ManualPostDialog dayKey="2099-01-01" onClose={vi.fn()} onCreated={vi.fn()} multimediaEnabled />)
+    fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "carousel" } })
+    fireEvent.click(screen.getByLabelText(/Post to facebook/i))
+    fireEvent.click(screen.getByRole("button", { name: "Fake photo and video" }))
+    expect(screen.getByText("facebook doesn't support videos in a carousel and will be skipped.")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /^create/i }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).platform).toBe("instagram")
+  })
+
+  it("a photo-only carousel still posts to Facebook too", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: "c-2" }), { status: 200 }))
+    render(<ManualPostDialog dayKey="2099-01-01" onClose={vi.fn()} onCreated={vi.fn()} multimediaEnabled />)
+    fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "carousel" } })
+    fireEvent.click(screen.getByLabelText(/Post to facebook/i))
+    fireEvent.click(screen.getByRole("button", { name: "Fake two photos" }))
+    fireEvent.click(screen.getByRole("button", { name: /^create/i }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
   })
 })

@@ -10,14 +10,21 @@ const MAX_BYTES = 25 * 1024 * 1024
 export interface ImageUploadedEvent {
   mediaAssetId: string
   storagePath: string
+  kind: "image" | "video"
+  /** Local object URL for playing a chosen video back; video only. The receiver revokes it. */
+  previewUrl?: string
 }
 
 interface ImageUploaderProps {
   onUploaded: (event: ImageUploadedEvent) => void
   excludeIds?: string[]
+  /** Lets the slot take an MP4 or MOV as well as a photo. Off by default. */
+  allowVideo?: boolean
 }
 
-export function ImageUploader({ onUploaded, excludeIds }: ImageUploaderProps) {
+const VIDEO_TYPES = ["video/mp4", "video/quicktime"]
+
+export function ImageUploader({ onUploaded, excludeIds, allowVideo = false }: ImageUploaderProps) {
   const [percent, setPercent] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
@@ -26,11 +33,16 @@ export function ImageUploader({ onUploaded, excludeIds }: ImageUploaderProps) {
 
   async function handleFile(file: File) {
     setError(null)
-    if (!file.type.startsWith("image/")) {
+    const isVideo = allowVideo && file.type.startsWith("video/")
+    if (isVideo && !VIDEO_TYPES.includes(file.type)) {
+      setError("Videos must be MP4 or MOV.")
+      return
+    }
+    if (!isVideo && !file.type.startsWith("image/")) {
       setError("File must be an image (JPG, PNG, WebP).")
       return
     }
-    if (file.size > MAX_BYTES) {
+    if (!isVideo && file.size > MAX_BYTES) {
       setError(`Image exceeds ${Math.floor(MAX_BYTES / 1024 / 1024)} MB limit.`)
       return
     }
@@ -42,7 +54,11 @@ export function ImageUploader({ onUploaded, excludeIds }: ImageUploaderProps) {
         onProgress: (e) => setPercent(e.percent),
       })
       setPercent(100)
-      onUploaded(result)
+      if (isVideo) {
+        onUploaded({ ...result, kind: "video", previewUrl: URL.createObjectURL(file) })
+      } else {
+        onUploaded({ ...result, kind: "image" })
+      }
     } catch (err) {
       setError((err as Error).message || "Upload failed")
       setPercent(null)
@@ -59,7 +75,7 @@ export function ImageUploader({ onUploaded, excludeIds }: ImageUploaderProps) {
     setFileName(asset.filename)
     setSource("library")
     setPercent(100)
-    onUploaded({ mediaAssetId: asset.id, storagePath: asset.filename })
+    onUploaded({ mediaAssetId: asset.id, storagePath: asset.filename, kind: "image" })
   }
 
   const filled = fileName !== null && percent === 100
@@ -69,10 +85,20 @@ export function ImageUploader({ onUploaded, excludeIds }: ImageUploaderProps) {
       <div className="flex items-center gap-2">
         <label className="flex-1 inline-flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-white hover:bg-surface/50 cursor-pointer text-sm">
           <Upload className="size-3.5" />
-          <span className="text-sm">{filled && source === "upload" ? "Replace photo" : "Upload photo"}</span>
+          <span className="text-sm">{filled && source === "upload"
+              ? allowVideo
+                ? "Replace"
+                : "Replace photo"
+              : allowVideo
+                ? "Upload photo or video"
+                : "Upload photo"}</span>
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept={
+              allowVideo
+                ? "image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
+                : "image/jpeg,image/png,image/webp"
+            }
             className="hidden"
             onChange={onChange}
             onClick={(e) => e.stopPropagation()}
