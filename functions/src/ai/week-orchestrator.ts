@@ -63,7 +63,7 @@ import {
   buildMovementFamilyWarning,
   buildHallucinatedIdWarning,
 } from "./program-quality.js"
-import { enrichCoachInstructions, type InstructionsUsed } from "./instruction-enrich.js"
+import { enrichCoachInstructions, buildAgentInstructions, type InstructionsUsed } from "./instruction-enrich.js"
 import {
   findUnassignedSlots,
   buildUnassignedSlotsFeedback,
@@ -702,11 +702,12 @@ export async function generateWeekSync(
         }))
     : []
 
-  // The coach's words, rewritten by Opus 5.5 into counts and areas the
-  // architect reads without guessing. `agentInstructions` is what the three
-  // PLANNING agents read (analyzer, architect, selector). The instruction
-  // parser below keeps `request.admin_instructions` — the coach's own words —
-  // so a rewrite can never unlock or ban an exercise.
+  // The coach's words plus Opus 5.5's reading of them as counts and areas.
+  // `agentInstructions` is what the three PLANNING agents read (analyzer,
+  // architect, selector): the original first, the rewrite beneath it, the
+  // original winning any disagreement. The instruction parser below keeps
+  // `request.admin_instructions` alone, so a rewrite can never unlock or ban
+  // an exercise.
   const instructionsUsed = await enrichCoachInstructions(
     request.admin_instructions,
     {
@@ -716,7 +717,7 @@ export async function generateWeekSync(
     },
     { signal: deadline?.signal },
   )
-  const agentInstructions = instructionsUsed?.enriched ?? request.admin_instructions
+  const agentInstructions = buildAgentInstructions(request.admin_instructions, instructionsUsed)
   if (instructionsUsed?.enriched) {
     console.log(`[week-orchestrator] Coach instructions enriched:\n${instructionsUsed.enriched}`)
   } else if (instructionsUsed?.note) {

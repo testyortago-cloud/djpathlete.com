@@ -11,10 +11,20 @@ import { isAbortError } from "../lib/deadline.js"
  * "chest" as exercise names.
  *
  * WHAT THE REWRITE MAY TOUCH. It goes to the AGENTS that plan the day and pick
- * exercises. It must never reach extractInstructionIntent — the parser that
- * turns named exercises and equipment into unlock/ban sets — which keeps
- * reading the coach's original words. A rewrite can therefore never unlock an
- * exercise past the equipment filter or ban one the coach did not ban.
+ * exercises — ALONGSIDE the coach's own words, never instead of them
+ * (buildAgentInstructions). Replacing them was the first version, and review
+ * caught it: a named exercise ("include bench press variations") or a
+ * restriction ("avoid overhead work") lives only in the text — the parser
+ * below unlocks and bans, it never ASKS for anything — so a rewrite that lost
+ * it lost it silently. It must never reach extractInstructionIntent — the
+ * parser that turns named exercises and equipment into unlock/ban sets — which
+ * keeps reading the coach's original words only. A rewrite can therefore never
+ * unlock an exercise past the equipment filter or ban one the coach did not ban.
+ *
+ * WHAT THE NUMBER CHECK CANNOT SEE. findDroppedNumbers checks that each number
+ * the coach wrote still APPEARS, not that it still describes the same thing:
+ * "3 sets" becoming "4 sets" passes if a per-area count happens to be 3. That
+ * gap is why the coach's words ride along and win on any disagreement.
  *
  * IT CAN NEVER BLOCK A GENERATION. Every failure — the model, its own time
  * limit, a rewrite that dropped a number the coach wrote — returns the
@@ -29,7 +39,7 @@ import { isAbortError } from "../lib/deadline.js"
 export interface InstructionsUsed {
   /** Exactly what the coach typed. */
   original: string
-  /** What the agents were given. null when the original was used as written. */
+  /** The rewrite the agents read beneath the original. null when there was none. */
   enriched: string | null
   /** Model that wrote `enriched`; null when it was not used. */
   model: string | null
@@ -44,7 +54,9 @@ export interface EnrichmentContext {
   splitType: string
 }
 
-const DEFAULT_TIMEOUT_MS = 60_000
+// Opus 5.5 answers this in ~4s (measured 2026-09-30, 12 samples). The limit
+// comes out of the generation's own budget, so it is kept well short of it.
+const DEFAULT_TIMEOUT_MS = 30_000
 
 const enrichmentSchema = z.object({ enriched_instructions: z.string() })
 
@@ -56,18 +68,23 @@ Rewrite rules:
 1. Keep every number, range and tempo the coach wrote EXACTLY as written ("2-4 sets", "4-8 reps", "30-90 sec rest", "4-2-4 tempo", "12 exercises"). Never change, round or drop one.
 2. When the coach gives a total exercise count AND describes the focus in words ("mainly shoulders, some back and chest"), turn the description into per-area counts that add up to EXACTLY that total. "Mainly" gets at least half; "some" gets a smaller share. Write the total first, then one line per area.
 3. When the coach gives no total count, do not invent one.
-4. Describe areas by muscles and movement patterns (e.g. "shoulders — overhead pushing and lateral/rear delt work", "upper back — horizontal pulling"). NEVER name specific exercises and NEVER mention equipment the coach did not mention: the client's equipment is decided elsewhere.
-5. Never add restrictions, preferences, techniques or goals the coach did not state.
-6. Put the prescription on its own line: "Every exercise: <sets>, <reps>, <rest>, <tempo>" using the coach's exact values.
+4. Describe areas by muscles and movement patterns (e.g. "shoulders — overhead pushing and lateral/rear delt work", "upper back — horizontal pulling"). Never name an exercise the coach did not name, and never mention equipment the coach did not mention: the client's equipment is decided elsewhere.
+5. Keep, word for word, every exercise the coach DID name and every restriction, exclusion or avoidance they wrote ("include bench press variations", "avoid overhead work", "no jumping"). Never add restrictions, preferences, techniques or goals the coach did not state.
+6. Put the prescription on its own line: "Every exercise: <sets>, <reps>, <rest>, <tempo>" using the coach's exact values. If the coach gave DIFFERENT prescriptions to different groups ("compounds 3x5, accessories 3x12"), keep one line per group — never merge them into one.
 7. If a phrase is ambiguous and none of the rules above resolves it, keep the coach's phrase verbatim rather than guessing.
 8. If the instructions are already precise, return them nearly unchanged.
+9. Do not restate the day, week or split you were told about, and do not label the session ("upper day") — that context is for you, not for the output.
 
 Output only the rewritten instructions: short plain lines, no preamble, no commentary, no markdown headings.`
 
-/** Numbers and ranges ("12", "2-4", "4-2-4", "30-90"), with any dash style. */
-const NUMBER_TOKEN = /\d+(?:\s*[-–—]\s*\d+)*/g
+/**
+ * Numbers and ranges ("12", "2-4", "4-2-4", "30-90"), with any dash style.
+ * Spaces around the dash are allowed but LINE BREAKS are not: "Total: 12" over
+ * a "- 7 shoulder" bullet is two numbers, not the range "12-7".
+ */
+const NUMBER_TOKEN = /\d+(?:[ \t]*[-–—][ \t]*\d+)*/g
 
-const normalizeToken = (t: string) => t.replace(/\s*[-–—]\s*/g, "-")
+const normalizeToken = (t: string) => t.replace(/[ \t]*[-–—][ \t]*/g, "-")
 
 /**
  * Every number or range in `original` that does not survive into `rewrite`.
@@ -86,12 +103,31 @@ function usedAsWritten(original: string, note: string): InstructionsUsed {
   return { original, enriched: null, model: null, note }
 }
 
+/**
+ * The instruction text the planning agents read: the coach's own words first,
+ * and — when there is one — the rewrite beneath them as a reading of them.
+ */
+export function buildAgentInstructions(
+  original: string | undefined,
+  used: InstructionsUsed | null,
+): string | undefined {
+  if (!used?.enriched || !original) return original
+  return (
+    `${original.trim()}\n\n` +
+    `How to read the instructions above as exercise slots (prepared from them; ` +
+    `if anything here differs from the coach's words above, the coach's words win):\n${used.enriched}`
+  )
+}
+
 export async function enrichCoachInstructions(
   original: string | undefined,
   ctx: EnrichmentContext,
   opts: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<InstructionsUsed | null> {
   if (!original || original.trim().length === 0) return null
+  // An already-aborted signal never fires "abort" again, so without this the
+  // call would run on its own clock past the generation's deadline.
+  opts.signal?.throwIfAborted()
 
   const own = new AbortController()
   const timer = setTimeout(() => own.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS)
@@ -119,7 +155,9 @@ export async function enrichCoachInstructions(
     }
     const dropped = findDroppedNumbers(original, enriched)
     if (dropped.length > 0) {
-      console.warn(`[instruction-enrich] rewrite dropped ${dropped.join(", ")} — using the original`)
+      console.warn(
+        `[instruction-enrich] rewrite dropped ${dropped.join(", ")} — using the original. Rejected rewrite:\n${enriched}`,
+      )
       return usedAsWritten(
         original,
         `The AI rewrite left out ${dropped.join(", ")}, so your instructions were used exactly as written.`,

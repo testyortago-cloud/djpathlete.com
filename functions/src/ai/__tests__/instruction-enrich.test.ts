@@ -6,7 +6,7 @@ vi.mock("../anthropic.js", async () => {
   return { ...actual, callAgent: callAgentMock }
 })
 
-import { enrichCoachInstructions, findDroppedNumbers } from "../instruction-enrich.js"
+import { enrichCoachInstructions, findDroppedNumbers, buildAgentInstructions } from "../instruction-enrich.js"
 import { MODEL_OPUS_5_5 } from "../anthropic.js"
 
 // Darren's real Monday instructions, 2026-09-30 (prod job NRs4qIAOUehX5eA4lGzp).
@@ -98,9 +98,47 @@ describe("enrichCoachInstructions", () => {
     })
     await expect(enrichCoachInstructions(DARREN, CTX, { signal: generation.signal })).rejects.toThrow()
   })
+
+  it("does not start a call at all when the generation is ALREADY out of time", async () => {
+    // An already-aborted signal never fires "abort" again, so the call used to
+    // run on its own 30s clock past the generation's deadline.
+    const generation = new AbortController()
+    generation.abort()
+    answers(GOOD_REWRITE)
+    await expect(enrichCoachInstructions(DARREN, CTX, { signal: generation.signal })).rejects.toThrow()
+    expect(callAgentMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("buildAgentInstructions", () => {
+  // Review finding, 2026-09-30: the agents saw ONLY the rewrite, and the rewrite
+  // may not name exercises — so "include bench press variations" or "avoid
+  // overhead work" could vanish. The parser only unlocks/bans; the TEXT is the
+  // only thing that asks the selector for a named exercise.
+  const used = { original: DARREN, enriched: GOOD_REWRITE, model: MODEL_OPUS_5_5, note: null }
+
+  it("always carries the coach's own words, with the rewrite as a reading of them", () => {
+    const text = buildAgentInstructions(DARREN, used) ?? ""
+    expect(text).toContain(DARREN.trim())
+    expect(text).toContain(GOOD_REWRITE)
+    expect(text.indexOf(DARREN.trim())).toBeLessThan(text.indexOf(GOOD_REWRITE))
+    expect(text).toMatch(/coach's words win/i)
+  })
+
+  it("is just the coach's words when there is no rewrite", () => {
+    expect(buildAgentInstructions(DARREN, { ...used, enriched: null, note: "x" })).toBe(DARREN)
+    expect(buildAgentInstructions(DARREN, null)).toBe(DARREN)
+    expect(buildAgentInstructions(undefined, null)).toBeUndefined()
+  })
 })
 
 describe("findDroppedNumbers", () => {
+  it("does not join numbers across a line break into a false range", () => {
+    // "Total: 12" then a "- 7 shoulder" bullet read as the range "12-7", and a
+    // good rewrite was rejected for "leaving out 12".
+    expect(findDroppedNumbers("12 exercises", "Total: 12\n- 7 shoulder\n- 5 back")).toEqual([])
+  })
+
   it("finds nothing missing when every number survives, whatever the dash", () => {
     expect(findDroppedNumbers(DARREN, GOOD_REWRITE)).toEqual([])
     expect(findDroppedNumbers("30-90sec rest", "30–90 s rest")).toEqual([])

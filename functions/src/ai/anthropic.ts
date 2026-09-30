@@ -129,10 +129,11 @@ export const PROGRAM_AGENT_EFFORT = "medium" as const
  *
  * Opus 5.5 too (measured 2026-09-30 through OpenRouter: 400 "Provider returned
  * error", Fable's exact response) — and any later Opus 5 point release. Plain
- * `claude-opus-5` still takes the tool path, so this matches 5-5 onward only.
+ * `claude-opus-5`, and a dated Opus 5 snapshot like `claude-opus-5-20260301`,
+ * still take the tool path, so this matches point releases 5-5 onward only.
  */
 export function modelRejectsForcedToolChoice(modelId: string): boolean {
-  return /^claude-(fable|mythos)-/.test(modelId) || /^claude-opus-5-([5-9]|\d{2,})/.test(modelId)
+  return /^claude-(fable|mythos)-/.test(modelId) || /^claude-opus-5-([5-9]|[1-9]\d)(-\d{8})?$/.test(modelId)
 }
 const DEFAULT_MAX_TOKENS = 32000
 

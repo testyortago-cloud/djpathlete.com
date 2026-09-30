@@ -73,11 +73,13 @@ function JobCard({ job }: { job: DockedJob }) {
       // Rehydrated from sessionStorage after a reload: the card knows the job
       // finished but not what it said. One read, so its warnings survive.
       if (!state.result) {
+        // If the read fails or the doc is gone, fall back to the finished state
+        // the card already knew — otherwise docLoaded never turns true and the
+        // card is never auto-dismissed (sessionStorage would keep reviving it).
+        const knownState = { status: job.resolvedState } as JobDocState
         getDoc(jobRef)
-          .then((snap) => {
-            if (snap.exists()) setState(snap.data() as JobDocState)
-          })
-          .catch(() => {})
+          .then((snap) => setState(snap.exists() ? (snap.data() as JobDocState) : knownState))
+          .catch(() => setState(knownState))
       }
       return
     }

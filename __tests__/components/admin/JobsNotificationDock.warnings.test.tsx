@@ -9,7 +9,7 @@ import { render, screen, act } from "@testing-library/react"
  * coach-facing warnings were never shown anywhere.
  */
 
-const jobDoc = vi.hoisted(() => ({ current: {} as Record<string, unknown> }))
+const jobDoc = vi.hoisted(() => ({ current: {} as Record<string, unknown>, readFails: false }))
 const dock = vi.hoisted(() => ({
   jobs: [] as Array<Record<string, unknown>>,
   markResolved: vi.fn(),
@@ -26,7 +26,10 @@ vi.mock("firebase/firestore", () => {
       next(snap())
       return () => {}
     },
-    getDoc: async () => snap(),
+    getDoc: async () => {
+      if (jobDoc.readFails) throw new Error("offline")
+      return snap()
+    },
   }
 })
 vi.mock("@/hooks/use-ai-jobs-dock", () => ({ useAiJobsDock: () => dock }))
@@ -74,6 +77,40 @@ describe("JobsNotificationDock shows a finished run's warnings", () => {
       vi.advanceTimersByTime(31_000)
     })
     expect(dock.removeJob).toHaveBeenCalledWith("job-1")
+  })
+})
+
+describe("JobsNotificationDock never strands a finished card", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    dock.removeJob.mockReset()
+    jobDoc.readFails = true
+    dock.jobs = [
+      {
+        jobId: "job-3",
+        kind: "day",
+        label: "Week 2 / Monday",
+        programId: "prog-1",
+        startedAt: new Date().toISOString(),
+        resolvedState: "completed",
+      },
+    ]
+  })
+  afterEach(() => {
+    jobDoc.readFails = false
+    vi.useRealTimers()
+  })
+
+  it("still auto-dismisses a restored card whose job doc cannot be read", async () => {
+    // Review finding: the dismiss timer waits for the doc to load, and a failed
+    // read left the card up forever — sessionStorage brought it back on reload.
+    render(<JobsNotificationDock />)
+    // Let the failed read settle (it lands a tick after render) before the clock moves.
+    await act(async () => {})
+    await act(async () => {
+      vi.advanceTimersByTime(31_000)
+    })
+    expect(dock.removeJob).toHaveBeenCalledWith("job-3")
   })
 })
 

@@ -35,6 +35,8 @@ describe("modelRejectsForcedToolChoice", () => {
     expect(modelRejectsForcedToolChoice(MODEL_OPUS_5_5)).toBe(true)
     expect(modelRejectsForcedToolChoice("claude-opus-5-6")).toBe(true)
     expect(modelRejectsForcedToolChoice("claude-opus-5")).toBe(false)
+    // A dated Opus 5 snapshot id is Opus 5, not a point release.
+    expect(modelRejectsForcedToolChoice("claude-opus-5-20260301")).toBe(false)
   })
 
   it("does not match a model that merely contains the word", () => {
