@@ -112,6 +112,34 @@ describe("resolveIntentToExerciseIds", () => {
     expect(r.unlockedIds.has("bs")).toBe(false)
   })
 
+  it("never unlocks a muscle-group focus as if it were a named exercise", () => {
+    // 2026-09-30: "Focus on shoulder exercises, and some back and chest" came
+    // back from the extractor as named ["shoulder exercises", "back", "chest"].
+    // "back" matched every name containing it and "chest" every "_Chest"
+    // suffix — 101 exercises let past a bodyweight-only equipment filter, and
+    // the finished day needed a bench, cables, dumbbells and a lat pulldown.
+    const lib = [
+      ...LIB,
+      ex("fist", "Fist behind back stretch_Shoulder", []),
+      ex("lat", "Lat pulldown wide grip_Back", ["lat_pulldown_machine"]),
+      ex("fly", "Floor supported chest fly press", ["dumbbell"]),
+    ]
+    const r = resolveIntentToExerciseIds(
+      { ...EMPTY_INTENT, named_exercises: ["shoulder exercises", "back", "chest", "upper body work"] },
+      lib,
+    )
+    expect(r.unlockedIds.size).toBe(0)
+    expect(r.unmatched).toEqual(["shoulder exercises", "back", "chest", "upper body work"])
+  })
+
+  it("still unlocks a lift whose name includes a body word (presence control)", () => {
+    const r = resolveIntentToExerciseIds({ ...EMPTY_INTENT, named_exercises: ["back squat", "chest press"] }, LIB)
+    expect(r.unlockedIds.has("bs")).toBe(true)
+    // "Dumbbell Barrel bench press_chest" carries both tokens of "chest press".
+    expect(r.unlockedIds.has("dbp")).toBe(true)
+    expect(r.unmatched).toEqual([])
+  })
+
   it("returns empty sets for an empty intent", () => {
     const r = resolveIntentToExerciseIds(EMPTY_INTENT, LIB)
     expect(r.unlockedIds.size).toBe(0)

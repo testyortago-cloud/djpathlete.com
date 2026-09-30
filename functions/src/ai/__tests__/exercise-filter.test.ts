@@ -396,3 +396,91 @@ describe("a strict pool survives an incomplete embedding index", () => {
     expect(ids).not.toContain("b38")
   })
 })
+
+describe("a restricted library is searched for its OWN best matches", () => {
+  // Regression, 2026-09-30: a 12-exercise shoulder day for a bodyweight client
+  // reached the selector with ONE shoulder exercise in it. match_exercises
+  // ranks the WHOLE library, and the filter kept its top 30 per slot and only
+  // then intersected them with what the client can use. The top 30 shoulder
+  // matches were dumbbell/cable/machine work, so almost every one was thrown
+  // away — the model's own note: "The library contains only one upper-body
+  // exercise; the other 16 are lower-body jumping drills."
+  const shoulder = { movement_pattern: "push" as const, primary_muscles: ["shoulders"], muscle_group: "shoulders" }
+  const EQUIPPED = Array.from({ length: 100 }, (_, i) =>
+    ex(`kit${i}`, { ...shoulder, equipment_required: ["dumbbell"] }),
+  )
+  const BODYWEIGHT = Array.from({ length: 40 }, (_, i) => ex(`bw${i}`, { ...shoulder, is_bodyweight: true }))
+
+  async function mockWholeLibrarySearch() {
+    // Every equipped shoulder exercise out-scores every bodyweight one, as a
+    // "shoulder" embedding would. The fake honours match_count AND the HNSW
+    // index's 40-row ceiling (hnsw.ef_search; measured on the dev clone) — a
+    // fake that returned the whole ranking would hide this bug.
+    const ranked = [
+      ...EQUIPPED.map((e, i) => ({ id: e.id, similarity: 0.9 - i * 0.001 })),
+      ...BODYWEIGHT.map((e, i) => ({ id: e.id, similarity: 0.7 - i * 0.001 })),
+    ]
+    const { getSupabase } = await import("../../lib/supabase.js")
+    vi.mocked(getSupabase).mockReturnValue({
+      rpc: vi.fn(async (_fn: string, args: { match_count: number }) => ({
+        data: ranked.slice(0, Math.min(args.match_count, 40)),
+        error: null,
+      })),
+    } as never)
+  }
+
+  it("keeps the bodyweight shoulder exercises when the client has no equipment", async () => {
+    await mockWholeLibrarySearch()
+    // The caller has already filtered to what the client can use.
+    const result = await semanticFilterExercises(BODYWEIGHT, SKELETON, [], ANALYSIS)
+    const kept = result.map((e) => e.id).filter((id) => id.startsWith("bw"))
+    expect(kept.length).toBeGreaterThanOrEqual(30)
+  })
+
+  it("tops up a starved slot even when another slot kept the run above the fallback", async () => {
+    // Legs match plenty of usable exercises, so the run as a whole clears
+    // MIN_EXERCISES and never falls back — but the shoulder slot's 40 nearest
+    // are all kit. Without a per-slot top-up the shoulder slot gets only what
+    // pattern balance happens to add.
+    const LEGS = Array.from({ length: 40 }, (_, i) =>
+      ex(`leg${i}`, { movement_pattern: "squat", primary_muscles: ["quads"], muscle_group: "legs", is_bodyweight: true }),
+    )
+    const twoSlots: ProgramSkeleton = {
+      ...SKELETON,
+      weeks: [
+        {
+          ...SKELETON.weeks[0],
+          days: [
+            {
+              ...SKELETON.weeks[0].days[0],
+              slots: [
+                { ...SKELETON.weeks[0].days[0].slots[0], slot_id: "w1d1s1", movement_pattern: "squat", target_muscles: ["quads"] },
+                { ...SKELETON.weeks[0].days[0].slots[0], slot_id: "w1d1s2", movement_pattern: "push", target_muscles: ["shoulders"] },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const legsRanked = LEGS.map((e, i) => ({ id: e.id, similarity: 0.8 - i * 0.001 }))
+    const kitRanked = EQUIPPED.slice(0, 40).map((e, i) => ({ id: e.id, similarity: 0.9 - i * 0.001 }))
+    let call = 0
+    const { getSupabase } = await import("../../lib/supabase.js")
+    vi.mocked(getSupabase).mockReturnValue({
+      rpc: vi.fn(async () => ({ data: call++ === 0 ? legsRanked : kitRanked, error: null })),
+    } as never)
+
+    const result = await semanticFilterExercises([...LEGS, ...BODYWEIGHT], twoSlots, [], ANALYSIS)
+    const shoulders = result.map((e) => e.id).filter((id) => id.startsWith("bw"))
+    expect(shoulders.length).toBeGreaterThanOrEqual(20)
+  })
+
+  it("still takes only the top matches per slot on an unrestricted library (presence control)", async () => {
+    await mockWholeLibrarySearch()
+    const result = await semanticFilterExercises([...EQUIPPED, ...BODYWEIGHT], SKELETON, [], ANALYSIS)
+    const ids = result.map((e) => e.id)
+    expect(ids).toContain("kit0")
+    // The lowest-ranked bodyweight match is far outside the top 30.
+    expect(ids).not.toContain("bw39")
+  })
+})

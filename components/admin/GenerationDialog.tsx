@@ -149,12 +149,15 @@ export function GenerationDialog(props: GenerationDialogProps) {
       : `${dayName} filled — ${exerciseCount} exercises added`
 
     // A constrained generation must not auto-dismiss. The whole point of the
-    // warnings panel is that the coach SEES why the week came out as it did —
-    // and the auto-close fires 1.8s after completion, which would flash the
-    // panel and bin it. Warnings hold the dialog open until it's dismissed by
-    // hand; a clean run keeps the old hands-off behaviour.
+    // warnings panel is that the coach SEES why the week came out as it did.
+    // The dialog already CLOSED at submit (handleSubmit hands off to the dock),
+    // so "holding it open" was not enough — nothing brought it back, and every
+    // warning since the dock arrived was written to the job and never shown
+    // (2026-09-30: a 1-of-12 Monday). Reopen it on the finished state; a clean
+    // run keeps the old hands-off behaviour.
     if (extractWarnings(result).length > 0) {
       toast.warning(`${successMsg} — with notes to review`)
+      onOpenChange(true)
       return
     }
 
@@ -167,6 +170,13 @@ export function GenerationDialog(props: GenerationDialogProps) {
     }, 1800)
 
     return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
+
+  // A failure is the same story: the dialog closed at submit, so its error and
+  // "Try Again" are unreachable unless it comes back.
+  useEffect(() => {
+    if (status === "failed" && jobId !== null) onOpenChange(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status])
 

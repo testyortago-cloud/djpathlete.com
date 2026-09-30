@@ -6,6 +6,7 @@ import { doc, onSnapshot, getDoc } from "firebase/firestore"
 import { Loader2, CheckCircle2, XCircle, X, Sparkles, ChevronDown, ChevronUp } from "lucide-react"
 import { db } from "@/lib/firebase"
 import { useAiJobsDock, type DockedJob } from "@/hooks/use-ai-jobs-dock"
+import { GenerationWarnings, extractWarnings } from "@/components/admin/GenerationWarnings"
 
 /**
  * Floating bottom-right notification dock for AI generation jobs.
@@ -62,8 +63,19 @@ function JobCard({ job }: { job: DockedJob }) {
   // where the listener attached after the job already terminated, or the
   // tab was backgrounded while it ran.
   useEffect(() => {
-    if (job.resolvedState) return
     const jobRef = doc(db, "ai_jobs", job.jobId)
+    if (job.resolvedState) {
+      // Rehydrated from sessionStorage after a reload: the card knows the job
+      // finished but not what it said. One read, so its warnings survive.
+      if (!state.result) {
+        getDoc(jobRef)
+          .then((snap) => {
+            if (snap.exists()) setState(snap.data() as JobDocState)
+          })
+          .catch(() => {})
+      }
+      return
+    }
 
     const applyVal = (val: JobDocState | null) => {
       if (!val) return
@@ -112,19 +124,25 @@ function JobCard({ job }: { job: DockedJob }) {
         document.removeEventListener("visibilitychange", onVisible)
       }
     }
+    // state.result is read only to skip a redundant fetch — not a trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.jobId, job.resolvedState, markResolved])
-
-  // Auto-dismiss after grace period once resolved.
-  useEffect(() => {
-    if (!job.resolvedState) return
-    const t = setTimeout(() => removeJob(job.jobId), AUTO_DISMISS_AFTER_MS)
-    return () => clearTimeout(t)
-  }, [job.resolvedState, job.jobId, removeJob])
 
   const effectiveStatus = job.resolvedState ?? state.status ?? "pending"
   const isRunning = effectiveStatus === "pending" || effectiveStatus === "processing"
   const isDone = effectiveStatus === "completed"
   const isFailed = effectiveStatus === "failed"
+  // The generation dialog closes at submit, so this card may be the only place
+  // the coach ever sees what went wrong with a run that "succeeded".
+  const warnings = isDone ? extractWarnings(state.result) : []
+
+  // Auto-dismiss after grace period once resolved — never while it has
+  // something to say; the coach dismisses those by hand.
+  useEffect(() => {
+    if (!job.resolvedState || warnings.length > 0) return
+    const t = setTimeout(() => removeJob(job.jobId), AUTO_DISMISS_AFTER_MS)
+    return () => clearTimeout(t)
+  }, [job.resolvedState, job.jobId, removeJob, warnings.length])
 
   const result = state.result as { program_id?: string; new_week_number?: number } | null
   const programId = result?.program_id ?? job.programId
@@ -132,7 +150,9 @@ function JobCard({ job }: { job: DockedJob }) {
   const linkHref = programId ? `/admin/programs/${programId}` : null
 
   const tone = isDone
-    ? "border-success/40 bg-success/5"
+    ? warnings.length > 0
+      ? "border-warning/40 bg-warning/5"
+      : "border-success/40 bg-success/5"
     : isFailed
       ? "border-error/40 bg-error/5"
       : "border-border bg-card"
@@ -184,6 +204,12 @@ function JobCard({ job }: { job: DockedJob }) {
               </span>
             )}
           </p>
+
+          {warnings.length > 0 ? (
+            <div className="mt-2">
+              <GenerationWarnings warnings={warnings} />
+            </div>
+          ) : null}
 
           {(isDone || isFailed) && linkHref ? (
             <Link

@@ -455,7 +455,7 @@ The Profile Analyzer has produced a difficulty_ceiling per week. You will be giv
 1. For each assignment, confirm the exercise's "difficulty" tier is <= the week's max_tier.
 2. If the exercise's tier equals max_tier, confirm its "difficulty_score" <= max_score.
 3. NEVER pick an exercise that violates the ceiling, even if it seems "better" for the slot. Pick the best in-ceiling option.
-4. If the pre-filtered library has no suitable in-ceiling exercise for a slot (due to a library gap), leave the slot unassigned and add a substitution_note explaining the gap. Do NOT violate the ceiling to fill the slot.
+4. The library you are given is already filtered to the ceiling and to the athlete's equipment, so every exercise in it is allowed. If none is an ideal match for a slot, pick the closest one from the library and explain the compromise in substitution_notes. NEVER leave a slot without an assignment, and never go outside the library to fill it.
 
 For beginners, this means: week 1 exercises are beginner-tier with difficulty_score <= 4. No intermediate exercises. No "challenge" exercises. Movement quality first.
 

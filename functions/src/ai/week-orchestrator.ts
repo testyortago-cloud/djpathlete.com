@@ -64,6 +64,12 @@ import {
   buildHallucinatedIdWarning,
 } from "./program-quality.js"
 import {
+  findUnassignedSlots,
+  buildUnassignedSlotsFeedback,
+  buildUnfilledSlotsWarning,
+  pickMoreComplete,
+} from "./selector-coverage.js"
+import {
   DEFAULT_DAY_CONCURRENCY,
   SELECTOR_CHUNK_THRESHOLD,
   buildAlreadySelectedSection,
@@ -1148,6 +1154,9 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   ): Promise<ExerciseAssignment> => {
     const labelSuffix = passLabel ? ` — ${passLabel}` : ""
     let passAssignment: ExerciseAssignment | null = null
+    // The attempt that filled the most slots. A retry can come back SHORTER than
+    // the attempt it replaced, and the last attempt is not automatically the best.
+    let bestAssignment: ExerciseAssignment | null = null
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       let feedbackSection = ""
       if (attempt > 0 && passAssignment) {
@@ -1159,6 +1168,9 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
         const withinWeekIssues = withinResult.issues.map((i) => `- ${i.message}`)
 
         const sections: string[] = []
+        // First, because an empty slot is the worst of the three outcomes.
+        const missingFeedback = buildUnassignedSlotsFeedback(findUnassignedSlots(passAssignment.assignments, weekScope))
+        if (missingFeedback) sections.push(missingFeedback)
         if (withinWeekIssues.length > 0) {
           sections.push(
             `WITHIN-WEEK DUPLICATES DETECTED — the same exercise was used multiple times in the SAME week:\n${withinWeekIssues.join("\n")}\n\nEvery working slot must have a UNIQUE exercise_id. Replace duplicates with DIFFERENT exercises that still match each slot's movement_pattern, target_muscles, and role — vary by equipment (dumbbell→cable→machine), stance (bilateral→unilateral), angle, or training intent.`,
@@ -1207,22 +1219,38 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
           hallucinatedIdCount += strippedCount
         }
 
+        bestAssignment = pickMoreComplete(bestAssignment, passAssignment, weekScope)
+
+        // Every slot filled? Nothing else checked this, so a selector that
+        // returned 1 of 12 passed straight through to the save.
+        const unassigned = findUnassignedSlots(passAssignment.assignments, weekScope)
+        const slotCount = weekScope.days.reduce((n, d) => n + d.slots.length, 0)
+        if (unassigned.length > 0) {
+          console.warn(
+            `[week-orchestrator] Selector${labelSuffix} left ${unassigned.length} of ${slotCount} slot(s) empty: ` +
+              `${unassigned.map((u) => u.slot_id).join(", ")}` +
+              (passAssignment.substitution_notes.length > 0
+                ? `\n  substitution_notes: ${passAssignment.substitution_notes.join(" | ")}`
+                : ""),
+          )
+        }
+
         // Verify dedup compliance — both cross-week AND within-week duplicates
         const dedupResult = verifyWeekAgainstExisting(passAssignment.assignments, weekScope, priorContext)
         const withinResult = verifyWithinWeekDuplicates(passAssignment.assignments, weekScope)
         console.log(`[week-orchestrator] Dedup verification${labelSuffix}: ${dedupResult.summary} | ${withinResult.summary}`)
 
-        if (dedupResult.pass && withinResult.pass) break
+        if (dedupResult.pass && withinResult.pass && unassigned.length === 0) break
 
-        // If dedup fails but no retries left, accept the result with a warning
+        // If checks still fail but no retries left, accept the most complete result
         if (attempt === MAX_RETRIES) {
           console.warn(
-            `[week-orchestrator] Dedup still failing after ${MAX_RETRIES + 1} attempts${labelSuffix} — accepting with repetition warnings (within-week: ${withinResult.issues.length}, cross-week errors: ${dedupResult.issues.filter((i) => i.severity === "error").length})`,
+            `[week-orchestrator] Selector checks still failing after ${MAX_RETRIES + 1} attempts${labelSuffix} — accepting the most complete attempt (empty slots: ${findUnassignedSlots(bestAssignment.assignments, weekScope).length}, within-week: ${withinResult.issues.length}, cross-week errors: ${dedupResult.issues.filter((i) => i.severity === "error").length})`,
           )
           break
         }
 
-        console.log(`[week-orchestrator] Dedup failed, retrying...`)
+        console.log(`[week-orchestrator] ${unassigned.length > 0 ? "Empty slots" : "Dedup failed"}${labelSuffix}, retrying...`)
       } catch (agentError) {
         // An abort is terminal — swallowing it here would start another attempt
         // with no time left, which is how runs used to overrun the platform kill.
@@ -1238,10 +1266,10 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
         }
       }
     }
-    if (!passAssignment) {
+    if (!bestAssignment) {
       throw new Error("Failed to generate exercise assignments")
     }
-    return passAssignment
+    return bestAssignment
   }
 
   const selectionWeek = skeleton.weeks[0]
@@ -1369,6 +1397,11 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     const scopeLabel = isSingleDay && targetDayName ? targetDayName : `Week ${newWeekNumber}`
 
     warnings.push(...buildHallucinatedIdWarning(hallucinatedIdCount, scopeLabel))
+
+    // Slots still empty after every retry. Before 2026-09-30 this saved a
+    // 1-of-12 day with no warning at all.
+    const stillEmpty = findUnassignedSlots(assignment.assignments, skeleton.weeks[0])
+    warnings.push(...buildUnfilledSlotsWarning(stillEmpty, totalSlots, scopeLabel))
 
     const repsBySlotId = new Map<string, string | null | undefined>()
     for (const week of skeleton.weeks) {

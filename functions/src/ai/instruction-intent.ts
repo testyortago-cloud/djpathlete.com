@@ -58,6 +58,29 @@ export function normalizeExerciseName(name: string): string {
     .trim()
 }
 
+/**
+ * Words that name WHERE a session is aimed, never WHAT exercise to do. A named
+ * phrase made only of these is a focus ("back and chest", "shoulder
+ * exercises"), and must not unlock anything: unlocking bypasses the equipment
+ * filter, and "back" matches every name that merely contains the word. On
+ * 2026-09-30 that let 101 exercises past a bodyweight-only filter. A phrase
+ * with one real movement word ("back squat", "hip thrust") still resolves.
+ */
+const FOCUS_ONLY_WORDS = new Set([
+  "shoulder", "shoulders", "delt", "delts", "deltoid", "deltoids", "back", "chest", "pec", "pecs",
+  "core", "abs", "oblique", "obliques", "leg", "legs", "glute", "glutes", "quad", "quads",
+  "quadricep", "quadriceps", "hamstring", "hamstrings", "calf", "calves", "hip", "hips", "arm", "arms",
+  "bicep", "biceps", "tricep", "triceps", "lat", "lats", "trap", "traps", "neck", "forearm", "forearms",
+  "wrist", "wrists", "ankle", "ankles", "knee", "knees", "adductor", "adductors", "abductor", "abductors",
+  "serratus", "rotator", "cuff", "posterior", "anterior", "chain", "upper", "lower", "full", "body",
+  "exercise", "exercises", "work", "movements", "training", "focus", "focused", "mainly", "some",
+])
+
+export function isFocusOnlyPhrase(phrase: string): boolean {
+  const tokens = significantTokens(phrase)
+  return tokens.length > 0 && tokens.every((t) => FOCUS_ONLY_WORDS.has(t))
+}
+
 export function significantTokens(phrase: string): string[] {
   return normalizeExerciseName(phrase)
     .split(" ")
@@ -114,7 +137,15 @@ export function resolveIntentToExerciseIds(
     }
   }
 
-  collect(intent.named_exercises, unlockedIds, true)
+  // A muscle-group focus is not a request for specific exercises — report it
+  // as unmatched rather than unlocking everything whose name contains it.
+  const focusOnly = intent.named_exercises.filter(isFocusOnlyPhrase)
+  unmatched.push(...focusOnly)
+  collect(
+    intent.named_exercises.filter((p) => !isFocusOnlyPhrase(p)),
+    unlockedIds,
+    true,
+  )
   collect(intent.excluded_exercises, bannedIds, false)
 
   const excludedEquipment = new Set(intent.excluded_equipment.map(normalizeEquipment))
@@ -209,7 +240,7 @@ Return four lists:
 
 - required_equipment: equipment the coach explicitly wants used.
 - excluded_equipment: equipment the coach explicitly wants avoided.
-- named_exercises: specific exercises or exercise families the coach explicitly asked FOR. Use the coach's own words ("bench press", "Olympic lifts", "med ball throws"). Include a family name when the coach names a category rather than one lift.
+- named_exercises: specific exercises or exercise families the coach explicitly asked FOR. Use the coach's own words ("bench press", "Olympic lifts", "med ball throws"). Include a family name when the coach names a category rather than one lift. A muscle group or body area ("shoulders", "back and chest", "lower body", "core work") is where the session is AIMED, not an exercise — never list it here.
 - excluded_exercises: specific exercises or families the coach explicitly wants avoided.
 - only_equipment: the COMPLETE list of equipment the session is restricted to, when the coach limits the setting rather than naming things to avoid. Use [] when they can use nothing but their own bodyweight. Use null — NOT [] — when no such restriction is stated.
 

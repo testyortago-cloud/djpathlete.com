@@ -246,6 +246,15 @@ function slotGroupKey(slot: ExerciseSlot): string {
 // ─── Dynamic caps based on library size ─────────────────────────────────────
 
 const MIN_EXERCISES = 30
+/**
+ * Below this many USABLE vector matches, a slot group is topped up from the
+ * heuristic scorer. match_exercises ranks the whole library through an HNSW
+ * index, and an HNSW scan returns at most `hnsw.ef_search` rows — 40 by
+ * default, whatever match_count asks (measured on the dev clone 2026-09-30:
+ * 30→30, 100/300/1000→40). So a slot only ever sees the 40 nearest exercises
+ * in the WHOLE library, and for a restricted client most of those are unusable.
+ */
+const MIN_ELIGIBLE_PER_SLOT = 8
 const MIN_PER_PATTERN = 8 // Guarantee at least 8 exercises per core movement pattern
 
 /**
@@ -508,8 +517,10 @@ export async function semanticFilterExercises(
     }
   }
 
-  // When pool is active, use the pool exercise IDs to scope the semantic search
-  const poolIdSet = isPool ? new Set(exercises.map((e) => e.id)) : null
+  // `exercises` is what this run may use — already narrowed by equipment,
+  // difficulty and (when active) the pool. match_exercises knows none of that:
+  // it ranks the WHOLE library.
+  const eligibleIds = new Set(exercises.map((e) => e.id))
 
   // Scale match_count per slot based on library size — more exercises = wider net
   const matchCountPerSlot = Math.max(30, Math.min(60, Math.round(exercises.length * 0.05)))
@@ -518,7 +529,16 @@ export async function semanticFilterExercises(
   // gives the ranker a real relevance signal — discarding it left every
   // exercise on an identical base score, so ordering collapsed to DB order.
   const matchScores = new Map<string, number>()
+  // Slot groups whose vector matches were mostly things this run cannot use.
+  const thinSlots: Array<{ slot: ExerciseSlot; taken: number }> = []
   for (const slot of slotGroups.values()) {
+    // Only USABLE matches count. Counting every match and intersecting later
+    // starved restricted runs: for a bodyweight client, a shoulder slot's 40
+    // nearest were dumbbell/cable/machine work, all discarded, and a 12-slot
+    // shoulder day reached the selector with ONE shoulder exercise
+    // (2026-09-30). Worse, those unusable matches still counted toward
+    // MIN_EXERCISES, so the heuristic fallback below never fired either.
+    let taken = 0
     try {
       const queryText = slotToText(slot)
       const queryEmbedding = await embedText(queryText)
@@ -528,8 +548,8 @@ export async function semanticFilterExercises(
         match_count: isPool ? Math.max(matchCountPerSlot, exercises.length) : matchCountPerSlot,
       })
       for (const match of data ?? []) {
-        // When pool is active, only accept matches that are in the pool
-        if (poolIdSet && !poolIdSet.has(match.id)) continue
+        if (!eligibleIds.has(match.id)) continue
+        taken++
         const similarity = typeof match.similarity === "number" ? match.similarity : 0
         const prev = matchScores.get(match.id)
         if (prev === undefined || similarity > prev) matchScores.set(match.id, similarity)
@@ -540,6 +560,27 @@ export async function semanticFilterExercises(
         err instanceof Error ? err.message : err,
       )
     }
+    if (!isPool && taken < MIN_ELIGIBLE_PER_SLOT) thinSlots.push({ slot, taken })
+  }
+
+  // Top up each thin slot group with its best USABLE exercises by the heuristic
+  // scorer (pattern, muscles, role), at a neutral similarity so they rank
+  // alongside the vector matches rather than above them.
+  if (thinSlots.length > 0) {
+    let added = 0
+    for (const { slot, taken } of thinSlots) {
+      const topUp = exercises
+        .filter((e) => !matchScores.has(e.id) && !options?.excludeIds?.has(e.id))
+        .map((e) => ({ e, score: scoreExerciseForSlot(e, slot, equipment, difficulty) }))
+        .filter((s) => s.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, matchCountPerSlot - taken)
+      for (const { e } of topUp) matchScores.set(e.id, NEUTRAL_SIMILARITY)
+      added += topUp.length
+    }
+    console.log(
+      `[semanticFilter] ${thinSlots.length} slot group(s) had < ${MIN_ELIGIBLE_PER_SLOT} usable vector matches — topped up ${added} by slot fit`,
+    )
   }
 
   console.log(
