@@ -10,6 +10,18 @@ export interface PublishLink {
   imageUrl: string | null
 }
 
+/**
+ * A publish that is waiting on the platform (e.g. Instagram processing a video
+ * container). Returned by a plugin as `PublishResult.pending`, saved by the
+ * publish runner, and handed back as `PublishInput.resumeState` on a later tick.
+ */
+export interface PendingPublish {
+  /** ISO time the wait began. The runner gives up 30 minutes after it. */
+  startedAt: string
+  /** Opaque to the runner: only the plugin that wrote it reads it. */
+  data: Record<string, unknown>
+}
+
 export interface PublishInput {
   content: string
   mediaUrl: string | null
@@ -22,6 +34,11 @@ export interface PublishInput {
    */
   mediaUrls?: string[]
   /**
+   * Parallel to mediaUrls: what each slide is. Filled by the publish runner from
+   * the media_assets rows, so plugins never guess from a file name.
+   */
+  mediaKinds?: Array<"image" | "video">
+  /**
    * The post's content type. Plugins use this to differentiate between e.g.
    * a single-image feed post and a Story, which are published via different
    * endpoints on IG and FB. Non-Story plugins can ignore this field.
@@ -29,12 +46,16 @@ export interface PublishInput {
   postType?: PostType
   scheduledAt: string | null
   metadata?: Record<string, unknown>
+  /** Saved state from an earlier `pending` answer for this post. */
+  resumeState?: PendingPublish
 }
 
 export interface PublishResult {
   success: boolean
   platform_post_id?: string
   error?: string
+  /** success=true + pending: the platform is still processing; publish later. */
+  pending?: PendingPublish
 }
 
 export interface AnalyticsResult {

@@ -1782,6 +1782,8 @@ export interface SocialPost {
   link_title?: string | null
   link_description?: string | null
   link_image_url?: string | null
+  /** 00284. Plugin-owned JSON while the platform processes media; null otherwise. Optional: DB-defaulted. */
+  platform_publish_state?: Record<string, unknown> | null
   created_at: string
   updated_at: string
 }
