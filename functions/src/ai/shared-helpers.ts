@@ -167,6 +167,21 @@ export function withPreferredPool(unlockedIds: Set<string>, preferredIds: Set<st
 }
 
 /**
+ * The program history the variety rules read, minus the coach's Exercise Pool.
+ *
+ * The cross-day exclusion set, the selector's AVOID list and the cross-week
+ * verifier (which turns a repeat into a retry) are all built from this history.
+ * A coach who picks the same pool every week wants those exercises every week,
+ * so a pool exercise must never be "too recent" to use. Blocks and bans are
+ * separate inputs and still apply.
+ */
+export function withoutPoolHistory<T extends { exercise_id?: unknown }>(rows: T[], poolIds: string[] | undefined): T[] {
+  if (!poolIds || poolIds.length === 0) return rows
+  const pool = new Set(poolIds)
+  return rows.filter((r) => !pool.has(String(r.exercise_id)))
+}
+
+/**
  * The architect's half of a PREFERRED pool. The selector is told to fill slots
  * from the pool "when a pool exercise reasonably matches the slot", which it
  * cannot do if no slot matches: on 2026-10-01 the architect, told nothing about

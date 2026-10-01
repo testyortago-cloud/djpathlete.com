@@ -1,5 +1,33 @@
 import { describe, it, expect } from "vitest"
-import { withPreferredPool, buildPreferredPoolWarnings, buildPreferredPoolPlanSection } from "../shared-helpers.js"
+import {
+  withPreferredPool,
+  buildPreferredPoolWarnings,
+  buildPreferredPoolPlanSection,
+  withoutPoolHistory,
+} from "../shared-helpers.js"
+
+/**
+ * Replay on the OpenRouter embeddings, 2026-10-01: "Ab squats" was cut from a Preferred pool
+ * because a nearby week used it. A coach who picks the same pool every week would lose it a
+ * little more each week. Pool exercises are taken out of the history the variety rules read —
+ * the exclusion set, the selector's AVOID list and the cross-week verifier all come from it.
+ */
+describe("withoutPoolHistory", () => {
+  const rows = [
+    { exercise_id: "pool-1", week_number: 1 },
+    { exercise_id: "other", week_number: 1 },
+    { exercise_id: "pool-2", week_number: 3 },
+  ]
+
+  it("drops the pool's own rows so variety rules cannot exclude them", () => {
+    expect(withoutPoolHistory(rows, ["pool-1", "pool-2"])).toEqual([{ exercise_id: "other", week_number: 1 }])
+  })
+
+  it("leaves the history alone with no pool", () => {
+    expect(withoutPoolHistory(rows, undefined)).toBe(rows)
+    expect(withoutPoolHistory(rows, [])).toBe(rows)
+  })
+})
 
 /**
  * Replay of Darren's run on the fixed filters (2026-10-01): all 6 pool exercises reached the
@@ -122,5 +150,15 @@ describe("buildPreferredPoolWarnings", () => {
     })
     expect(warnings).toHaveLength(1)
     expect(warnings[0]).toContain("3 of your 3")
+  })
+})
+
+// Replay after the filter fixes: the selector kept leaving out the two pool picks rated
+// "advanced", because its system prompt says NEVER exceed the week's difficulty ceiling —
+// a ceiling that, with no client, is only a guessed "intermediate". The coach's pick wins.
+describe("selector prompt and the Exercise Pool", () => {
+  it("exempts the coach's pool from the difficulty-ceiling self-check", async () => {
+    const { EXERCISE_SELECTOR_PROMPT } = await import("../prompts.js")
+    expect(EXERCISE_SELECTOR_PROMPT).toMatch(/EXCEPTION[^\n]*Exercise Pool[^\n]*allowed even above the ceiling/i)
   })
 })

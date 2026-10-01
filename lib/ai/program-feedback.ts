@@ -23,21 +23,14 @@ export interface FeedbackContext {
   feedbackCount: number
 }
 
-// ─── Embed program feedback (async, fire-and-forget) ─────────────────────────
-
-export async function embedProgramFeedback(feedbackId: string): Promise<void> {
-  // We need to fetch the feedback to build the text
-  // Use getRecentProgramFeedback with a high limit and find our ID
-  // Or better: import a direct getter. For simplicity, we'll use the supabase client directly here to avoid circular deps
-  const { createServiceRoleClient } = await import("@/lib/supabase")
-  const supabase = createServiceRoleClient()
-  const { data, error } = await supabase.from("ai_program_feedback").select("*").eq("id", feedbackId).single()
-  if (error || !data) return
-
-  const feedback = data as AiProgramFeedback
+/**
+ * The text a feedback row is embedded from. Exported so scripts/embed-exercises.ts
+ * re-embeds stored rows from exactly the same text.
+ */
+export function programFeedbackEmbeddingText(feedback: AiProgramFeedback): string {
   const issueCategories = feedback.specific_issues.map((i) => i.category).join(", ")
 
-  const textToEmbed = [
+  return [
     `Program feedback | split: ${feedback.split_type ?? "unknown"}`,
     `difficulty: ${feedback.difficulty ?? "unknown"}`,
     `overall: ${feedback.overall_rating}/5`,
@@ -50,8 +43,20 @@ export async function embedProgramFeedback(feedbackId: string): Promise<void> {
     .filter(Boolean)
     .join(" | ")
     .slice(0, 2000)
+}
 
-  const embedding = await embedText(textToEmbed)
+// ─── Embed program feedback (async, fire-and-forget) ─────────────────────────
+
+export async function embedProgramFeedback(feedbackId: string): Promise<void> {
+  // We need to fetch the feedback to build the text
+  // Use getRecentProgramFeedback with a high limit and find our ID
+  // Or better: import a direct getter. For simplicity, we'll use the supabase client directly here to avoid circular deps
+  const { createServiceRoleClient } = await import("@/lib/supabase")
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase.from("ai_program_feedback").select("*").eq("id", feedbackId).single()
+  if (error || !data) return
+
+  const embedding = await embedText(programFeedbackEmbeddingText(data as AiProgramFeedback))
   await updateProgramFeedbackEmbedding(feedbackId, embedding)
 }
 

@@ -10,15 +10,27 @@ export async function embedConversationMessage(messageId: string): Promise<void>
 
   if (!message || message.role !== "assistant") return
 
-  const metadataSummary = buildMetadataSummary(message.feature, message.metadata ?? {})
-  const textToEmbed =
-    `Feature: ${message.feature}${metadataSummary ? ` | ${metadataSummary}` : ""}\n${message.content}`.slice(0, 2000)
-
-  const embedding = await embedText(textToEmbed)
+  const embedding = await embedText(conversationEmbeddingText(message))
   await supabase
     .from("ai_conversation_history")
     .update({ embedding: JSON.stringify(embedding) })
     .eq("id", messageId)
+}
+
+/**
+ * The text an assistant message is embedded from. Exported so
+ * scripts/embed-exercises.ts re-embeds stored rows from exactly the same text.
+ */
+export function conversationEmbeddingText(message: {
+  feature: string
+  metadata?: Record<string, unknown> | null
+  content: string
+}): string {
+  const metadataSummary = buildMetadataSummary(message.feature, message.metadata ?? {})
+  return `Feature: ${message.feature}${metadataSummary ? ` | ${metadataSummary}` : ""}\n${message.content}`.slice(
+    0,
+    2000,
+  )
 }
 
 function buildMetadataSummary(feature: string, metadata: Record<string, unknown>): string {

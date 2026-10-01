@@ -58,6 +58,7 @@ import {
   withPreferredPool,
   buildPreferredPoolWarnings,
   buildPreferredPoolPlanSection,
+  withoutPoolHistory,
 } from "./shared-helpers.js"
 import type { ProfileAnalysis } from "./types.js"
 import {
@@ -1099,7 +1100,8 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   // target week (both directions, so filling an earlier blank week still sees
   // later weeks that already exist) — see constant comment for why this is
   // windowed rather than the full program history.
-  const priorExercisesForDedup = buildDedupSourceExercises(existingExercises, newWeekNumber)
+  // The coach's pool is left out: a pool exercise is never "too recent" to use (withoutPoolHistory).
+  const priorExercisesForDedup = withoutPoolHistory(buildDedupSourceExercises(existingExercises, newWeekNumber), poolIds)
 
   const priorContext = buildPriorContextFromExistingExercises(priorExercisesForDedup)
   console.log(
