@@ -11,6 +11,8 @@ import {
   extractWarnings,
   InstructionsUsedPanel,
   extractInstructionsUsed,
+  InstructionCheckPanel,
+  extractInstructionCheck,
 } from "@/components/admin/GenerationWarnings"
 
 /**
@@ -225,6 +227,7 @@ function JobCard({ job }: { job: DockedJob }) {
           {isDone && extractInstructionsUsed(state.result) ? (
             <div className="mt-2">
               <InstructionsUsedPanel used={extractInstructionsUsed(state.result)} />
+              <InstructionCheckPanel check={extractInstructionCheck(state.result)} />
             </div>
           ) : null}
 
