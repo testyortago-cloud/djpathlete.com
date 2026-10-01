@@ -77,6 +77,23 @@ describe("InstructionCheckPanel", () => {
     expect(screen.queryByText("✓")).toBeNull()
   })
 
+  it("marks each item met or not met for screen readers", () => {
+    render(<InstructionCheckPanel check={FAILED} defaultOpen />)
+    expect(screen.getByText("Not met:")).toBeTruthy()
+    expect(screen.getByText("Met:")).toBeTruthy()
+  })
+
+  it("counts unmet items, not the status, in the heading", () => {
+    const base = { rebuilt: false, rebuild_reason: null, note: null }
+    const { unmount } = render(
+      <InstructionCheckPanel check={{ ...base, status: "failed", items: [FAILED.items[0]] }} defaultOpen />,
+    )
+    expect(screen.queryByText(/not met/)).toBeNull()
+    unmount()
+    render(<InstructionCheckPanel check={{ ...base, status: "passed", items: [FAILED.items[1]] }} defaultOpen />)
+    expect(screen.getByText(/1 not met/)).toBeTruthy()
+  })
+
   it("renders nothing when unchecked with no items and no note, or no check", () => {
     const a = render(
       <InstructionCheckPanel

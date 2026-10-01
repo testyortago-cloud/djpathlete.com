@@ -147,4 +147,23 @@ describe("JobsNotificationDock shows how the instructions were read", () => {
     expect(await screen.findByText("How the AI read your instructions")).toBeTruthy()
     expect(screen.getByText(/Exactly 12 exercises/)).toBeTruthy()
   })
+
+  it("shows the instructions checklist even when there is no instructions_used", async () => {
+    jobDoc.current = {
+      status: "completed",
+      result: {
+        exercises_added: 6,
+        warnings: [],
+        instruction_check: {
+          status: "passed",
+          items: [{ instruction: "Pool only", met: true, detail: "all from the pool", source: "code" }],
+          rebuilt: false,
+          rebuild_reason: null,
+          note: null,
+        },
+      },
+    }
+    render(<JobsNotificationDock />)
+    expect(await screen.findByText("Your instructions, checked")).toBeTruthy()
+  })
 })

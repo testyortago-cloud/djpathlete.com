@@ -227,6 +227,11 @@ function JobCard({ job }: { job: DockedJob }) {
           {isDone && extractInstructionsUsed(state.result) ? (
             <div className="mt-2">
               <InstructionsUsedPanel used={extractInstructionsUsed(state.result)} />
+            </div>
+          ) : null}
+
+          {isDone && extractInstructionCheck(state.result) ? (
+            <div className="mt-2">
               <InstructionCheckPanel check={extractInstructionCheck(state.result)} />
             </div>
           ) : null}

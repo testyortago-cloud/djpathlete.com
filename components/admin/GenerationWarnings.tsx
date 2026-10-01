@@ -148,15 +148,18 @@ export function InstructionCheckPanel({
         <ListChecks className="size-3.5 shrink-0 text-accent" />
         <span>
           Your instructions, checked
-          {check.status === "failed" ? <span className="text-error">{` — ${notMet} not met`}</span> : null}
+          {notMet > 0 ? <span className="text-error">{` — ${notMet} not met`}</span> : null}
         </span>
       </summary>
       {showItems ? (
         <ul className="mt-2 flex flex-col gap-1.5">
           {check.items.map((item, i) => (
             <li key={i} className="flex gap-1.5 text-xs leading-relaxed">
-              <span className={item.met ? "text-success" : "text-error"}>{item.met ? "✓" : "✗"}</span>
+              <span aria-hidden="true" className={item.met ? "text-success" : "text-error"}>
+                {item.met ? "✓" : "✗"}
+              </span>
               <span>
+                <span className="sr-only">{item.met ? "Met:" : "Not met:"}</span>
                 <span className="font-medium text-foreground">{item.instruction}</span>
                 <span className="text-muted-foreground">{` — ${item.detail}`}</span>
               </span>
