@@ -222,6 +222,15 @@ describe("compliance feedback never reaches the instruction parser or the enrich
     expect(src).toContain("deadline ? deadline.remainingMs() - SAVE_RESERVE_MS : null")
     expect(src).toContain("checkWithinBudget(input, deadline, { keepOnTimeout: isFirst })")
   })
+
+  // I1: the parser reads the studio's coach policy too, so its raw matches would
+  // turn policy text into "named exercise" lines the coach never wrote.
+  it("the checker's named matches are only the ones the coach typed, without banned ids", () => {
+    expect(src).toMatch(
+      /namedMatches: coachNamedMatches\(\s*intentResolution\.matched,\s*request\.admin_instructions,\s*intentResolution\.bannedIds,?\s*\)/,
+    )
+    expect(src).not.toContain("namedMatches: intentResolution.matched")
+  })
 })
 
 // ── The wrapper: build → check → maybe rebuild → save exactly one attempt ──

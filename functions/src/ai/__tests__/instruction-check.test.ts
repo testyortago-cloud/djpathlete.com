@@ -4,6 +4,9 @@ import {
   checkStatus,
   buildComplianceFeedback,
   buildInstructionCheckWarning,
+  codeOnlyCheck,
+  coachNamedMatches,
+  NO_TIME_FOR_AI_NOTE,
   type CheckDayRow,
   type CheckInput,
 } from "../instruction-check.js"
@@ -174,6 +177,92 @@ describe("runCodeChecks", () => {
     )
     expect(find(items, "landmine press")).toMatchObject({ met: true, detail: "Landmine press is in" })
     expect(find(items, "ruled out")).toMatchObject({ met: false, detail: "Burpee is in" })
+  })
+})
+
+describe("tempo compares the digits, not the punctuation (M2)", () => {
+  it.each(["4-2-4", "4.2.4", "4:2:4", "424", "4-2-4-0", " 4 - 2 - 4 "])("%j meets a 4-2-4 instruction", (tempo) => {
+    const items = runCodeChecks(base({ rows: Array.from({ length: 12 }, (_, i) => row(i, { tempo })) }))
+    expect(find(items, "tempo")!.met).toBe(true)
+  })
+
+  it.each(["3-1-1", "4-2-4-1", "4-2-x", "slow"])("%j does not meet a 4-2-4 instruction", (tempo) => {
+    const rows = [...Array.from({ length: 11 }, (_, i) => row(i)), row(11, { name: "Off tempo", tempo })]
+    const item = find(runCodeChecks(base({ rows })), "tempo")!
+    expect(item).toMatchObject({ met: false, detail: `“Off tempo” has ${tempo}` })
+  })
+})
+
+describe("copy for things that were not there (T2)", () => {
+  it("an empty-string tempo reads 'no tempo'", () => {
+    const rows = [...Array.from({ length: 11 }, (_, i) => row(i)), row(11, { name: "Plain", tempo: "" })]
+    expect(find(runCodeChecks(base({ rows })), "tempo")!.detail).toBe("“Plain” has no tempo")
+  })
+
+  it("a null tempo reads 'no tempo' too (presence control)", () => {
+    const rows = [...Array.from({ length: 11 }, (_, i) => row(i)), row(11, { name: "Plain", tempo: null })]
+    expect(find(runCodeChecks(base({ rows })), "tempo")!.detail).toBe("“Plain” has no tempo")
+  })
+
+  it("a Preferred pool with nothing offered gets no pool line at all", () => {
+    const items = runCodeChecks(
+      base({
+        instructions: null,
+        rows: [row(0), row(1)],
+        pool: { ids: ["p1", "p2"], mode: "preferred", offeredIds: [] },
+      }),
+    )
+    expect(find(items, "Exercise Pool")).toBeUndefined()
+  })
+
+  it("a Preferred pool with something offered still gets its line (presence control)", () => {
+    const items = runCodeChecks(
+      base({
+        instructions: null,
+        rows: [row(0, { exercise_id: "p1" })],
+        pool: { ids: ["p1", "p2"], mode: "preferred", offeredIds: ["p1"] },
+      }),
+    )
+    expect(find(items, "Exercise Pool")).toMatchObject({ met: true, detail: "all 1 used" })
+  })
+})
+
+describe("codeOnlyCheck with nothing to show (M4)", () => {
+  it("says the instructions could not be checked, not that only exact checks are shown", () => {
+    const check = codeOnlyCheck(base({ instructions: "mainly shoulders", pool: null }), NO_TIME_FOR_AI_NOTE)
+    expect(check.items).toEqual([])
+    expect(check.status).toBe("unchecked")
+    expect(check.note).toBe("Couldn't check your instructions this time.")
+  })
+
+  it("keeps the exact-checks note when there ARE exact checks (presence control)", () => {
+    const check = codeOnlyCheck(base(), NO_TIME_FOR_AI_NOTE)
+    expect(check.items.length).toBeGreaterThan(0)
+    expect(check.note).toBe(NO_TIME_FOR_AI_NOTE)
+  })
+})
+
+describe("coachNamedMatches (I1 + M7)", () => {
+  const matched = [
+    { phrase: "landmine press", exercise_ids: ["lm1", "lm2"] },
+    // From the studio's coach policy, appended to the parser's text — the coach never typed it.
+    { phrase: "Nordic curls", exercise_ids: ["nc1"] },
+    { phrase: "trap bar deadlift", exercise_ids: ["tb1", "tb2"] },
+  ]
+
+  it("keeps a match the coach typed and drops one that came from policy only", () => {
+    const kept = coachNamedMatches(matched, "Include a Landmine Press, 12 exercises", [])
+    expect(kept).toEqual([{ phrase: "landmine press", exercise_ids: ["lm1", "lm2"] }])
+  })
+
+  it("drops banned ids from a kept match, and the match when none remain", () => {
+    const kept = coachNamedMatches(matched, "landmine press and trap bar deadlift", ["lm2", "tb1", "tb2"])
+    expect(kept).toEqual([{ phrase: "landmine press", exercise_ids: ["lm1"] }])
+  })
+
+  it("keeps nothing when the coach wrote nothing", () => {
+    expect(coachNamedMatches(matched, null, [])).toEqual([])
+    expect(coachNamedMatches(matched, "   ", [])).toEqual([])
   })
 })
 

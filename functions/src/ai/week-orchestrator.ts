@@ -79,6 +79,7 @@ import { enrichCoachInstructions, buildAgentInstructions, type InstructionsUsed 
 import { statesExerciseCount } from "./instruction-count.js"
 import {
   buildInstructionCheckWarning,
+  coachNamedMatches,
   type CheckDayRow,
   type CheckInput,
   type InstructionCheck,
@@ -1777,7 +1778,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     instructions: request.admin_instructions?.trim() || null,
     rows: buildCheckRows(skeleton.weeks, assignment.assignments, allExercises),
     pool: poolIds?.length ? { ids: poolIds, mode: poolMode, offeredIds: filtered.map((e) => e.id) } : null,
-    namedMatches: intentResolution.matched,
+    namedMatches: coachNamedMatches(intentResolution.matched, request.admin_instructions, intentResolution.bannedIds),
     bannedIds: [...intentResolution.bannedIds],
     nameById: Object.fromEntries(fullLibrary.map((e) => [e.id, e.name])),
   }

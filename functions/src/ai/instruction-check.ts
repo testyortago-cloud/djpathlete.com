@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { statedExerciseTotal, parsePrescription } from "./instruction-count.js"
+import { normalizeExerciseName, significantTokens } from "./instruction-intent.js"
 import { callAgent, MODEL_OPUS_5_5 } from "./anthropic.js"
 import { isAbortError } from "../lib/deadline.js"
 
@@ -45,7 +46,45 @@ export interface CheckInput {
 
 const EXEMPT_ROLES = new Set(["warm_up", "cool_down"])
 const fmt = (r: [number, number], unit = "") => (r[0] === r[1] ? `${r[0]}${unit}` : `${r[0]}-${r[1]}${unit}`)
-const normTempo = (t: string | null) => (t ?? "").trim().replace(/\./g, "-").toLowerCase()
+
+/**
+ * A tempo as its digit groups, so punctuation never decides a ✓ or ✗:
+ * "4-2-4" = "4.2.4" = "4:2:4" = "424" = "4-2-4-0" (a trailing 0 pause is the default).
+ */
+function tempoKey(t: string | null): string {
+  const s = (t ?? "").trim().toLowerCase()
+  if (!s) return ""
+  const groups = /^\d+$/.test(s) ? s.split("") : s.split(/[\s.:–—-]+/).filter(Boolean)
+  if (groups.length === 4 && groups[3] === "0") groups.pop()
+  return groups.join("-")
+}
+
+/**
+ * The named-exercise matches the COACH asked for in this generation. The intent
+ * parser also reads the studio's coach policy, so a phrase only that policy
+ * names would otherwise become a "named exercise" line the coach never wrote
+ * (I1). A phrase is kept when every significant word of it is in the coach's
+ * own text; ids the coach ruled out are dropped, and so is a match left with
+ * none (M7) — "Landmine press: not in the day" is not a miss when it was banned.
+ */
+export function coachNamedMatches(
+  matched: Array<{ phrase: string; exercise_ids: string[] }>,
+  coachText: string | null | undefined,
+  bannedIds: Iterable<string>,
+): Array<{ phrase: string; exercise_ids: string[] }> {
+  if (!coachText || !coachText.trim()) return []
+  const coachTokens = new Set(normalizeExerciseName(coachText).split(" "))
+  const banned = new Set(bannedIds)
+  const typed = (t: string) => coachTokens.has(t) || coachTokens.has(`${t}s`)
+  const out: Array<{ phrase: string; exercise_ids: string[] }> = []
+  for (const m of matched) {
+    const tokens = significantTokens(m.phrase)
+    if (tokens.length === 0 || !tokens.every(typed)) continue
+    const ids = m.exercise_ids.filter((id) => !banned.has(id))
+    if (ids.length > 0) out.push({ phrase: m.phrase, exercise_ids: ids })
+  }
+  return out
+}
 
 /** "8", "8-10", "8 each side" → [8,8] / [8,10]; a hold ("30s hold", "20 sec") → null (exempt). */
 function repsRange(reps: string | null): [number, number] | null {
@@ -97,9 +136,13 @@ export function runCodeChecks(input: CheckInput): InstructionCheckItem[] {
     )
   }
   if (p.tempo) {
-    const want = normTempo(p.tempo)
-    const bad = firstOutside((r) => (repsRange(r.reps) === null ? null : normTempo(r.tempo) === want))
-    add(`${p.tempo} tempo`, !bad, bad ? `“${bad.name}” has ${bad.tempo ?? "no tempo"}` : `every exercise is ${p.tempo}`)
+    const want = tempoKey(p.tempo)
+    const bad = firstOutside((r) => (repsRange(r.reps) === null ? null : tempoKey(r.tempo) === want))
+    add(
+      `${p.tempo} tempo`,
+      !bad,
+      bad ? `“${bad.name}” has ${bad.tempo?.trim() ? bad.tempo : "no tempo"}` : `every exercise is ${p.tempo}`,
+    )
   }
 
   if (input.pool) {
@@ -122,15 +165,18 @@ export function runCodeChecks(input: CheckInput): InstructionCheckItem[] {
       const unused = offered.filter((id) => !used.has(id))
       const allPool = mainRows.length > 0 && mainRows.every((r) => offered.includes(r.exercise_id))
       const met = unused.length === 0 || (mainRows.length < offered.length && allPool)
-      add(
-        "Exercise Pool",
-        met,
-        unused.length === 0
-          ? `all ${offered.length} used`
-          : met
-            ? `every exercise is from your pool (${mainRows.length} of ${offered.length} fit)`
-            : `not used: ${unused.map(name).join(", ")}`,
-      )
+      // Nothing from the pool was offered, so there is nothing to judge — no "all 0 used" line.
+      if (offered.length > 0) {
+        add(
+          "Exercise Pool",
+          met,
+          unused.length === 0
+            ? `all ${offered.length} used`
+            : met
+              ? `every exercise is from your pool (${mainRows.length} of ${offered.length} fit)`
+              : `not used: ${unused.map(name).join(", ")}`,
+        )
+      }
     }
   }
 
@@ -152,11 +198,14 @@ export function checkStatus(items: InstructionCheckItem[]): InstructionCheck["st
 }
 
 export const NO_TIME_FOR_AI_NOTE = "There wasn't time for the AI check, so only the exact checks are shown."
+export const NOTHING_CHECKED_NOTE = "Couldn't check your instructions this time."
 
 /**
  * The exact checks alone, synchronously — for when there is no time left for
  * the AI judge. Never throws, so a finished day can always be saved with it.
  * `note` is dropped when the coach wrote nothing: there was no AI check to miss.
+ * With no exact checks either, "only the exact checks are shown" would point at
+ * an empty list, so the note says plainly that nothing was checked (M4).
  */
 export function codeOnlyCheck(input: CheckInput, note: string | null): InstructionCheck {
   const items = runCodeChecks(input)
@@ -166,7 +215,7 @@ export function codeOnlyCheck(input: CheckInput, note: string | null): Instructi
     items,
     rebuilt: false,
     rebuild_reason: null,
-    note: hasInstructions ? note : null,
+    note: !hasInstructions ? null : items.length === 0 && note === NO_TIME_FOR_AI_NOTE ? NOTHING_CHECKED_NOTE : note,
   }
 }
 
