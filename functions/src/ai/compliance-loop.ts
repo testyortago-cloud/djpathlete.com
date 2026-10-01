@@ -1,6 +1,7 @@
 import {
   buildComplianceFeedback,
   checkInstructions,
+  checkStatus,
   codeOnlyCheck,
   unmetCount,
   NO_TIME_FOR_AI_NOTE,
@@ -28,6 +29,7 @@ export const MIN_JUDGE_MS = 5_000
 const NO_TIME_NOTE = "There wasn't time to rebuild, so this is the first attempt."
 const REBUILD_FAILED_NOTE = "A rebuild was attempted and failed, so this is the first attempt."
 const REBUILD_OUT_OF_TIME_NOTE = "There wasn't time to finish the rebuild, so this is the first attempt."
+const MISSED_MORE_NOTE = "The rebuild missed more, so the first attempt was kept."
 
 function withNote(check: InstructionCheck, note: string): InstructionCheck {
   return { ...check, note: check.note ? `${check.note} ${note}` : note }
@@ -83,14 +85,33 @@ export async function runWithComplianceCheck<A extends ComplianceAttempt>(args: 
     return { attempt: attempt1, check: withNote(check1, outOfTime ? REBUILD_OUT_OF_TIME_NOTE : REBUILD_FAILED_NOTE) }
   }
 
-  const keepSecond = unmetCount(check2) <= unmetCount(check1)
-  const kept = keepSecond ? check2 : check1
+  // The judge ran on attempt 1 but not on attempt 2 (skipped for time, or
+  // failed): count only the code lines both checks share, or the rebuild would
+  // win simply for not being judged.
+  const onlyFirstJudged = check1.items.some((i) => i.source === "ai") && !check2.items.some((i) => i.source === "ai")
+  const unmet = (c: InstructionCheck) =>
+    onlyFirstJudged ? c.items.filter((i) => i.source === "code" && !i.met).length : unmetCount(c)
+  const keepSecond = unmet(check2) <= unmet(check1)
   log?.(
-    `compliance: rebuilt; unmet ${unmetCount(check1)} -> ${unmetCount(check2)}, keeping attempt ${keepSecond ? 2 : 1}`,
+    `compliance: rebuilt; unmet ${unmet(check1)} -> ${unmet(check2)}${onlyFirstJudged ? " (code lines only)" : ""}, keeping attempt ${keepSecond ? 2 : 1}`,
   )
+  if (!keepSecond) {
+    return {
+      attempt: attempt1,
+      check: { ...withNote(check1, MISSED_MORE_NOTE), rebuilt: true, rebuild_reason: rebuildReason },
+    }
+  }
+  // Attempt 1's AI misses were never re-checked on attempt 2: carry them over,
+  // saying so, rather than letting them silently disappear.
+  const carried = onlyFirstJudged
+    ? check1.items
+        .filter((i) => i.source === "ai" && !i.met)
+        .map((i) => ({ ...i, detail: `${i.detail} (not re-checked after the rebuild)` }))
+    : []
+  const items = [...check2.items, ...carried]
   return {
-    attempt: keepSecond ? attempt2 : attempt1,
-    check: { ...kept, rebuilt: true, rebuild_reason: rebuildReason },
+    attempt: attempt2,
+    check: { ...check2, items, status: checkStatus(items), rebuilt: true, rebuild_reason: rebuildReason },
   }
 }
 

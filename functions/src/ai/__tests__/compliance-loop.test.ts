@@ -177,10 +177,95 @@ describe("runWithComplianceCheck", () => {
     expect(r.check.note).toBe("A rebuild was attempted and failed, so this is the first attempt.")
   })
 
+  // M3: the coach is told why the first attempt is the one they see.
+  const MISSED_MORE = "The rebuild missed more, so the first attempt was kept."
+
+  it("worse attempt 2 -> the note says the first attempt was kept", async () => {
+    const s = setup({ 1: failed1, 2: mk([item("A", false), item("B", false), item("C", false)]) })
+    expect((await runWithComplianceCheck(s.args)).check.note).toBe(MISSED_MORE)
+  })
+
+  it("worse attempt 2 -> the note is appended after an existing one, with a space", async () => {
+    const s = setup({
+      1: { ...failed1, note: "Earlier." },
+      2: mk([item("A", false), item("B", false), item("C", false)]),
+    })
+    expect((await runWithComplianceCheck(s.args)).check.note).toBe(`Earlier. ${MISSED_MORE}`)
+  })
+
+  it("a kept rebuild gets no 'missed more' note (presence control)", async () => {
+    const s = setup({ 1: failed1, 2: mk([item("A", true), item("B", true)]) })
+    expect((await runWithComplianceCheck(s.args)).check.note).toBeNull()
+  })
+
   it("attempt 1's own build error still propagates", async () => {
     const s = setup({ 1: failed1 })
     s.build.mockRejectedValue(new DeadlineExceededError("Day", "architect", 1000))
     await expect(runWithComplianceCheck(s.args)).rejects.toBeInstanceOf(DeadlineExceededError)
+  })
+})
+
+/**
+ * I2: when the judge ran on attempt 1 but not on attempt 2 (skipped for time, or
+ * failed), attempt 2's check has only code lines. Counting every unmet line
+ * would then reward the rebuild for simply not being judged.
+ */
+describe("runWithComplianceCheck when only attempt 1 was judged by the AI", () => {
+  const ai = (instruction: string, met: boolean, detail = "d"): InstructionCheckItem => ({
+    instruction,
+    met,
+    detail,
+    source: "ai",
+  })
+  const JUDGE_SKIPPED = "The AI check didn't run this time, so only the exact checks are shown."
+
+  it("compares code lines only: a rebuild that breaks a code line loses even with fewer lines unmet", async () => {
+    const check1 = mk([item("12 exercises", true), ai("mainly shoulders", false, "4 of 12 train shoulders")])
+    const check2 = mk([item("12 exercises", false, "the day has 11")], JUDGE_SKIPPED)
+    const s = setup({ 1: check1, 2: check2 })
+    const r = await runWithComplianceCheck(s.args)
+    expect(r.attempt.id).toBe(1)
+    expect(r.check.items).toEqual(check1.items)
+    expect(r.check.rebuilt).toBe(true)
+    expect(r.check.note).toBe("The rebuild missed more, so the first attempt was kept.")
+  })
+
+  it("keeps attempt 2 on code lines and carries attempt 1's unmet AI lines, marked not re-checked", async () => {
+    const check1 = mk([
+      item("12 exercises", false, "the day has 11"),
+      ai("mainly shoulders", false, "4 of 12 train shoulders"),
+      ai("power first", true, "box jump is first"),
+    ])
+    const check2 = mk([item("12 exercises", true, "12 in the day")], JUDGE_SKIPPED)
+    const s = setup({ 1: check1, 2: check2 })
+    const r = await runWithComplianceCheck(s.args)
+    expect(r.attempt.id).toBe(2)
+    expect(r.check.items).toEqual([
+      item("12 exercises", true, "12 in the day"),
+      ai("mainly shoulders", false, "4 of 12 train shoulders (not re-checked after the rebuild)"),
+    ])
+    expect(r.check.status).toBe("failed")
+    expect(r.check.rebuilt).toBe(true)
+    expect(r.check.note).toBe(JUDGE_SKIPPED)
+  })
+
+  it("a code tie keeps attempt 2, still carrying the unmet AI lines", async () => {
+    const check1 = mk([item("12 exercises", false, "the day has 11"), ai("mainly shoulders", false, "4 of 12")])
+    const check2 = mk([item("12 exercises", false, "the day has 10")], JUDGE_SKIPPED)
+    const r = await runWithComplianceCheck(setup({ 1: check1, 2: check2 }).args)
+    expect(r.attempt.id).toBe(2)
+    expect(r.check.items.map((i) => [i.instruction, i.met, i.source])).toEqual([
+      ["12 exercises", false, "code"],
+      ["mainly shoulders", false, "ai"],
+    ])
+  })
+
+  it("when attempt 2 WAS judged, every line counts as before (presence control)", async () => {
+    const check1 = mk([item("12 exercises", true), ai("mainly shoulders", false)])
+    const check2 = mk([item("12 exercises", false), ai("mainly shoulders", true)])
+    const r = await runWithComplianceCheck(setup({ 1: check1, 2: check2 }).args)
+    expect(r.attempt.id).toBe(2)
+    expect(r.check.items).toEqual(check2.items)
   })
 })
 
