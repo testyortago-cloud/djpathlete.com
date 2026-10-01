@@ -99,4 +99,16 @@ describe("buildEquipmentWarnings", () => {
     const warnings = buildEquipmentWarnings(violations, [])
     expect(warnings[0]).toContain("no equipment at all")
   })
+
+  // The strict-pool run on 2026-10-01 told the coach "You set no equipment at all"
+  // when he had set nothing: the empty list came from the client profile.
+  it("says where the equipment list came from instead of blaming the coach", () => {
+    const violations = findEquipmentViolations([assign("w3d1s3", "trx")], library, [])
+    expect(buildEquipmentWarnings(violations, [], "profile")[0]).toContain("The client's profile lists no equipment")
+    expect(buildEquipmentWarnings(violations, [], "profile")[0]).not.toContain("You set")
+    expect(buildEquipmentWarnings(violations, [], "instructions")[0]).toContain(
+      "Your instructions allowed no equipment",
+    )
+    expect(buildEquipmentWarnings(violations, [], "override")[0]).toContain("You set no equipment at all")
+  })
 })

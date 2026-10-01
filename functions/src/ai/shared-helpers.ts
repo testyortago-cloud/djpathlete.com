@@ -100,6 +100,12 @@ export function buildPoolNote(
   filteredCount: number,
   mode: PoolMode = "preferred",
   poolCount?: number,
+  /**
+   * The pool's own rows. The library the selector reads carries no pool marker,
+   * so without this list "prefer the pool" names exercises it cannot identify —
+   * which is how a 2026-10-01 replay left two of six picks out every time.
+   */
+  poolExercises?: Array<{ id: string; name: string }>,
 ): string {
   if (!poolIds || poolIds.length === 0) return ""
   if (mode === "strict") {
@@ -107,7 +113,11 @@ export function buildPoolNote(
   }
   // Preferred (guideline) mode
   const total = poolCount ?? poolIds.length
-  return `\n\nNOTE: The coach has curated an Exercise Pool of ${total} preferred exercises. These are STRONGLY PREFERRED — fill every slot from this pool when a pool exercise reasonably matches the slot's movement_pattern, target_muscles, and role. You MAY pick an exercise from outside the pool ONLY when no pool exercise is a sensible fit for the slot — in that case, add a substitution_note explaining why no pool option fit. AIM to use as many DIFFERENT pool exercises as possible across the week — do not duplicate pool exercises while ignoring others that fit.`
+  const list =
+    poolExercises && poolExercises.length > 0
+      ? `\nThe pool (exercise_id — name):\n${poolExercises.map((e) => `- ${e.id} — ${e.name}`).join("\n")}\nThe coach picked these for this client, so use them regardless of their difficulty rating.`
+      : ""
+  return `\n\nNOTE: The coach has curated an Exercise Pool of ${total} preferred exercises. These are STRONGLY PREFERRED — fill every slot from this pool when a pool exercise reasonably matches the slot's movement_pattern, target_muscles, and role. You MAY pick an exercise from outside the pool ONLY when no pool exercise is a sensible fit for the slot — in that case, add a substitution_note explaining why no pool option fit. AIM to use as many DIFFERENT pool exercises as possible across the week — do not duplicate pool exercises while ignoring others that fit.${list}`
 }
 
 /**
@@ -137,6 +147,102 @@ export function applyPoolFilter<T extends { id: string }>(
     `[${logPrefix}] Exercise Pool active in STRICT mode — using ${filtered.length}/${fullLibrary.length} exercises`,
   )
   return filtered
+}
+
+/**
+ * The ids that bypass the GUESS-based difficulty and equipment filters: the
+ * exercises the coach named in their instructions, plus a Preferred pool.
+ *
+ * A pool is the coach's own pick for this client, exactly like naming an
+ * exercise, and a guess ("intermediate" with no profile, "no equipment" with no
+ * client) must not outrank it. Before 2026-10-01 a pool exercise those guesses
+ * removed was gone before semanticFilterExercises' pool rescue ran, which
+ * re-injects only from the survivors — a 6-exercise pool reached the AI as zero.
+ * Callers still pass the plain unlocked set where the coach's equipment setting
+ * is explicit (an override or a typed restriction): that is an answer, not a guess.
+ */
+export function withPreferredPool(unlockedIds: Set<string>, preferredIds: Set<string> | undefined): Set<string> {
+  if (!preferredIds || preferredIds.size === 0) return unlockedIds
+  return new Set([...unlockedIds, ...preferredIds])
+}
+
+/**
+ * The architect's half of a PREFERRED pool. The selector is told to fill slots
+ * from the pool "when a pool exercise reasonably matches the slot", which it
+ * cannot do if no slot matches: on 2026-10-01 the architect, told nothing about
+ * a preferred pool, planned a shoulder day and all six of the coach's lunge and
+ * squat picks were offered to the selector and left out. Strict mode has its
+ * own, harder section (buildPoolPatternSection).
+ */
+export function buildPreferredPoolPlanSection(
+  pool: Array<{ name?: string; movement_pattern?: string | null; primary_muscles?: string[] | null }>,
+): string {
+  if (pool.length === 0) return ""
+  const list = pool
+    .map(
+      (e) =>
+        `- ${e.name ?? "?"} (${e.movement_pattern ?? "unspecified"}; ${(e.primary_muscles ?? []).join(", ") || "unspecified"})`,
+    )
+    .join("\n")
+  return `\n\n## COACH'S EXERCISE POOL (PREFERRED)
+The coach picked these ${pool.length} exercises for this session. Plan a slot that each of these exercises fits — its movement_pattern, target muscles and a suitable role — unless the coach's instructions rule one out. Plan the remaining slots as you normally would:
+${list}`
+}
+
+/**
+ * Coach-facing notices for a PREFERRED pool. Strict mode has its own (the pool is
+ * the whole library there); in preferred mode a pool that never reached the AI,
+ * or one the AI ignored, used to be silent.
+ */
+export function buildPreferredPoolWarnings(args: {
+  poolIds: string[]
+  /** Ids in the library actually handed to the selector. */
+  offeredIds: Set<string>
+  /** Exercise ids in the finished assignment. */
+  usedIds: Set<string>
+  /** The hard-prune set: nearby-week variety, coach bans and blocks. */
+  excludedIds: Set<string>
+  nameById: Map<string, string>
+  scopeLabel: string
+}): string[] {
+  const { poolIds, offeredIds, usedIds, excludedIds, nameById, scopeLabel } = args
+  const pool = [...new Set(poolIds)]
+  if (pool.length === 0) return []
+  const warnings: string[] = []
+
+  const notOffered = pool.filter((id) => !offeredIds.has(id))
+  if (notOffered.length > 0) {
+    const detail = notOffered
+      .map(
+        (id) =>
+          `${nameById.get(id) ?? "an exercise no longer in the library"} (${
+            excludedIds.has(id)
+              ? "used in a nearby week, or blocked"
+              : "excluded by an equipment setting, the client's injuries, or no longer in the library"
+          })`,
+      )
+      .join("; ")
+    warnings.push(
+      `${notOffered.length} of your ${pool.length} Exercise Pool exercises were not offered to the AI for ${scopeLabel}: ${detail}.`,
+    )
+  }
+
+  const offered = pool.filter((id) => offeredIds.has(id))
+  const used = pool.filter((id) => usedIds.has(id))
+  if (offered.length > 0 && used.length === 0) {
+    warnings.push(
+      `The AI used none of your ${pool.length} Exercise Pool exercises for ${scopeLabel}. Turn on Strict pool to use only those exercises.`,
+    )
+  } else {
+    const offeredUnused = offered.filter((id) => !usedIds.has(id))
+    if (offeredUnused.length > 0) {
+      warnings.push(
+        `The AI used ${used.length} of your ${pool.length} Exercise Pool exercises for ${scopeLabel}. ` +
+          `Not used: ${offeredUnused.map((id) => nameById.get(id) ?? id).join("; ")}.`,
+      )
+    }
+  }
+  return warnings
 }
 
 // ─── Firebase Job Progress ─────────────────────────────────────────────────
@@ -699,7 +805,12 @@ export interface EffectiveEquipment {
    * over-filtering, and neither of which should override an answer.
    */
   strict: boolean
-  source: "override" | "instructions" | "profile"
+  /**
+   * "unknown": there is no profile at all (no client, or the coach chose
+   * "ignore profile"), so nothing says what is missing — every item the library
+   * uses counts as available. NOT the same as a profile that lists nothing.
+   */
+  source: "override" | "instructions" | "profile" | "unknown"
 }
 
 /**
@@ -717,13 +828,22 @@ export interface EffectiveEquipment {
  * 3. the profile, widened by equipment they named. The profile is a guess —
  *    empty whenever no profile exists — so naming equipment adds to it.
  *
+ * 4. no profile at all (`profileEquipment: null`) — "unknown", so every item in
+ *    `libraryEquipment` counts as available. Until 2026-10-01 a missing profile
+ *    read as an empty one, i.e. "no equipment": every program built without a
+ *    client was generated from the ~100 exercises that need nothing, and an
+ *    Exercise Pool of kit exercises was filtered away before the AI saw it.
+ *
  * Before 2026-09-21 only rule 3 existed, and the union could only ever GROW the
  * set. "Hotel, no equipment" therefore had no way to shrink it, which is how a
  * travelling client received a week of TRX, cable and dumbbell work.
  */
 export function resolveEffectiveEquipment(opts: {
   override?: string[] | null
-  profileEquipment: string[]
+  /** null = there is no profile (no client, or "ignore profile"); [] = a profile listing nothing. */
+  profileEquipment: string[] | null
+  /** Every equipment item the exercise library uses — what "unknown" makes available. */
+  libraryEquipment?: string[]
   intentRequired: string[]
   intentOnly: string[] | null
 }): EffectiveEquipment {
@@ -733,11 +853,23 @@ export function resolveEffectiveEquipment(opts: {
   if (opts.intentOnly !== null) {
     return { equipment: [...new Set(opts.intentOnly)], strict: true, source: "instructions" }
   }
+  if (opts.profileEquipment === null) {
+    return {
+      equipment: [...new Set([...(opts.libraryEquipment ?? []), ...opts.intentRequired])],
+      strict: false,
+      source: "unknown",
+    }
+  }
   return {
     equipment: [...new Set([...opts.profileEquipment, ...opts.intentRequired])],
     strict: false,
     source: "profile",
   }
+}
+
+/** Every equipment item the library uses — the "unknown" set for resolveEffectiveEquipment. */
+export function libraryEquipmentOf(exercises: Array<{ equipment_required?: string[] | null }>): string[] {
+  return [...new Set(exercises.flatMap((e) => e.equipment_required ?? []))].sort()
 }
 
 // ─── Equipment violations (coach-facing) ────────────────────────────────────
@@ -793,18 +925,34 @@ export function findEquipmentViolations(
  * a hurry between sessions: how many, which equipment, and one exercise name
  * they can actually search for in the week.
  */
-export function buildEquipmentWarnings(violations: EquipmentViolation[], availableEquipment: string[]): string[] {
+export function buildEquipmentWarnings(
+  violations: EquipmentViolation[],
+  availableEquipment: string[],
+  source: EffectiveEquipment["source"] = "override",
+): string[] {
   if (violations.length === 0) return []
 
   const equipment = [...new Set(violations.flatMap((v) => v.missing))].sort()
+  const list = [...new Set(availableEquipment.map(normalizeEquipment))].sort().join(", ")
+  // Say where the list came from. "You set no equipment" on a run where the coach
+  // set nothing (the empty list was the client's profile) sent him looking for a
+  // setting he never touched.
   const had =
-    availableEquipment.length > 0
-      ? `available this week: ${[...new Set(availableEquipment.map(normalizeEquipment))].sort().join(", ")}`
-      : "no equipment at all was available this week"
+    source === "profile"
+      ? availableEquipment.length > 0
+        ? `The client's profile lists only: ${list}.`
+        : "The client's profile lists no equipment."
+      : source === "instructions"
+        ? availableEquipment.length > 0
+          ? `Your instructions allowed only: ${list}.`
+          : "Your instructions allowed no equipment."
+        : availableEquipment.length > 0
+          ? `You set this week's equipment to: ${list}.`
+          : "You set no equipment at all for this week."
 
   return [
     `${violations.length} exercise${violations.length === 1 ? "" : "s"} in this week need equipment that was not ` +
       `available — ${equipment.join(", ")}. For example "${violations[0].exercise_name}" (slot ${violations[0].slot_id}). ` +
-      `You set ${had}. Swap these out, or re-generate with the equipment list corrected.`,
+      `${had} Swap these out, or re-generate with the equipment list corrected.`,
   ]
 }

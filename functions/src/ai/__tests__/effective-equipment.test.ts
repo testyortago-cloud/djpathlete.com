@@ -107,4 +107,57 @@ describe("resolveEffectiveEquipment — precedence", () => {
     })
     expect(r.equipment).toEqual(["dumbbell", "bench"])
   })
+
+  // 2026-10-01, Chris H: a program with NO client has no profile, so the profile
+  // list was [] and the whole library was filtered to "no equipment" (767 -> 102),
+  // taking every exercise in his pool with it. No profile is "unknown", not "none".
+  describe("no profile at all (no client, or 'ignore profile')", () => {
+    const LIBRARY = ["bench", "dumbbell", "stability_ball", "barbell"]
+
+    it("makes the whole library's equipment available instead of nothing", () => {
+      const r = resolveEffectiveEquipment({
+        override: null,
+        profileEquipment: null,
+        libraryEquipment: LIBRARY,
+        intentRequired: [],
+        intentOnly: null,
+      })
+      expect(r.equipment).toEqual(LIBRARY)
+      expect(r.strict).toBe(false)
+      expect(r.source).toBe("unknown")
+    })
+
+    it("still lets an explicit override or a typed restriction bind", () => {
+      expect(
+        resolveEffectiveEquipment({
+          override: [],
+          profileEquipment: null,
+          libraryEquipment: LIBRARY,
+          intentRequired: [],
+          intentOnly: null,
+        }),
+      ).toMatchObject({ equipment: [], strict: true, source: "override" })
+      expect(
+        resolveEffectiveEquipment({
+          override: null,
+          profileEquipment: null,
+          libraryEquipment: LIBRARY,
+          intentRequired: [],
+          intentOnly: ["resistance_band"],
+        }),
+      ).toMatchObject({ equipment: ["resistance_band"], strict: true, source: "instructions" })
+    })
+
+    it("a client whose profile lists NO equipment is still bodyweight-only", () => {
+      const r = resolveEffectiveEquipment({
+        override: null,
+        profileEquipment: [],
+        libraryEquipment: LIBRARY,
+        intentRequired: [],
+        intentOnly: null,
+      })
+      expect(r.equipment).toEqual([])
+      expect(r.source).toBe("profile")
+    })
+  })
 })

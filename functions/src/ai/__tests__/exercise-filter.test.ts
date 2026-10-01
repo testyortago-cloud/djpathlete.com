@@ -5,6 +5,7 @@ import {
   diversifyByMMR,
   semanticFilterExercises,
   seededJitter,
+  retainPreferred,
 } from "../exercise-filter.js"
 import type { CompressedExercise, ProgramSkeleton, ProfileAnalysis } from "../types.js"
 
@@ -482,5 +483,31 @@ describe("a restricted library is searched for its OWN best matches", () => {
     expect(ids).toContain("kit0")
     // The lowest-ranked bodyweight match is far outside the top 30.
     expect(ids).not.toContain("bw39")
+  })
+})
+
+// Replay of Darren's "12 exercises + pool" Monday on 2026-10-01: MMR cut 199 ranked
+// candidates to 107 and dropped two of his six Preferred-pool exercises — the boost
+// lifts a pool exercise's score, but MMR still discards it for resembling one it
+// already kept. A coach's pick must survive the cut; only a ban or block removes it.
+describe("retainPreferred", () => {
+  const a = ex("a")
+  const b = ex("b")
+  const p1 = ex("p1")
+  const p2 = ex("p2")
+
+  it("puts back preferred exercises the cut dropped, keeping the cut's order first", () => {
+    const out = retainPreferred([a, p1], [a, p1, b, p2], new Set(["p1", "p2"]))
+    expect(out.map((e) => e.id)).toEqual(["a", "p1", "p2"])
+  })
+
+  it("never adds a preferred exercise that was not a candidate (excluded upstream)", () => {
+    const out = retainPreferred([a], [a, b], new Set(["p1"]))
+    expect(out.map((e) => e.id)).toEqual(["a"])
+  })
+
+  it("is the selection unchanged without a preferred pool", () => {
+    const sel = [a]
+    expect(retainPreferred(sel, [a, b], undefined)).toBe(sel)
   })
 })

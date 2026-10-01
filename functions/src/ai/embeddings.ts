@@ -12,9 +12,21 @@ type FeatureExtractionPipeline = (
 
 let _pipeline: FeatureExtractionPipeline | null = null
 let _loading: Promise<FeatureExtractionPipeline> | null = null
+// The model is downloaded from the Hugging Face Hub on first use, and the Hub
+// rate-limits anonymous downloads (429). A failed load used to stay cached as a
+// rejected promise for the life of the instance, so one 429 turned off vector
+// search for every later generation it served (seen daily from 2026-09-24).
+// Now a failure is remembered only for this long, then the next call retries.
+const LOAD_RETRY_COOLDOWN_MS = 60_000
+let _failedAt = 0
 
 async function getEmbedder(): Promise<FeatureExtractionPipeline> {
   if (_pipeline) return _pipeline
+
+  if (_loading && _failedAt > 0 && Date.now() - _failedAt >= LOAD_RETRY_COOLDOWN_MS) {
+    _loading = null
+    _failedAt = 0
+  }
 
   if (!_loading) {
     _loading = (async () => {
@@ -23,6 +35,9 @@ async function getEmbedder(): Promise<FeatureExtractionPipeline> {
       _pipeline = extractor as unknown as FeatureExtractionPipeline
       return _pipeline
     })()
+    _loading.catch(() => {
+      _failedAt = Date.now()
+    })
   }
 
   return _loading

@@ -470,9 +470,11 @@ export function scoreAndFilterExercises(
   // Passing k === list length made diversifyByMMR return its input untouched,
   // so this diversification never actually ran.
   const useMMR = lambda !== undefined && lambda < 1.0 && scoredAll.length > cutoff
-  let filtered = useMMR
-    ? diversifyByMMR(scoredAll, cutoff, lambda)
-    : scoredAll.slice(0, cutoff).map((s) => s.exercise)
+  let filtered = retainPreferred(
+    useMMR ? diversifyByMMR(scoredAll, cutoff, lambda) : scoredAll.slice(0, cutoff).map((s) => s.exercise),
+    sortedAfterExclude,
+    preferredIds,
+  )
 
   // When pool is active, never fall back to unfiltered — use whatever the pool has.
   // Fall back to the exclude-pruned set so excludeIds is always respected.
@@ -670,9 +672,11 @@ export async function semanticFilterExercises(
   const lambda = options?.mmrLambda
   // MMR must SELECT the survivors, not reorder an already-truncated list.
   const useMMR = lambda !== undefined && lambda < 1.0 && scoredAll.length > cutoff
-  filtered = useMMR
-    ? diversifyByMMR(scoredAll, cutoff, lambda)
-    : scoredAll.slice(0, cutoff).map((s) => s.exercise)
+  filtered = retainPreferred(
+    useMMR ? diversifyByMMR(scoredAll, cutoff, lambda) : scoredAll.slice(0, cutoff).map((s) => s.exercise),
+    scoredAll.map((s) => s.exercise),
+    preferredIds,
+  )
 
   console.log(
     `[semanticFilter] Ranked ${scoredAll.length} candidates by similarity` +
@@ -692,6 +696,24 @@ export async function semanticFilterExercises(
 
   console.log(`[semanticFilter] Final: ${filtered.length} exercises (max: ${maxExercises})${isPool ? " [pool]" : ""}`)
   return filtered
+}
+
+/**
+ * The cut to `maxExercises` (plain or MMR) must not drop a Preferred-pool exercise.
+ * The pool boost raises its score, but MMR discards candidates that resemble ones
+ * it already kept — on 2026-10-01 it removed two of a coach's six picks from a
+ * 12-slot day. Puts back every preferred exercise that was a candidate (so bans,
+ * blocks and other exclusions applied upstream still hold) after the cut's own order.
+ */
+export function retainPreferred<T extends { id: string }>(
+  selected: T[],
+  candidates: T[],
+  preferredIds: Set<string> | undefined,
+): T[] {
+  if (!preferredIds || preferredIds.size === 0) return selected
+  const kept = new Set(selected.map((e) => e.id))
+  const missing = candidates.filter((e) => preferredIds.has(e.id) && !kept.has(e.id))
+  return missing.length === 0 ? selected : [...selected, ...missing]
 }
 
 // ─── MMR diversification ────────────────────────────────────────────────────

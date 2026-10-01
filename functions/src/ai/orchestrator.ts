@@ -76,6 +76,8 @@ import {
   planExclusions,
   buildPoolPatternSection,
   resolveEffectiveEquipment,
+  libraryEquipmentOf,
+  withPreferredPool,
 } from "./shared-helpers.js"
 
 const MAX_RETRIES = 2
@@ -548,7 +550,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const clientDifficultyLevel = profile?.experience_level ?? (request.ignore_profile ? "elite" : "beginner")
     let compressed = poolActive
       ? poolFiltered
-      : filterByDifficultyLevel(poolFiltered, clientDifficultyLevel, unlockedIds)
+      : filterByDifficultyLevel(poolFiltered, clientDifficultyLevel, withPreferredPool(unlockedIds, preferredIds))
     // NOT unlockable: an assessment ceiling is measured evidence, unlike the
     // "beginner" default above, which is only a fallback when no profile exists.
     if (!poolActive && assessmentContext)
@@ -578,18 +580,31 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // a guess, so prose-inferred equipment does not widen it.
     const resolvedEquipment = resolveEffectiveEquipment({
       override: request.equipment_override,
-      profileEquipment: profile?.available_equipment ?? [],
+      // No profile (no client, or "ignore profile") is UNKNOWN equipment, not none.
+      profileEquipment: profile ? (profile.available_equipment ?? []) : null,
+      libraryEquipment: libraryEquipmentOf(allCompressed),
       intentRequired: instructionIntent.required_equipment,
       intentOnly: instructionIntent.only_equipment,
     })
     const effectiveEquipment = resolvedEquipment.equipment
     console.log(
       `[orchestrator:sync] Equipment source=${resolvedEquipment.source} strict=${resolvedEquipment.strict}: ` +
-        (effectiveEquipment.length > 0 ? effectiveEquipment.join(", ") : "NOTHING (bodyweight only)"),
+        (resolvedEquipment.source === "unknown"
+          ? `UNKNOWN (no client profile) — all ${effectiveEquipment.length} library items count as available`
+          : effectiveEquipment.length > 0
+            ? effectiveEquipment.join(", ")
+            : "NOTHING (bodyweight only)"),
     )
     if (!poolActive || resolvedEquipment.strict) {
       const beforeCount = compressed.length
-      compressed = filterByAvailableEquipment(compressed, effectiveEquipment, unlockedIds, resolvedEquipment.strict)
+      // A Preferred pool passes the guessed equipment like a named exercise;
+      // an explicit equipment setting still binds it.
+      compressed = filterByAvailableEquipment(
+        compressed,
+        effectiveEquipment,
+        resolvedEquipment.strict ? unlockedIds : withPreferredPool(unlockedIds, preferredIds),
+        resolvedEquipment.strict,
+      )
       if (compressed.length !== beforeCount) {
         console.log(
           `[orchestrator:sync] Equipment filter: ${beforeCount} → ${compressed.length} (available: ${effectiveEquipment.length > 0 ? effectiveEquipment.join(", ") : "none/bodyweight-only"})`,
@@ -774,7 +789,13 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     } catch {
       filtered = scoreAndFilterExercises(compressed, skeleton, effectiveEquipment, analysis, filterOptions)
     }
-    const poolNote = buildPoolNote(poolIds, filtered.length, poolMode, poolIds?.length)
+    const poolNote = buildPoolNote(
+    poolIds,
+    filtered.length,
+    poolMode,
+    poolIds?.length,
+    preferredIds ? allCompressed.filter((e) => preferredIds.has(e.id)).map((e) => ({ id: e.id, name: e.name })) : undefined,
+  )
 
     // Check cancellation before Agent 3
     if (await checkCancelled()) {

@@ -87,6 +87,18 @@ describe("buildPoolNote mode-aware language", () => {
     expect(note).toMatch(/curated an Exercise Pool of 2/i)
   })
 
+  // 2026-10-01 replay: the note told the selector a pool of 6 existed and never said WHICH
+  // six — the library it reads carries no pool marker — so "prefer the pool" was unactionable.
+  it("names each preferred-pool exercise by id and name", () => {
+    const note = buildPoolNote(["a", "b"], 100, "preferred", 2, [
+      { id: "a", name: "Ab squats_Core" },
+      { id: "b", name: "Ballerina bulgarians_quadriceps" },
+    ])
+    expect(note).toContain("a — Ab squats_Core")
+    expect(note).toContain("b — Ballerina bulgarians_quadriceps")
+    expect(note).toMatch(/regardless of their difficulty rating/i)
+  })
+
   it("returns empty string when no pool ids are set", () => {
     expect(buildPoolNote(undefined, 0, "preferred")).toBe("")
     expect(buildPoolNote([], 0, "strict")).toBe("")

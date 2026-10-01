@@ -54,6 +54,10 @@ import {
   findEquipmentViolations,
   buildEquipmentWarnings,
   resolveEffectiveEquipment,
+  libraryEquipmentOf,
+  withPreferredPool,
+  buildPreferredPoolWarnings,
+  buildPreferredPoolPlanSection,
 } from "./shared-helpers.js"
 import type { ProfileAnalysis } from "./types.js"
 import {
@@ -64,6 +68,7 @@ import {
   buildHallucinatedIdWarning,
 } from "./program-quality.js"
 import { enrichCoachInstructions, buildAgentInstructions, type InstructionsUsed } from "./instruction-enrich.js"
+import { statesExerciseCount } from "./instruction-count.js"
 import {
   findUnassignedSlots,
   buildUnassignedSlotsFeedback,
@@ -241,8 +246,9 @@ const SLOT_SCHEMA = `{
  * twice to take the exercise count from history, and it beat the coach's own
  * count: a Full Body Day asking for 3 squat / 3 hinge / 3 push / 3 pull /
  * 3 core came back with 7 exercises, which is what prior Fridays held. The
- * count clause is now dropped whenever the coach supplied instructions, and
- * replaced with the opposite instruction. Exported for the prompt test.
+ * count clause is now dropped whenever the coach STATED a count (see
+ * statesExerciseCount), and replaced with the opposite instruction. Exported
+ * for the prompt test.
  */
 export function buildDesignDirective(args: {
   isSingleDay: boolean
@@ -251,7 +257,10 @@ export function buildDesignDirective(args: {
   targetDayOfWeek: number | null
   splitType: string
   periodization: string
-  hasCoachInstructions: boolean
+  /** The coach's own words state how many exercises to build — statesExerciseCount. */
+  coachStatesCount: boolean
+  /** describeDaySize's sentence; read only when the coach stated no count. */
+  daySize?: string | null
 }): string {
   const { isSingleDay, targetDayName, newWeekNumber, targetDayOfWeek, splitType, periodization } = args
 
@@ -259,17 +268,64 @@ export function buildDesignDirective(args: {
     return `Design Week ${newWeekNumber} for this program. The week MUST have week_number=${newWeekNumber}. Match the existing program's split (${splitType}), periodization (${periodization}), and training days.`
   }
 
-  // With coach instructions present, prior weeks inform focus and structure —
-  // never the count. Without them, history is the only signal there is.
-  const derivedFromHistory = args.hasCoachInstructions
+  // When the coach STATED a count, prior weeks inform focus and structure —
+  // never the count. Otherwise history is the only signal there is. Before
+  // 2026-10-01 this keyed on "any instructions at all", so "2-4 sets" with no
+  // count told the model the coach had set one, and it built a 2-slot day.
+  const derivedFromHistory = args.coachStatesCount
     ? "focus and session structure"
     : "focus, exercise count, and session structure"
 
-  const countOverride = args.hasCoachInstructions
+  const countClause = args.coachStatesCount
     ? ` The Coach Instructions above set the exercise count for this day: follow them exactly, even where the resulting total is far larger or smaller than prior ${targetDayName}s. Do NOT fall back to the prior-week count.`
-    : ""
+    : ` Any Coach Instructions above do not state an exercise count, so take the count from the program — never derive it from set, rep, rest or tempo numbers.${args.daySize ? ` ${args.daySize}` : ""}`
 
-  return `Design ${targetDayName} for Week ${newWeekNumber}. The output MUST have week_number=${newWeekNumber} and exactly ONE day with day_of_week=${targetDayOfWeek}. Match the existing program's split (${splitType}) and periodization (${periodization}). Look at what ${targetDayName} typically contains in prior weeks to determine the appropriate ${derivedFromHistory}.${countOverride}`
+  return `Design ${targetDayName} for Week ${newWeekNumber}. The output MUST have week_number=${newWeekNumber} and exactly ONE day with day_of_week=${targetDayOfWeek}. Match the existing program's split (${splitType}) and periodization (${periodization}). Look at what ${targetDayName} typically contains in other weeks to determine the appropriate ${derivedFromHistory}.${countClause}`
+}
+
+/**
+ * How big this weekday usually is in this program, as a sentence for the
+ * architect — or null when the program has nothing to go on.
+ *
+ * Reads EVERY other week, not just earlier ones: the detailed history the
+ * architect sees covers only the weeks BEFORE the target, so filling Week 1 of
+ * a program whose weeks 2-8 are built gave it nothing (Chris H, 2026-10-01).
+ * When this weekday has never been built, the program's typical day stands in.
+ */
+export function describeDaySize(
+  rows: Array<{ week_number: number; day_of_week: number }>,
+  target: { targetWeek: number; targetDayOfWeek: number; targetDayName: string },
+): string | null {
+  const counts = new Map<string, { week: number; day: number; n: number }>()
+  for (const r of rows) {
+    if (r.week_number === target.targetWeek && r.day_of_week === target.targetDayOfWeek) continue
+    const key = `${r.week_number}:${r.day_of_week}`
+    const c = counts.get(key) ?? { week: r.week_number, day: r.day_of_week, n: 0 }
+    c.n++
+    counts.set(key, c)
+  }
+  if (counts.size === 0) return null
+
+  const median = (xs: number[]) => {
+    const s = [...xs].sort((a, b) => a - b)
+    return s[Math.floor((s.length - 1) / 2)]
+  }
+
+  const sameDay = [...counts.values()]
+    .filter((c) => c.day === target.targetDayOfWeek)
+    .sort((a, b) => a.week - b.week)
+  if (sameDay.length > 0) {
+    return (
+      `${target.targetDayName} in other weeks of this program: ` +
+      `${sameDay.map((c) => `Week ${c.week}: ${c.n}`).join(", ")} exercises. ` +
+      `Unless the coach states a count, build ${median(sameDay.map((c) => c.n))} slots.`
+    )
+  }
+  return (
+    `${target.targetDayName} has not been built in any other week; this program's training days hold ` +
+    `${median([...counts.values()].map((c) => c.n))} exercises at the median. ` +
+    `Unless the coach states a count, build ${median([...counts.values()].map((c) => c.n))} slots.`
+  )
 }
 
 export function buildArchitectPrompt(mode: "week" | "day"): string {
@@ -762,7 +818,7 @@ ${agentInstructions ? "\nYou MUST follow these instructions. If they conflict wi
         )
       : allExercises,
     poolActive,
-  )}
+  )}${preferredIds ? buildPreferredPoolPlanSection(fullLibrary.filter((e) => preferredIds.has(e.id))) : ""}
 
 ${buildDesignDirective({
   isSingleDay,
@@ -771,7 +827,14 @@ ${buildDesignDirective({
   targetDayOfWeek: request.target_day_of_week ?? null,
   splitType: String(program.split_type),
   periodization: String(program.periodization),
-  hasCoachInstructions: !!request.admin_instructions,
+  coachStatesCount: statesExerciseCount(request.admin_instructions),
+  daySize: isSingleDay
+    ? describeDaySize(existingExercises as Array<{ week_number: number; day_of_week: number }>, {
+        targetWeek: newWeekNumber,
+        targetDayOfWeek: request.target_day_of_week!,
+        targetDayName: targetDayName!,
+      })
+    : null,
 })}
 
 IMPORTANT: Review the full program progression summary above. If the coach's instructions reference themes, focus areas, or progressions from previous weeks, ensure this ${isSingleDay ? "day" : "week"} builds on that trajectory logically. The coach may ask to maintain a theme while shifting emphasis (e.g., "keep lower leg focus but add glute work") — honor this by blending continuity with the new direction.`
@@ -877,15 +940,24 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   const unlockedIds = intentResolution.unlockedIds
   const resolvedEquipment = resolveEffectiveEquipment({
     override: request.equipment_override,
-    profileEquipment: profile?.available_equipment ?? [],
+    // No profile (no client, or "ignore profile") is UNKNOWN equipment, not none.
+    profileEquipment: profile ? (profile.available_equipment ?? []) : null,
+    libraryEquipment: libraryEquipmentOf(fullLibrary),
     intentRequired: instructionIntent.required_equipment,
     intentOnly: instructionIntent.only_equipment,
   })
   const effectiveEquipment = resolvedEquipment.equipment
   console.log(
     `[week-orchestrator] Equipment source=${resolvedEquipment.source} strict=${resolvedEquipment.strict}: ` +
-      (effectiveEquipment.length > 0 ? effectiveEquipment.join(", ") : "NOTHING (bodyweight only)"),
+      (resolvedEquipment.source === "unknown"
+        ? `UNKNOWN (no client profile) — all ${effectiveEquipment.length} library items count as available`
+        : effectiveEquipment.length > 0
+          ? effectiveEquipment.join(", ")
+          : "NOTHING (bodyweight only)"),
   )
+  // A Preferred pool passes the GUESS-based filters the way a named exercise
+  // does; an explicit equipment setting still binds it (withPreferredPool).
+  const guessBypassIds = withPreferredPool(unlockedIds, preferredIds)
   console.log(
     `[week-orchestrator] Instruction intent: ${unlockedIds.size} unlocked, ${intentResolution.bannedIds.size} banned` +
       (intentResolution.unmatched.length > 0 ? `, unmatched: ${intentResolution.unmatched.join("; ")}` : ""),
@@ -975,13 +1047,13 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   // this client, so pruning them by difficulty would starve an already-small pool.
   let exercisesForSelection = poolActive
     ? allExercises
-    : filterByDifficultyLevel(allExercises, clientDifficultyLevel, unlockedIds)
+    : filterByDifficultyLevel(allExercises, clientDifficultyLevel, guessBypassIds)
   if (!poolActive) {
     exercisesForSelection = filterByProgressionPhase(
       exercisesForSelection,
       clientDifficultyLevel,
       newWeekNumber,
-      unlockedIds,
+      guessBypassIds,
     )
   }
   console.log(
@@ -1005,7 +1077,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       exercisesForSelection,
       effectiveEquipment,
       poolActive,
-      unlockedIds,
+      resolvedEquipment.strict ? unlockedIds : guessBypassIds,
       resolvedEquipment.strict,
     )
     if (exercisesForSelection.length !== beforeCount) {
@@ -1170,7 +1242,13 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
 
   // Invariant across the retry loop — request-level inputs don't change between attempts.
   const coachInstructionsSection = buildCoachInstructionsSection(agentInstructions)
-  const poolNote = buildPoolNote(poolIds, filtered.length, poolMode, poolIds?.length)
+  const poolNote = buildPoolNote(
+    poolIds,
+    filtered.length,
+    poolMode,
+    poolIds?.length,
+    preferredIds ? fullLibrary.filter((e) => preferredIds.has(e.id)).map((e) => ({ id: e.id, name: e.name })) : undefined,
+  )
 
   // Stable across attempts AND day-chunks: the multi-KB blocks (library, prior
   // context) live in the cached prefix so Anthropic prefix caching pays on
@@ -1433,6 +1511,19 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
 
     warnings.push(...buildHallucinatedIdWarning(hallucinatedIdCount, scopeLabel))
 
+    if (preferredIds && poolIds) {
+      warnings.push(
+        ...buildPreferredPoolWarnings({
+          poolIds,
+          offeredIds: new Set(filtered.map((e) => e.id)),
+          usedIds: new Set(assignment.assignments.map((a) => a.exercise_id)),
+          excludedIds: excludeIds,
+          nameById: new Map(fullLibrary.map((e) => [e.id, e.name])),
+          scopeLabel,
+        }),
+      )
+    }
+
     // Slots still empty after every retry. Before 2026-09-30 this saved a
     // 1-of-12 day with no warning at all.
     const stillEmpty = findUnassignedSlots(assignment.assignments, skeleton.weeks[0])
@@ -1487,7 +1578,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
         `[week-orchestrator] ${violations.length} equipment violation(s): ` +
           violations.map((v) => `${v.exercise_name} needs ${v.missing.join("+")}`).join("; "),
       )
-      warnings.push(...buildEquipmentWarnings(violations, effectiveEquipment))
+      warnings.push(...buildEquipmentWarnings(violations, effectiveEquipment, resolvedEquipment.source))
     }
   }
 
