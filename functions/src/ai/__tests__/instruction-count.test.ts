@@ -43,6 +43,32 @@ describe("statesExerciseCount", () => {
   })
 })
 
+describe("limits, per-block counts and selections are not a stated count", () => {
+  it.each([
+    "Include at least 2 compound exercises",
+    "Max 3 isolation exercises",
+    "no more than 2 exercises",
+    "Total time 45 min, 3 exercises per block",
+    "3 exercises per block",
+    "Pick 5 exercises from the pool",
+  ])("statesExerciseCount is false and statedExerciseTotal null for %j", (text) => {
+    expect(statesExerciseCount(text)).toBe(false)
+    expect(statedExerciseTotal(text)).toBeNull()
+  })
+
+  it("a 'to' range is a stated count but not a single total", () => {
+    expect(statesExerciseCount("10 to 12 exercises")).toBe(true)
+    expect(statedExerciseTotal("10 to 12 exercises")).toBeNull()
+  })
+
+  it("'total' counts only when attached to the number", () => {
+    expect(statedExerciseTotal("12 exercises\n3 exercises total")).toBe(3)
+    expect(statedExerciseTotal("total of 10 exercises\nHINGE (3 exercises):")).toBe(10)
+    expect(statedExerciseTotal("Total: 9 exercises\nHINGE (3 exercises):")).toBe(9)
+    expect(statedExerciseTotal("10 total exercises\nHINGE (3 exercises):")).toBe(10)
+  })
+})
+
 describe("statedExerciseTotal", () => {
   it.each([
     ["12 exercises\n2-4 sets", 12],

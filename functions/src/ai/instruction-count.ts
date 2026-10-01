@@ -45,48 +45,76 @@ const UNIT_WORDS = new Set([
 ])
 const MAX_WORDS_BETWEEN = 3
 
-export function statesExerciseCount(instructions: string | undefined | null): boolean {
-  if (!instructions) return false
-  for (const line of instructions.split(/\r?\n/)) {
-    // Words after each number (or range "10-12") on this line.
-    const re = /\d+(?:\s*[-–—]\s*\d+)?/g
-    let m: RegExpExecArray | null
-    while ((m = re.exec(line)) !== null) {
-      const words = line
-        .slice(m.index + m[0].length)
-        .toLowerCase()
-        .split(/[^a-z0-9_-]+/)
-        .filter(Boolean)
-      for (let i = 0; i <= MAX_WORDS_BETWEEN && i < words.length; i++) {
-        const w = words[i]
-        if (COUNT_NOUN.test(w)) return true
-        if (UNIT_WORDS.has(w) || /^\d/.test(w)) break
-      }
-    }
-  }
-  return false
+// A number or a range ("10-12", "10 to 12"). ONE pattern, shared by every reader below.
+const NUMBER_OR_RANGE = /(\d+)(?:\s*(?:[-–—]|to)\s*(\d+))?/g
+// A limit or a selection right before the number: "at least 2", "max 3", "pick the best 5".
+const LIMIT_BEFORE =
+  /(?:at least|at most|max(?:imum)?|min(?:imum)?|no more than|up to|fewer than|less than|more than)\s*:?\s*$|\b(?:pick|choose|select)\b[^\d]*$/i
+// "3 exercises per block" is a per-block count, not the day's.
+const PER_AFTER = /^\s*per\b/i
+
+interface CountMention {
+  n: number
+  isRange: boolean
+  /** A number that is a limit, a selection or a per-block count, not a stated count. */
+  rejected: boolean
+  /** "total" is attached to this count: "N exercises total", "total of N", "total: N", "N total exercises". */
+  total: boolean
 }
 
-const COUNT_LINE = /(\d+)(?!\s*[-–—]\s*\d)\s+(?:[a-z_-]+\s+){0,3}?(?:exercises?|movements?|drills?)\b/i
+/** Every "<number> … <exercise noun>" on one line. */
+function countMentions(line: string): CountMention[] {
+  const out: CountMention[] = []
+  const re = new RegExp(NUMBER_OR_RANGE.source, "gi")
+  let m: RegExpExecArray | null
+  while ((m = re.exec(line)) !== null) {
+    const afterNumber = m.index + m[0].length
+    const words = [...line.slice(afterNumber).matchAll(/[a-z0-9_-]+/gi)]
+    for (let i = 0; i <= MAX_WORDS_BETWEEN && i < words.length; i++) {
+      const w = words[i][0].toLowerCase()
+      if (COUNT_NOUN.test(w)) {
+        const nounEnd = afterNumber + words[i].index! + w.length
+        const before = line.slice(0, m.index)
+        const between = words.slice(0, i).map((x) => x[0].toLowerCase())
+        out.push({
+          n: Number(m[2] ?? m[1]),
+          isRange: m[2] !== undefined,
+          rejected: LIMIT_BEFORE.test(before) || PER_AFTER.test(line.slice(nounEnd)),
+          total:
+            between.includes("total") ||
+            /^\s*[,(-]?\s*total\b/i.test(line.slice(nounEnd)) ||
+            /\btotal\s*(?:of|:)?\s*$/i.test(before),
+        })
+        break
+      }
+      if (UNIT_WORDS.has(w) || /^\d/.test(w)) break
+    }
+  }
+  return out
+}
+
+function allMentions(text: string): CountMention[] {
+  return text.split(/\r?\n/).flatMap(countMentions)
+}
+
+export function statesExerciseCount(instructions: string | undefined | null): boolean {
+  if (!instructions) return false
+  return allMentions(instructions).some((c) => !c.rejected)
+}
 
 /**
- * The ONE total exercise count the coach stated, or null. A line that says
- * "total" wins; otherwise exactly one count line in the text is the total;
- * several per-area counts with no total line, or a range ("10-12"), are not a
- * single number and are left to the AI judge.
+ * The ONE total exercise count the coach stated, or null. A count with "total"
+ * attached wins; otherwise exactly one count in the text is the total. Limits
+ * ("max 3"), selections ("pick 5 from"), per-block counts, ranges ("10-12",
+ * "10 to 12") and several per-area counts with no total are not a single
+ * number and are left to the AI judge.
  */
 export function statedExerciseTotal(text: string | null | undefined): number | null {
   if (!text) return null
-  const counts: Array<{ n: number; total: boolean }> = []
-  for (const line of text.split(/\r?\n/)) {
-    const m = line.match(COUNT_LINE)
-    if (m && !/\d\s*[-–—]\s*\d+\s+(?:[a-z_-]+\s+){0,3}?(?:exercises?|movements?|drills?)/i.test(line)) {
-      counts.push({ n: Number(m[1]), total: /\btotal\b/i.test(line) })
-    }
-  }
-  const totals = counts.filter((c) => c.total)
+  const counts = allMentions(text).filter((c) => !c.rejected)
+  const totals = counts.filter((c) => c.total && !c.isRange)
   if (totals.length === 1) return totals[0].n
-  if (counts.length === 1 && statesExerciseCount(text)) return counts[0].n
+  if (counts.length === 1 && !counts[0].isRange) return counts[0].n
   return null
 }
 
