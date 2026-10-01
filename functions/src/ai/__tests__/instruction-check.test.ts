@@ -126,6 +126,29 @@ describe("runCodeChecks", () => {
       expect(item.met).toBe(true)
     })
 
+    it("ignores warm-up and cool-down rows (preferred)", () => {
+      const rows = [
+        row(0, { name: "Arm circles", role: "warm_up" }),
+        row(1, { exercise_id: "p1" }),
+        row(2, { exercise_id: "p3" }),
+      ]
+      const item = find(runCodeChecks(base({ instructions: null, rows, pool: pool(), nameById })), "Exercise Pool")!
+      expect(item.met).toBe(true)
+    })
+
+    it("ignores warm-up and cool-down rows (strict)", () => {
+      const rows = [
+        row(0, { name: "Arm circles", role: "warm_up" }),
+        row(1, { exercise_id: "p1" }),
+        row(2, { exercise_id: "p2" }),
+      ]
+      const item = find(
+        runCodeChecks(base({ instructions: null, rows, pool: pool({ mode: "strict" }), nameById })),
+        "Exercise Pool",
+      )!
+      expect(item).toMatchObject({ met: true, detail: "every exercise is from your pool" })
+    })
+
     it("strict: fails on any exercise outside the pool", () => {
       const rows = [row(0, { exercise_id: "p1" }), row(1, { name: "Other" })]
       const item = find(

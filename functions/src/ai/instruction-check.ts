@@ -102,9 +102,11 @@ export function runCodeChecks(input: CheckInput): InstructionCheckItem[] {
   if (input.pool) {
     const used = new Set(input.rows.map((r) => r.exercise_id))
     const name = (id: string) => input.nameById[id] ?? id
+    // Warm-up / cool-down rows are not part of the pool test.
+    const mainRows = input.rows.filter((r) => !EXEMPT_ROLES.has(r.role))
     if (input.pool.mode === "strict") {
       const pool = new Set(input.pool.ids)
-      const outside = input.rows.filter((r) => !pool.has(r.exercise_id))
+      const outside = mainRows.filter((r) => !pool.has(r.exercise_id))
       add(
         "Exercise Pool",
         outside.length === 0,
@@ -115,15 +117,15 @@ export function runCodeChecks(input: CheckInput): InstructionCheckItem[] {
     } else {
       const offered = input.pool.ids.filter((id) => input.pool!.offeredIds.includes(id))
       const unused = offered.filter((id) => !used.has(id))
-      const allPool = input.rows.length > 0 && input.rows.every((r) => offered.includes(r.exercise_id))
-      const met = unused.length === 0 || (input.rows.length < offered.length && allPool)
+      const allPool = mainRows.length > 0 && mainRows.every((r) => offered.includes(r.exercise_id))
+      const met = unused.length === 0 || (mainRows.length < offered.length && allPool)
       add(
         "Exercise Pool",
         met,
         unused.length === 0
           ? `all ${offered.length} used`
           : met
-            ? `every exercise is from your pool (${input.rows.length} of ${offered.length} fit)`
+            ? `every exercise is from your pool (${mainRows.length} of ${offered.length} fit)`
             : `not used: ${unused.map(name).join(", ")}`,
       )
     }
