@@ -66,3 +66,74 @@ export function statesExerciseCount(instructions: string | undefined | null): bo
   }
   return false
 }
+
+const COUNT_LINE = /(\d+)(?!\s*[-–—]\s*\d)\s+(?:[a-z_-]+\s+){0,3}?(?:exercises?|movements?|drills?)\b/i
+
+/**
+ * The ONE total exercise count the coach stated, or null. A line that says
+ * "total" wins; otherwise exactly one count line in the text is the total;
+ * several per-area counts with no total line, or a range ("10-12"), are not a
+ * single number and are left to the AI judge.
+ */
+export function statedExerciseTotal(text: string | null | undefined): number | null {
+  if (!text) return null
+  const counts: Array<{ n: number; total: boolean }> = []
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(COUNT_LINE)
+    if (m && !/\d\s*[-–—]\s*\d+\s+(?:[a-z_-]+\s+){0,3}?(?:exercises?|movements?|drills?)/i.test(line)) {
+      counts.push({ n: Number(m[1]), total: /\btotal\b/i.test(line) })
+    }
+  }
+  const totals = counts.filter((c) => c.total)
+  if (totals.length === 1) return totals[0].n
+  if (counts.length === 1 && statesExerciseCount(text)) return counts[0].n
+  return null
+}
+
+export interface CoachPrescription {
+  sets?: [number, number]
+  reps?: [number, number]
+  restSeconds?: [number, number]
+  tempo?: string
+}
+
+const RANGE = String.raw`(\d+)(?:\s*(?:-|–|—|to)\s*(\d+))?`
+
+function oneRange(text: string, word: RegExp, patterns: RegExp[]): [number, number] | undefined {
+  // Mentioned more than once → a second prescription exists; leave it to the AI.
+  if ((text.match(word) ?? []).length !== 1) return undefined
+  for (const p of patterns) {
+    const m = text.match(p)
+    if (m) {
+      const unit = (m[3] ?? "").toLowerCase()
+      const k = unit.startsWith("m") ? 60 : 1
+      return [Number(m[1]) * k, Number(m[2] ?? m[1]) * k]
+    }
+  }
+  return undefined
+}
+
+/**
+ * The single sets / reps / rest / tempo prescription the coach wrote, per field.
+ * A field the coach mentions more than once ("4-8 reps … Low reps (3-5)") is
+ * omitted: that is two prescriptions for different work, and only the AI judge
+ * can tell which exercise each applies to.
+ */
+export function parsePrescription(text: string | null | undefined): CoachPrescription {
+  if (!text) return {}
+  const out: CoachPrescription = {}
+  const sets = oneRange(text, /\bsets?\b/gi, [new RegExp(String.raw`${RANGE}\s*sets?\b`, "i")])
+  if (sets) out.sets = sets
+  const reps = oneRange(text, /\breps?\b/gi, [new RegExp(String.raw`${RANGE}\s*reps?\b`, "i")])
+  if (reps) out.reps = reps
+  const rest = oneRange(text, /\brest\b/gi, [
+    new RegExp(String.raw`${RANGE}\s*(sec|secs|seconds|s|min|mins|minutes)\b\s*(?:of\s+)?rest`, "i"),
+    new RegExp(String.raw`rest\s*(?:of\s+|:\s*)?${RANGE}\s*(sec|secs|seconds|s|min|mins|minutes)\b`, "i"),
+  ])
+  if (rest) out.restSeconds = rest
+  if ((text.match(/\btempo\b/gi) ?? []).length === 1) {
+    const t = text.match(/(\d+(?:[-.]\d+){2,3})\s*tempo/i) ?? text.match(/tempo\s*[:\s]\s*(\d+(?:[-.]\d+){2,3})/i)
+    if (t) out.tempo = t[1].replace(/\./g, "-")
+  }
+  return out
+}

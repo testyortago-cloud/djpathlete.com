@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { statesExerciseCount } from "../instruction-count.js"
+import { statesExerciseCount, statedExerciseTotal, parsePrescription } from "../instruction-count.js"
 
 /**
  * 2026-10-01, Chris H: "using the exercise pool / 2-4 sets / 4-8 reps / 30-90 sec rest / 4-2-4 tempo"
@@ -40,5 +40,59 @@ describe("statesExerciseCount", () => {
 
   it("treats missing instructions as no count", () => {
     expect(statesExerciseCount(undefined)).toBe(false)
+  })
+})
+
+describe("statedExerciseTotal", () => {
+  it.each([
+    ["12 exercises\n2-4 sets", 12],
+    ["12 exercises that are shoulder focused", 12],
+    ["• 12 exercises total\nHINGE BLOCK (3 exercises):\nUPPER (3 exercises):", 12],
+    ["8 movements, mostly lower body", 8],
+  ])("reads the total in %j", (text, n) => {
+    expect(statedExerciseTotal(text)).toBe(n)
+  })
+
+  it.each([
+    "using the exercise pool\n2-4 sets\n4-8 reps",
+    "HINGE BLOCK (3 exercises):\nPOWER BLOCK (2 exercises):", // per-area only, no total line
+    "10-12 exercises", // a range is not one total
+    "",
+  ])("returns null for %j", (text) => {
+    expect(statedExerciseTotal(text)).toBeNull()
+  })
+})
+
+describe("parsePrescription", () => {
+  it("reads Darren's usual block", () => {
+    expect(parsePrescription("12 exercises\n2-4 sets\n4-8 reps\n30-90sec rest\n4-2-4 tempo")).toEqual({
+      sets: [2, 4],
+      reps: [4, 8],
+      restSeconds: [30, 90],
+      tempo: "4-2-4",
+    })
+  })
+
+  it("reads single values, minutes and the 'rest 60 seconds' order", () => {
+    expect(parsePrescription("3 sets\n10 reps\nrest 2 min")).toEqual({
+      sets: [3, 3],
+      reps: [10, 10],
+      restSeconds: [120, 120],
+    })
+    expect(parsePrescription("Tempo: 3.1.1")).toEqual({ tempo: "3-1-1" })
+  })
+
+  it("leaves a field out when the coach mentions it more than once (a second prescription)", () => {
+    const p = parsePrescription(
+      "12 exercises\n2-4 sets\n4-8 reps\n30-90sec rest\nPOWER: Low reps (3-5), full recovery (120-180s rest)",
+    )
+    expect(p.sets).toEqual([2, 4])
+    expect(p.reps).toBeUndefined()
+    expect(p.restSeconds).toBeUndefined()
+  })
+
+  it("returns nothing for prose with no prescription", () => {
+    expect(parsePrescription("Focus on shoulders")).toEqual({})
+    expect(parsePrescription(undefined)).toEqual({})
   })
 })
