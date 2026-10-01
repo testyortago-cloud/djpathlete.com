@@ -130,6 +130,15 @@ export function extractInstructionCheck(result: unknown): InstructionCheck | nul
   }
 }
 
+/**
+ * Whether InstructionCheckPanel would render anything — so a caller that wraps
+ * the panel for spacing can skip the wrapper too, instead of leaving an empty gap.
+ */
+export function hasInstructionCheckContent(check: InstructionCheck | null): check is InstructionCheck {
+  if (!check) return false
+  return !(check.status === "unchecked" && check.items.length === 0 && !check.note)
+}
+
 export function InstructionCheckPanel({
   check,
   defaultOpen = false,
@@ -137,8 +146,7 @@ export function InstructionCheckPanel({
   check: InstructionCheck | null
   defaultOpen?: boolean
 }) {
-  if (!check) return null
-  if (check.status === "unchecked" && check.items.length === 0 && !check.note) return null
+  if (!hasInstructionCheckContent(check)) return null
   const notMet = check.items.filter((i) => !i.met).length
   const showItems = check.status !== "unchecked"
 

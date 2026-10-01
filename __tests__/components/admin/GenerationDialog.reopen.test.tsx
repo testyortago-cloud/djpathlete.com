@@ -104,6 +104,38 @@ describe("GenerationDialog comes back when a finished run needs attention", () =
     }
   })
 
+  // I3: warnings + "how the AI read your instructions" + the checklist (open by
+  // default) can be taller than a laptop screen; an uncapped dialog pushed its
+  // own Done button off the bottom.
+  it("a reopened, completed dialog is capped at the screen height and scrolls", async () => {
+    const { rerender } = render(<Harness />)
+    const again = () => rerender(<Harness />)
+    await submitAndLetDialogClose(again)
+
+    job.current = {
+      status: "completed",
+      result: {
+        exercises_added: 11,
+        warnings: ["1 of your instructions wasn't fully met — see “Your instructions, checked”."],
+        instruction_check: {
+          status: "failed",
+          items: [{ instruction: "12 exercises", met: false, detail: "the day has 11", source: "code" }],
+          rebuilt: false,
+          rebuild_reason: null,
+          note: null,
+        },
+      },
+      error: null,
+    }
+    act(() => again())
+
+    await waitFor(() => expect(openCalls.at(-1)).toBe(true))
+    expect(await screen.findByText("Your instructions, checked")).toBeTruthy()
+    const dialog = screen.getByRole("dialog")
+    expect(dialog.className).toContain("max-h-[90vh]")
+    expect(dialog.className).toContain("overflow-y-auto")
+  })
+
   it("reopens on a failed run, so Try Again is reachable", async () => {
     const { rerender } = render(<Harness />)
     const again = () => rerender(<Harness />)

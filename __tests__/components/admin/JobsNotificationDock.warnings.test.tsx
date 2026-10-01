@@ -148,6 +148,44 @@ describe("JobsNotificationDock shows how the instructions were read", () => {
     expect(screen.getByText(/Exactly 12 exercises/)).toBeTruthy()
   })
 
+  // M5: the panel renders nothing for this check, so its spacing wrapper must not
+  // render either — an empty mt-2 div left a gap in the card.
+  it("renders no empty wrapper for an unchecked result with no lines and no note", async () => {
+    jobDoc.current = {
+      status: "completed",
+      result: {
+        exercises_added: 12,
+        warnings: [],
+        instruction_check: { status: "unchecked", items: [], rebuilt: false, rebuild_reason: null, note: null },
+      },
+    }
+    const { container } = render(<JobsNotificationDock />)
+    expect(await screen.findByText(/Ready/)).toBeTruthy()
+    expect(screen.queryByText("Your instructions, checked")).toBeNull()
+    const empty = [...container.querySelectorAll("div.mt-2")].filter((el) => el.childElementCount === 0)
+    expect(empty).toEqual([])
+  })
+
+  it("still shows an unchecked result that carries a note (presence control)", async () => {
+    jobDoc.current = {
+      status: "completed",
+      result: {
+        exercises_added: 12,
+        warnings: [],
+        instruction_check: {
+          status: "unchecked",
+          items: [],
+          rebuilt: false,
+          rebuild_reason: null,
+          note: "Couldn't check your instructions this time.",
+        },
+      },
+    }
+    render(<JobsNotificationDock />)
+    expect(await screen.findByText("Your instructions, checked")).toBeTruthy()
+    expect(screen.getByText("Couldn't check your instructions this time.")).toBeTruthy()
+  })
+
   it("shows the instructions checklist even when there is no instructions_used", async () => {
     jobDoc.current = {
       status: "completed",

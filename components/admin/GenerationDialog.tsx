@@ -336,7 +336,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
   return (
     <Dialog open={open} onOpenChange={isGenerating ? handleCancel : handleClose}>
       <DialogContent
-        className="sm:max-w-md"
+        className="sm:max-w-md max-h-[90vh] overflow-y-auto"
         onPointerDownOutside={isGenerating ? (e) => e.preventDefault() : undefined}
         onEscapeKeyDown={
           isGenerating
