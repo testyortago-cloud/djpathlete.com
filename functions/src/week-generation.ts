@@ -81,6 +81,8 @@ export async function handleWeekGeneration(jobId: string, budgetMs: number): Pro
       // Same reason, same rule: the dialog's "How the AI read your
       // instructions" reads only this. null, never undefined, when absent.
       instructions_used: result.instructions_used ?? null,
+      // "Your instructions, checked" reads only this, too.
+      instruction_check: result.instruction_check ?? null,
     }
 
     await jobRef.update({

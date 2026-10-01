@@ -1,4 +1,11 @@
-import type { CompressedExercise, ExerciseSlot, ProgramWeek, ExerciseAssignment, ValidationResult } from "./types.js"
+import type {
+  AssignedExercise,
+  CompressedExercise,
+  ExerciseSlot,
+  ProgramWeek,
+  ExerciseAssignment,
+  ValidationResult,
+} from "./types.js"
 import {
   callAgent,
   MODEL_SONNET,
@@ -70,6 +77,14 @@ import {
 } from "./program-quality.js"
 import { enrichCoachInstructions, buildAgentInstructions, type InstructionsUsed } from "./instruction-enrich.js"
 import { statesExerciseCount } from "./instruction-count.js"
+import {
+  checkInstructions,
+  buildInstructionCheckWarning,
+  type CheckDayRow,
+  type CheckInput,
+  type InstructionCheck,
+} from "./instruction-check.js"
+import { runWithComplianceCheck } from "./compliance-loop.js"
 import {
   findUnassignedSlots,
   buildUnassignedSlotsFeedback,
@@ -176,6 +191,13 @@ export interface WeekGenerationResult {
    * nothing. Shown as "How the AI read your instructions".
    */
   instructions_used: InstructionsUsed | null
+  /**
+   * The finished day/week checked against the coach's instructions (and the
+   * Exercise Pool), and whether it was rebuilt once to fix a miss. null when
+   * there was nothing to check: no instructions and no pool. Shown as "Your
+   * instructions, checked".
+   */
+  instruction_check: InstructionCheck | null
 }
 
 // ─── Local Supabase helpers (not shared — specific to week orchestrator) ────
@@ -542,8 +564,87 @@ export function buildDedupSourceExercises(
     })
 }
 
+// ─── Instruction compliance ─────────────────────────────────────────────────
+
+/**
+ * What the PLANNING agents (architect, analyzer, selector) read on a rebuild:
+ * the coach's instructions first, then the misses the first attempt made. Never
+ * handed to the instruction parser or the enricher — those read only what the
+ * coach wrote, so a pipeline message can never unlock or ban an exercise.
+ */
+export function appendComplianceFeedback(
+  agentInstructions: string | undefined,
+  feedback: string | null,
+): string | undefined {
+  if (!feedback) return agentInstructions
+  return agentInstructions ? `${agentInstructions}\n\n${feedback}` : feedback
+}
+
+/**
+ * The finished day/week as the instruction checker reads it: one row per
+ * assignment, in calendar order then slot order. Name, pattern and muscles come
+ * from the library; the prescription comes from the slot. An assignment whose
+ * slot is not in the skeleton is skipped — it would not be saved either.
+ */
+export function buildCheckRows(
+  weeks: ProgramWeek[],
+  assignments: AssignedExercise[],
+  library: CompressedExercise[],
+): CheckDayRow[] {
+  const byId = new Map(library.map((e) => [e.id, e]))
+  const bySlot = new Map<string, AssignedExercise[]>()
+  for (const a of assignments) bySlot.set(a.slot_id, [...(bySlot.get(a.slot_id) ?? []), a])
+
+  const rows: CheckDayRow[] = []
+  for (const week of weeks) {
+    const days = [...week.days].sort((a, b) => a.day_of_week - b.day_of_week)
+    for (const day of days) {
+      let order = 0
+      for (const slot of day.slots) {
+        for (const a of bySlot.get(slot.slot_id) ?? []) {
+          const ex = byId.get(a.exercise_id)
+          rows.push({
+            day_of_week: day.day_of_week,
+            order: order++,
+            exercise_id: a.exercise_id,
+            name: ex?.name ?? a.exercise_name,
+            movement_pattern: ex?.movement_pattern ?? null,
+            primary_muscles: ex?.primary_muscles ?? [],
+            role: slot.role,
+            sets: slot.sets ?? null,
+            reps: slot.reps ?? null,
+            rest_seconds: slot.rest_seconds ?? null,
+            tempo: slot.tempo ?? null,
+          })
+        }
+      }
+    }
+  }
+  return rows
+}
+
+/**
+ * One built day/week that has NOT been saved yet. `save` writes it — exactly
+ * once per generation, for whichever attempt the compliance check keeps.
+ * `earlyResult` is the cancellation exit, which saves nothing.
+ */
+type WeekAttempt =
+  | { durationMs: number; earlyResult: WeekGenerationResult; save?: undefined; checkInput?: undefined }
+  | {
+      durationMs: number
+      earlyResult: null
+      save: (check: InstructionCheck | null) => Promise<WeekGenerationResult>
+      checkInput: CheckInput
+    }
+
 // ─── Pipeline ───────────────────────────────────────────────────────────────
 
+/**
+ * Build the day/week once, check it against the coach's instructions, rebuild
+ * it once with the misses as feedback if any instruction was missed and there is
+ * time, then save the better attempt. Nothing is saved before the check, so a
+ * rebuild of a single day still sees that day empty.
+ */
 export async function generateWeekSync(
   request: WeekGenerationRequest,
   requestedBy: string,
@@ -556,6 +657,45 @@ export async function generateWeekSync(
    */
   deadline?: Deadline,
 ): Promise<WeekGenerationResult> {
+  const first = await buildWeekAttempt(request, requestedBy, firebaseJobId, deadline, null)
+  if (first.earlyResult) return first.earlyResult
+
+  // Nothing to check against: no instructions and no pool. No model call.
+  const needsCheck = !!request.admin_instructions?.trim() || !!request.pool_exercise_ids?.length
+  if (!needsCheck) return first.save(null)
+
+  const updateJobProgress = createJobProgressUpdater(firebaseJobId, 5)
+  const { attempt, check } = await runWithComplianceCheck<WeekAttempt>({
+    build: async (feedback) => {
+      if (feedback === null) return first
+      await updateJobProgress("selecting_exercises", 4, "Rebuilding to follow your instructions")
+      return buildWeekAttempt(request, requestedBy, firebaseJobId, deadline, feedback)
+    },
+    check: async (a) => {
+      if (a.earlyResult) return { status: "unchecked", items: [], rebuilt: false, rebuild_reason: null, note: null }
+      await updateJobProgress(
+        "selecting_exercises",
+        4,
+        `Checking the ${request.target_day_of_week ? "day" : "week"} against your instructions`,
+      )
+      return checkInstructions(a.checkInput, { signal: deadline?.signal })
+    },
+    remainingMs: () => (deadline ? deadline.remainingMs() : null),
+    isCancelled: createCancellationChecker(firebaseJobId),
+    log: (m) => console.log(`[week-orchestrator] ${m}`),
+  })
+  if (attempt.earlyResult) return attempt.earlyResult
+  return attempt.save(check)
+}
+
+async function buildWeekAttempt(
+  request: WeekGenerationRequest,
+  requestedBy: string,
+  firebaseJobId: string | undefined,
+  deadline: Deadline | undefined,
+  /** The first attempt's misses, for the planning agents on a rebuild. null on the first attempt. */
+  complianceFeedback: string | null,
+): Promise<WeekAttempt> {
   console.log("[week-orchestrator] Starting generateWeekSync", {
     program_id: request.program_id,
     client_id: request.client_id,
@@ -567,6 +707,11 @@ export async function generateWeekSync(
 
   const updateJobProgress = createJobProgressUpdater(firebaseJobId, 5)
   const checkCancelled = createCancellationChecker(firebaseJobId)
+  // The cancellation exits: nothing built, nothing to check, nothing saved.
+  const early = (result: WeekGenerationResult): WeekAttempt => ({
+    durationMs: Date.now() - startTime,
+    earlyResult: result,
+  })
 
   // ── Step 1: Fetch program context ──────────────────────────────────────
 
@@ -724,14 +869,15 @@ export async function generateWeekSync(
   )
 
   if (await checkCancelled()) {
-    return {
+    return early({
       new_week_number: newWeekNumber,
       exercises_added: 0,
       token_usage: tokenUsage,
       duration_ms: Date.now() - startTime,
       warnings: [],
       instructions_used: null,
-    }
+      instruction_check: null,
+    })
   }
 
   // ── Step 2: Agent 1 — Week/Day Architect ─────────────────────────────
@@ -775,6 +921,9 @@ export async function generateWeekSync(
     { signal: deadline?.signal },
   )
   const agentInstructions = buildAgentInstructions(request.admin_instructions, instructionsUsed)
+  // On a rebuild, the first attempt's misses ride beneath the coach's words —
+  // for the planning agents only (architect, analyzer, selector).
+  const plannedInstructions = appendComplianceFeedback(agentInstructions, complianceFeedback)
   if (instructionsUsed?.enriched) {
     console.log(`[week-orchestrator] Coach instructions enriched:\n${instructionsUsed.enriched}`)
   } else if (instructionsUsed?.note) {
@@ -808,8 +957,8 @@ ${progressSummary.length > 0 ? JSON.stringify(progressSummary) : "No logs yet �
 ${isSingleDay ? `${targetDayName} (day_of_week=${request.target_day_of_week}) in Week ${newWeekNumber}` : newWeekNumber}
 
 ## Coach Instructions (HIGHEST PRIORITY — these override ALL default rules)
-${agentInstructions || "No specific instructions — use standard progression logic based on the client's performance data."}
-${agentInstructions ? "\nYou MUST follow these instructions. If they conflict with default technique, structure, or progression rules, the coach's instructions WIN." : ""}${buildPoolPatternSection(
+${plannedInstructions || "No specific instructions — use standard progression logic based on the client's performance data."}
+${plannedInstructions ? "\nYou MUST follow these instructions. If they conflict with default technique, structure, or progression rules, the coach's instructions WIN." : ""}${buildPoolPatternSection(
     // Mirror the injury filter the selector applies below, so the architect is
     // never told the pool covers a pattern whose only exercises get injury-pruned.
     poolActive
@@ -895,14 +1044,15 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   )
 
   if (await checkCancelled()) {
-    return {
+    return early({
       new_week_number: newWeekNumber,
       exercises_added: 0,
       token_usage: tokenUsage,
       duration_ms: Date.now() - startTime,
       warnings: [],
       instructions_used: instructionsUsed,
-    }
+      instruction_check: null,
+    })
   }
 
   // ── Step 3: Agent 2 — Exercise Selector with Dedup Verification ────────
@@ -930,7 +1080,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   // instruction parser turns named exercises and equipment into unlock/ban
   // sets, so it reads only what the coach actually wrote.
   const combinedInstructions = [request.admin_instructions, policyInstructions].filter(Boolean).join("\n\n")
-  const analyzerInstructions = [agentInstructions, policyInstructions].filter(Boolean).join("\n\n")
+  const analyzerInstructions = [plannedInstructions, policyInstructions].filter(Boolean).join("\n\n")
   const coachInstructionsSectionForAnalyzer = buildCoachInstructionsSection(analyzerInstructions)
 
   // Coach instructions become concrete unlock/ban sets against the FULL library,
@@ -1243,7 +1393,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   let hallucinatedIdCount = 0
 
   // Invariant across the retry loop — request-level inputs don't change between attempts.
-  const coachInstructionsSection = buildCoachInstructionsSection(agentInstructions)
+  const coachInstructionsSection = buildCoachInstructionsSection(plannedInstructions)
   const poolNote = buildPoolNote(
     poolIds,
     filtered.length,
@@ -1584,121 +1734,146 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     }
   }
 
-  // ── Step 4: Save to database ───────────────────────────────────────────
-
-  await updateJobProgress(
-    "saving_week",
-    5,
-    isSingleDay
-      ? `Saving ${assignment.assignments.length} exercises for ${targetDayName}`
-      : `Saving ${assignment.assignments.length} exercises for Week ${newWeekNumber}`,
-  )
-
-  const { slotLookup, slotDetailsLookup } = buildSlotLookups(skeleton.weeks)
-  // Notes narrating pipeline internals are stripped before they reach the client
-  // and reported to the coach instead — they explain WHY a week came out the way
-  // it did, which is exactly the signal that used to be missing.
-  const strippedNotes: string[] = []
-  const exerciseRows = buildExerciseRows(
-    assignment.assignments,
-    slotLookup,
-    slotDetailsLookup,
-    request.program_id,
-    (_slotId, sentences) => strippedNotes.push(...sentences),
-  )
-  if (strippedNotes.length > 0) {
-    console.log(`[week-orchestrator] Stripped ${strippedNotes.length} pipeline-internals sentence(s) from client notes`)
-    warnings.push(
-      `The AI explained its own constraints in ${strippedNotes.length} coaching note(s). ` +
-        `Removed before the client sees them: ${strippedNotes.map((s) => `“${s}”`).join(" ")}`,
-    )
+  // What the instruction checker reads: the coach's ORIGINAL words (never the
+  // rewrite or any rebuild feedback), the finished day/week, and the pool and
+  // named-exercise facts the pipeline already resolved.
+  const checkInput: CheckInput = {
+    scope: isSingleDay ? "day" : "week",
+    instructions: request.admin_instructions?.trim() || null,
+    rows: buildCheckRows(skeleton.weeks, assignment.assignments, allExercises),
+    pool: poolIds?.length ? { ids: poolIds, mode: poolMode, offeredIds: filtered.map((e) => e.id) } : null,
+    namedMatches: intentResolution.matched,
+    bannedIds: [...intentResolution.bannedIds],
+    nameById: Object.fromEntries(fullLibrary.map((e) => [e.id, e.name])),
   }
 
-  await bulkAddExercisesToProgram(exerciseRows)
+  // Not run here: the caller saves exactly one attempt, after the compliance
+  // check has chosen it. Until then nothing is written, so a rebuild of a single
+  // day still finds that day empty.
+  const save = async (check: InstructionCheck | null): Promise<WeekGenerationResult> => {
+    // ── Step 4: Save to database ───────────────────────────────────────────
 
-  // Fire-and-forget usage recording — never blocks response
-  if (request.client_id !== undefined) {
-    const usageRows = assignment.assignments
-      .map((a) => {
-        const loc = slotLookup.get(a.slot_id)
-        if (!loc) return null
-        return {
-          exercise_id: a.exercise_id,
-          week_number: loc.week_number,
-          day_number: loc.day_of_week,
-        }
+    await updateJobProgress(
+      "saving_week",
+      5,
+      isSingleDay
+        ? `Saving ${assignment.assignments.length} exercises for ${targetDayName}`
+        : `Saving ${assignment.assignments.length} exercises for Week ${newWeekNumber}`,
+    )
+
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(skeleton.weeks)
+    // Notes narrating pipeline internals are stripped before they reach the client
+    // and reported to the coach instead — they explain WHY a week came out the way
+    // it did, which is exactly the signal that used to be missing.
+    const strippedNotes: string[] = []
+    const exerciseRows = buildExerciseRows(
+      assignment.assignments,
+      slotLookup,
+      slotDetailsLookup,
+      request.program_id,
+      (_slotId, sentences) => strippedNotes.push(...sentences),
+    )
+    if (strippedNotes.length > 0) {
+      console.log(
+        `[week-orchestrator] Stripped ${strippedNotes.length} pipeline-internals sentence(s) from client notes`,
+      )
+      warnings.push(
+        `The AI explained its own constraints in ${strippedNotes.length} coaching note(s). ` +
+          `Removed before the client sees them: ${strippedNotes.map((s) => `“${s}”`).join(" ")}`,
+      )
+    }
+
+    await bulkAddExercisesToProgram(exerciseRows)
+
+    // Fire-and-forget usage recording — never blocks response
+    if (request.client_id !== undefined) {
+      const usageRows = assignment.assignments
+        .map((a) => {
+          const loc = slotLookup.get(a.slot_id)
+          if (!loc) return null
+          return {
+            exercise_id: a.exercise_id,
+            week_number: loc.week_number,
+            day_number: loc.day_of_week,
+          }
+        })
+        .filter((r): r is { exercise_id: string; week_number: number; day_number: number } => r !== null)
+      recordUsageFromFn({
+        coach_id: requestedBy,
+        client_id: request.client_id ?? null,
+        program_id: request.program_id,
+        rows: usageRows,
+      }).catch((e) =>
+        console.warn("[week-orchestrator] recordUsage failed (non-blocking):", e instanceof Error ? e.message : e),
+      )
+    }
+
+    // Stamp log quality into ai_generation_params for coach visibility — non-blocking
+    try {
+      const supabase = getSupabase()
+      const { data: existing } = await supabase
+        .from("programs")
+        .select("ai_generation_params")
+        .eq("id", request.program_id)
+        .single()
+      const params = (existing?.ai_generation_params as Record<string, unknown>) ?? {}
+      const log_quality_history = Array.isArray(params.log_quality_history)
+        ? (params.log_quality_history as Array<unknown>)
+        : []
+      log_quality_history.push({
+        week_number: newWeekNumber,
+        quality: logQuality.quality,
+        sample_size: logQuality.sample_size,
+        autoregulated: !lowQuality,
+        generated_at: new Date().toISOString(),
       })
-      .filter((r): r is { exercise_id: string; week_number: number; day_number: number } => r !== null)
-    recordUsageFromFn({
-      coach_id: requestedBy,
-      client_id: request.client_id ?? null,
-      program_id: request.program_id,
-      rows: usageRows,
-    }).catch((e) =>
-      console.warn("[week-orchestrator] recordUsage failed (non-blocking):", e instanceof Error ? e.message : e),
+      await supabase
+        .from("programs")
+        .update({ ai_generation_params: { ...params, log_quality_history } })
+        .eq("id", request.program_id)
+    } catch (e) {
+      console.warn("[week-orchestrator] log_quality stamp failed (non-blocking):", e instanceof Error ? e.message : e)
+    }
+
+    // Only bump duration_weeks and total_weeks when appending a new week (not filling a blank or single day)
+    if (!isFillingBlank && !isSingleDay) {
+      await updateProgramDuration(request.program_id, newWeekNumber)
+      if (request.assignment_id) {
+        await updateAssignmentTotalWeeks(request.assignment_id, newWeekNumber)
+      }
+    }
+
+    tokenUsage.total = tokenUsage.architect + tokenUsage.selector
+    const durationMs = Date.now() - startTime
+
+    console.log(
+      `[week-orchestrator] Week ${newWeekNumber} generated: ${assignment.assignments.length} exercises in ${durationMs}ms`,
     )
-  }
 
-  // Stamp log quality into ai_generation_params for coach visibility — non-blocking
-  try {
-    const supabase = getSupabase()
-    const { data: existing } = await supabase
-      .from("programs")
-      .select("ai_generation_params")
-      .eq("id", request.program_id)
-      .single()
-    const params = (existing?.ai_generation_params as Record<string, unknown>) ?? {}
-    const log_quality_history = Array.isArray(params.log_quality_history)
-      ? (params.log_quality_history as Array<unknown>)
-      : []
-    log_quality_history.push({
-      week_number: newWeekNumber,
-      quality: logQuality.quality,
-      sample_size: logQuality.sample_size,
-      autoregulated: !lowQuality,
-      generated_at: new Date().toISOString(),
-    })
-    await supabase
-      .from("programs")
-      .update({ ai_generation_params: { ...params, log_quality_history } })
-      .eq("id", request.program_id)
-  } catch (e) {
-    console.warn("[week-orchestrator] log_quality stamp failed (non-blocking):", e instanceof Error ? e.message : e)
-  }
+    const cacheHitRate =
+      tokenUsage.cache_read + tokenUsage.cache_creation > 0
+        ? tokenUsage.cache_read / (tokenUsage.cache_read + tokenUsage.cache_creation)
+        : 0
+    console.log(
+      `[week-orchestrator] Cache stats — writes: ${tokenUsage.cache_creation}, reads: ${tokenUsage.cache_read}, hit rate: ${(cacheHitRate * 100).toFixed(1)}%`,
+    )
 
-  // Only bump duration_weeks and total_weeks when appending a new week (not filling a blank or single day)
-  if (!isFillingBlank && !isSingleDay) {
-    await updateProgramDuration(request.program_id, newWeekNumber)
-    if (request.assignment_id) {
-      await updateAssignmentTotalWeeks(request.assignment_id, newWeekNumber)
+    if (check) warnings.push(...buildInstructionCheckWarning(check))
+
+    if (warnings.length > 0) {
+      console.warn(`[week-orchestrator] ${warnings.length} coach-facing warning(s):\n  - ${warnings.join("\n  - ")}`)
+    }
+
+    return {
+      new_week_number: newWeekNumber,
+      exercises_added: assignment.assignments.length,
+      token_usage: tokenUsage,
+      duration_ms: durationMs,
+      warnings,
+      instructions_used: instructionsUsed,
+      instruction_check: check,
     }
   }
 
-  tokenUsage.total = tokenUsage.architect + tokenUsage.selector
-  const durationMs = Date.now() - startTime
-
-  console.log(
-    `[week-orchestrator] Week ${newWeekNumber} generated: ${assignment.assignments.length} exercises in ${durationMs}ms`,
-  )
-
-  const cacheHitRate =
-    tokenUsage.cache_read + tokenUsage.cache_creation > 0
-      ? tokenUsage.cache_read / (tokenUsage.cache_read + tokenUsage.cache_creation)
-      : 0
-  console.log(
-    `[week-orchestrator] Cache stats — writes: ${tokenUsage.cache_creation}, reads: ${tokenUsage.cache_read}, hit rate: ${(cacheHitRate * 100).toFixed(1)}%`,
-  )
-
-  if (warnings.length > 0) {
-    console.warn(`[week-orchestrator] ${warnings.length} coach-facing warning(s):\n  - ${warnings.join("\n  - ")}`)
-  }
-
-  return {
-    new_week_number: newWeekNumber,
-    exercises_added: assignment.assignments.length,
-    token_usage: tokenUsage,
-    duration_ms: durationMs,
-    warnings,
-    instructions_used: instructionsUsed,
-  }
+  return { durationMs: Date.now() - startTime, save, checkInput, earlyResult: null }
 }

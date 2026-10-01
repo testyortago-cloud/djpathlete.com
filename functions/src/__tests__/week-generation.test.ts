@@ -192,6 +192,32 @@ describe("handleWeekGeneration — the job doc's result payload", () => {
     expect(payload?.instructions_used).toBeNull()
   })
 
+  it("writes the instruction check into ai_jobs.result", async () => {
+    // Same trap again: "Your instructions, checked" reads only the job doc.
+    const check = {
+      status: "failed",
+      items: [{ instruction: "12 exercises", met: false, detail: "11 exercises", source: "code" }],
+      rebuilt: true,
+      rebuild_reason: "12 exercises: 11 exercises",
+      note: null,
+    }
+    mockGenerateWeekSync.mockResolvedValue({ ...resultFrom([]), instruction_check: check })
+
+    await handleWeekGeneration("job-1", BUDGET_MS)
+
+    expect(completedPayload()?.instruction_check).toEqual(check)
+  })
+
+  it("writes a null instruction check — never undefined — when nothing was checked", async () => {
+    mockGenerateWeekSync.mockResolvedValue(resultFrom([]))
+
+    await handleWeekGeneration("job-1", BUDGET_MS)
+
+    const payload = completedPayload()
+    expect(payload).toHaveProperty("instruction_check")
+    expect(payload?.instruction_check).toBeNull()
+  })
+
   it("does not write a result payload when generation fails", async () => {
     mockGenerateWeekSync.mockRejectedValue(new Error("boom"))
 
