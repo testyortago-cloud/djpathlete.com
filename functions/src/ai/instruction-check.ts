@@ -1,4 +1,7 @@
+import { z } from "zod"
 import { statedExerciseTotal, parsePrescription } from "./instruction-count.js"
+import { callAgent, MODEL_OPUS_5_5 } from "./anthropic.js"
+import { isAbortError } from "../lib/deadline.js"
 
 // ── Types ──
 
@@ -168,4 +171,101 @@ export function buildInstructionCheckWarning(check: InstructionCheck): string[] 
       ? "1 of your instructions wasn't fully met — see “Your instructions, checked”."
       : `${n} of your instructions weren't fully met — see “Your instructions, checked”.`,
   ]
+}
+
+// ── AI judge ──
+
+const DEFAULT_TIMEOUT_MS = 30_000
+
+const judgeSchema = z.object({
+  items: z.array(z.object({ instruction: z.string(), met: z.boolean(), detail: z.string() })),
+})
+
+const JUDGE_PROMPT = `You check whether a finished training day (or week) follows a strength coach's instructions. You do not redesign anything.
+
+1. Split the coach's instructions into separate instructions: counts, focus areas ("mainly shoulders"), order ("power first"), named exercises, restrictions, techniques, prescriptions.
+2. Skip any instruction listed under "Already checked by code".
+3. Judge every remaining instruction ONLY from the table of the finished day. Be literal: "mainly X" means at least half of the working exercises train X; "some Y" means at least one does; "X first" means X-role or X-pattern exercises come before the others.
+4. For each, give: instruction — the coach's own words, short; met — true or false; detail — one short plain sentence with the evidence from the table (counts, names).
+5. Never invent an instruction the coach did not write. If nothing is left to judge, return an empty list.`
+
+function buildJudgeMessage(input: CheckInput, codeItems: InstructionCheckItem[]): string {
+  const checked =
+    codeItems.length === 0
+      ? "(none)"
+      : codeItems.map((i) => `- ${i.instruction}: ${i.met ? "met" : "NOT met"} (${i.detail})`).join("\n")
+  const table = input.rows
+    .map(
+      (r) =>
+        `Day ${r.day_of_week} #${r.order + 1} ${r.name} | ${r.movement_pattern ?? "-"} | ${r.primary_muscles.join(", ")} | ${r.role} | ${r.sets ?? "-"}x${r.reps ?? "-"} | rest ${r.rest_seconds ?? "-"}s | tempo ${r.tempo ?? "-"}`,
+    )
+    .join("\n")
+  return (
+    `Coach's instructions:\n${input.instructions}\n\n` +
+    `Already checked by code — do not judge these again:\n${checked}\n\n` +
+    `The finished ${input.scope}:\n${table}`
+  )
+}
+
+/**
+ * Code checks first, then Opus 5.5 judges whatever code cannot measure. A
+ * failing judge keeps the code items and says so in `note`; only the
+ * generation's own deadline aborting is rethrown. The caller sets
+ * `rebuilt` / `rebuild_reason`.
+ */
+export async function checkInstructions(
+  input: CheckInput,
+  opts: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<InstructionCheck> {
+  const codeItems = runCodeChecks(input)
+  const finish = (items: InstructionCheckItem[], note: string | null): InstructionCheck => ({
+    status: checkStatus(items),
+    items,
+    rebuilt: false,
+    rebuild_reason: null,
+    note,
+  })
+  if (!input.instructions || input.instructions.trim().length === 0) return finish(codeItems, null)
+  opts.signal?.throwIfAborted()
+
+  const own = new AbortController()
+  const timer = setTimeout(() => own.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+  const onOuterAbort = () => own.abort()
+  opts.signal?.addEventListener("abort", onOuterAbort)
+
+  try {
+    const result = await callAgent(JUDGE_PROMPT, buildJudgeMessage(input, codeItems), judgeSchema, {
+      model: MODEL_OPUS_5_5,
+      maxTokens: 2000,
+      effort: "low",
+      signal: own.signal,
+      allowHaikuFallback: false,
+    })
+    const decided = new Set(codeItems.map((i) => i.instruction.toLowerCase().trim()))
+    const aiItems: InstructionCheckItem[] = []
+    for (const it of result.content.items) {
+      const instruction = it.instruction.trim()
+      const detail = it.detail.trim()
+      if (!instruction || !detail || decided.has(instruction.toLowerCase())) continue
+      aiItems.push({ instruction, met: it.met, detail, source: "ai" })
+    }
+    return finish([...codeItems, ...aiItems], null)
+  } catch (error) {
+    // The generation's own deadline, not the judge's to swallow.
+    if (opts.signal?.aborted) throw error
+    const timedOut = own.signal.aborted && isAbortError(error)
+    console.warn(
+      `[instruction-check] AI judge ${timedOut ? "timed out" : "failed"} — code checks only:`,
+      error instanceof Error ? error.message : error,
+    )
+    return finish(
+      codeItems,
+      timedOut
+        ? "The AI check took too long, so only the exact checks are shown."
+        : "The AI check didn't run this time, so only the exact checks are shown.",
+    )
+  } finally {
+    clearTimeout(timer)
+    opts.signal?.removeEventListener("abort", onOuterAbort)
+  }
 }
