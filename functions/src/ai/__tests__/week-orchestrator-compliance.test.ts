@@ -1,8 +1,14 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
-import { appendComplianceFeedback, buildCheckRows } from "../week-orchestrator.js"
+import {
+  appendComplianceFeedback,
+  buildCheckRows,
+  generateWithCompliance,
+  type WeekAttempt,
+} from "../week-orchestrator.js"
+import type { CheckInput, InstructionCheck } from "../instruction-check.js"
 import type { AssignedExercise, CompressedExercise, ExerciseSlot, ProgramWeek } from "../types.js"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -196,12 +202,150 @@ describe("compliance feedback never reaches the instruction parser or the enrich
 
   it("the enricher reads request.admin_instructions", () => {
     expect(src).toContain("enrichCoachInstructions(\n    request.admin_instructions")
-    expect(src).not.toMatch(/enrichCoachInstructions\(\s*plannedInstructions/)
+  })
+
+  it("the feedback is named in exactly two places: the parameter, and the one call that appends it", () => {
+    // Any other use — `request.admin_instructions + complianceFeedback` into the
+    // enricher or the parser — adds an occurrence and fails here.
+    expect(src.match(/\bcomplianceFeedback\b/g)).toHaveLength(2)
+    expect(src).toMatch(/\n  complianceFeedback: string \| null,\n\): Promise<WeekAttempt>/)
+    expect(src).toContain("appendComplianceFeedback(agentInstructions, complianceFeedback)")
   })
 
   it("the planning agents read plannedInstructions", () => {
     expect(src).toContain("const plannedInstructions = appendComplianceFeedback(agentInstructions, complianceFeedback)")
     expect(src).toMatch(/const analyzerInstructions = \[plannedInstructions, policyInstructions\]/)
     expect(src).toContain("buildCoachInstructionsSection(plannedInstructions)")
+  })
+
+  it("the rebuild gate and the judge both leave the save its reserve", () => {
+    expect(src).toContain("deadline ? deadline.remainingMs() - SAVE_RESERVE_MS : null")
+    expect(src).toContain("checkWithinBudget(input, deadline, { keepOnTimeout: isFirst })")
+  })
+})
+
+// ── The wrapper: build → check → maybe rebuild → save exactly one attempt ──
+
+const RESULT = {
+  new_week_number: 4,
+  exercises_added: 0,
+  token_usage: { architect: 0, selector: 0, total: 0, cache_creation: 0, cache_read: 0 },
+  duration_ms: 1,
+  warnings: [],
+  instructions_used: null,
+  instruction_check: null,
+}
+
+const checkOf = (met: boolean): InstructionCheck => ({
+  status: met ? "passed" : "failed",
+  items: [{ instruction: "12 exercises", met, detail: met ? "12 in the day" : "the day has 11", source: "code" }],
+  rebuilt: false,
+  rebuild_reason: null,
+  note: null,
+})
+
+function attempt(id: number) {
+  const save = vi.fn(async (check: InstructionCheck | null) => ({
+    ...RESULT,
+    exercises_added: id,
+    instruction_check: check,
+  }))
+  const cancelled = vi.fn(() => ({ ...RESULT, exercises_added: -id }))
+  const a: WeekAttempt = {
+    durationMs: 1000,
+    earlyResult: null,
+    save,
+    cancelled,
+    checkInput: {
+      scope: "day",
+      instructions: `attempt ${id}`,
+      rows: [],
+      pool: null,
+      namedMatches: [],
+      bannedIds: [],
+      nameById: {},
+    },
+  }
+  return { a, save, cancelled }
+}
+
+function deps(over: Partial<Parameters<typeof generateWithCompliance>[0]> = {}) {
+  const one = attempt(1)
+  const two = attempt(2)
+  const build = vi.fn(async (fb: string | null) => (fb === null ? one.a : two.a))
+  const runCheck = vi.fn(async (input: CheckInput, _isFirst: boolean) => checkOf(input.instructions === "attempt 2"))
+  const progress = vi.fn(async (_detail: string) => {})
+  const d = {
+    build,
+    needsCheck: true,
+    runCheck,
+    remainingMs: () => null,
+    isCancelled: vi.fn(async () => false),
+    progress,
+    ...over,
+  }
+  return { d, one, two, build, runCheck, progress }
+}
+
+describe("generateWithCompliance", () => {
+  it("nothing to check -> saves the first attempt with no check and no model call", async () => {
+    const { d, one } = deps({ needsCheck: false })
+    const r = await generateWithCompliance(d)
+    expect(d.runCheck).not.toHaveBeenCalled()
+    expect(one.save).toHaveBeenCalledTimes(1)
+    expect(one.save).toHaveBeenCalledWith(null)
+    expect(r.instruction_check).toBeNull()
+  })
+
+  it("a cancelled first attempt is returned as-is: nothing checked, nothing saved", async () => {
+    const early = { durationMs: 5, earlyResult: { ...RESULT, exercises_added: 99 } } as WeekAttempt
+    const { d } = deps({ build: vi.fn(async () => early) })
+    const r = await generateWithCompliance(d)
+    expect(r.exercises_added).toBe(99)
+    expect(d.runCheck).not.toHaveBeenCalled()
+  })
+
+  it("passes -> saves attempt 1 once, with its check", async () => {
+    const { d, one, two } = deps({ runCheck: vi.fn(async () => checkOf(true)) })
+    const r = await generateWithCompliance(d)
+    expect(d.build).toHaveBeenCalledTimes(1)
+    expect(one.save).toHaveBeenCalledTimes(1)
+    expect(one.save).toHaveBeenCalledWith(checkOf(true))
+    expect(two.save).not.toHaveBeenCalled()
+    expect(r.instruction_check?.status).toBe("passed")
+  })
+
+  it("misses -> rebuilds once and saves ONLY the kept attempt", async () => {
+    const { d, one, two, build } = deps()
+    const r = await generateWithCompliance(d)
+    expect(build).toHaveBeenCalledTimes(2)
+    expect(build.mock.calls[1][0]).toContain("12 exercises: the day has 11")
+    expect(one.save).not.toHaveBeenCalled()
+    expect(two.save).toHaveBeenCalledTimes(1)
+    expect(r.instruction_check).toMatchObject({ status: "passed", rebuilt: true })
+  })
+
+  it("tells the check whether it is the first attempt's", async () => {
+    const { d, runCheck } = deps()
+    await generateWithCompliance(d)
+    expect(runCheck.mock.calls.map((c) => c[1])).toEqual([true, false])
+  })
+
+  it("says what it is doing, in the attempt's own scope", async () => {
+    const { d, progress } = deps()
+    await generateWithCompliance(d)
+    expect(progress.mock.calls.map((c) => c[0])).toEqual([
+      "Checking the day against your instructions",
+      "Rebuilding to follow your instructions",
+      "Checking the day against your instructions",
+    ])
+  })
+
+  it("cancelled right before the save -> the cancellation result, nothing saved", async () => {
+    const { d, one } = deps({ runCheck: vi.fn(async () => checkOf(true)), isCancelled: vi.fn(async () => true) })
+    const r = await generateWithCompliance(d)
+    expect(one.save).not.toHaveBeenCalled()
+    expect(one.cancelled).toHaveBeenCalledTimes(1)
+    expect(r.exercises_added).toBe(-1)
   })
 })

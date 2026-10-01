@@ -97,6 +97,26 @@ describe("checkInstructions", () => {
     await expect(checkInstructions(input(), { signal: outer.signal })).rejects.toThrow()
   })
 
+  it("skipAi: code checks only, no model call, and says why", async () => {
+    const check = await checkInstructions(input({ rows: input().rows.slice(0, 11) }), { skipAi: true })
+    expect(callAgentMock).not.toHaveBeenCalled()
+    expect(check.items.map((i) => [i.instruction, i.met, i.source])).toEqual([["12 exercises", false, "code"]])
+    expect(check.status).toBe("failed")
+    expect(check.note).toBe("There wasn't time for the AI check, so only the exact checks are shown.")
+  })
+
+  it("skipAi never throws on an already-aborted deadline — the day must still save", async () => {
+    const outer = new AbortController()
+    outer.abort()
+    const check = await checkInstructions(input(), { skipAi: true, signal: outer.signal })
+    expect(check.status).toBe("passed")
+  })
+
+  it("skipAi with no instructions has nothing to explain", async () => {
+    const check = await checkInstructions(input({ instructions: null }), { skipAi: true })
+    expect(check.note).toBeNull()
+  })
+
   it("survives an AI reply with no usable items", async () => {
     callAgentMock.mockResolvedValue({
       content: { items: [{ instruction: " ", met: true, detail: "" }] },

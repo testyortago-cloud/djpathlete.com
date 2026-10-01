@@ -151,6 +151,25 @@ export function checkStatus(items: InstructionCheckItem[]): InstructionCheck["st
   return items.some((i) => !i.met) ? "failed" : "passed"
 }
 
+export const NO_TIME_FOR_AI_NOTE = "There wasn't time for the AI check, so only the exact checks are shown."
+
+/**
+ * The exact checks alone, synchronously — for when there is no time left for
+ * the AI judge. Never throws, so a finished day can always be saved with it.
+ * `note` is dropped when the coach wrote nothing: there was no AI check to miss.
+ */
+export function codeOnlyCheck(input: CheckInput, note: string | null): InstructionCheck {
+  const items = runCodeChecks(input)
+  const hasInstructions = !!input.instructions && input.instructions.trim().length > 0
+  return {
+    status: checkStatus(items),
+    items,
+    rebuilt: false,
+    rebuild_reason: null,
+    note: hasInstructions ? note : null,
+  }
+}
+
 export function unmetCount(check: InstructionCheck): number {
   return check.items.filter((i) => !i.met).length
 }
@@ -211,12 +230,15 @@ function buildJudgeMessage(input: CheckInput, codeItems: InstructionCheckItem[])
  * Code checks first, then Opus 5.5 judges whatever code cannot measure. A
  * failing judge keeps the code items and says so in `note`; only the
  * generation's own deadline aborting is rethrown. The caller sets
- * `rebuilt` / `rebuild_reason`.
+ * `rebuilt` / `rebuild_reason`. `skipAi` runs the code checks only (no model
+ * call, never throws) and says so in `note` — for when the deadline leaves no
+ * room for the judge.
  */
 export async function checkInstructions(
   input: CheckInput,
-  opts: { signal?: AbortSignal; timeoutMs?: number } = {},
+  opts: { signal?: AbortSignal; timeoutMs?: number; skipAi?: boolean } = {},
 ): Promise<InstructionCheck> {
+  if (opts.skipAi) return codeOnlyCheck(input, NO_TIME_FOR_AI_NOTE)
   const codeItems = runCodeChecks(input)
   const finish = (items: InstructionCheckItem[], note: string | null): InstructionCheck => ({
     status: checkStatus(items),

@@ -78,13 +78,12 @@ import {
 import { enrichCoachInstructions, buildAgentInstructions, type InstructionsUsed } from "./instruction-enrich.js"
 import { statesExerciseCount } from "./instruction-count.js"
 import {
-  checkInstructions,
   buildInstructionCheckWarning,
   type CheckDayRow,
   type CheckInput,
   type InstructionCheck,
 } from "./instruction-check.js"
-import { runWithComplianceCheck } from "./compliance-loop.js"
+import { runWithComplianceCheck, checkWithinBudget, SAVE_RESERVE_MS } from "./compliance-loop.js"
 import {
   findUnassignedSlots,
   buildUnassignedSlotsFeedback,
@@ -626,16 +625,68 @@ export function buildCheckRows(
 /**
  * One built day/week that has NOT been saved yet. `save` writes it — exactly
  * once per generation, for whichever attempt the compliance check keeps.
- * `earlyResult` is the cancellation exit, which saves nothing.
+ * `cancelled` is what to return instead if the job is cancelled before that
+ * save. `earlyResult` is the cancellation exit mid-build, which saves nothing.
  */
-type WeekAttempt =
-  | { durationMs: number; earlyResult: WeekGenerationResult; save?: undefined; checkInput?: undefined }
+export type WeekAttempt =
+  | {
+      durationMs: number
+      earlyResult: WeekGenerationResult
+      save?: undefined
+      cancelled?: undefined
+      checkInput?: undefined
+    }
   | {
       durationMs: number
       earlyResult: null
       save: (check: InstructionCheck | null) => Promise<WeekGenerationResult>
+      cancelled: () => WeekGenerationResult
       checkInput: CheckInput
     }
+
+/**
+ * Build once, check, maybe rebuild once, then save exactly one attempt. Pure
+ * over its dependencies so the order of these steps is testable without the
+ * pipeline; generateWeekSync supplies the real ones.
+ */
+export async function generateWithCompliance(deps: {
+  /** null = the first attempt; otherwise the first attempt's misses. */
+  build: (feedback: string | null) => Promise<WeekAttempt>
+  /** False when there are no instructions and no pool: nothing to check. */
+  needsCheck: boolean
+  runCheck: (input: CheckInput, isFirst: boolean) => Promise<InstructionCheck>
+  remainingMs: () => number | null
+  isCancelled: () => Promise<boolean>
+  progress: (detail: string) => Promise<void>
+  log?: (msg: string) => void
+}): Promise<WeekGenerationResult> {
+  const first = await deps.build(null)
+  if (first.earlyResult) return first.earlyResult
+
+  // Nothing to check against. No model call.
+  if (!deps.needsCheck) return first.save(null)
+
+  const { attempt, check } = await runWithComplianceCheck<WeekAttempt>({
+    build: async (feedback) => {
+      if (feedback === null) return first
+      await deps.progress("Rebuilding to follow your instructions")
+      return deps.build(feedback)
+    },
+    check: async (a) => {
+      if (a.earlyResult) return { status: "unchecked", items: [], rebuilt: false, rebuild_reason: null, note: null }
+      await deps.progress(`Checking the ${a.checkInput.scope} against your instructions`)
+      return deps.runCheck(a.checkInput, a === first)
+    },
+    remainingMs: deps.remainingMs,
+    isCancelled: deps.isCancelled,
+    log: deps.log,
+  })
+  if (attempt.earlyResult) return attempt.earlyResult
+  // The check and a rebuild take time; a coach who cancelled meanwhile gets
+  // nothing written.
+  if (await deps.isCancelled()) return attempt.cancelled()
+  return attempt.save(check)
+}
 
 // ─── Pipeline ───────────────────────────────────────────────────────────────
 
@@ -657,35 +708,18 @@ export async function generateWeekSync(
    */
   deadline?: Deadline,
 ): Promise<WeekGenerationResult> {
-  const first = await buildWeekAttempt(request, requestedBy, firebaseJobId, deadline, null)
-  if (first.earlyResult) return first.earlyResult
-
-  // Nothing to check against: no instructions and no pool. No model call.
-  const needsCheck = !!request.admin_instructions?.trim() || !!request.pool_exercise_ids?.length
-  if (!needsCheck) return first.save(null)
-
   const updateJobProgress = createJobProgressUpdater(firebaseJobId, 5)
-  const { attempt, check } = await runWithComplianceCheck<WeekAttempt>({
-    build: async (feedback) => {
-      if (feedback === null) return first
-      await updateJobProgress("selecting_exercises", 4, "Rebuilding to follow your instructions")
-      return buildWeekAttempt(request, requestedBy, firebaseJobId, deadline, feedback)
-    },
-    check: async (a) => {
-      if (a.earlyResult) return { status: "unchecked", items: [], rebuilt: false, rebuild_reason: null, note: null }
-      await updateJobProgress(
-        "selecting_exercises",
-        4,
-        `Checking the ${request.target_day_of_week ? "day" : "week"} against your instructions`,
-      )
-      return checkInstructions(a.checkInput, { signal: deadline?.signal })
-    },
-    remainingMs: () => (deadline ? deadline.remainingMs() : null),
+  return generateWithCompliance({
+    build: (feedback) => buildWeekAttempt(request, requestedBy, firebaseJobId, deadline, feedback),
+    needsCheck: !!request.admin_instructions?.trim() || !!request.pool_exercise_ids?.length,
+    // The judge and the rebuild gate both leave the save its reserve, so
+    // running out of time keeps the finished day instead of failing the job.
+    runCheck: (input, isFirst) => checkWithinBudget(input, deadline, { keepOnTimeout: isFirst }),
+    remainingMs: () => (deadline ? deadline.remainingMs() - SAVE_RESERVE_MS : null),
     isCancelled: createCancellationChecker(firebaseJobId),
+    progress: (detail) => updateJobProgress("selecting_exercises", 4, detail),
     log: (m) => console.log(`[week-orchestrator] ${m}`),
   })
-  if (attempt.earlyResult) return attempt.earlyResult
-  return attempt.save(check)
 }
 
 async function buildWeekAttempt(
@@ -906,11 +940,12 @@ async function buildWeekAttempt(
     : []
 
   // The coach's words plus Opus 5.5's reading of them as counts and areas.
-  // `agentInstructions` is what the three PLANNING agents read (analyzer,
-  // architect, selector): the original first, the rewrite beneath it, the
-  // original winning any disagreement. The instruction parser below keeps
-  // `request.admin_instructions` alone, so a rewrite can never unlock or ban
-  // an exercise.
+  // `agentInstructions` is the original first, the rewrite beneath it, the
+  // original winning any disagreement; `plannedInstructions` (below) adds any
+  // rebuild feedback, and is what the three PLANNING agents read (analyzer,
+  // architect, selector). The enricher and the instruction parser below keep
+  // `request.admin_instructions` alone, so neither a rewrite nor feedback can
+  // ever unlock or ban an exercise.
   const instructionsUsed = await enrichCoachInstructions(
     request.admin_instructions,
     {
@@ -1875,5 +1910,16 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     }
   }
 
-  return { durationMs: Date.now() - startTime, save, checkInput, earlyResult: null }
+  // Same shape as the cancellation exits above: nothing saved.
+  const cancelled = (): WeekGenerationResult => ({
+    new_week_number: newWeekNumber,
+    exercises_added: 0,
+    token_usage: tokenUsage,
+    duration_ms: Date.now() - startTime,
+    warnings: [],
+    instructions_used: instructionsUsed,
+    instruction_check: null,
+  })
+
+  return { durationMs: Date.now() - startTime, save, cancelled, checkInput, earlyResult: null }
 }
