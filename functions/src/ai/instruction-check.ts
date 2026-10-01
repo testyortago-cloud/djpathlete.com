@@ -329,11 +329,14 @@ export async function checkInstructions(
       `[instruction-check] AI judge ${timedOut ? "timed out" : "failed"} — code checks only:`,
       error instanceof Error ? error.message : error,
     )
+    // With no exact checks, "only the exact checks are shown" would point at an empty list.
     return finish(
       codeItems,
-      timedOut
-        ? "The AI check took too long, so only the exact checks are shown."
-        : "The AI check didn't run this time, so only the exact checks are shown.",
+      codeItems.length === 0
+        ? NOTHING_CHECKED_NOTE
+        : timedOut
+          ? "The AI check took too long, so only the exact checks are shown."
+          : "The AI check didn't run this time, so only the exact checks are shown.",
     )
   } finally {
     clearTimeout(timer)

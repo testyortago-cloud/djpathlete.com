@@ -54,17 +54,22 @@ const LIMIT_BEFORE =
 // shoulder day" is the day's count, so the verb alone is not enough (I4).
 const SELECT_BEFORE = /\b(?:pick|choose|select)\b[^\d]*$/i
 const FROM_AFTER = /^\s*(?:from|of|out\s+of)\b/i
+// "Choose from the pool: 5 exercises" — the selection is named before the count.
+const FROM_IN_CLAUSE_BEFORE = /\bfrom\b[^,;.]*$/i
 // "3 exercises per block" is a per-block count, not the day's; "per day/session/workout" is the day's.
 const PER_AFTER = /^\s*per\b(?!\s+(?:training\s+)?(?:day|session|workout)\b)/i
-// Words that make a count an instruction about SOME of the exercises — "add 2", "swap 2",
-// "with 3 for upper back", "the last 2" — rather than the day's total. Only statedExerciseTotal
-// reads this; the architect directive (statesExerciseCount) is deliberately left as it was.
-const SUBSET_BEFORE =
-  /\b(?:add|adding|swap|swapping|replace|replacing|include|including|drop|dropping|remove|removing|superset|last|first|with|make sure|of them|another|extra|more)\b/i
+// The ONLY lead-ins that leave a count as the day's total (Ruling 11). A deny-list of
+// sub-count words ("add 2", "swap 2") kept missing real wording ("change 2", "plus 3",
+// "also 2", "do 3 for upper back"), so the clause before the count must be empty or exactly
+// one of these. Only statedExerciseTotal reads this; the architect directive does not.
+const PLAIN_LEAD_IN = /^(?:choose|select|pick|i want|want|need|give me|aim for)?$/i
 const SUBSET_BETWEEN = new Set(["more", "extra", "additional", "another"])
-// Within a line, a clause starts after `,` `;` `:` or a full stop. Bullets and list numbers
-// ("• 12 …", "1. 12 …") hold no qualifier word, so they need no stripping.
+// "Pick 5 exercises, from the pool": a selection named after a comma.
+const FROM_AFTER_BOUNDARY = /^\s*[,;:]\s*(?:from|of|out\s+of)\b/i
+// Within a line, a clause starts after `,` `;` `:` or a full stop ("1. 12 …" splits too);
+// a bullet or dash list marker in front of the count is stripped.
 const CLAUSE_BOUNDARY = /[,;:.]/
+const LIST_MARKER = /^\s*(?:[-–—•*·]|\d+\))?\s*/
 
 interface CountMention {
   n: number
@@ -73,7 +78,7 @@ interface CountMention {
   rejected: boolean
   /** "total" is attached to this count: "N exercises total", "total of N", "total: N", "N total exercises". */
   total: boolean
-  /** Nothing before the count in its clause makes it a sub-count ("add 2", "with 3", "the last 2"). */
+  /** The count opens its clause, or follows only a plain lead-in ("choose", "I want") — see PLAIN_LEAD_IN. */
   standalone: boolean
 }
 
@@ -92,17 +97,21 @@ function countMentions(line: string): CountMention[] {
         const before = line.slice(0, m.index)
         const after = line.slice(nounEnd)
         const between = words.slice(0, i).map((x) => x[0].toLowerCase())
-        const clauseBefore = before.split(CLAUSE_BOUNDARY).pop() ?? ""
+        const leadIn = (before.split(CLAUSE_BOUNDARY).pop() ?? "").replace(LIST_MARKER, "").trim().replace(/\s+/g, " ")
         out.push({
           n: Number(m[2] ?? m[1]),
           isRange: m[2] !== undefined,
           rejected:
             LIMIT_BEFORE.test(before) ||
             (SELECT_BEFORE.test(before) && FROM_AFTER.test(after)) ||
+            FROM_IN_CLAUSE_BEFORE.test(before) ||
             PER_AFTER.test(after),
           total:
             between.includes("total") || /^\s*[,(-]?\s*total\b/i.test(after) || /\btotal\s*(?:of|:)?\s*$/i.test(before),
-          standalone: !SUBSET_BEFORE.test(clauseBefore) && !between.some((b) => SUBSET_BETWEEN.has(b)),
+          standalone:
+            PLAIN_LEAD_IN.test(leadIn) &&
+            !between.some((b) => SUBSET_BETWEEN.has(b)) &&
+            !FROM_AFTER_BOUNDARY.test(after),
         })
         break
       }
@@ -124,10 +133,12 @@ export function statesExerciseCount(instructions: string | undefined | null): bo
 /**
  * The ONE total exercise count the coach stated, or null. A count with "total"
  * attached wins; otherwise exactly one count in the text is the total, and only
- * when nothing before it in its clause makes it a sub-count ("add 2", "swap 2",
- * "with 3 for upper back", "the last 2"). Limits ("max 3"), selections ("pick 5
- * from"), per-block counts, ranges ("10-12", "10 to 12") and several per-area
- * counts with no total are not a single number and are left to the AI judge.
+ * when the coach states it plainly: the count opens its clause or follows only
+ * "choose", "I want", "need" and the like (PLAIN_LEAD_IN). "Add 2", "change 2",
+ * "plus 3 for upper back" are sub-counts and get no line. Limits ("max 3"),
+ * selections ("pick 5 from"), per-block counts, ranges ("10-12", "10 to 12") and
+ * several per-area counts with no total are not a single number and are left to
+ * the AI judge.
  *
  * A wrong number here shows the coach a red ✗ AND drives the rebuild with wrong
  * feedback; a missed one costs nothing, because the judge still reads the text.

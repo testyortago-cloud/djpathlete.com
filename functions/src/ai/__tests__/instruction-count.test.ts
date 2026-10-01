@@ -193,6 +193,63 @@ describe("statedExerciseTotal never reads a sub-count as the day's total (C1)", 
   })
 })
 
+/**
+ * Ruling 11: a deny-list of qualifier words kept missing sub-count wording, so the
+ * clause prefix is now an ALLOW-list: nothing, or choose / select / pick / i want /
+ * want / need / give me / aim for. Anything else is left to the AI judge.
+ */
+describe("statedExerciseTotal accepts only a plainly stated count (Ruling 11)", () => {
+  it.each([
+    "Keep everything but change 2 exercises",
+    "Change 2 exercises",
+    "Same as Monday but 2 exercises for grip",
+    "Plus 3 exercises for upper back",
+    "Shoulders focus, plus 3 exercises for upper back",
+    "Also 2 core exercises",
+    "Use 2 core exercises at the end",
+    "Make 4 exercises unilateral",
+    "Only 2 exercises should be bilateral",
+    "Do 3 exercises for upper back",
+    "Finish on 2 core exercises",
+    "Pick the best 5 exercises",
+    "HINGE BLOCK (3 exercises):",
+  ])("%j → null", (text) => {
+    expect(statedExerciseTotal(text)).toBeNull()
+  })
+
+  it.each([
+    ["admin note: 12 exercises", 12],
+    ["1. 12 exercises", 12],
+    ["• 12 exercises", 12],
+    ["Choose 12 exercises for a shoulder-focused day", 12],
+    ["Select 10 exercises", 10],
+    ["Pick 8 exercises", 8],
+    ["I want 12 exercises", 12],
+    ["Want 12 exercises", 12],
+    ["Need 10 exercises today", 10],
+    ["Give me 9 exercises", 9],
+    ["Aim for 11 exercises", 11],
+  ])("%j → %i", (text, n) => {
+    expect(statedExerciseTotal(text)).toBe(n)
+  })
+
+  it("the architect directive does not use the allow-list", () => {
+    expect(statesExerciseCount("Do 3 exercises for upper back")).toBe(true)
+    expect(statesExerciseCount("HINGE BLOCK (3 exercises):")).toBe(true)
+  })
+})
+
+describe("a selection FROM something is never a count (Ruling 11 minors)", () => {
+  it("'from' before the count rejects it for the directive and the total", () => {
+    expect(statesExerciseCount("Choose from the pool: 5 exercises")).toBe(false)
+    expect(statedExerciseTotal("Choose from the pool: 5 exercises")).toBeNull()
+  })
+
+  it("'Pick 5 exercises, from the pool' has no total", () => {
+    expect(statedExerciseTotal("Pick 5 exercises, from the pool")).toBeNull()
+  })
+})
+
 describe("a selection is rejected only when it is FROM something (I4)", () => {
   it("'Choose/Select 12 exercises for …' is the day's count", () => {
     expect(statesExerciseCount("Choose 12 exercises for a shoulder-focused day")).toBe(true)

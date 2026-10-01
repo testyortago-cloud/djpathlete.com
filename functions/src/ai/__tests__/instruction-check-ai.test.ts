@@ -88,6 +88,29 @@ describe("checkInstructions", () => {
     expect(check.items.map((i) => i.source)).toEqual(["code"])
   })
 
+  // Ruling 11: with no exact checks, "only the exact checks are shown" points at an empty list.
+  const NOTHING_CHECKED = "Couldn't check your instructions this time."
+
+  it("a failed judge with no exact checks says nothing could be checked", async () => {
+    callAgentMock.mockRejectedValue(new Error("boom"))
+    const check = await checkInstructions(input({ instructions: "mainly shoulders" }))
+    expect(check.items).toEqual([])
+    expect(check.status).toBe("unchecked")
+    expect(check.note).toBe(NOTHING_CHECKED)
+  })
+
+  it("a timed-out judge with no exact checks says nothing could be checked", async () => {
+    callAgentMock.mockImplementation(
+      (_s: string, _m: string, _z: unknown, o: { signal: AbortSignal }) =>
+        new Promise((_res, rej) =>
+          o.signal.addEventListener("abort", () => rej(Object.assign(new Error("aborted"), { name: "AbortError" }))),
+        ),
+    )
+    const check = await checkInstructions(input({ instructions: "mainly shoulders" }), { timeoutMs: 10 })
+    expect(check.items).toEqual([])
+    expect(check.note).toBe(NOTHING_CHECKED)
+  })
+
   it("rethrows when the generation's own deadline aborts", async () => {
     const outer = new AbortController()
     callAgentMock.mockImplementation(async () => {
