@@ -47,11 +47,24 @@ const MAX_WORDS_BETWEEN = 3
 
 // A number or a range ("10-12", "10 to 12"). ONE pattern, shared by every reader below.
 const NUMBER_OR_RANGE = /(\d+)(?:\s*(?:[-–—]|to)\s*(\d+))?/g
-// A limit or a selection right before the number: "at least 2", "max 3", "pick the best 5".
+// A limit right before the number: "at least 2", "max 3".
 const LIMIT_BEFORE =
-  /\b(?:at least|at most|max(?:imum)?|min(?:imum)?|no more than|up to|fewer than|less than|more than)\s*:?\s*$|\b(?:pick|choose|select)\b[^\d]*$/i
+  /\b(?:at least|at most|max(?:imum)?|min(?:imum)?|no more than|up to|fewer than|less than|more than)\s*:?\s*$/i
+// A selection FROM something: "pick 5 exercises from the pool". "Choose 12 exercises for a
+// shoulder day" is the day's count, so the verb alone is not enough (I4).
+const SELECT_BEFORE = /\b(?:pick|choose|select)\b[^\d]*$/i
+const FROM_AFTER = /^\s*(?:from|of|out\s+of)\b/i
 // "3 exercises per block" is a per-block count, not the day's; "per day/session/workout" is the day's.
 const PER_AFTER = /^\s*per\b(?!\s+(?:training\s+)?(?:day|session|workout)\b)/i
+// Words that make a count an instruction about SOME of the exercises — "add 2", "swap 2",
+// "with 3 for upper back", "the last 2" — rather than the day's total. Only statedExerciseTotal
+// reads this; the architect directive (statesExerciseCount) is deliberately left as it was.
+const SUBSET_BEFORE =
+  /\b(?:add|adding|swap|swapping|replace|replacing|include|including|drop|dropping|remove|removing|superset|last|first|with|make sure|of them|another|extra|more)\b/i
+const SUBSET_BETWEEN = new Set(["more", "extra", "additional", "another"])
+// Within a line, a clause starts after `,` `;` `:` or a full stop. Bullets and list numbers
+// ("• 12 …", "1. 12 …") hold no qualifier word, so they need no stripping.
+const CLAUSE_BOUNDARY = /[,;:.]/
 
 interface CountMention {
   n: number
@@ -60,6 +73,8 @@ interface CountMention {
   rejected: boolean
   /** "total" is attached to this count: "N exercises total", "total of N", "total: N", "N total exercises". */
   total: boolean
+  /** Nothing before the count in its clause makes it a sub-count ("add 2", "with 3", "the last 2"). */
+  standalone: boolean
 }
 
 /** Every "<number> … <exercise noun>" on one line. */
@@ -75,15 +90,19 @@ function countMentions(line: string): CountMention[] {
       if (COUNT_NOUN.test(w)) {
         const nounEnd = afterNumber + words[i].index! + w.length
         const before = line.slice(0, m.index)
+        const after = line.slice(nounEnd)
         const between = words.slice(0, i).map((x) => x[0].toLowerCase())
+        const clauseBefore = before.split(CLAUSE_BOUNDARY).pop() ?? ""
         out.push({
           n: Number(m[2] ?? m[1]),
           isRange: m[2] !== undefined,
-          rejected: LIMIT_BEFORE.test(before) || PER_AFTER.test(line.slice(nounEnd)),
+          rejected:
+            LIMIT_BEFORE.test(before) ||
+            (SELECT_BEFORE.test(before) && FROM_AFTER.test(after)) ||
+            PER_AFTER.test(after),
           total:
-            between.includes("total") ||
-            /^\s*[,(-]?\s*total\b/i.test(line.slice(nounEnd)) ||
-            /\btotal\s*(?:of|:)?\s*$/i.test(before),
+            between.includes("total") || /^\s*[,(-]?\s*total\b/i.test(after) || /\btotal\s*(?:of|:)?\s*$/i.test(before),
+          standalone: !SUBSET_BEFORE.test(clauseBefore) && !between.some((b) => SUBSET_BETWEEN.has(b)),
         })
         break
       }
@@ -104,17 +123,21 @@ export function statesExerciseCount(instructions: string | undefined | null): bo
 
 /**
  * The ONE total exercise count the coach stated, or null. A count with "total"
- * attached wins; otherwise exactly one count in the text is the total. Limits
- * ("max 3"), selections ("pick 5 from"), per-block counts, ranges ("10-12",
- * "10 to 12") and several per-area counts with no total are not a single
- * number and are left to the AI judge.
+ * attached wins; otherwise exactly one count in the text is the total, and only
+ * when nothing before it in its clause makes it a sub-count ("add 2", "swap 2",
+ * "with 3 for upper back", "the last 2"). Limits ("max 3"), selections ("pick 5
+ * from"), per-block counts, ranges ("10-12", "10 to 12") and several per-area
+ * counts with no total are not a single number and are left to the AI judge.
+ *
+ * A wrong number here shows the coach a red ✗ AND drives the rebuild with wrong
+ * feedback; a missed one costs nothing, because the judge still reads the text.
  */
 export function statedExerciseTotal(text: string | null | undefined): number | null {
   if (!text) return null
   const counts = allMentions(text).filter((c) => !c.rejected)
   const totals = counts.filter((c) => c.total && !c.isRange)
   if (totals.length === 1) return totals[0].n
-  if (counts.length === 1 && !counts[0].isRange) return counts[0].n
+  if (counts.length === 1 && !counts[0].isRange && counts[0].standalone) return counts[0].n
   return null
 }
 
@@ -126,42 +149,72 @@ export interface CoachPrescription {
 }
 
 const RANGE = String.raw`(\d+)(?:\s*(?:-|–|—|to)\s*(\d+))?`
+const TIME_UNIT = String.raw`(sec|secs|seconds|s|min|mins|minutes)`
+// The only words allowed after a sets/reps value: "8 reps each side", "3 sets per side".
+const TAIL = String.raw`(?:\s+(?:each(?:\s+side)?|per\s+(?:set|side)))?`
+const TEMPO = String.raw`(\d+(?:[-.:]\d+){2,3})`
+// A clause ends at a newline, `,`, `;`, or a full stop that is not between two digits
+// ("4.2.4" and "1.5" stay whole; "1. 12 exercises" and "…reps. Rest 90 sec" split).
+const CLAUSE_SPLIT = /\r?\n|[,;]|(?<!\d)\.|\.(?!\d)/
+const LEADING_MARKER = /^[\s•*·–—-]+/
 
-function oneRange(text: string, word: RegExp, patterns: RegExp[]): [number, number] | undefined {
-  // Mentioned more than once → a second prescription exists; leave it to the AI.
-  if ((text.match(word) ?? []).length !== 1) return undefined
+/**
+ * The one clause that holds the field's word, matched WHOLE against `patterns`.
+ * The field is left to the AI judge when the word appears more than once (a
+ * second prescription) or when its clause holds anything but the value: a limit
+ * ("max 4 sets", "up to 90 sec rest"), RIR / rep-max wording ("2 reps in
+ * reserve", "3 rep max"), an addition ("add 1 set") or a scope ("on compounds",
+ * "main lifts only"). Anchoring the whole clause rejects all of those at once.
+ */
+function fieldClause(text: string, word: RegExp, patterns: RegExp[]): RegExpMatchArray | undefined {
+  if ((text.match(new RegExp(word.source, "gi")) ?? []).length !== 1) return undefined
+  const clause = text
+    .split(CLAUSE_SPLIT)
+    .find((c) => word.test(c))
+    ?.replace(LEADING_MARKER, "")
+    .trim()
+  if (!clause) return undefined
   for (const p of patterns) {
-    const m = text.match(p)
-    if (m) {
-      const unit = (m[3] ?? "").toLowerCase()
-      const k = unit.startsWith("m") ? 60 : 1
-      return [Number(m[1]) * k, Number(m[2] ?? m[1]) * k]
-    }
+    const m = clause.match(p)
+    if (m) return m
   }
   return undefined
 }
+
+function oneRange(text: string, word: RegExp, patterns: RegExp[]): [number, number] | undefined {
+  const m = fieldClause(text, word, patterns)
+  if (!m) return undefined
+  const unit = (m[3] ?? "").toLowerCase()
+  const k = unit.startsWith("m") ? 60 : 1
+  return [Number(m[1]) * k, Number(m[2] ?? m[1]) * k]
+}
+
+const whole = (pattern: string) => new RegExp(`^${pattern}$`, "i")
 
 /**
  * The single sets / reps / rest / tempo prescription the coach wrote, per field.
  * A field the coach mentions more than once ("4-8 reps … Low reps (3-5)") is
  * omitted: that is two prescriptions for different work, and only the AI judge
- * can tell which exercise each applies to.
+ * can tell which exercise each applies to. So is a field whose clause says
+ * anything beyond the value (see fieldClause): a wrong exact line shows a red ✗
+ * and drives the rebuild with wrong feedback, while a missed one costs nothing.
  */
 export function parsePrescription(text: string | null | undefined): CoachPrescription {
   if (!text) return {}
   const out: CoachPrescription = {}
-  const sets = oneRange(text, /\bsets?\b/gi, [new RegExp(String.raw`${RANGE}\s*sets?\b`, "i")])
+  const sets = oneRange(text, /\bsets?\b/i, [whole(String.raw`${RANGE}\s*sets?${TAIL}`)])
   if (sets) out.sets = sets
-  const reps = oneRange(text, /\breps?\b/gi, [new RegExp(String.raw`${RANGE}\s*reps?\b`, "i")])
+  const reps = oneRange(text, /\breps?\b/i, [whole(String.raw`${RANGE}\s*reps?${TAIL}`)])
   if (reps) out.reps = reps
-  const rest = oneRange(text, /\brest\b/gi, [
-    new RegExp(String.raw`${RANGE}\s*(sec|secs|seconds|s|min|mins|minutes)\b\s*(?:of\s+)?rest`, "i"),
-    new RegExp(String.raw`rest\s*(?:of\s+|:\s*)?${RANGE}\s*(sec|secs|seconds|s|min|mins|minutes)\b`, "i"),
+  const rest = oneRange(text, /\brest\b/i, [
+    whole(String.raw`${RANGE}\s*${TIME_UNIT}\s*(?:of\s+)?rest`),
+    whole(String.raw`rest\s*(?:of\s+|:\s*)?${RANGE}\s*${TIME_UNIT}`),
   ])
   if (rest) out.restSeconds = rest
-  if ((text.match(/\btempo\b/gi) ?? []).length === 1) {
-    const t = text.match(/(\d+(?:[-.]\d+){2,3})\s*tempo/i) ?? text.match(/tempo\s*[:\s]\s*(\d+(?:[-.]\d+){2,3})/i)
-    if (t) out.tempo = t[1].replace(/\./g, "-")
-  }
+  const tempo = fieldClause(text, /\btempo\b/i, [
+    whole(String.raw`${TEMPO}\s*tempo`),
+    whole(String.raw`tempo\s*:?\s*${TEMPO}`),
+  ])
+  if (tempo) out.tempo = tempo[1].replace(/[.:]/g, "-")
   return out
 }

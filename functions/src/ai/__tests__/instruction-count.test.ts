@@ -142,3 +142,128 @@ describe("parsePrescription", () => {
     expect(parsePrescription(undefined)).toEqual({})
   })
 })
+
+/**
+ * Final review C1 (Ruling 9): a lone count is the day's total only when the coach's wording is
+ * unambiguous. A count that is an instruction ABOUT some of the exercises ("add 2", "swap 2",
+ * "with 3 for upper back") would otherwise show a red ✗ and drive the rebuild with wrong feedback.
+ */
+describe("statedExerciseTotal never reads a sub-count as the day's total (C1)", () => {
+  it.each([
+    "Add 2 core exercises",
+    "Include 2 plyometric exercises",
+    "Keep last week's day but swap 2 exercises",
+    "Same as Monday, drop 1 exercise",
+    "Mainly shoulders, with 3 exercises for upper back",
+    "Make sure 4 exercises are unilateral",
+    "superset the last 2 exercises",
+    "Replace 2 exercises with bands",
+    "Remove 1 exercise",
+    "Do the first 3 exercises as a circuit",
+    "Add another 2 exercises",
+    "Do 2 more exercises for arms",
+    "Program 2 extra exercises for grip",
+  ])("%j → null", (text) => {
+    expect(statedExerciseTotal(text)).toBeNull()
+  })
+
+  it.each([
+    ["12 exercises", 12],
+    ["12 exercises\n2-4 sets", 12],
+    ["12 exercises that are shoulder focused", 12],
+    ["12 exercises, mainly shoulder", 12],
+    ["• 12 exercises total", 12],
+    ["12 exercises total", 12],
+    ["total of 10 exercises", 10],
+    ["Total: 9 exercises", 9],
+    ["10 total exercises", 10],
+    ["12 exercises per day", 12],
+    ["12 exercises per session", 12],
+    ["8 movements, mostly lower body", 8],
+    ["Choose 12 exercises for a shoulder-focused day", 12],
+    ["- 12 exercises", 12],
+    ["1. 12 exercises", 12],
+    ["Shoulder day; 10 exercises", 10],
+  ])("%j → %i", (text, n) => {
+    expect(statedExerciseTotal(text)).toBe(n)
+  })
+
+  it("does not tighten the architect directive: a sub-count still states a count", () => {
+    expect(statesExerciseCount("Add 2 core exercises")).toBe(true)
+  })
+})
+
+describe("a selection is rejected only when it is FROM something (I4)", () => {
+  it("'Choose/Select 12 exercises for …' is the day's count", () => {
+    expect(statesExerciseCount("Choose 12 exercises for a shoulder-focused day")).toBe(true)
+    expect(statedExerciseTotal("Choose 12 exercises for a shoulder-focused day")).toBe(12)
+    expect(statesExerciseCount("Select 10 exercises")).toBe(true)
+    expect(statedExerciseTotal("Select 10 exercises")).toBe(10)
+  })
+
+  it.each(["Pick 5 exercises from the pool", "Choose 4 exercises out of the list", "Select 3 exercises of these"])(
+    "%j is a selection, not a count",
+    (text) => {
+      expect(statesExerciseCount(text)).toBe(false)
+      expect(statedExerciseTotal(text)).toBeNull()
+    },
+  )
+})
+
+/**
+ * Final review C2 (Ruling 9): a field is read only when its clause is nothing but the value.
+ * Limits, RIR / rep-max wording, additions and scope tails ("on compounds", "main lifts only")
+ * are left to the AI judge.
+ */
+describe("parsePrescription reads only stand-alone values (C2)", () => {
+  it.each([
+    ["Leave 2 reps in reserve", "reps"],
+    ["heavy 3 rep max on trap bar", "reps"],
+    ["70% of your 1 rep max", "reps"],
+    ["2 RIR, 8 reps to failure", "reps"],
+    ["1 set to failure on the last exercise", "sets"],
+    ["Add 1 set to each exercise", "sets"],
+    ["Max 4 sets", "sets"],
+    ["No more than 3 sets", "sets"],
+    ["At least 3 sets on compounds", "sets"],
+    ["3 sets for the main lifts", "sets"],
+    ["Up to 90 sec rest", "restSeconds"],
+    ["45-60 seconds rest between sets, 90 s on compounds", "restSeconds"],
+    ["4-2-4 tempo on the main lifts only", "tempo"],
+    ["Extra 3-1-1 tempo", "tempo"],
+  ] as const)("%j → no %s", (text, field) => {
+    expect(parsePrescription(text)[field]).toBeUndefined()
+  })
+
+  it("still reads Darren's real block exactly", () => {
+    expect(parsePrescription("12 exercises\n2-4 sets\n4-8 reps\n30-90sec rest\n4-2-4 tempo")).toEqual({
+      sets: [2, 4],
+      reps: [4, 8],
+      restSeconds: [30, 90],
+      tempo: "4-2-4",
+    })
+  })
+
+  it("reads one comma-separated line", () => {
+    expect(parsePrescription("2-4 sets, 4-8 reps, 30-90 sec rest, 4-2-4 tempo")).toEqual({
+      sets: [2, 4],
+      reps: [4, 8],
+      restSeconds: [30, 90],
+      tempo: "4-2-4",
+    })
+  })
+
+  it("reads the allowed tails and keeps a dotted tempo whole", () => {
+    expect(parsePrescription("3 sets\n10 reps each side\n60 sec of rest\nTempo: 3.1.1")).toEqual({
+      sets: [3, 3],
+      reps: [10, 10],
+      restSeconds: [60, 60],
+      tempo: "3-1-1",
+    })
+    expect(parsePrescription("3 sets per side; 8 reps each. Rest 90 sec")).toEqual({
+      sets: [3, 3],
+      reps: [8, 8],
+      restSeconds: [90, 90],
+    })
+  })
+})
