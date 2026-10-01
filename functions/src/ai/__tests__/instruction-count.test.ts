@@ -56,6 +56,26 @@ describe("limits, per-block counts and selections are not a stated count", () =>
     expect(statedExerciseTotal(text)).toBeNull()
   })
 
+  it.each([
+    ["12 exercises per day", 12],
+    ["12 exercises per session", 12],
+    ["10 exercises per workout", 10],
+    ["12 exercises per training day", 12],
+    ["admin note: 12 exercises", 12],
+    ["admin: 12 exercises", 12],
+  ])("%j is the day's count", (text, n) => {
+    expect(statesExerciseCount(text)).toBe(true)
+    expect(statedExerciseTotal(text)).toBe(n)
+  })
+
+  it.each(["2 exercises per area", "3 exercises per side", "3 exercises per round", "3 exercises per superset"])(
+    "%j is a per-unit count, not the day's",
+    (text) => {
+      expect(statesExerciseCount(text)).toBe(false)
+      expect(statedExerciseTotal(text)).toBeNull()
+    },
+  )
+
   it("a 'to' range is a stated count but not a single total", () => {
     expect(statesExerciseCount("10 to 12 exercises")).toBe(true)
     expect(statedExerciseTotal("10 to 12 exercises")).toBeNull()

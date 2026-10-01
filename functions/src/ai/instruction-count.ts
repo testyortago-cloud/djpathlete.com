@@ -49,9 +49,9 @@ const MAX_WORDS_BETWEEN = 3
 const NUMBER_OR_RANGE = /(\d+)(?:\s*(?:[-–—]|to)\s*(\d+))?/g
 // A limit or a selection right before the number: "at least 2", "max 3", "pick the best 5".
 const LIMIT_BEFORE =
-  /(?:at least|at most|max(?:imum)?|min(?:imum)?|no more than|up to|fewer than|less than|more than)\s*:?\s*$|\b(?:pick|choose|select)\b[^\d]*$/i
-// "3 exercises per block" is a per-block count, not the day's.
-const PER_AFTER = /^\s*per\b/i
+  /\b(?:at least|at most|max(?:imum)?|min(?:imum)?|no more than|up to|fewer than|less than|more than)\s*:?\s*$|\b(?:pick|choose|select)\b[^\d]*$/i
+// "3 exercises per block" is a per-block count, not the day's; "per day/session/workout" is the day's.
+const PER_AFTER = /^\s*per\b(?!\s+(?:training\s+)?(?:day|session|workout)\b)/i
 
 interface CountMention {
   n: number
