@@ -101,21 +101,42 @@ export const MODEL_OPUS_5_5 = "claude-opus-5-5"
 export const MODEL_GPT6_ASTRA = "gpt-6-astra"
 
 /**
+ * The architect + selector default since 2026-10-02, replacing Astra.
+ *
+ * COMPARED 2026-10-02 on five REAL coach requests (four Fill Week runs from
+ * that morning, one Generate Day), replayed through the branch code on the dev
+ * clone against the same athletes' programs (scripts/replay-week-generation.ts),
+ * scored by the instruction check, priced from OpenRouter's own usage:
+ *
+ *              instructions missed   total cost   slowest run   rebuilds
+ *   Astra              6               $5.52         327s         0/5
+ *   GPT-6.1 Sol        7               $1.27         214s         0/5
+ *   Opus 5.5           5               $5.54         371s         4/5
+ *
+ * Sol matched Astra within one instruction at 23% of the cost and was the
+ * fastest, which matters against the 450s week budget. Opus's lower count came
+ * from rebuilding four times in five — double the cost and the slowest runs.
+ * One run per model per request: re-run the script before a further change.
+ */
+export const MODEL_GPT61_SOL = "gpt-6-1-sol"
+
+/**
  * Overridable so a head-to-head can be run without editing code — set
  * PROGRAM_ARCHITECT_MODEL / EXERCISE_SELECTOR_MODEL for one run and compare.
  * PRODUCTION LEAVES BOTH UNSET; the default is the pair above. An unmapped id
  * throws in toOpenRouterModel rather than silently falling back, so a typo here
  * fails loudly instead of quietly benchmarking the wrong model.
  */
-export const MODEL_PROGRAM_ARCHITECT = process.env.PROGRAM_ARCHITECT_MODEL || MODEL_GPT6_ASTRA
-export const MODEL_EXERCISE_SELECTOR = process.env.EXERCISE_SELECTOR_MODEL || MODEL_GPT6_ASTRA
+export const MODEL_PROGRAM_ARCHITECT = process.env.PROGRAM_ARCHITECT_MODEL || MODEL_GPT61_SOL
+export const MODEL_EXERCISE_SELECTOR = process.env.EXERCISE_SELECTOR_MODEL || MODEL_GPT61_SOL
 
 /**
- * Thinking depth for the two agents above. gpt-6-astra takes the forced-tool
- * branch (it does not reject forced tool choice), and through OpenRouter
- * `buildChatRequest` sends effort as `reasoning` on that branch too — so this
- * does reach the wire. It would not on direct Anthropic, where only the
- * structured-outputs branch sends it, but astra never goes there.
+ * Thinking depth for the two agents above. gpt-6-1-sol (like gpt-6-astra before
+ * it) takes the forced-tool branch (it does not reject forced tool choice), and
+ * through OpenRouter `buildChatRequest` sends effort as `reasoning` on that
+ * branch too — so this does reach the wire. It would not on direct Anthropic,
+ * where only the structured-outputs branch sends it, but a non-Claude id never
+ * goes there (canFallBackToAnthropic).
  */
 export const PROGRAM_AGENT_EFFORT = "medium" as const
 

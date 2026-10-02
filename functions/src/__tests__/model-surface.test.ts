@@ -108,3 +108,16 @@ describe("stripUnsupportedSchemaKeywords", () => {
     expect(stripUnsupportedSchemaKeywords(5)).toBe(5)
   })
 })
+
+// 2026-10-02: five real coach requests replayed on the dev clone. GPT-6.1 Sol
+// missed 7 instructions to Astra's 6 at $1.27 against $5.52, and was the fastest
+// (slowest run 214s against 327s, under the 450s week budget).
+describe("the planning agents' default model", () => {
+  it("is GPT-6.1 Sol for both the architect and the selector when nothing overrides it", async () => {
+    expect(process.env.PROGRAM_ARCHITECT_MODEL).toBeUndefined()
+    expect(process.env.EXERCISE_SELECTOR_MODEL).toBeUndefined()
+    const { MODEL_PROGRAM_ARCHITECT, MODEL_EXERCISE_SELECTOR } = await import("../ai/anthropic.js")
+    expect(MODEL_PROGRAM_ARCHITECT).toBe("gpt-6-1-sol")
+    expect(MODEL_EXERCISE_SELECTOR).toBe("gpt-6-1-sol")
+  })
+})
