@@ -101,6 +101,7 @@ export default async function ProgramBuilderPage({ params }: { params: Promise<{
 
       <ProgramBuilder
         programId={program.id}
+        programName={program.name}
         totalWeeks={program.duration_weeks}
         programExercises={programExercises}
         exercises={exercises}

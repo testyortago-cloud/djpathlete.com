@@ -106,10 +106,40 @@ const FAMILY_STOPWORDS = new Set([
   "front",
   "back",
   "lateral",
+  // Equipment: what the movement is done WITH, not what the body does. Two
+  // movements on one cable stack are not one pattern ("all cable pulley").
+  "cable",
+  "cables",
+  "pulley",
+  "band",
+  "banded",
+  "bands",
+  "dumbbell",
+  "dumbbells",
+  "kettlebell",
+  "kettlebells",
+  "barbell",
+  "plate",
+  "ball",
+  "balls",
+  "swiss",
+  "med",
+  "medicine",
+  "machine",
+  "weighted",
+  "bodyweight",
+  "smith",
+  "trx",
+  "landmine",
 ])
 
 function familyTokens(name: string): string[] {
-  return name
+  // The library files exercises as "Name_BodyPart". The suffix says where it
+  // is filed, not what moves, so two different movements filed under
+  // "_Full body" shared "body full". Drop the last "_" segment.
+  const underscore = name.lastIndexOf("_")
+  const movement = underscore > 0 ? name.slice(0, underscore) : name
+  return movement
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .split(" ")
@@ -159,12 +189,20 @@ export function findRepeatedMovementFamilies(exerciseNames: string[], minShared 
 
 // ─── Warning text ───────────────────────────────────────────────────────────
 
-export function buildIsometricWarning(issues: IsometricRepsIssue[]): string[] {
+/**
+ * `dayOf` names the day a slot sits on. The slot id itself ("w8d2s9") is never
+ * printed: the coach reads this, and that id appears nowhere on the coach's screen.
+ */
+export function buildIsometricWarning(
+  issues: IsometricRepsIssue[],
+  dayOf: (slotId: string) => string | null = () => null,
+): string[] {
   if (issues.length === 0) return []
   const example = issues[0]
+  const day = dayOf(example.slot_id)
   return [
     `${issues.length} hold${issues.length === 1 ? " is" : "s are"} prescribed with a rep count instead of a ` +
-      `time — e.g. "${example.exercise_name}" says "${example.reps}" (slot ${example.slot_id}). ` +
+      `time — e.g. "${example.exercise_name}"${day ? ` on ${day}` : ""} says "${example.reps}". ` +
       `An isometric is held for seconds; set a duration before the client sees it.`,
   ]
 }

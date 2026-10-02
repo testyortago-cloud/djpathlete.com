@@ -52,6 +52,8 @@ interface AssignmentInfo {
 
 interface ProgramBuilderProps {
   programId: string
+  /** Shown on the generation dock's card, so parallel runs can be told apart. */
+  programName?: string
   totalWeeks: number
   programExercises: ProgramExerciseWithExercise[]
   exercises: Exercise[]
@@ -60,6 +62,7 @@ interface ProgramBuilderProps {
 
 export function ProgramBuilder({
   programId,
+  programName,
   totalWeeks,
   programExercises,
   exercises,
@@ -1232,6 +1235,7 @@ export function ProgramBuilder({
         open={generateWeekOpen}
         onOpenChange={setGenerateWeekOpen}
         programId={programId}
+        programName={programName}
         assignmentId={assignmentInfo?.assignmentId}
         clientId={assignmentInfo?.clientId}
         currentWeekCount={localTotalWeeks}
@@ -1252,6 +1256,7 @@ export function ProgramBuilder({
         open={generateDayOpen}
         onOpenChange={setGenerateDayOpen}
         programId={programId}
+        programName={programName}
         assignmentId={assignmentInfo?.assignmentId}
         clientId={assignmentInfo?.clientId}
         weekNumber={selectedWeek}

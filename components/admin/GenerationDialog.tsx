@@ -75,6 +75,8 @@ interface DayModeProps {
 type GenerationDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Named on the dock card, so runs on several programs can be told apart. */
+  programName?: string
 } & (WeekModeProps | DayModeProps)
 
 export function GenerationDialog(props: GenerationDialogProps) {
@@ -237,6 +239,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
             ? `Fill Week ${weekLabel}`
             : `New Week ${weekLabel}`
           : `Week ${weekLabel} / ${dayName}`,
+        context: props.programName,
         programId: props.programId,
       })
       // Auto-close so the admin sees the dock immediately. The dialog stays

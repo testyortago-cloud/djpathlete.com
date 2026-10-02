@@ -205,3 +205,74 @@ describe("JobsNotificationDock shows how the instructions were read", () => {
     expect(await screen.findByText("Your instructions, checked")).toBeTruthy()
   })
 })
+
+/**
+ * 2026-10-02, owner's photos: the finished card's background was `bg-warning/5`
+ * — 5% opacity — so the program page's "Thursday", "AI Generate" and "Add
+ * Exercise" read straight through the warning text. And the running card
+ * printed the step's code name ("selecting_exercises") instead of the plain
+ * sentence the function already writes beside it.
+ */
+describe("JobsNotificationDock cards are readable over the page", () => {
+  const running = {
+    jobId: "job-run",
+    kind: "week",
+    label: "Fill Week 8",
+    programId: "prog-1",
+    startedAt: new Date().toISOString(),
+  }
+
+  it("paints every card on an opaque background, tint on top", async () => {
+    dock.jobs = [{ ...running, jobId: "job-done", resolvedState: "completed" }]
+    jobDoc.current = { status: "completed", result: { warnings: [WARNING] } }
+    const { container } = render(<JobsNotificationDock />)
+    expect(await screen.findByText(WARNING)).toBeTruthy()
+
+    const card = container.querySelector("[data-job-id='job-done']") as HTMLElement
+    expect(card).toBeTruthy()
+    expect(card.className.split(/\s+/)).toContain("bg-card")
+    // No translucent fill on the card itself: that is what let the page show through.
+    expect(card.className).not.toMatch(/\bbg-[a-z]+\/\d+\b/)
+  })
+
+  it("shows the plain-English step, not the code name", async () => {
+    dock.jobs = [running]
+    jobDoc.current = {
+      status: "processing",
+      progress: {
+        status: "selecting_exercises",
+        current_step: 4,
+        total_steps: 5,
+        detail: "Checking the week against your instructions",
+      },
+    }
+    render(<JobsNotificationDock />)
+    expect(await screen.findByText(/Checking the week against your instructions/)).toBeTruthy()
+    expect(screen.queryByText(/selecting_exercises/)).toBeNull()
+  })
+
+  it("falls back to a readable label when there is no detail", async () => {
+    dock.jobs = [running]
+    jobDoc.current = {
+      status: "processing",
+      progress: { status: "selecting_exercises", current_step: 4, total_steps: 5 },
+    }
+    render(<JobsNotificationDock />)
+    expect(await screen.findByText(/Selecting exercises/)).toBeTruthy()
+    expect(screen.queryByText(/selecting_exercises/)).toBeNull()
+  })
+
+  // Prod, 2026-10-02: Week 8 was filled for seven programs at once and every
+  // card read "Fill Week 8", so a "Ready" card sat over a different program's
+  // still-empty week. Each card names its program.
+  it("names the program on each card", async () => {
+    dock.jobs = [
+      { ...running, jobId: "a", context: "Chris H_ Program" },
+      { ...running, jobId: "b", context: "Matthew C Program" },
+    ]
+    jobDoc.current = { status: "processing" }
+    render(<JobsNotificationDock />)
+    expect(await screen.findByText("Chris H_ Program")).toBeTruthy()
+    expect(screen.getByText("Matthew C Program")).toBeTruthy()
+  })
+})

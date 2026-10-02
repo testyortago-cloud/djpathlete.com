@@ -39,9 +39,33 @@ function relativeTime(iso: string): string {
   return `${hr}h ago`
 }
 
+// `progress.status` is a step's code name; the function also writes a plain
+// sentence in `progress.detail` (createJobProgressUpdater). Show the sentence —
+// it is also the only place the coach sees "Checking the week against your
+// instructions" or "Rebuilding…", which run under the selecting step.
+const STEP_LABELS: Record<string, string> = {
+  fetching_context: "Loading the program",
+  context_loaded: "Program loaded",
+  analyzing_profile: "Reading the client profile",
+  profile_complete: "Client profile read",
+  designing_structure: "Planning the program",
+  designing_week: "Planning the week",
+  selecting_exercises: "Selecting exercises",
+  saving_program: "Saving",
+  saving_week: "Saving",
+}
+
+function progressText(progress: JobDocState["progress"]): string {
+  const detail = progress?.detail?.trim()
+  if (detail) return detail
+  const key = progress?.status
+  if (!key) return "Working"
+  return STEP_LABELS[key] ?? key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())
+}
+
 interface JobDocState {
   status?: "pending" | "processing" | "completed" | "failed" | "cancelled"
-  progress?: { status?: string; current_step?: number; total_steps?: number }
+  progress?: { status?: string; current_step?: number; total_steps?: number; detail?: string | null }
   result?: Record<string, unknown> | null
   error?: string | null
 }
@@ -163,89 +187,97 @@ function JobCard({ job }: { job: DockedJob }) {
 
   const linkHref = programId ? `/admin/programs/${programId}` : null
 
-  const tone = isDone
+  // The tint is a translucent layer INSIDE an opaque card. On the card itself
+  // (`bg-warning/5`) it let the program page read through the warning text.
+  const [border, tint] = isDone
     ? warnings.length > 0
-      ? "border-warning/40 bg-warning/5"
-      : "border-success/40 bg-success/5"
+      ? ["border-warning/40", "bg-warning/5"]
+      : ["border-success/40", "bg-success/5"]
     : isFailed
-      ? "border-error/40 bg-error/5"
-      : "border-border bg-card"
+      ? ["border-error/40", "bg-error/5"]
+      : ["border-border", ""]
 
   return (
     <div
-      className={`relative rounded-xl border ${tone} p-3 shadow-sm transition-all`}
+      data-job-id={job.jobId}
+      className={`relative overflow-hidden rounded-xl border ${border} bg-card shadow-sm transition-all`}
     >
-      <button
-        type="button"
-        onClick={() => removeJob(job.jobId)}
-        className="absolute top-1.5 right-1.5 rounded-md p-0.5 text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
-        aria-label="Dismiss"
-      >
-        <X className="size-3.5" />
-      </button>
+      <div className={`p-3 ${tint}`}>
+        <button
+          type="button"
+          onClick={() => removeJob(job.jobId)}
+          className="absolute top-1.5 right-1.5 rounded-md p-0.5 text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
+          aria-label="Dismiss"
+        >
+          <X className="size-3.5" />
+        </button>
 
-      <div className="flex items-start gap-2.5 pr-5">
-        <div className="mt-0.5 shrink-0">
-          {isRunning ? (
-            <Loader2 className="size-4 animate-spin text-accent" />
-          ) : isDone ? (
-            <CheckCircle2 className="size-4 text-success" />
-          ) : (
-            <XCircle className="size-4 text-error" />
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-foreground leading-snug">
-            {job.label}
-          </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">
+        <div className="flex items-start gap-2.5 pr-5">
+          <div className="mt-0.5 shrink-0">
             {isRunning ? (
-              <>
-                {state.progress?.status ?? "Working"}
-                {state.progress?.current_step != null && state.progress?.total_steps
-                  ? ` · step ${state.progress.current_step}/${state.progress.total_steps}`
-                  : ""}
-                {" · "}
-                {relativeTime(job.startedAt)}
-              </>
+              <Loader2 className="size-4 animate-spin text-accent" />
             ) : isDone ? (
-              <>Ready · {relativeTime(job.startedAt)}</>
+              <CheckCircle2 className="size-4 text-success" />
             ) : (
-              <span className="text-error">
-                Failed
-                {state.error ? ` · ${state.error.slice(0, 60)}` : ""}
-              </span>
+              <XCircle className="size-4 text-error" />
             )}
-          </p>
+          </div>
 
-          {warnings.length > 0 ? (
-            <div className="mt-2">
-              <GenerationWarnings warnings={warnings} />
-            </div>
-          ) : null}
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-foreground leading-snug">{job.label}</p>
+            {job.context ? (
+              <p className="truncate text-[11px] font-medium text-foreground/80 leading-snug" title={job.context}>
+                {job.context}
+              </p>
+            ) : null}
+            <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">
+              {isRunning ? (
+                <>
+                  {progressText(state.progress)}
+                  {state.progress?.current_step != null && state.progress?.total_steps
+                    ? ` · step ${state.progress.current_step}/${state.progress.total_steps}`
+                    : ""}
+                  {" · "}
+                  {relativeTime(job.startedAt)}
+                </>
+              ) : isDone ? (
+                <>Ready · {relativeTime(job.startedAt)}</>
+              ) : (
+                <span className="text-error">
+                  Failed
+                  {state.error ? ` · ${state.error.slice(0, 200)}` : ""}
+                </span>
+              )}
+            </p>
 
-          {isDone && extractInstructionsUsed(state.result) ? (
-            <div className="mt-2">
-              <InstructionsUsedPanel used={extractInstructionsUsed(state.result)} />
-            </div>
-          ) : null}
+            {warnings.length > 0 ? (
+              <div className="mt-2">
+                <GenerationWarnings warnings={warnings} />
+              </div>
+            ) : null}
 
-          {isDone && hasInstructionCheckContent(extractInstructionCheck(state.result)) ? (
-            <div className="mt-2">
-              <InstructionCheckPanel check={extractInstructionCheck(state.result)} />
-            </div>
-          ) : null}
+            {isDone && extractInstructionsUsed(state.result) ? (
+              <div className="mt-2">
+                <InstructionsUsedPanel used={extractInstructionsUsed(state.result)} />
+              </div>
+            ) : null}
 
-          {(isDone || isFailed) && linkHref ? (
-            <Link
-              href={linkHref}
-              onClick={() => removeJob(job.jobId)}
-              className="mt-1.5 inline-flex items-center text-[11px] font-medium text-accent hover:underline"
-            >
-              {isDone ? "Open →" : "View →"}
-            </Link>
-          ) : null}
+            {isDone && hasInstructionCheckContent(extractInstructionCheck(state.result)) ? (
+              <div className="mt-2">
+                <InstructionCheckPanel check={extractInstructionCheck(state.result)} />
+              </div>
+            ) : null}
+
+            {(isDone || isFailed) && linkHref ? (
+              <Link
+                href={linkHref}
+                onClick={() => removeJob(job.jobId)}
+                className="mt-1.5 inline-flex items-center text-[11px] font-medium text-accent hover:underline"
+              >
+                {isDone ? "Open →" : "View →"}
+              </Link>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

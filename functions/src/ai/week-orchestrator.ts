@@ -564,6 +564,35 @@ export function buildDedupSourceExercises(
     })
 }
 
+/**
+ * Why a week (or one day of it) cannot be generated into, or null when it is
+ * empty. Run at the start AND again at the save: with the instruction check and
+ * rebuild a run takes minutes, and on 2026-10-02 the owner started a second
+ * "Fill Week 8" while the first was still going — both had passed the start
+ * check, so both would have written into Week 8.
+ */
+export function targetConflict(
+  rows: Array<{ week_number: number; day_of_week: number }>,
+  weekNumber: number,
+  dayOfWeek: number | null,
+  opts: { atSave?: boolean } = {},
+): string | null {
+  const taken = rows.filter(
+    (r) => r.week_number === weekNumber && (dayOfWeek == null || r.day_of_week === dayOfWeek),
+  ).length
+  if (taken === 0) return null
+  const target = dayOfWeek == null ? `Week ${weekNumber}` : `${DAY_NAMES[dayOfWeek - 1]} in Week ${weekNumber}`
+  if (opts.atSave) {
+    return (
+      `${target} was filled while this generation was running (${taken} exercises — probably another ` +
+      `generation for the same ${dayOfWeek == null ? "week" : "day"}). Nothing was saved, so it is not doubled.`
+    )
+  }
+  return dayOfWeek == null
+    ? `${target} already has ${taken} exercises. Clear them first or generate into a blank week.`
+    : `${target} already has ${taken} exercises. Clear them first.`
+}
+
 // ─── Instruction compliance ─────────────────────────────────────────────────
 
 /**
@@ -799,27 +828,14 @@ async function buildWeekAttempt(
   const isFillingBlank = !!request.target_week_number && request.target_week_number <= (program.duration_weeks ?? 1)
   const newWeekNumber = request.target_week_number ?? (program.duration_weeks ?? 1) + 1
 
-  // If filling a blank week, verify it has no exercises already (skip check for single-day mode)
-  if (isFillingBlank && !isSingleDay) {
-    const existingInTarget = existingExercises.filter((pe: { week_number: number }) => pe.week_number === newWeekNumber)
-    if (existingInTarget.length > 0) {
-      throw new Error(
-        `Week ${newWeekNumber} already has ${existingInTarget.length} exercises. Clear them first or generate into a blank week.`,
-      )
-    }
-  }
-
-  // If single-day mode, verify the target day is empty within the target week
-  if (isSingleDay) {
-    const existingInDay = existingExercises.filter(
-      (pe: { week_number: number; day_of_week: number }) =>
-        pe.week_number === newWeekNumber && pe.day_of_week === request.target_day_of_week,
-    )
-    if (existingInDay.length > 0) {
-      throw new Error(
-        `${DAY_NAMES[request.target_day_of_week! - 1]} in Week ${newWeekNumber} already has ${existingInDay.length} exercises. Clear them first.`,
-      )
-    }
+  // A blank week being filled, or one day, must be empty. Checked again right
+  // before the save (see `save`), because a run takes minutes and a second run
+  // on the same target can finish first.
+  const mustBeEmpty = isSingleDay || isFillingBlank
+  const targetDay = isSingleDay ? request.target_day_of_week! : null
+  if (mustBeEmpty) {
+    const conflict = targetConflict(existingExercises, newWeekNumber, targetDay)
+    if (conflict) throw new Error(conflict)
   }
 
   // Get unique exercise IDs from the program for progress lookup
@@ -1718,9 +1734,13 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     warnings.push(...buildUnfilledSlotsWarning(stillEmpty, totalSlots, scopeLabel))
 
     const repsBySlotId = new Map<string, string | null | undefined>()
+    const dayBySlotId = new Map<string, number>()
     for (const week of skeleton.weeks) {
       for (const day of week.days) {
-        for (const slot of day.slots) repsBySlotId.set(slot.slot_id, slot.reps)
+        for (const slot of day.slots) {
+          repsBySlotId.set(slot.slot_id, slot.reps)
+          dayBySlotId.set(slot.slot_id, day.day_of_week)
+        }
       }
     }
     const isoIssues = findIsometricRepsIssues(assignment.assignments, allExercises, repsBySlotId)
@@ -1729,7 +1749,12 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
         `[week-orchestrator] ${isoIssues.length} isometric(s) prescribed with reps: ` +
           isoIssues.map((i) => `${i.exercise_name}="${i.reps}"`).join("; "),
       )
-      warnings.push(...buildIsometricWarning(isoIssues))
+      warnings.push(
+        ...buildIsometricWarning(isoIssues, (slotId) => {
+          const d = dayBySlotId.get(slotId)
+          return d == null ? null : dayLabel(d)
+        }),
+      )
     }
 
     // Grouped PER DAY: the same movement on two different days is variety, not
@@ -1817,6 +1842,15 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
         `The AI explained its own constraints in ${strippedNotes.length} coaching note(s). ` +
           `Removed before the client sees them: ${strippedNotes.map((s) => `“${s}”`).join(" ")}`,
       )
+    }
+
+    // The start check is minutes old by now. Not atomic (no lock or constraint
+    // underneath), but it closes the window from minutes to one round trip.
+    if (mustBeEmpty) {
+      const conflict = targetConflict(await getProgramExercises(request.program_id), newWeekNumber, targetDay, {
+        atSave: true,
+      })
+      if (conflict) throw new Error(conflict)
     }
 
     await bulkAddExercisesToProgram(exerciseRows)

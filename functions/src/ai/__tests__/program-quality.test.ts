@@ -136,14 +136,61 @@ describe("findRepeatedMovementFamilies", () => {
   it("returns nothing for a session with one exercise", () => {
     expect(findRepeatedMovementFamilies(["Push up"])).toEqual([])
   })
+
+  // Production warnings, 2026-10-02. The library names exercises "Name_BodyPart",
+  // so two different movements filed under the same body part shared tokens
+  // ("all body full"), and so did two movements on the same machine ("all cable
+  // pulley"). A family is a MOVEMENT: neither the filing suffix nor the
+  // equipment says what the body does.
+  it("does not group two movements because they are filed under the same body part", () => {
+    expect(
+      findRepeatedMovementFamilies([
+        "Iso split squat with jumps_Full body",
+        "3 step hop_Full body",
+        "Rotating high med balls slams_Full body",
+      ]),
+    ).toEqual([])
+  })
+
+  it("does not group two movements because they use the same equipment", () => {
+    expect(
+      findRepeatedMovementFamilies(["Cable pulley step up_Quadricep", "Cable pulley dumbbell rotation pulls_Shoulder"]),
+    ).toEqual([])
+    expect(
+      findRepeatedMovementFamilies(["Laying cable internal rotation_Shoulder", "single arm cross cable pull_shoulder"]),
+    ).toEqual([])
+  })
+
+  it("still groups the same movement on the same equipment (presence control)", () => {
+    const groups = findRepeatedMovementFamilies([
+      "Banded cable rows (posterior delts)_Shoulder",
+      "Cable pull across (posterior delts)_Shoulder",
+    ])
+    expect(groups).toHaveLength(1)
+    expect(groups[0].family).toEqual(["delts", "posterior"])
+  })
 })
 
 describe("warning text", () => {
-  it("names the exercise, its prescription and the slot", () => {
-    const [w] = buildIsometricWarning([{ slot_id: "w3d1s1", exercise_name: "reverse shoulder plank", reps: "12-15" }])
+  // 2026-10-02: the coach read "(slot w8d2s9)" — an internal id the coach cannot find
+  // anywhere on screen. Name the day instead; never the slot id.
+  it("names the exercise, its prescription and the day — not the slot id", () => {
+    const [w] = buildIsometricWarning(
+      [{ slot_id: "w3d1s1", exercise_name: "reverse shoulder plank", reps: "12-15" }],
+      (slotId) => (slotId === "w3d1s1" ? "Monday" : null),
+    )
     expect(w).toContain("reverse shoulder plank")
     expect(w).toContain("12-15")
-    expect(w).toContain("w3d1s1")
+    expect(w).toContain("on Monday")
+    expect(w).not.toContain("w3d1s1")
+    expect(w).not.toMatch(/\bslot\b/)
+  })
+
+  it("leaves the day out rather than printing an id when it cannot name one", () => {
+    const [w] = buildIsometricWarning([{ slot_id: "w3d1s1", exercise_name: "reverse shoulder plank", reps: "12-15" }])
+    expect(w).toContain("reverse shoulder plank")
+    expect(w).not.toContain("w3d1s1")
+    expect(w).not.toMatch(/\bslot\b/)
   })
 
   it("explains WHY the duplicate check did not catch the repeat", () => {

@@ -30,6 +30,9 @@ export interface DockedJob {
   kind: AiJobKind
   /** Short label shown in the card header (e.g. "Week 6", "Full program"). */
   label: string
+  /** Which program (or athlete) the job is for, shown under the label. Without
+   *  it, seven "Fill Week 8" cards for seven programs look identical. */
+  context?: string
   /** Program id when known — used to deep-link the card's "Open" button. */
   programId?: string
   /** ISO timestamp the job was added to the dock. Sorted desc by this. */
