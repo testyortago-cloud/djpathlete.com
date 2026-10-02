@@ -32,6 +32,25 @@ export function looksLikeDuration(reps: string | null | undefined): boolean {
   return DURATION_PATTERN.test(reps)
 }
 
+const HOLD_WORDS = /\b(holds?|iso|isometrics?|static|wall sits?)\b/i
+const PLANK = /\bplanks?\b/i
+/** A plank with a movement in it ("side plank hip lift") is done for reps. */
+const MOTION_WORDS = /\b(lifts?|taps?|reach(es)?|rows?|walks?|jacks?|rotations?|drags?|dips?|ups?|twists?|thrusts?)\b/i
+
+/**
+ * Whether an exercise's NAME says it is held. The library files stretches, foam
+ * rolls and moves like "90 90 foot lifts" or "Toe lifts" under the isometric
+ * pattern — 77 of its 167 isometric rows on 2026-10-02 — and a rep count is
+ * right for those, so the pattern alone made this warning fire on almost every
+ * run. Fixing the tags is the coach's call; this stops the false alarm meanwhile.
+ */
+export function namesAHold(name: string): boolean {
+  // "Side plank_Core": "_" is a word character, so \b never splits the suffix off.
+  const words = name.replace(/[^a-zA-Z0-9]+/g, " ")
+  if (HOLD_WORDS.test(words)) return true
+  return PLANK.test(words) && !MOTION_WORDS.test(words)
+}
+
 export interface IsometricRepsIssue {
   slot_id: string
   exercise_name: string
@@ -55,7 +74,7 @@ export function findIsometricRepsIssues(
 
   for (const a of assignments) {
     const ex = byId.get(a.exercise_id)
-    if (!ex || ex.movement_pattern !== "isometric") continue
+    if (!ex || ex.movement_pattern !== "isometric" || !namesAHold(ex.name)) continue
     const reps = repsBySlotId.get(a.slot_id)
     if (!reps) continue
     if (looksLikeDuration(reps)) continue
@@ -138,7 +157,10 @@ function familyTokens(name: string): string[] {
   // is filed, not what moves, so two different movements filed under
   // "_Full body" shared "body full". Drop the last "_" segment.
   const underscore = name.lastIndexOf("_")
-  const movement = underscore > 0 ? name.slice(0, underscore) : name
+  // A bracketed note names a target or a variant ("(posterior delts)",
+  // "(smith machine)"), not the movement: a row and a pull-across both marked
+  // "(posterior delts)" were grouped as one movement on 2026-10-02.
+  const movement = (underscore > 0 ? name.slice(0, underscore) : name).replace(/\([^)]*\)/g, " ")
   return movement
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")

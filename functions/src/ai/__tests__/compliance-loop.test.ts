@@ -269,6 +269,32 @@ describe("runWithComplianceCheck when only attempt 1 was judged by the AI", () =
   })
 })
 
+// 2026-10-02 replay of prod job cKrLezpw: after the named-exercise fix the one
+// miss left was "broad jumps" — the library has none. A rebuild cannot add an
+// exercise the library does not have, and it costs a whole second generation.
+describe("no rebuild for misses a rebuild cannot fix", () => {
+  const gap = (instruction: string): InstructionCheckItem => ({ ...item(instruction, false), fixable: false })
+
+  it("every miss is a library gap -> one build, and the note says why", async () => {
+    const s = setup({ 1: mk([item("12 exercises", true), gap("Include: broad jumps")]) })
+    const r = await runWithComplianceCheck(s.args)
+    expect(s.build).toHaveBeenCalledTimes(1)
+    expect(r.attempt.id).toBe(1)
+    expect(r.check.rebuilt).toBe(false)
+    expect(r.check.note).toContain("not in your exercise library")
+  })
+
+  it("a fixable miss beside a gap still rebuilds (presence control)", async () => {
+    const s = setup({
+      1: mk([item("12 exercises", false), gap("Include: broad jumps")]),
+      2: mk([item("12 exercises", true), gap("Include: broad jumps")]),
+    })
+    const r = await runWithComplianceCheck(s.args)
+    expect(s.build).toHaveBeenCalledTimes(2)
+    expect(r.attempt.id).toBe(2)
+  })
+})
+
 describe("checkWithinBudget", () => {
   // 11 exercises against "12 exercises": the code check alone decides "failed".
   const input: CheckInput = {

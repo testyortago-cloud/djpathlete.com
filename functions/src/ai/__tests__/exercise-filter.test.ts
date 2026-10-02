@@ -511,3 +511,55 @@ describe("retainPreferred", () => {
     expect(retainPreferred(sel, [a, b], undefined)).toBe(sel)
   })
 })
+
+// Prod job cKrLezpw, 2026-10-02: "Include: box jumps" — matched in the library,
+// allowed past the filters, and still never reached the selector. Both cut paths
+// must keep what the coach named. Box jumps here use a pattern the skeleton does
+// not ask for and pattern-balance does not force, so nothing else rescues them.
+describe("the shortlist keeps exercises the coach named", () => {
+  const chest = Array.from({ length: 300 }, (_, i) => ex(`push${i}`))
+  const jumps = [
+    ex("box1", { name: "lateral box jumps", movement_pattern: "locomotion", primary_muscles: ["calves"], muscle_group: "legs" }),
+    ex("box2", { name: "plyo box jumps", movement_pattern: "locomotion", primary_muscles: ["calves"], muscle_group: "legs" }),
+  ]
+  const library = [...chest, ...jumps]
+  const named = [{ phrase: "box jumps", exercise_ids: ["box1", "box2"] }]
+
+  it("heuristic path: cut without the named list (presence control), kept with it", () => {
+    const without = scoreAndFilterExercises(library, SKELETON, [], ANALYSIS, {}).map((e) => e.id)
+    expect(without).not.toContain("box1")
+    const withNamed = scoreAndFilterExercises(library, SKELETON, [], ANALYSIS, { namedGroups: named }).map((e) => e.id)
+    expect(withNamed).toEqual(expect.arrayContaining(["box1", "box2"]))
+  })
+
+  it("vector path: a named exercise the search never returned is put back", async () => {
+    const { getSupabase } = await import("../../lib/supabase.js")
+    const rows = chest.map((e, i) => ({ id: e.id, similarity: 0.9 - i * 0.001 }))
+    const supabase = { rpc: vi.fn().mockResolvedValue({ data: rows, error: null }) }
+    vi.mocked(getSupabase).mockReturnValueOnce(supabase as never)
+    const without = (await semanticFilterExercises(library, SKELETON, [], ANALYSIS, {})).map((e) => e.id)
+    expect(without).not.toContain("box1")
+
+    vi.mocked(getSupabase).mockReturnValueOnce(supabase as never)
+    const withNamed = (await semanticFilterExercises(library, SKELETON, [], ANALYSIS, { namedGroups: named })).map(
+      (e) => e.id,
+    )
+    expect(withNamed).toEqual(expect.arrayContaining(["box1", "box2"]))
+  })
+
+  it("vector path with no matches at all (slot top-up) keeps them too", async () => {
+    // The default mock returns no matches; the thin-slot top-up fills the list,
+    // so this runs the vector path's own cut, not the heuristic fallback.
+    const out = (await semanticFilterExercises(library, SKELETON, [], ANALYSIS, { namedGroups: named })).map((e) => e.id)
+    expect(out).toEqual(expect.arrayContaining(["box1", "box2"]))
+  })
+
+  it("never brings back a named exercise that was excluded", () => {
+    const out = scoreAndFilterExercises(library, SKELETON, [], ANALYSIS, {
+      namedGroups: named,
+      excludeIds: new Set(["box1"]),
+    }).map((e) => e.id)
+    expect(out).not.toContain("box1")
+    expect(out).toContain("box2")
+  })
+})

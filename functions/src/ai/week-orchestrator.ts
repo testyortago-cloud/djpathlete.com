@@ -46,6 +46,8 @@ import {
   extractInjuredJoints,
   buildCoachInstructionsSection,
   buildPoolNote,
+  buildNamedNote,
+  specificNamedIds,
   applyPoolFilter,
   createJobProgressUpdater,
   createCancellationChecker,
@@ -80,6 +82,7 @@ import { statesExerciseCount } from "./instruction-count.js"
 import {
   buildInstructionCheckWarning,
   coachNamedMatches,
+  coachLibraryGaps,
   type CheckDayRow,
   type CheckInput,
   type InstructionCheck,
@@ -1165,6 +1168,10 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     `[week-orchestrator] Instruction intent: ${unlockedIds.size} unlocked, ${intentResolution.bannedIds.size} banned` +
       (intentResolution.unmatched.length > 0 ? `, unmatched: ${intentResolution.unmatched.join("; ")}` : ""),
   )
+  // What the coach asked for by name, in their own words (not the studio policy).
+  // One list feeds the shortlist cut, the selector's note and the check, so the
+  // check never fails a week for something the selector was never told about.
+  const coachNamed = coachNamedMatches(intentResolution.matched, request.admin_instructions, intentResolution.bannedIds)
 
   const analyzerMessage = `## Client Profile
 ${profileContext}
@@ -1303,7 +1310,9 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   // later weeks that already exist) — see constant comment for why this is
   // windowed rather than the full program history.
   // The coach's pool is left out: a pool exercise is never "too recent" to use (withoutPoolHistory).
-  const priorExercisesForDedup = withoutPoolHistory(buildDedupSourceExercises(existingExercises, newWeekNumber), poolIds)
+  // ...and so are exercises the coach named specifically (specificNamedIds).
+  const historyExemptIds = [...(poolIds ?? []), ...specificNamedIds(coachNamed)]
+  const priorExercisesForDedup = withoutPoolHistory(buildDedupSourceExercises(existingExercises, newWeekNumber), historyExemptIds)
 
   const priorContext = buildPriorContextFromExistingExercises(priorExercisesForDedup)
   console.log(
@@ -1365,6 +1374,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     excludeIds,
     preferredIds,
     favoriteIds,
+    namedGroups: coachNamed,
     mmrLambda: 0.7,
     // The job id is unique per generation, so pressing "AI Fill Week" twice
     // gives different exercise choices. week-generation.ts always supplies one;
@@ -1453,13 +1463,14 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     poolIds?.length,
     preferredIds ? fullLibrary.filter((e) => preferredIds.has(e.id)).map((e) => ({ id: e.id, name: e.name })) : undefined,
   )
+  const namedNote = buildNamedNote(coachNamed, filtered, isSingleDay ? "day" : "week")
 
   // Stable across attempts AND day-chunks: the multi-KB blocks (library, prior
   // context) live in the cached prefix so Anthropic prefix caching pays on
   // every later call; the small skeleton rides the variable suffix. (2026-08-03:
   // a 60-slot single-call selector burned all attempts and the 450s budget —
   // big weeks now run one day per call, see selector-chunking.ts.)
-  const selectorCachedPrefix = `Constraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${poolNote}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.`
+  const selectorCachedPrefix = `Constraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${poolNote}${namedNote}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.`
 
   type WeekScope = (typeof skeleton.weeks)[number]
 
@@ -1803,7 +1814,8 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     instructions: request.admin_instructions?.trim() || null,
     rows: buildCheckRows(skeleton.weeks, assignment.assignments, allExercises),
     pool: poolIds?.length ? { ids: poolIds, mode: poolMode, offeredIds: filtered.map((e) => e.id) } : null,
-    namedMatches: coachNamedMatches(intentResolution.matched, request.admin_instructions, intentResolution.bannedIds),
+    namedMatches: coachNamed,
+    libraryGaps: coachLibraryGaps(intentResolution.unmatched, request.admin_instructions),
     bannedIds: [...intentResolution.bannedIds],
     nameById: Object.fromEntries(fullLibrary.map((e) => [e.id, e.name])),
   }

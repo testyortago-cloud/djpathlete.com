@@ -226,9 +226,12 @@ describe("compliance feedback never reaches the instruction parser or the enrich
   // I1: the parser reads the studio's coach policy too, so its raw matches would
   // turn policy text into "named exercise" lines the coach never wrote.
   it("the checker's named matches are only the ones the coach typed, without banned ids", () => {
+    // Since 2026-10-02 one `coachNamed` list feeds the cut, the selector note and
+    // the check, so it is computed once and the check reads it.
     expect(src).toMatch(
-      /namedMatches: coachNamedMatches\(\s*intentResolution\.matched,\s*request\.admin_instructions,\s*intentResolution\.bannedIds,?\s*\)/,
+      /const coachNamed = coachNamedMatches\(\s*intentResolution\.matched,\s*request\.admin_instructions,\s*intentResolution\.bannedIds,?\s*\)/,
     )
+    expect(src).toContain("namedMatches: coachNamed,")
     expect(src).not.toContain("namedMatches: intentResolution.matched")
   })
 })

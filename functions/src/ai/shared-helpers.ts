@@ -181,6 +181,57 @@ export function withoutPoolHistory<T extends { exercise_id?: unknown }>(rows: T[
   return rows.filter((r) => !pool.has(String(r.exercise_id)))
 }
 
+/** A phrase matching more library exercises than this is a broad word ("jumps"), not a request. */
+const SPECIFIC_NAMED_MAX = 8
+
+/**
+ * The exercises a coach asked for SPECIFICALLY, exempt from the variety history
+ * the way a pool is (withoutPoolHistory): "Include box jumps" every week means
+ * box jumps every week, not "anything but last week's box jumps". A broad
+ * phrase has plenty of alternatives and stays under the variety rule.
+ */
+export function specificNamedIds(groups: Array<{ phrase: string; exercise_ids: string[] }>): string[] {
+  const ids = new Set<string>()
+  for (const g of groups) {
+    if (g.exercise_ids.length <= SPECIFIC_NAMED_MAX) for (const id of g.exercise_ids) ids.add(id)
+  }
+  return [...ids]
+}
+
+/** Exercises listed per group in the selector note — enough to choose a fit. */
+const NAMED_LISTED_PER_GROUP = 5
+
+/**
+ * The selector's half of a coach-named exercise. Unlocking it past the filters
+ * is not asking for it: the library the selector reads carries no "the coach
+ * named this" marker, so until 2026-10-02 nothing told it which exercises
+ * "Include: box jumps, med ball slams" meant (the 2026-10-01 pool bug, again).
+ * Lists only exercises actually offered; a group with none is left out — the
+ * instruction check reports it as not met, which is the truth.
+ */
+export function buildNamedNote(
+  groups: Array<{ phrase: string; exercise_ids: string[] }>,
+  offered: Array<{ id: string; name: string }>,
+  scope: "day" | "week",
+): string {
+  const byId = new Map(offered.map((e) => [e.id, e]))
+  const lines: string[] = []
+  for (const g of groups) {
+    const present = g.exercise_ids
+      .map((id) => byId.get(id))
+      .filter((e): e is { id: string; name: string } => !!e)
+      .slice(0, NAMED_LISTED_PER_GROUP)
+    if (present.length === 0) continue
+    lines.push(`- "${g.phrase}": ${present.map((e) => `${e.id} — ${e.name}`).join("; ")}`)
+  }
+  if (lines.length === 0) return ""
+  return (
+    `\n\nCOACH-NAMED EXERCISES: the coach asked for these by name. Place at least one exercise from EACH group ` +
+    `below across the ${scope}, in a slot whose role and movement pattern fit it (jumps, throws and slams go in ` +
+    `power slots). They take priority over similar library exercises. (group: exercise_id — name)\n${lines.join("\n")}`
+  )
+}
+
 /**
  * The architect's half of a PREFERRED pool. The selector is told to fill slots
  * from the pool "when a pool exercise reasonably matches the slot", which it

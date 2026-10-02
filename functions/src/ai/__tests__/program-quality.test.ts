@@ -101,6 +101,43 @@ describe("findIsometricRepsIssues", () => {
     const issues = findIsometricRepsIssues([{ slot_id: "s", exercise_id: "ghost" }], library, new Map([["s", "10"]]))
     expect(issues).toEqual([])
   })
+
+  // Prod, 2026-10-02: the warning fired on nearly every run. 77 of the library's
+  // 167 "isometric" exercises are not holds — stretches, foam rolls and moves
+  // like these, for which a rep count is right. Only a NAME that says hold counts.
+  it("does not flag a rep exercise filed as isometric", () => {
+    const misfiled = [
+      ex("ff", "90 90 foot lifts", "isometric"),
+      ex("toe", "Toe lifts_Ankle", "isometric"),
+      ex("wall", "Plate wall sliders_shoulders", "isometric"),
+      ex("sphl", "Side plank hip lift_Core", "isometric"),
+      ex("dead", "Prone hang deadbug_core", "isometric"),
+    ]
+    const issues = findIsometricRepsIssues(
+      misfiled.map((e, i) => ({ slot_id: `s${i}`, exercise_id: e.id })),
+      misfiled,
+      new Map(misfiled.map((_, i) => [`s${i}`, "4 each side"])),
+    )
+    expect(issues).toEqual([])
+  })
+
+  it("still flags a named hold given reps (presence control)", () => {
+    const holds = [
+      ex("h1", "Seated shoulder flexion holds", "isometric"),
+      ex("h2", "Side plank_Core", "isometric"),
+      ex("h3", "Wall sit_Quadricep", "isometric"),
+    ]
+    const issues = findIsometricRepsIssues(
+      holds.map((e, i) => ({ slot_id: `s${i}`, exercise_id: e.id })),
+      holds,
+      new Map(holds.map((_, i) => [`s${i}`, "6"])),
+    )
+    expect(issues.map((i) => i.exercise_name)).toEqual([
+      "Seated shoulder flexion holds",
+      "Side plank_Core",
+      "Wall sit_Quadricep",
+    ])
+  })
 })
 
 describe("findRepeatedMovementFamilies", () => {
@@ -161,13 +198,21 @@ describe("findRepeatedMovementFamilies", () => {
     ).toEqual([])
   })
 
-  it("still groups the same movement on the same equipment (presence control)", () => {
-    const groups = findRepeatedMovementFamilies([
-      "Banded cable rows (posterior delts)_Shoulder",
-      "Cable pull across (posterior delts)_Shoulder",
-    ])
+  // The photo's own pair. "(posterior delts)" names the TARGET muscle, not the
+  // movement: a row and a pull-across are two movements for the rear delts.
+  it("does not group two movements because a bracketed note names the same target", () => {
+    expect(
+      findRepeatedMovementFamilies([
+        "Banded cable rows (posterior delts)_Shoulder",
+        "Cable pull across (posterior delts)_Shoulder",
+      ]),
+    ).toEqual([])
+  })
+
+  it("still groups the same movement on different equipment (presence control)", () => {
+    const groups = findRepeatedMovementFamilies(["Cable hip bridge_Glute", "Banded hip bridge march_Hip"])
     expect(groups).toHaveLength(1)
-    expect(groups[0].family).toEqual(["delts", "posterior"])
+    expect(groups[0].family).toEqual(["bridge", "hip"])
   })
 })
 

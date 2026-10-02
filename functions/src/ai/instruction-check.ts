@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { statedExerciseTotal, parsePrescription } from "./instruction-count.js"
-import { normalizeExerciseName, significantTokens } from "./instruction-intent.js"
+import { isFocusOnlyPhrase, normalizeExerciseName, significantTokens } from "./instruction-intent.js"
 import { callAgent, MODEL_OPUS_5_5 } from "./anthropic.js"
 import { isAbortError } from "../lib/deadline.js"
 
@@ -11,6 +11,8 @@ export interface InstructionCheckItem {
   met: boolean
   detail: string // plain-language evidence
   source: "code" | "ai"
+  /** false: a rebuild cannot meet it (the exercise is not in the library). Absent = fixable. */
+  fixable?: boolean
 }
 export interface InstructionCheck {
   status: "passed" | "failed" | "unchecked"
@@ -40,11 +42,16 @@ export interface CheckInput {
   namedMatches: Array<{ phrase: string; exercise_ids: string[] }> // IntentResolution.matched
   bannedIds: string[]
   nameById: Record<string, string>
+  /** Exercises the coach named that match nothing in the library (coachLibraryGaps). */
+  libraryGaps?: string[]
 }
 
 // ── Code checks ──
 
 const EXEMPT_ROLES = new Set(["warm_up", "cool_down"])
+/** The coach wrote rules for power work ("POWER block", "plyometrics", "maximum intent"). */
+const POWER_RULES = /\b(power|plyometrics?|plyos?|explosive|ballistic|maximum intent|max intent)\b/i
+const POWER_EXEMPT_SUFFIX = " (power exercises follow your power rules)"
 const fmt = (r: [number, number], unit = "") => (r[0] === r[1] ? `${r[0]}${unit}` : `${r[0]}-${r[1]}${unit}`)
 
 /**
@@ -86,6 +93,40 @@ export function coachNamedMatches(
   return out
 }
 
+/**
+ * Exercises the COACH named that the library has nothing for ("broad jumps"
+ * when the only match is "Broad jump holds"). Same coach-typed rule as
+ * coachNamedMatches; focus words ("shoulder") are not exercises.
+ */
+export function coachLibraryGaps(unmatched: string[], coachText: string | null | undefined): string[] {
+  if (!coachText || !coachText.trim()) return []
+  const coachTokens = new Set(normalizeExerciseName(coachText).split(" "))
+  const typed = (t: string) => coachTokens.has(t) || coachTokens.has(`${t}s`)
+  return unmatched.filter((p) => {
+    const tokens = significantTokens(p)
+    return tokens.length > 0 && !isFocusOnlyPhrase(p) && tokens.every(typed)
+  })
+}
+
+const LIBRARY_GAP_DETAIL = " — not in your exercise library, so add it there first."
+
+/**
+ * A miss about an exercise the library does not have cannot be fixed by
+ * rebuilding, so it is marked `fixable: false` (the loop skips a rebuild that
+ * would only repeat it) and the coach is told where the fix is. Met lines and
+ * other misses are returned untouched.
+ */
+export function markLibraryGaps(items: InstructionCheckItem[], gaps: string[] | undefined): InstructionCheckItem[] {
+  if (!gaps || gaps.length === 0) return items
+  const gapTokens = gaps.map(significantTokens).filter((t) => t.length > 0)
+  return items.map((it) => {
+    if (it.met) return it
+    const words = new Set(normalizeExerciseName(it.instruction).split(" "))
+    if (!gapTokens.some((tokens) => tokens.every((t) => words.has(t)))) return it
+    return { ...it, fixable: false, detail: `${it.detail.replace(/[.\s]+$/, "")}${LIBRARY_GAP_DETAIL}` }
+  })
+}
+
 /** "8", "8-10", "8 each side" → [8,8] / [8,10]; a hold ("30s hold", "20 sec") → null (exempt). */
 function repsRange(reps: string | null): [number, number] | null {
   if (!reps) return null
@@ -101,7 +142,15 @@ export function runCodeChecks(input: CheckInput): InstructionCheckItem[] {
   // Prescriptions are for working sets: warm-up / cool-down rows and holds
   // ("30s hold" — reps written as a time) are exempt from EVERY prescription line.
   const isHold = (r: CheckDayRow) => !!r.reps && repsRange(r.reps) === null
-  const working = input.rows.filter((r) => !EXEMPT_ROLES.has(r.role) && !isHold(r))
+  // A rule the coach wrote for power work wins for power exercises: "4-2-4
+  // tempo" beside a POWER block saying "maximum intent" cannot apply to a box
+  // jump (prod job cKrLezpw, 2026-10-02). Those rows are the judge's to read
+  // against the power rules; the session lines judge everything else.
+  const powerRulesWritten = POWER_RULES.test(input.instructions ?? "")
+  const isPowerUnderOwnRules = (r: CheckDayRow) => powerRulesWritten && r.role === "power"
+  const powerExempt = input.rows.some((r) => !EXEMPT_ROLES.has(r.role) && !isHold(r) && isPowerUnderOwnRules(r))
+  const working = input.rows.filter((r) => !EXEMPT_ROLES.has(r.role) && !isHold(r) && !isPowerUnderOwnRules(r))
+  const allOk = (what: string) => `every exercise ${what}${powerExempt ? POWER_EXEMPT_SUFFIX : ""}`
 
   if (input.scope === "day") {
     const total = statedExerciseTotal(input.instructions)
@@ -116,7 +165,7 @@ export function runCodeChecks(input: CheckInput): InstructionCheckItem[] {
   if (p.sets) {
     const [lo, hi] = p.sets
     const bad = firstOutside((r) => (r.sets === null ? null : r.sets >= lo && r.sets <= hi))
-    add(`${fmt(p.sets)} sets`, !bad, bad ? `“${bad.name}” has ${bad.sets}` : `every exercise has ${fmt(p.sets)}`)
+    add(`${fmt(p.sets)} sets`, !bad, bad ? `“${bad.name}” has ${bad.sets}` : allOk(`has ${fmt(p.sets)}`))
   }
   if (p.reps) {
     const [lo, hi] = p.reps
@@ -124,7 +173,7 @@ export function runCodeChecks(input: CheckInput): InstructionCheckItem[] {
       const rr = repsRange(r.reps)
       return rr === null ? null : rr[0] >= lo && rr[1] <= hi
     })
-    add(`${fmt(p.reps)} reps`, !bad, bad ? `“${bad.name}” is ${bad.reps}` : `every exercise is within ${fmt(p.reps)}`)
+    add(`${fmt(p.reps)} reps`, !bad, bad ? `“${bad.name}” is ${bad.reps}` : allOk(`is within ${fmt(p.reps)}`))
   }
   if (p.restSeconds) {
     const [lo, hi] = p.restSeconds
@@ -132,7 +181,7 @@ export function runCodeChecks(input: CheckInput): InstructionCheckItem[] {
     add(
       `${fmt(p.restSeconds)} sec rest`,
       !bad,
-      bad ? `“${bad.name}” rests ${bad.rest_seconds} s` : `every exercise rests ${fmt(p.restSeconds, " s")}`,
+      bad ? `“${bad.name}” rests ${bad.rest_seconds} s` : allOk(`rests ${fmt(p.restSeconds, " s")}`),
     )
   }
   if (p.tempo) {
@@ -141,7 +190,7 @@ export function runCodeChecks(input: CheckInput): InstructionCheckItem[] {
     add(
       `${p.tempo} tempo`,
       !bad,
-      bad ? `“${bad.name}” has ${bad.tempo?.trim() ? bad.tempo : "no tempo"}` : `every exercise is ${p.tempo}`,
+      bad ? `“${bad.name}” has ${bad.tempo?.trim() ? bad.tempo : "no tempo"}` : allOk(`is ${p.tempo}`),
     )
   }
 
@@ -208,7 +257,7 @@ export const NOTHING_CHECKED_NOTE = "Couldn't check your instructions this time.
  * an empty list, so the note says plainly that nothing was checked (M4).
  */
 export function codeOnlyCheck(input: CheckInput, note: string | null): InstructionCheck {
-  const items = runCodeChecks(input)
+  const items = markLibraryGaps(runCodeChecks(input), input.libraryGaps)
   const hasInstructions = !!input.instructions && input.instructions.trim().length > 0
   return {
     status: checkStatus(items),
@@ -255,7 +304,8 @@ const JUDGE_PROMPT = `You check whether a finished training day (or week) follow
 2. Skip any instruction listed under "Already checked by code".
 3. Judge every remaining instruction ONLY from the table of the finished day. Be literal: "mainly X" means at least half of the working exercises train X; "some Y" means at least one does; "X first" means X-role or X-pattern exercises come before the others.
 4. For each, give: instruction — the coach's own words, short; met — true or false; detail — one short plain sentence with the evidence from the table (counts, names).
-5. Never invent an instruction the coach did not write. If nothing is left to judge, return an empty list.`
+5. Never invent an instruction the coach did not write. If nothing is left to judge, return an empty list.
+6. When the coach writes their own rules for a group of exercises (a POWER block with "maximum intent, 120-180s rest", "compounds 3x5"), those rules decide that group: judge the general prescription only on the exercises outside the group, and judge the group against its own rules.`
 
 function buildJudgeMessage(input: CheckInput, codeItems: InstructionCheckItem[]): string {
   const checked =
@@ -289,13 +339,10 @@ export async function checkInstructions(
 ): Promise<InstructionCheck> {
   if (opts.skipAi) return codeOnlyCheck(input, NO_TIME_FOR_AI_NOTE)
   const codeItems = runCodeChecks(input)
-  const finish = (items: InstructionCheckItem[], note: string | null): InstructionCheck => ({
-    status: checkStatus(items),
-    items,
-    rebuilt: false,
-    rebuild_reason: null,
-    note,
-  })
+  const finish = (all: InstructionCheckItem[], note: string | null): InstructionCheck => {
+    const items = markLibraryGaps(all, input.libraryGaps)
+    return { status: checkStatus(items), items, rebuilt: false, rebuild_reason: null, note }
+  }
   if (!input.instructions || input.instructions.trim().length === 0) return finish(codeItems, null)
   opts.signal?.throwIfAborted()
 

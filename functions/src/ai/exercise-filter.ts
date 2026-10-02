@@ -93,6 +93,11 @@ export interface FilterOptions {
   preferredIds?: Set<string>
   /** Exercise IDs the CLIENT has favorited — a soft scoring boost (FAVORITE_BOOST). */
   favoriteIds?: Set<string>
+  /**
+   * Exercises the coach asked for by name, one group per phrase ("box jumps" →
+   * every library match). The cut keeps a few of each (retainNamed).
+   */
+  namedGroups?: NamedGroup[]
   /** MMR balance: 1.0 = pure relevance, 0.0 = pure diversity. Default 0.7. */
   mmrLambda?: number
   /**
@@ -470,10 +475,14 @@ export function scoreAndFilterExercises(
   // Passing k === list length made diversifyByMMR return its input untouched,
   // so this diversification never actually ran.
   const useMMR = lambda !== undefined && lambda < 1.0 && scoredAll.length > cutoff
-  let filtered = retainPreferred(
-    useMMR ? diversifyByMMR(scoredAll, cutoff, lambda) : scoredAll.slice(0, cutoff).map((s) => s.exercise),
+  let filtered = retainNamed(
+    retainPreferred(
+      useMMR ? diversifyByMMR(scoredAll, cutoff, lambda) : scoredAll.slice(0, cutoff).map((s) => s.exercise),
+      sortedAfterExclude,
+      preferredIds,
+    ),
     sortedAfterExclude,
-    preferredIds,
+    options?.namedGroups,
   )
 
   // When pool is active, never fall back to unfiltered — use whatever the pool has.
@@ -600,6 +609,7 @@ export async function semanticFilterExercises(
       excludeIds: options?.excludeIds,
       preferredIds: options?.preferredIds,
       favoriteIds: options?.favoriteIds,
+      namedGroups: options?.namedGroups,
       mmrLambda: options?.mmrLambda,
       seed: options?.seed,
     })
@@ -651,6 +661,21 @@ export async function semanticFilterExercises(
     }
   }
 
+  // Same rescue for what the coach named. The vector search ranks by slot fit,
+  // so "box jumps" on a day whose slots read as strength work was never even
+  // a candidate, and retainNamed below had nothing to put back (2026-10-02).
+  // Excluded ids stay out, exactly as above.
+  const namedIds = new Set((options?.namedGroups ?? []).flatMap((g) => g.exercise_ids))
+  if (namedIds.size > 0) {
+    const inFiltered = new Set(filtered.map((e) => e.id))
+    const excludeIds = options?.excludeIds
+    const missingNamed = exercises.filter((e) => namedIds.has(e.id) && !inFiltered.has(e.id) && !excludeIds?.has(e.id))
+    if (missingNamed.length > 0) {
+      console.log(`[semanticFilter] Injecting ${missingNamed.length} coach-named exercises missed by embeddings`)
+      filtered = [...filtered, ...missingNamed]
+    }
+  }
+
   // Embedding similarity is the relevance term. A preferred-pool injection that
   // never matched has no similarity, so it falls back to the neutral midpoint.
   const scoredAll = filtered.map((e) => ({
@@ -672,10 +697,14 @@ export async function semanticFilterExercises(
   const lambda = options?.mmrLambda
   // MMR must SELECT the survivors, not reorder an already-truncated list.
   const useMMR = lambda !== undefined && lambda < 1.0 && scoredAll.length > cutoff
-  filtered = retainPreferred(
-    useMMR ? diversifyByMMR(scoredAll, cutoff, lambda) : scoredAll.slice(0, cutoff).map((s) => s.exercise),
+  filtered = retainNamed(
+    retainPreferred(
+      useMMR ? diversifyByMMR(scoredAll, cutoff, lambda) : scoredAll.slice(0, cutoff).map((s) => s.exercise),
+      scoredAll.map((s) => s.exercise),
+      preferredIds,
+    ),
     scoredAll.map((s) => s.exercise),
-    preferredIds,
+    options?.namedGroups,
   )
 
   console.log(
@@ -714,6 +743,45 @@ export function retainPreferred<T extends { id: string }>(
   const kept = new Set(selected.map((e) => e.id))
   const missing = candidates.filter((e) => preferredIds.has(e.id) && !kept.has(e.id))
   return missing.length === 0 ? selected : [...selected, ...missing]
+}
+
+export interface NamedGroup {
+  phrase: string
+  exercise_ids: string[]
+}
+
+/** How many of each named group survive the cut — enough choice for a slot, not a flood. */
+export const NAMED_KEEP_PER_GROUP = 3
+
+/**
+ * The cut must not drop what the coach asked for by name. A named exercise was
+ * only UNLOCKED (past the difficulty/equipment guesses), so the shortlist cut
+ * could still remove it: on 2026-10-02 "Include: box jumps, med ball slams"
+ * reached the selector as nothing, and the instruction check then failed the
+ * week for it. Tops each group up to `perGroup` from its best-ranked candidates.
+ * Only candidates come back, so bans and exclusions applied upstream still hold.
+ */
+export function retainNamed<T extends { id: string }>(
+  selected: T[],
+  candidates: T[],
+  groups: NamedGroup[] | undefined,
+  perGroup = NAMED_KEEP_PER_GROUP,
+): T[] {
+  if (!groups || groups.length === 0) return selected
+  const kept = new Set(selected.map((e) => e.id))
+  const added: T[] = []
+  for (const g of groups) {
+    const ids = new Set(g.exercise_ids)
+    let have = selected.filter((e) => ids.has(e.id)).length + added.filter((e) => ids.has(e.id)).length
+    for (const c of candidates) {
+      if (have >= perGroup) break
+      if (!ids.has(c.id) || kept.has(c.id)) continue
+      added.push(c)
+      kept.add(c.id)
+      have++
+    }
+  }
+  return added.length === 0 ? selected : [...selected, ...added]
 }
 
 // ─── MMR diversification ────────────────────────────────────────────────────

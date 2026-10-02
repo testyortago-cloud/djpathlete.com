@@ -30,6 +30,7 @@ const NO_TIME_NOTE = "There wasn't time to rebuild, so this is the first attempt
 const REBUILD_FAILED_NOTE = "A rebuild was attempted and failed, so this is the first attempt."
 const REBUILD_OUT_OF_TIME_NOTE = "There wasn't time to finish the rebuild, so this is the first attempt."
 const MISSED_MORE_NOTE = "The rebuild missed more, so the first attempt was kept."
+const LIBRARY_GAP_NOTE = "Not rebuilt: what's missing is not in your exercise library."
 
 function withNote(check: InstructionCheck, note: string): InstructionCheck {
   return { ...check, note: check.note ? `${check.note} ${note}` : note }
@@ -60,6 +61,13 @@ export async function runWithComplianceCheck<A extends ComplianceAttempt>(args: 
   if (check1.status !== "failed") return { attempt: attempt1, check: check1 }
 
   if (await isCancelled()) return { attempt: attempt1, check: check1 }
+
+  // A rebuild is a whole second generation. When everything missed is an
+  // exercise the library does not have, it could only miss it again.
+  if (check1.items.filter((i) => !i.met).every((i) => i.fixable === false)) {
+    log?.("compliance: every miss is a library gap, no rebuild")
+    return { attempt: attempt1, check: withNote(check1, LIBRARY_GAP_NOTE) }
+  }
 
   const remaining = remainingMs()
   if (remaining !== null && remaining < 1.3 * attempt1.durationMs) {

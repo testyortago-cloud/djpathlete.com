@@ -6,6 +6,8 @@ import {
   buildInstructionCheckWarning,
   codeOnlyCheck,
   coachNamedMatches,
+  coachLibraryGaps,
+  markLibraryGaps,
   NO_TIME_FOR_AI_NOTE,
   type CheckDayRow,
   type CheckInput,
@@ -90,6 +92,38 @@ describe("runCodeChecks", () => {
   it("produces no reps line when the coach wrote a second reps prescription", () => {
     const items = runCodeChecks(base({ instructions: "12 exercises\n2-4 sets\n4-8 reps\nPOWER: Low reps (3-5)" }))
     expect(find(items, "reps")).toBeUndefined()
+  })
+
+  // Prod job cKrLezpw, 2026-10-02: "4-2-4 tempo" for the session AND a POWER
+  // block saying "maximum intent". A box jump cannot be both, the AI followed
+  // the power block, and the check failed the week for it — unwinnable, and it
+  // spent a ~4 minute rebuild on it. A rule written for a group wins for that group.
+  describe("a power block's own rules win for power exercises", () => {
+    const powerText =
+      "2-4 sets\n4-8 reps\n4-2-4 tempo\n\nPOWER DEVELOPMENT BLOCK:\n- Low reps (3-5), maximum intent, full recovery"
+    const rows = [
+      row(0, { role: "power", name: "lateral box jumps", tempo: "X (explosive)", sets: 2, reps: "4" }),
+      ...Array.from({ length: 5 }, (_, i) => row(i + 1)),
+    ]
+
+    it("does not fail the session tempo on a power exercise", () => {
+      const tempo = find(runCodeChecks(base({ instructions: powerText, rows })), "tempo")!
+      expect(tempo.met).toBe(true)
+      expect(tempo.detail).toContain("power exercises follow your power rules")
+    })
+
+    it("still fails the session tempo on a NON-power exercise", () => {
+      const bad = [...rows, row(9, { name: "Goblet squat", tempo: "2-0-2" })]
+      const tempo = find(runCodeChecks(base({ instructions: powerText, rows: bad })), "tempo")!
+      expect(tempo.met).toBe(false)
+      expect(tempo.detail).toContain("Goblet squat")
+    })
+
+    it("holds a power exercise to the session tempo when the coach wrote no power rules (presence control)", () => {
+      const tempo = find(runCodeChecks(base({ instructions: "2-4 sets\n4-8 reps\n4-2-4 tempo", rows })), "tempo")!
+      expect(tempo.met).toBe(false)
+      expect(tempo.detail).toContain("lateral box jumps")
+    })
   })
 
   describe("Exercise Pool", () => {
@@ -239,6 +273,45 @@ describe("codeOnlyCheck with nothing to show (M4)", () => {
     const check = codeOnlyCheck(base(), NO_TIME_FOR_AI_NOTE)
     expect(check.items.length).toBeGreaterThan(0)
     expect(check.note).toBe(NO_TIME_FOR_AI_NOTE)
+  })
+})
+
+describe("markLibraryGaps", () => {
+  const items = [
+    { instruction: "Include: broad jumps", met: false, detail: "No broad jump appears on either day.", source: "ai" as const },
+    { instruction: "mainly shoulders", met: false, detail: "4 of 12 train shoulders.", source: "ai" as const },
+    { instruction: "box jumps", met: true, detail: "plyo box jumps is in", source: "code" as const },
+  ]
+
+  it("marks a miss for an exercise the library does not have, and says so", () => {
+    const out = markLibraryGaps(items, ["broad jumps", "explosive step-ups"])
+    expect(out[0].fixable).toBe(false)
+    expect(out[0].detail).toContain("not in your exercise library")
+  })
+
+  it("leaves other misses fixable, and never touches a met line (presence control)", () => {
+    const out = markLibraryGaps(items, ["broad jumps"])
+    expect(out[1].fixable).toBeUndefined()
+    expect(out[1].detail).toBe("4 of 12 train shoulders.")
+    expect(out[2]).toEqual(items[2])
+  })
+
+  it("matches the phrase however the coach punctuated it", () => {
+    const out = markLibraryGaps(
+      [{ instruction: "Include: explosive step ups", met: false, detail: "none", source: "ai" }],
+      ["explosive step-ups"],
+    )
+    expect(out[0].fixable).toBe(false)
+  })
+})
+
+describe("coachLibraryGaps", () => {
+  it("keeps phrases the coach typed that are exercises, not focus words or policy text", () => {
+    const text = "Include: box jumps, broad jumps, explosive step-ups. Mainly shoulder."
+    expect(coachLibraryGaps(["broad jumps", "explosive step-ups", "shoulder", "kettlebell halo"], text)).toEqual([
+      "broad jumps",
+      "explosive step-ups",
+    ])
   })
 })
 
