@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { auth } from "@/lib/auth"
 import { getTestimonials, createTestimonial } from "@/lib/db/testimonials"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
@@ -9,6 +10,14 @@ async function requireAdminResponse() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   return null
+}
+
+// The home page and /testimonials are ISR (`revalidate = 3600`), and that segment
+// setting also caches the Supabase read for an hour — without this, a new photo or
+// quote stays invisible on the live site for up to an hour after saving.
+function revalidateTestimonialPages() {
+  revalidatePath("/")
+  revalidatePath("/testimonials")
 }
 
 export async function GET() {
@@ -46,6 +55,7 @@ export async function POST(request: Request) {
       display_order: display_order ?? 0,
     })
 
+    revalidateTestimonialPages()
     return NextResponse.json(testimonial, { status: 201 })
   } catch {
     return NextResponse.json({ error: "Failed to create testimonial." }, { status: 500 })

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { auth } from "@/lib/auth"
 import { updateTestimonial, deleteTestimonial } from "@/lib/db/testimonials"
 import { recordAudit } from "@/lib/audit/record"
@@ -10,6 +11,12 @@ async function requireAdminResponse() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   return null
+}
+
+// See ../route.ts: both public pages cache the testimonials read for an hour.
+function revalidateTestimonialPages() {
+  revalidatePath("/")
+  revalidatePath("/testimonials")
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -43,6 +50,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     const testimonial = await updateTestimonial(id, updates)
+    revalidateTestimonialPages()
 
     // Audit when moderation-relevant flags change (active/featured).
     if ("is_active" in updates || "is_featured" in updates) {
@@ -74,6 +82,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     await deleteTestimonial(id)
+    revalidateTestimonialPages()
     return NextResponse.json({ success: true })
   } catch {
     return NextResponse.json({ error: "Failed to delete testimonial." }, { status: 500 })
