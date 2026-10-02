@@ -39,6 +39,14 @@ describe("modelRejectsForcedToolChoice", () => {
     expect(modelRejectsForcedToolChoice("claude-opus-5-20260301")).toBe(false)
   })
 
+  it("is true for Sonnet 5.5, which 400s the same way", () => {
+    // Measured 2026-10-02 (architect call, "Structured output via tool_use" →
+    // 400 "Provider returned error"). Sonnet 5 itself still takes the tool path.
+    expect(modelRejectsForcedToolChoice("claude-sonnet-5-5")).toBe(true)
+    expect(modelRejectsForcedToolChoice("claude-sonnet-5")).toBe(false)
+    expect(modelRejectsForcedToolChoice("claude-sonnet-5-20260301")).toBe(false)
+  })
+
   it("does not match a model that merely contains the word", () => {
     expect(modelRejectsForcedToolChoice("claude-sonnet-fable-test")).toBe(false)
   })

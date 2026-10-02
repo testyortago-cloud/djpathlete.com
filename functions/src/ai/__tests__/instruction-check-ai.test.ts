@@ -149,3 +149,29 @@ describe("checkInstructions", () => {
     expect(check.items).toHaveLength(1)
   })
 })
+
+// Dev-clone replay, 2026-10-02: "compounds at RPE 7-8" was marked not met with
+// "No RPE is listed for any compound in the table" — the table never had one.
+describe("the judge sees what it is asked to judge", () => {
+  it("shows each exercise's RPE target", async () => {
+    callAgentMock.mockResolvedValue({ content: { items: [] }, tokens_used: 1 })
+    const rows = input().rows.map((r, i) => (i === 0 ? { ...r, rpe: 8 } : r))
+    await checkInstructions(input({ instructions: "compounds at RPE 7-8", rows }))
+    const message = String(callAgentMock.mock.calls[0][1])
+    expect(message).toContain("Day 1 #1 Ex 0")
+    expect(message).toMatch(/Day 1 #1 Ex 0 .*\| RPE 8/)
+    expect(message).toMatch(/Day 1 #2 Ex 1 .*\| RPE -/)
+  })
+})
+
+describe("the judge sees each exercise's training intent", () => {
+  // Replay, 2026-10-02 (Gemini): "Use express intent exercises" failed with
+  // "The table shows no intent labels". The library tags intent; the table dropped it.
+  it("lists the library intent tags on the row", async () => {
+    callAgentMock.mockResolvedValue({ content: { items: [] }, tokens_used: 1 })
+    const rows = input().rows.map((r, i) => (i === 0 ? { ...r, intent: ["express", "build"] } : r))
+    await checkInstructions(input({ instructions: "Use express intent exercises", rows }))
+    const message = String(callAgentMock.mock.calls[0][1])
+    expect(message).toMatch(/Day 1 #1 Ex 0 .*\| intent express, build/)
+  })
+})

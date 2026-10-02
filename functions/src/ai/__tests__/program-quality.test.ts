@@ -209,6 +209,13 @@ describe("findRepeatedMovementFamilies", () => {
     ).toEqual([])
   })
 
+  // Replay, 2026-10-02: a pull and a tricep exercise were "(all bench supported)".
+  it("does not group two movements because both are done on the same support", () => {
+    expect(
+      findRepeatedMovementFamilies(["Cable bench supported mid back pulls_back", "Bench supported tricep drop downs_Tricep"]),
+    ).toEqual([])
+  })
+
   it("still groups the same movement on different equipment (presence control)", () => {
     const groups = findRepeatedMovementFamilies(["Cable hip bridge_Glute", "Banded hip bridge march_Hip"])
     expect(groups).toHaveLength(1)

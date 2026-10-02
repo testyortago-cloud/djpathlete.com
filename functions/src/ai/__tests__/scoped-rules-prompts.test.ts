@@ -26,4 +26,11 @@ describe("a group's own rules beat the general prescription", () => {
     const src = read("instruction-check.ts")
     expect(src).toMatch(/own rules for a group[\s\S]{0,200}judge the general/)
   })
+
+  // Same replay day: "4-8 reps" was failed for "Elevated side plank … a 20s
+  // hold". The code check already exempts holds; the judge did not know to.
+  it("the judge does not hold a timed hold to a rep count", () => {
+    const src = read("instruction-check.ts")
+    expect(src).toMatch(/A hold[^\n]{0,80}time[^\n]{0,120}never fails a rep-count/)
+  })
 })

@@ -133,7 +133,9 @@ export const PROGRAM_AGENT_EFFORT = "medium" as const
  * still take the tool path, so this matches point releases 5-5 onward only.
  */
 export function modelRejectsForcedToolChoice(modelId: string): boolean {
-  return /^claude-(fable|mythos)-/.test(modelId) || /^claude-opus-5-([5-9]|[1-9]\d)(-\d{8})?$/.test(modelId)
+  return (
+    /^claude-(fable|mythos)-/.test(modelId) || /^claude-(opus|sonnet)-5-([5-9]|[1-9]\d)(-\d{8})?$/.test(modelId)
+  )
 }
 const DEFAULT_MAX_TOKENS = 32000
 

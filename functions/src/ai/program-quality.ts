@@ -150,6 +150,15 @@ const FAMILY_STOPWORDS = new Set([
   "smith",
   "trx",
   "landmine",
+  // Supports and setups: what the body is braced on, not what it does.
+  "bench",
+  "box",
+  "supported",
+  "assisted",
+  "resisted",
+  "elevated",
+  "incline",
+  "decline",
 ])
 
 function familyTokens(name: string): string[] {

@@ -70,6 +70,11 @@ export const OPENROUTER_MODEL_MAP: Record<string, string> = {
   // an Anthropic one. Added for the 2026-09-21 program-generation A/B.
   "gpt-6-astra": "openai/gpt-6-astra",
   "gpt-6-astra-pro": "openai/gpt-6-astra-pro",
+  // Candidates for the 2026-10-02 architect/selector comparison (verified in
+  // OpenRouter's model list that day).
+  "claude-sonnet-5-5": "anthropic/claude-sonnet-5.5",
+  "gpt-6-1-sol": "openai/gpt-6.1-sol",
+  "gemini-3-8-flash": "google/gemini-3.8-flash",
 }
 
 /**

@@ -33,6 +33,10 @@ export interface CheckDayRow {
   reps: string | null
   rest_seconds: number | null
   tempo: string | null
+  /** The slot's RPE target — without it the judge cannot check "compounds at RPE 7-8". */
+  rpe?: number | null
+  /** The library's training-intent tags ("express", "build") — for "use express intent exercises". */
+  intent?: string[]
 }
 export interface CheckInput {
   scope: "day" | "week"
@@ -305,7 +309,8 @@ const JUDGE_PROMPT = `You check whether a finished training day (or week) follow
 3. Judge every remaining instruction ONLY from the table of the finished day. Be literal: "mainly X" means at least half of the working exercises train X; "some Y" means at least one does; "X first" means X-role or X-pattern exercises come before the others.
 4. For each, give: instruction — the coach's own words, short; met — true or false; detail — one short plain sentence with the evidence from the table (counts, names).
 5. Never invent an instruction the coach did not write. If nothing is left to judge, return an empty list.
-6. When the coach writes their own rules for a group of exercises (a POWER block with "maximum intent, 120-180s rest", "compounds 3x5"), those rules decide that group: judge the general prescription only on the exercises outside the group, and judge the group against its own rules.`
+6. When the coach writes their own rules for a group of exercises (a POWER block with "maximum intent, 120-180s rest", "compounds 3x5"), those rules decide that group: judge the general prescription only on the exercises outside the group, and judge the group against its own rules.
+7. A hold (reps written as a time, e.g. "20s", "30 sec hold") is prescribed in time, so it never fails a rep-count instruction.`
 
 function buildJudgeMessage(input: CheckInput, codeItems: InstructionCheckItem[]): string {
   const checked =
@@ -315,7 +320,7 @@ function buildJudgeMessage(input: CheckInput, codeItems: InstructionCheckItem[])
   const table = input.rows
     .map(
       (r) =>
-        `Day ${r.day_of_week} #${r.order + 1} ${r.name} | ${r.movement_pattern ?? "-"} | ${r.primary_muscles.join(", ")} | ${r.role} | ${r.sets ?? "-"}x${r.reps ?? "-"} | rest ${r.rest_seconds ?? "-"}s | tempo ${r.tempo ?? "-"}`,
+        `Day ${r.day_of_week} #${r.order + 1} ${r.name} | ${r.movement_pattern ?? "-"} | ${r.primary_muscles.join(", ")} | ${r.role} | ${r.sets ?? "-"}x${r.reps ?? "-"} | rest ${r.rest_seconds ?? "-"}s | tempo ${r.tempo ?? "-"} | RPE ${r.rpe ?? "-"} | intent ${r.intent?.length ? r.intent.join(", ") : "-"}`,
     )
     .join("\n")
   return (

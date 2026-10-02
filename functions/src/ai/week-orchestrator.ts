@@ -647,6 +647,8 @@ export function buildCheckRows(
             reps: slot.reps ?? null,
             rest_seconds: slot.rest_seconds ?? null,
             tempo: slot.tempo ?? null,
+            rpe: slot.rpe_target ?? null,
+            intent: ex?.training_intent ?? [],
           })
         }
       }

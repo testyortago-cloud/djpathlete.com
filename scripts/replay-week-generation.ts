@@ -131,14 +131,29 @@ async function main() {
   // The chat calls do not go through globalThis.fetch (the SDK binds its own),
   // so read usage off every completion the shared client returns.
   const { getOpenRouterClient } = await import("../functions/src/ai/openrouter.js")
+  // Two routes: openrouter-message.ts calls create(); openrouter-agent.ts (every
+  // planning call) streams and awaits finalChatCompletion().
+  type Completion = { usage?: Record<string, any> }
   const completions = getOpenRouterClient().chat.completions as unknown as {
-    create: (body: { model?: string }, opts?: unknown) => Promise<{ usage?: Record<string, any> }>
+    create: (body: { model?: string }, opts?: unknown) => Promise<Completion>
+    stream: (body: { model?: string }, opts?: unknown) => { finalChatCompletion: () => Promise<Completion> }
   }
   const originalCreate = completions.create.bind(completions)
   completions.create = async (body, opts) => {
     const res = await originalCreate(body, opts)
     record(body.model ?? "unknown", res?.usage)
     return res
+  }
+  const originalStream = completions.stream.bind(completions)
+  completions.stream = (body, opts) => {
+    const s = originalStream(body, opts)
+    const final = s.finalChatCompletion.bind(s)
+    s.finalChatCompletion = async () => {
+      const res = await final()
+      record(body.model ?? "unknown", res?.usage)
+      return res
+    }
+    return s
   }
 
   const { generateWeekSync } = await import("../functions/src/ai/week-orchestrator.js")

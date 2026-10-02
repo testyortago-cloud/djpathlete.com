@@ -95,7 +95,7 @@ describe("buildCheckRows", () => {
           label: "Wed",
           focus: "pull",
           slots: [
-            slot("w3d3s1", { role: "primary_compound", sets: 4, reps: "6", rest_seconds: 120, tempo: "3-1-1-0" }),
+            slot("w3d3s1", { role: "primary_compound", sets: 4, reps: "6", rest_seconds: 120, tempo: "3-1-1-0", rpe_target: 8 }),
           ],
         },
         {
@@ -137,6 +137,8 @@ describe("buildCheckRows", () => {
         reps: "30s hold",
         rest_seconds: 0,
         tempo: null,
+        rpe: null,
+        intent: [],
       },
       {
         day_of_week: 1,
@@ -150,6 +152,8 @@ describe("buildCheckRows", () => {
         reps: "5",
         rest_seconds: 180,
         tempo: "2-0-1-0",
+        rpe: null,
+        intent: [],
       },
       {
         day_of_week: 3,
@@ -163,6 +167,8 @@ describe("buildCheckRows", () => {
         reps: "6",
         rest_seconds: 120,
         tempo: "3-1-1-0",
+        rpe: 8,
+        intent: [],
       },
     ])
   })
