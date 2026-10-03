@@ -360,25 +360,32 @@ export default async function HomePage() {
       </section>
 
       {/* ─── Testimonials Section (Carousel) ─── */}
-      <section className="py-20 lg:py-32 px-4 sm:px-8">
+      <section id="testimonials" className="py-20 lg:py-28 px-4 sm:px-8 bg-muted/40">
         <div className="max-w-6xl mx-auto">
-          <FadeIn className="text-center mb-10">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="h-px w-8 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">Testimonials</p>
-              <div className="h-px w-8 bg-accent" />
+          <FadeIn className="mb-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="mb-3 text-sm font-medium text-muted-foreground">In the words of our athletes</p>
+              <h2 className="text-3xl sm:text-4xl font-heading font-semibold text-primary tracking-tight leading-tight">
+                Trusted by elite athletes.
+              </h2>
+              <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+                The people behind the performance. Hear their experience of training with Darren.
+              </p>
             </div>
-            <h2 className="text-3xl sm:text-4xl font-heading font-semibold text-primary tracking-tight mb-8">
-              Trusted by elite athletes.
-            </h2>
 
             {/* E-E-A-T trust block: Google Reviews badge stays visible.
                 Credentials strip (PhD, CSCS · NASM, 500+ athletes, location,
                 response time) is kept in the DOM via sr-only — preserves E-E-A-T
                 signals for crawlers/LLMs while removing the on-screen "noise"
                 the boss flagged. ─── */}
-            <div className="flex flex-col items-center gap-6">
+            <div className="flex shrink-0 flex-col items-start gap-4 lg:items-end">
               <GoogleReviewsBadge />
+              <Link
+                href="/testimonials"
+                className="text-sm font-medium text-primary underline underline-offset-4 decoration-primary/30 hover:decoration-primary"
+              >
+                Read all athlete stories
+              </Link>
               <div className="sr-only" aria-hidden="false">
                 <TrustStrip variant="compact" />
               </div>

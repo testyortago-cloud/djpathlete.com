@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Testimonial redesign review</title><style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:40px auto;padding:0 20px;color:#163b46;background:#f6f7f7}h1{font-size:30px}p{line-height:1.6}figure{margin:36px 0}img{display:block;max-width:100%;height:auto;border:1px solid #d9dfe1;border-radius:12px}a{color:inherit}figcaption{margin:12px 0;font-weight:600}</style></head><body>
+<h1>Testimonials with more room for the athletes</h1>
+<p>Captured from the actual homepage on the local running app. Numbered markers and captions are burned into each PNG at its original width. These are the existing published athlete photos and quotes, temporarily added to the development clone for capture and removed afterward.</p>
+<p>Checked desktop and mobile, photo navigation and the missing-photo view. The public website has no dark-mode switch, so these captures show its supported light presentation.</p>
+<figure><a href="01-desktop.png"><img src="01-desktop.png" alt="Annotated desktop testimonial featuring Lewis Cook"></a><figcaption>1. Desktop: large athlete photo, wider quote and athlete navigation.</figcaption></figure>
+<figure><a href="02-second-athlete.png"><img src="02-second-athlete.png" alt="Annotated testimonial featuring Mohamed Al Mashayiki"></a><figcaption>2. Another athlete: original photo and quote stay together.</figcaption></figure>
+<figure><a href="03-no-photo.png"><img src="03-no-photo.png" alt="Annotated testimonial without a photo"></a><figcaption>3. Missing photo: athlete initials and the full story.</figcaption></figure>
+<figure><a href="04-mobile.png"><img src="04-mobile.png" alt="Annotated mobile testimonial"></a><figcaption>4. Phone: photo above the quote, with controls below.</figcaption></figure>
+<p>Validation: 12 tests across the carousel and testimonial cache-invalidation suites passed. Browser checks found no page errors or horizontal overflow on mobile. Root type checking reports the recorded 236-error baseline; no diagnostics reference the changed files.</p>
+</body></html>
