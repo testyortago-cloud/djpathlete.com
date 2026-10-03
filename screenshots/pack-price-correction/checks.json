@@ -1,0 +1,19 @@
+{
+  "pageErrors": [],
+  "realRoute": "/admin/clients/f7942da3-5593-40e3-88da-fc5c213d6bae",
+  "screenshots": [
+    "01-all-eight-checkins",
+    "02-correct-unpaid-total",
+    "03-invalid-price",
+    "04-price-saved"
+  ],
+  "darkMode": "Admin has no dark-mode provider or switch",
+  "stripeCalls": 0,
+  "visibleCheckins": 8,
+  "savedOffline": {
+    "price_cents": 75025,
+    "credits_total": 10,
+    "credits_used": 8
+  },
+  "temporaryPacksRemoved": 2
+}

@@ -467,6 +467,7 @@ export const AUDIT_ACTIONS = [
 
   // session packs (in-person credit tracking)
   { slug: "pack.sold", category: "commerce", description: "Session pack sold to a client" },
+  { slug: "pack.price_changed", category: "commerce", description: "Unpaid session pack price corrected" },
   { slug: "pack.checkin", category: "client_action", description: "Client checked in; credit deducted" },
   { slug: "pack.checkin_voided", category: "client_action", description: "Check-in voided; credit restored" },
   { slug: "pack.refunded", category: "commerce", description: "Session pack refunded" },

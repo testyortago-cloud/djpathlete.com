@@ -161,6 +161,16 @@ describe("Stripe webhook — session_pack completed", () => {
 // daily, so its expiry is a renewal link lapsing, not a lead going cold).
 // This suite's job is to prove the reap survives both changes.
 describe("Stripe webhook — session_pack expired", () => {
+  it("does not cancel a pack whose old payment link is being replaced", async () => {
+    verifyMock.mockReturnValue(packExpiredEvent())
+    getPackageByStripeSessionMock.mockResolvedValue({
+      id: "pkg-editing", payment_status: "pending", credits_used: 0,
+      payment_link_edit_token: "price-edit-1",
+    })
+    expect((await POST(makeReq())).status).toBe(200)
+    expect(updateClientPackageMock).not.toHaveBeenCalled()
+  })
+
   it("still reaps an abandoned session pack", async () => {
     verifyMock.mockReturnValue(packExpiredEvent())
     getPackageByStripeSessionMock.mockResolvedValue({

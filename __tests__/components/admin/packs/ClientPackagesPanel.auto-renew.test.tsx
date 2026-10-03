@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { ClientPackagesPanel } from "@/components/admin/packs/ClientPackagesPanel"
 import type { PackWithCheckins } from "@/lib/services/client-packs-view"
-import type { PackRenewalAttempt } from "@/types/database"
+import type { PackRenewalAttempt, SessionCheckin } from "@/types/database"
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), info: vi.fn(), error: vi.fn() }))
 vi.mock("sonner", () => ({ toast }))
@@ -86,6 +86,26 @@ beforeEach(() => {
 })
 
 describe("<ClientPackagesPanel> — auto-renew", () => {
+  it("shows all eight used sessions and keeps undo on the two previously hidden dates", async () => {
+    const checkins = Array.from({ length: 8 }, (_, i) => ({
+      id: `checkin-${i}`, checked_in_at: `2026-09-${String(28 - i).padStart(2, "0")}T12:00:00Z`,
+      method: "qr_self", voided: false,
+    } as SessionCheckin))
+    render(<ClientPackagesPanel clientUserId={CLIENT} initialPacks={[pack({ credits_used: 8, checkins })]} />)
+    expect(screen.getByText(/Sep 22, 2026/)).toBeInTheDocument()
+    expect(screen.getByText(/Sep 21, 2026/)).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(8)
+    expect(await screen.findByText(/no renewal attempts yet/i)).toBeInTheDocument()
+  })
+
+  it("offers price correction on unpaid packs only", async () => {
+    const { rerender } = render(<ClientPackagesPanel clientUserId={CLIENT} initialPacks={[pack({ payment_status: "pending" })]} />)
+    expect(screen.getByRole("button", { name: "Change price" })).toBeInTheDocument()
+    rerender(<ClientPackagesPanel clientUserId={CLIENT} initialPacks={[pack({ payment_status: "paid" })]} />)
+    expect(screen.queryByRole("button", { name: "Change price" })).not.toBeInTheDocument()
+    expect(await screen.findByText(/no renewal attempts yet/i)).toBeInTheDocument()
+  })
+
   it("reflects the pack's auto_renew state on its switch", () => {
     render(<ClientPackagesPanel clientUserId={CLIENT} initialPacks={[pack({ auto_renew: true })]} />)
     expect(screen.getByRole("switch")).toHaveAttribute("data-state", "checked")

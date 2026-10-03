@@ -1601,6 +1601,10 @@ async function handleSessionPackExpired(session: Stripe.Checkout.Session) {
   // leave it active so the coach can see it and chase payment.
   const pkg = await getPackageByStripeSession(session.id)
   if (!pkg || pkg.payment_status === "paid") return
+  // A coach is replacing this checkout. Keep the pack (even if the worker
+  // died and its lease is stale); the next edit reclaims the lease and checks
+  // Stripe before re-issuing. Completion webhooks still resolve normally.
+  if (pkg.payment_link_edit_token) return
   if (pkg.credits_used > 0) return
   await updateClientPackage(pkg.id, { status: "cancelled" })
 }

@@ -28,6 +28,7 @@ import {
   type DataTableBadgeTone,
 } from "@/components/ui/data-table"
 import { SellPackDialog } from "./SellPackDialog"
+import { ChangePackPriceDialog } from "./ChangePackPriceDialog"
 import type { ClientPackage, PackRenewalAttempt } from "@/types/database"
 import type { PackWithCheckins } from "@/lib/services/client-packs-view"
 
@@ -362,6 +363,15 @@ export function ClientPackagesPanel({
                 </div>
               </div>
 
+              {p.payment_status === "pending" && p.status !== "cancelled" && p.status !== "refunded" && (
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <p className="text-sm text-foreground">
+                    Pack total: {(p.price_cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })} USD
+                  </p>
+                  <ChangePackPriceDialog packId={p.id} priceCents={p.price_cents} cardPayment={p.payment_method === "stripe"} autoRenew={p.auto_renew} onSaved={() => router.refresh()} />
+                </div>
+              )}
+
               {p.payment_method === "stripe" && p.payment_status === "pending" && (
                 <div className="mt-3">
                   <div className="flex flex-wrap gap-2">
@@ -405,7 +415,7 @@ export function ClientPackagesPanel({
 
               {p.checkins.length > 0 && (
                 <div className="mt-3 border-t border-border pt-3 space-y-1.5">
-                  {p.checkins.slice(0, 6).map((c) => (
+                  {p.checkins.map((c) => (
                     <div key={c.id} className="flex items-center justify-between text-sm">
                       <span className={c.voided ? "text-muted-foreground line-through" : "text-foreground"}>
                         {fmtDate(c.checked_in_at)} · {c.method.replace("_", " ")}

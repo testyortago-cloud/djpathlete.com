@@ -1,0 +1,10 @@
+{
+  "oneWinnerInConcurrentClaim": true,
+  "nonOwnerCannotWrite": true,
+  "nonOwnerCannotRelease": true,
+  "expiredOwnerCannotWrite": true,
+  "deadWorkerLeaseRecovered": true,
+  "recoveredOwnerCanCorrectPrice": true,
+  "paidDuringEditCannotBeChanged": true,
+  "temporaryPackRemoved": true
+}

@@ -2965,6 +2965,9 @@ export interface ClientPackage {
   payment_method: PackPaymentMethod
   payment_status: PackPaymentStatus
   stripe_session_id: string | null
+  /** Short lease serializes payment-link edits across app instances. */
+  payment_link_edit_token?: string | null
+  payment_link_edit_expires_at?: string | null
   stripe_payment_id: string | null
   purchased_at: string
   expires_at: string | null

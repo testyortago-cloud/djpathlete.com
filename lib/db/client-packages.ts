@@ -86,6 +86,48 @@ export async function updateClientPackage(id: string, patch: Partial<ClientPacka
   return data as ClientPackage
 }
 
+/** Atomically lease an unpaid pack's link. Return the fresh row, never the
+ * caller's earlier snapshot. A dead worker's lease is reclaimable after 5 min. */
+export async function acquirePackPaymentLinkEdit(pack: ClientPackage, token: string) {
+  const now = new Date()
+  const { data, error } = await getClient()
+    .from("client_packages")
+    .update({ payment_link_edit_token: token, payment_link_edit_expires_at: new Date(now.getTime() + 5 * 60 * 1000).toISOString() })
+    .eq("id", pack.id)
+    .eq("payment_status", "pending")
+    .or(`payment_link_edit_token.is.null,payment_link_edit_expires_at.lte.${now.toISOString()}`)
+    .select("*")
+    .maybeSingle()
+  if (error) throw error
+  return data as ClientPackage | null
+}
+
+/** An older worker must never release a newer worker's lease. */
+export async function releasePackPaymentLinkEdit(id: string, token: string) {
+  const { error } = await getClient()
+    .from("client_packages")
+    .update({ payment_link_edit_token: null, payment_link_edit_expires_at: null })
+    .eq("id", id)
+    .eq("payment_link_edit_token", token)
+  if (error) throw error
+}
+
+/** Only the current lease holder can change a still-unpaid pack. */
+export async function updateLeasedPackPaymentLink(id: string, token: string, patch: Partial<ClientPackage>) {
+  const { data, error } = await getClient()
+    .from("client_packages")
+    .update(patch)
+    .eq("id", id)
+    .eq("payment_link_edit_token", token)
+    .eq("payment_status", "pending")
+    .gt("payment_link_edit_expires_at", new Date().toISOString())
+    .select("*")
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error("Pack changed or payment-link edit lease expired — refresh and retry")
+  return data as ClientPackage
+}
+
 export async function getPackageByStripeSession(sessionId: string) {
   const supabase = getClient()
   const { data, error } = await supabase
