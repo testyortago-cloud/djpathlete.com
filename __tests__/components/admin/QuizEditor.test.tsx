@@ -241,4 +241,21 @@ describe("QuizEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Activate" }))
     await waitFor(() => expect(screen.getByText("Server said no.")).toBeTruthy())
   })
+
+  it("saves the results-map label and side a human typed", async () => {
+    render(<QuizEditor initial={healthy()} />)
+    openQuestions()
+    fireEvent.click(screen.getAllByText(/Video and results map/)[0])
+    fireEvent.change(screen.getAllByLabelText("Results map label")[0], { target: { value: "  Copenhagen  " } })
+    fireEvent.change(screen.getAllByLabelText("Side")[0], { target: { value: "left" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const body = JSON.parse((fetchMock.mock.calls.at(-1) as [string, RequestInit])[1].body as string)
+    expect(
+      body.questions.some(
+        (q: { reportLabel: string | null; side: string | null }) => q.reportLabel === "Copenhagen" && q.side === "left",
+      ),
+    ).toBe(true)
+  })
 })

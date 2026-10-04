@@ -15,7 +15,8 @@ import { useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { quizGate } from "@/lib/quizzes/gate"
 import { BUTTON_LABEL_MAX, BUTTON_LINK_RULE, isAllowedButtonLabel, isAllowedButtonLink } from "@/lib/quizzes/button-link"
-import type { QuizDefinition, QuizOption, QuizQuestion, QuizTier } from "@/lib/quizzes/types"
+import type { QuizDefinition, QuizOption, QuizQuestion, QuizSide, QuizTier } from "@/lib/quizzes/types"
+import { QuizClipPicker } from "./QuizClipPicker"
 
 /** A band's button text or link as it is stored: trimmed, and blank means null. */
 function blankToNull(value: string | null | undefined): string | null {
@@ -136,6 +137,10 @@ export function QuizEditor({
           helpText: null,
           mediaUrl: null,
           mediaPosterUrl: null,
+          mistakesMediaUrl: null,
+          mistakesMediaPosterUrl: null,
+          reportLabel: null,
+          side: null,
           // SWITCHED OFF. The walk skips inactive questions, so a half-typed
           // one cannot reach a visitor even while the quiz is live — and the
           // gate ignores it, so it cannot block an activation either.
@@ -335,6 +340,10 @@ export function QuizEditor({
               helpText: q.helpText,
               mediaUrl: q.mediaUrl,
               mediaPosterUrl: q.mediaPosterUrl,
+              mistakesMediaUrl: q.mistakesMediaUrl ?? null,
+              mistakesMediaPosterUrl: q.mistakesMediaPosterUrl ?? null,
+              reportLabel: q.reportLabel?.trim() ? q.reportLabel.trim() : null,
+              side: q.side ?? null,
               isActive: q.isActive,
             })),
           options: quiz.questions.flatMap((q) =>
@@ -358,6 +367,10 @@ export function QuizEditor({
               helpText: q.helpText,
               mediaUrl: q.mediaUrl,
               mediaPosterUrl: q.mediaPosterUrl,
+              mistakesMediaUrl: q.mistakesMediaUrl ?? null,
+              mistakesMediaPosterUrl: q.mistakesMediaPosterUrl ?? null,
+              reportLabel: q.reportLabel?.trim() ? q.reportLabel.trim() : null,
+              side: q.side ?? null,
               isActive: q.isActive,
               options: q.options.map((o) => ({
                 id: o.id,
@@ -681,6 +694,52 @@ export function QuizEditor({
                         on&rdquo;.
                       </p>
                     ) : null}
+                    <details className="mt-3 rounded-md border border-border p-3">
+                      <summary className="cursor-pointer text-sm font-medium">
+                        Video and results map{question.mediaUrl || question.mistakesMediaUrl ? " · has video" : ""}
+                      </summary>
+                      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                        <QuizClipPicker
+                          quizId={quiz.id}
+                          label="Demo clip"
+                          url={question.mediaUrl}
+                          onChange={({ url, posterUrl }) =>
+                            patchQuestion(question.id, { mediaUrl: url, mediaPosterUrl: posterUrl })
+                          }
+                        />
+                        <QuizClipPicker
+                          quizId={quiz.id}
+                          label="Common mistakes clip"
+                          url={question.mistakesMediaUrl ?? null}
+                          onChange={({ url, posterUrl }) =>
+                            patchQuestion(question.id, { mistakesMediaUrl: url, mistakesMediaPosterUrl: posterUrl })
+                          }
+                        />
+                        <Field
+                          label="Results map label"
+                          value={question.reportLabel ?? ""}
+                          onChange={(v) => patchQuestion(question.id, { reportLabel: v.trim() ? v : null })}
+                        />
+                        <label className="block text-sm font-medium text-foreground">
+                          Side
+                          <select
+                            className="mt-1 block w-full rounded-md border border-border bg-white px-3 py-2 text-sm"
+                            value={question.side ?? ""}
+                            onChange={(event) =>
+                              patchQuestion(question.id, { side: (event.target.value || null) as QuizSide | null })
+                            }
+                          >
+                            <option value="">None</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                          </select>
+                        </label>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Questions with the same results map label show as one row on the results page. Give a left and
+                        a right attempt the same label and pick their sides, and the visitor sees both sides compared.
+                      </p>
+                    </details>
                   </div>
                   <div className="flex shrink-0 gap-1 pt-6">
                     <button
