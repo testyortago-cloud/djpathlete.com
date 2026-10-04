@@ -24,6 +24,31 @@ describe("cleanNote — prescription sentences", () => {
   })
 })
 
+describe("cleanNote — fix round 1", () => {
+  it("normalises the athlete sport's case and whitespace", () => {
+    const note = "Mimic your tennis split step."
+    expect(cleanNote(note, { athleteSport: "Tennis " }).text).toBe(note)
+    expect(cleanNote("Swing like golf. Stay tall.", { athleteSport: "Tennis " }).text).toBe("Stay tall.")
+  })
+  it("does not split a sentence at a decimal point", () => {
+    const r = cleanNote("Rest 1.5 minutes. Brace.", none)
+    expect(r.text).toBe("Brace.")
+    expect(r.stripped).toEqual(["Rest 1.5 minutes."])
+  })
+  it("drops rest durations but keeps rest used as a cue", () => {
+    expect(cleanNote("Rest 90 seconds. Brace.", none).text).toBe("Brace.")
+    expect(cleanNote("Rest for 2 minutes. Brace.", none).text).toBe("Brace.")
+    const a = "Rest the bar on your traps, elbows at 45 degrees."
+    expect(cleanNote(a, none)).toEqual({ text: a, stripped: [] })
+    const b = "Keep the rest of your body still for 3 seconds."
+    expect(cleanNote(b, none)).toEqual({ text: b, stripped: [] })
+  })
+  it("drops RPE of N and N RPE", () => {
+    expect(cleanNote("Go RPE of 7. Brace.", none).text).toBe("Brace.")
+    expect(cleanNote("Go at 7 RPE. Brace.", none).text).toBe("Brace.")
+  })
+})
+
 describe("cleanNote — sport sentences", () => {
   it("drops a sport the athlete does not play (live case: golf cue for a tennis player)", () => {
     const r = cleanNote("Rotate like a golf swing. Stay tall.", { athleteSport: "tennis" })

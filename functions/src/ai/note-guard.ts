@@ -9,15 +9,16 @@
 
 /** Split on sentence boundaries, keeping the terminator with its sentence. */
 export function splitSentences(text: string): string[] {
-  return text.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [text]
+  // A . ! ? only ends a sentence when whitespace or the end of the text follows (so "1.5" stays whole).
+  return text.match(/(?:[^.!?]|[.!?](?!\s|$))+(?:[.!?]+|$)/g) ?? [text]
 }
 
 const PRESCRIPTION_RES: RegExp[] = [
   /\b\d+\s*(?:sets?|reps?|repetitions?)\b/i,
   /\b\d+\s*[x×]\s*\d+/i,
-  /\brest\b[^.!?]*\d/i,
+  /\brest\s*(?:for\s+|of\s+|about\s+)?\d+(?:\.\d+)?\s*(?:s|sec|secs|seconds?|min|mins|minutes?)\b/i,
   /\d\s*%/,
-  /\bRPE\s*\d/i,
+  /\bRPE\s*(?:of\s*)?\d|\d\s*RPE\b/i,
   /\b\d+\s*(?:each|per)\s*(?:side|leg|arm)\b/i,
 ]
 
@@ -36,10 +37,11 @@ export function cleanNote(
   note: string,
   opts: { athleteSport: string | null },
 ): { text: string | null; stripped: string[] } {
+  const athleteSport = opts.athleteSport?.trim().toLowerCase() ?? null
   const kept: string[] = []
   const stripped: string[] = []
   for (const sentence of splitSentences(note)) {
-    const drop = PRESCRIPTION_RES.some((re) => re.test(sentence)) || namesForeignSport(sentence, opts.athleteSport)
+    const drop = PRESCRIPTION_RES.some((re) => re.test(sentence)) || namesForeignSport(sentence, athleteSport)
     if (drop) stripped.push(sentence.trim())
     else kept.push(sentence)
   }
