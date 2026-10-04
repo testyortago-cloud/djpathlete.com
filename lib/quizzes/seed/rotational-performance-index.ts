@@ -61,6 +61,10 @@ export interface SeedQuestion {
   helpText?: string | null
   mediaUrl?: string | null
   mediaPosterUrl?: string | null
+  mistakesMediaUrl?: string | null
+  mistakesMediaPosterUrl?: string | null
+  reportLabel?: string | null
+  side?: "left" | "right" | null
   options: SeedOption[]
 }
 
@@ -232,6 +236,10 @@ function movementQuestions(): SeedQuestion[] {
         helpText: `${test.setup} Watch the clip, try it, then score yourself: ${test.points.join("; ")}.`,
         mediaUrl: clip(`${test.file}.mp4`),
         mediaPosterUrl: clip(`${test.file}-poster.jpg`),
+        mistakesMediaUrl: clip(`${test.file}-mistakes.mp4`),
+        mistakesMediaPosterUrl: clip(`${test.file}-mistakes-poster.jpg`),
+        reportLabel: test.name,
+        side,
         options: movementOptions(),
       })
       position += 10
@@ -359,7 +367,7 @@ export const ROTATIONAL_PERFORMANCE_INDEX: SeedQuiz = {
       minScore: 0,
       maxScore: 39,
       headline: "High compensation and disconnection",
-      body: "Your body is finding ways around the work rather than doing it. That is the pattern that leaks speed and power, and it is the most fixable one on this list.",
+      body: "Your results suggest you have a rotational performance leak — and a big one. This isn't an effort problem. It's a structure problem: your body is finding ways around the work instead of doing it, and that is where speed and power leak out.\n\nTraditional training misses it because it trains the sport and the gym, not the connection between them.\n\nRotational Reboot is six weeks built to close exactly these gaps, side by side.",
       ctaLabel: "See if Rotational Reboot is right for you",
       ctaHref: "/programs/rotational-reboot",
     },
@@ -369,7 +377,7 @@ export const ROTATIONAL_PERFORMANCE_INDEX: SeedQuiz = {
       minScore: 40,
       maxScore: 59,
       headline: "Movement inefficiencies limiting performance",
-      body: "You held some of it together and lost the rest. The gaps that showed up here are the ones costing you output when you are tired.",
+      body: "Your results suggest you have a rotational performance leak. This isn't an effort problem. It's a structure problem: you held some of it together and lost the rest, and those gaps cost you output when you are tired.\n\nMost programs never test for it, so they never train it.\n\nRotational Reboot targets the gaps on the map below.",
       ctaLabel: "See if Rotational Reboot is right for you",
       ctaHref: "/programs/rotational-reboot",
     },
@@ -379,7 +387,7 @@ export const ROTATIONAL_PERFORMANCE_INDEX: SeedQuiz = {
       minScore: 60,
       maxScore: 79,
       headline: "Potential performance leaks",
-      body: "A solid base with specific leaks in it. Worth closing before they decide a result for you.",
+      body: "Your results suggest you may have a rotational performance leak. A solid base, with specific leaks in it. This isn't an effort problem. It's a structure problem — and a small one.\n\nThese are the leaks that decide close results. Rotational Reboot closes them before they do.",
       ctaLabel: "See if Rotational Reboot is right for you",
       ctaHref: "/programs/rotational-reboot",
     },
@@ -389,7 +397,7 @@ export const ROTATIONAL_PERFORMANCE_INDEX: SeedQuiz = {
       minScore: 80,
       maxScore: 100,
       headline: "Good rotational connection and control",
-      body: "You control rotation well. The value now is precision — the small side-to-side differences that still cost output.",
+      body: "You control rotation well. The value now is precision — the small side-to-side differences on the map below still cost output, and an assessment measures them properly.",
       ctaLabel: "See what an assessment covers",
       ctaHref: "/assessment",
     },
@@ -495,6 +503,10 @@ export function toDefinition(seed: SeedQuiz): QuizDefinition {
       helpText: question.helpText ?? null,
       mediaUrl: question.mediaUrl ?? null,
       mediaPosterUrl: question.mediaPosterUrl ?? null,
+      mistakesMediaUrl: question.mistakesMediaUrl ?? null,
+      mistakesMediaPosterUrl: question.mistakesMediaPosterUrl ?? null,
+      reportLabel: question.reportLabel ?? null,
+      side: question.side ?? null,
       isActive: true,
       options,
     }

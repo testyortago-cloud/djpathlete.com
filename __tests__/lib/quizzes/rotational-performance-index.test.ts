@@ -270,3 +270,34 @@ describe("what reaches the browser", () => {
     expect(serialised).not.toContain("minScore")
   })
 })
+
+describe("RPI — results map and mistakes clips", () => {
+  const movement = () => definition.questions.filter((q) => q.mediaUrl)
+
+  it("every movement question is on the map, and paired tests have exactly one left and one right", () => {
+    const byLabel = new Map<string, string[]>()
+    for (const q of movement()) {
+      expect(q.reportLabel).toBeTruthy()
+      byLabel.set(q.reportLabel!, [...(byLabel.get(q.reportLabel!) ?? []), q.side ?? "single"])
+    }
+    expect(byLabel.get("Rocking hollow")).toEqual(["single"])
+    for (const [label, sides] of byLabel) if (label !== "Rocking hollow") expect(sides.sort()).toEqual(["left", "right"])
+    expect(byLabel.size).toBe(5)
+  })
+
+  it("every movement question has a mistakes clip under quiz-media/rotational-reboot/ named -mistakes", () => {
+    for (const q of movement()) {
+      expect(q.mistakesMediaUrl).toMatch(/quiz-media%2Frotational-reboot%2F\d-[a-z-]+-mistakes\.mp4\?alt=media$/)
+      expect(q.mistakesMediaPosterUrl).toMatch(/-mistakes-poster\.jpg\?alt=media$/)
+    }
+  })
+
+  it("red, orange and yellow reframe the result as a structure problem; every tier keeps its CTA", () => {
+    for (const key of ["red", "orange", "yellow"]) {
+      expect(definition.tiers.find((t) => t.key === key)!.body).toContain(
+        "This isn't an effort problem. It's a structure problem",
+      )
+    }
+    for (const t of definition.tiers) expect(t.ctaHref).toBeTruthy()
+  })
+})
