@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest"
-import { profileAnalysisSchema, validateSkeletonAgainstAnalysis, validateAssignmentAgainstCeiling } from "../schemas.js"
+import {
+  profileAnalysisSchema,
+  validateSkeletonAgainstAnalysis,
+  validateAssignmentAgainstCeiling,
+  exerciseAssignmentSchema,
+} from "../schemas.js"
 
 const validAnalysisBase = {
   recommended_split: "full_body" as const,
@@ -245,5 +250,40 @@ describe("validateAssignmentAgainstCeiling — difficulty ceiling enforcement", 
       validateAssignmentAgainstCeiling(assignment, ceiling, slotInWeek, exerciseLibrary, new Set(["something-else"]))
         .ok,
     ).toBe(false)
+  })
+})
+
+describe("exerciseAssignmentSchema fit and per_side", () => {
+  it("defaults the new fields so an older-shaped answer still parses", () => {
+    const parsed = exerciseAssignmentSchema.parse({
+      assignments: [{ slot_id: "w1d1s1", exercise_id: "e", exercise_name: "Squat", notes: null }],
+      substitution_notes: [],
+    })
+    expect(parsed.assignments[0]).toMatchObject({ per_side: false, fit: "close", fit_reason: null })
+  })
+  it("keeps what the model sent", () => {
+    const parsed = exerciseAssignmentSchema.parse({
+      assignments: [
+        {
+          slot_id: "s",
+          exercise_id: "e",
+          exercise_name: "n",
+          notes: null,
+          per_side: true,
+          fit: "poor",
+          fit_reason: "no squat left",
+        },
+      ],
+      substitution_notes: [],
+    })
+    expect(parsed.assignments[0]).toMatchObject({ per_side: true, fit: "poor", fit_reason: "no squat left" })
+  })
+  it("rejects an unknown fit label", () => {
+    expect(() =>
+      exerciseAssignmentSchema.parse({
+        assignments: [{ slot_id: "s", exercise_id: "e", exercise_name: "n", notes: null, fit: "great" }],
+        substitution_notes: [],
+      }),
+    ).toThrow()
   })
 })

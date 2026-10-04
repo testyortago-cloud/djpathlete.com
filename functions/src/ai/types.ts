@@ -126,6 +126,9 @@ export interface AssignedExercise {
   exercise_id: string
   exercise_name: string
   notes: string | null
+  per_side?: boolean
+  fit?: "exact" | "close" | "poor"
+  fit_reason?: string | null
 }
 
 export interface ExerciseAssignment {

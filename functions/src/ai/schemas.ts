@@ -148,6 +148,13 @@ const assignedExerciseSchema = z.object({
   exercise_id: z.string(),
   exercise_name: z.string(),
   notes: z.string().nullable(),
+  // 2026-10-04: unilateral counts go here, not into the note ("6 each side"
+  // in a note contradicted reps "6"). buildExerciseRows appends "each side".
+  per_side: z.boolean().optional().default(false),
+  // The model's own honesty channel. Code re-checks it (slot-fit.ts): a
+  // pattern mismatch is "poor" whatever the label says.
+  fit: z.enum(["exact", "close", "poor"]).optional().default("close"),
+  fit_reason: z.string().nullable().optional().default(null),
 })
 
 export const exerciseAssignmentSchema = z.object({
@@ -220,7 +227,7 @@ export function validateSkeletonAgainstAnalysis(
  * not exceed max_score.
  */
 export function validateAssignmentAgainstCeiling(
-  assignment: z.infer<typeof exerciseAssignmentSchema>,
+  assignment: z.input<typeof exerciseAssignmentSchema>,
   difficultyCeiling: DifficultyCeilingWeek[],
   slotInWeek: Map<string, number>,
   exerciseLibrary: Array<{ id: string; difficulty: string; difficulty_score: number | null | undefined }>,
