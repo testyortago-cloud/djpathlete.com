@@ -83,6 +83,9 @@ export async function handleWeekGeneration(jobId: string, budgetMs: number): Pro
       instructions_used: result.instructions_used ?? null,
       // "Your instructions, checked" reads only this, too.
       instruction_check: result.instruction_check ?? null,
+      // "Substitutes the AI had to make" reads only this as well. Always an
+      // array, never undefined — Firestore rejects undefined.
+      slot_fit: result.slot_fit ?? [],
     }
 
     await jobRef.update({

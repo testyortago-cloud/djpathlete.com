@@ -218,6 +218,34 @@ describe("handleWeekGeneration — the job doc's result payload", () => {
     expect(payload?.instruction_check).toBeNull()
   })
 
+  it("writes the poor substitutes into ai_jobs.result", async () => {
+    // Same trap again: the "Substitutes the AI had to make" panel reads only the job doc.
+    const slotFit = [
+      {
+        day_of_week: 1,
+        slot_role: "primary_compound",
+        slot_pattern: "squat",
+        exercise_name: "Romanian Deadlift",
+        reason: "hinge exercise in a squat slot",
+      },
+    ]
+    mockGenerateWeekSync.mockResolvedValue({ ...resultFrom([]), slot_fit: slotFit })
+
+    await handleWeekGeneration("job-1", BUDGET_MS)
+
+    expect(completedPayload()?.slot_fit).toEqual(slotFit)
+  })
+
+  it("writes an empty slot_fit — never undefined — when the result has none", async () => {
+    mockGenerateWeekSync.mockResolvedValue(resultFrom([]))
+
+    await handleWeekGeneration("job-1", BUDGET_MS)
+
+    const payload = completedPayload()
+    expect(payload).toHaveProperty("slot_fit")
+    expect(payload?.slot_fit).toEqual([])
+  })
+
   it("does not write a result payload when generation fails", async () => {
     mockGenerateWeekSync.mockRejectedValue(new Error("boom"))
 
