@@ -1,5 +1,5 @@
 import { getSupabase } from "../lib/supabase.js"
-import { splitSentences } from "./note-guard.js"
+import { splitSentences, cleanNote } from "./note-guard.js"
 
 // ─── Supabase Helpers ──────────────────────────────────────────────────────
 
@@ -647,6 +647,7 @@ interface SlotDetails {
   group_tag: string | null
   technique: ExerciseSlot["technique"]
   role: ExerciseSlot["role"]
+  intensity_pct: number | null
 }
 
 export function buildSlotLookups(weeks: ProgramWeek[]) {
@@ -670,6 +671,7 @@ export function buildSlotLookups(weeks: ProgramWeek[]) {
           group_tag: slot.group_tag,
           technique: slot.technique ?? "straight_set",
           role: slot.role,
+          intensity_pct: slot.intensity_pct ?? null,
         })
       })
     }
@@ -795,17 +797,38 @@ export function stripPipelineInternals(notes: string): { text: string; stripped:
   return { text: kept.join("").replace(/\s{2,}/g, " ").trim(), stripped }
 }
 
+/** "8" + per_side → "8 each side". Leaves reps that already name a side alone. */
+export function withSide(reps: string, perSide: boolean | undefined): string {
+  if (!perSide) return reps
+  if (/\b(?:each|per)\s+(?:side|leg|arm)\b|\/\s*side\b/i.test(reps)) return reps
+  return `${reps} each side`
+}
+
+export interface RowBuildOptions {
+  /** Library names by exercise id. The model's exercise_name is never trusted (2026-10-04). */
+  nameById?: Map<string, string>
+  /** normalizeSport()'d. null = no sport known: every sport sentence is removed. */
+  athleteSport?: string | null
+  /** Sentences note-guard removed — console only, not a coach warning. */
+  onCleanedNote?: (slotId: string, sentences: string[]) => void
+}
+
 export function sanitizeSlotRefsInNotes(
   notes: string | null,
   nameBySlotId: Map<string, string>,
   /** Collects sentences removed for narrating pipeline internals. */
   onStripped?: (sentences: string[]) => void,
+  athleteSport: string | null = null,
+  onCleaned?: (sentences: string[]) => void,
 ): string | null {
   if (!notes) return notes
   const deInternalised = stripPipelineInternals(notes)
   if (deInternalised.stripped.length > 0) onStripped?.(deInternalised.stripped)
+  const guarded = cleanNote(deInternalised.text, { athleteSport })
+  if (guarded.stripped.length > 0) onCleaned?.(guarded.stripped)
+  if (guarded.text === null) return null
 
-  const cleaned = deInternalised.text
+  const cleaned = guarded.text
     .replace(SLOT_REF_RE, (ref) => nameBySlotId.get(ref.toLowerCase()) ?? "the paired exercise")
     .replace(ID_FRAGMENT_RE, "")
   if (cleaned === notes) return notes
@@ -816,16 +839,28 @@ export function sanitizeSlotRefsInNotes(
 }
 
 export function buildExerciseRows(
-  assignments: Array<{ slot_id: string; exercise_id: string; notes: string | null; exercise_name?: string }>,
+  assignments: Array<{
+    slot_id: string
+    exercise_id: string
+    notes: string | null
+    exercise_name?: string
+    per_side?: boolean
+  }>,
   slotLookup: Map<string, SlotLocation>,
   slotDetailsLookup: Map<string, SlotDetails>,
   programId: string,
   /** Receives note sentences removed for narrating pipeline internals. */
   onStrippedNote?: (slotId: string, sentences: string[]) => void,
+  opts: RowBuildOptions = {},
 ): Record<string, unknown>[] {
   const nameBySlotId = new Map<string, string>()
   for (const a of assignments) {
-    if (a.exercise_name) nameBySlotId.set(a.slot_id.toLowerCase(), a.exercise_name)
+    const libraryName = opts.nameById?.get(a.exercise_id)
+    if (libraryName && a.exercise_name && libraryName !== a.exercise_name) {
+      console.warn(`[rows] model named ${a.exercise_id} "${a.exercise_name}"; library says "${libraryName}"`)
+    }
+    const name = libraryName ?? a.exercise_name
+    if (name) nameBySlotId.set(a.slot_id.toLowerCase(), name)
   }
   return assignments
     .map((assigned) => {
@@ -839,14 +874,18 @@ export function buildExerciseRows(
         week_number: location.week_number,
         order_index: location.order_index,
         sets: details.sets,
-        reps: details.reps,
+        reps: withSide(details.reps, assigned.per_side),
         duration_seconds: null,
         rest_seconds: details.rest_seconds,
-        notes: sanitizeSlotRefsInNotes(assigned.notes, nameBySlotId, (sentences) =>
-          onStrippedNote?.(assigned.slot_id, sentences),
+        notes: sanitizeSlotRefsInNotes(
+          assigned.notes,
+          nameBySlotId,
+          (sentences) => onStrippedNote?.(assigned.slot_id, sentences),
+          opts.athleteSport ?? null,
+          (sentences) => opts.onCleanedNote?.(assigned.slot_id, sentences),
         ),
         rpe_target: details.rpe_target,
-        intensity_pct: null,
+        intensity_pct: details.intensity_pct,
         tempo: details.tempo,
         group_tag: details.group_tag,
         technique: VALID_TECHNIQUES.has(details.technique ?? "") ? details.technique : "straight_set",

@@ -12,6 +12,7 @@ import {
   remapUncoveredSlotPatterns,
   buildPoolPatternSection,
   stripPipelineInternals,
+  withSide,
 } from "../shared-helpers.js"
 import { countWorkingSlots, type PriorWeekContext } from "../dedup-verify.js"
 import type { ProgramWeek, CompressedExercise } from "../types.js"
@@ -379,14 +380,14 @@ describe("buildExerciseRows sanitizes internal slot refs out of notes", () => {
           slot_id: "w2d1s1",
           exercise_id: "ex-1",
           exercise_name: "A",
-          notes: "Tempo (3-1-2-0), target 8 reps (20260713) session marker.",
+          notes: "Tempo (3-1-2-0), target depth (20260713) session marker.",
         },
       ],
       slotLookup,
       slotDetailsLookup,
       "prog-1",
     )
-    expect(rows[0].notes).toBe("Tempo (3-1-2-0), target 8 reps (20260713) session marker.")
+    expect(rows[0].notes).toBe("Tempo (3-1-2-0), target depth (20260713) session marker.")
   })
 
   it("leaves plain notes and null notes untouched", () => {
@@ -569,5 +570,107 @@ describe("countWorkingSlots agrees with the dedup rules by construction", () => 
     }
     // 5 slots, 2 anchors → 3 need a distinct exercise.
     expect(countWorkingSlots(week)).toBe(3)
+  })
+})
+
+describe("buildExerciseRows strict notes (2026-10-04)", () => {
+  function weeks(slot: Record<string, unknown> = {}): ProgramWeek[] {
+    return [
+      {
+        week_number: 2,
+        phase: "x",
+        intensity_modifier: "moderate",
+        days: [
+          {
+            day_of_week: 1,
+            label: "Mon",
+            focus: "f",
+            slots: [1, 2].map((i) => ({
+              slot_id: `w2d1s${i}`,
+              role: "accessory",
+              movement_pattern: "lunge",
+              target_muscles: ["glutes"],
+              sets: 3,
+              reps: "8",
+              rest_seconds: 60,
+              rpe_target: 7,
+              tempo: null,
+              group_tag: "A",
+              technique: "superset",
+              intensity_pct: null,
+              ...slot,
+            })),
+          },
+        ],
+      } as ProgramWeek,
+    ]
+  }
+
+  it("names the superset partner from the LIBRARY, not the model's exercise_name", () => {
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(weeks())
+    const rows = buildExerciseRows(
+      [
+        { slot_id: "w2d1s1", exercise_id: "ex-1", exercise_name: "Hip Thrust", notes: "Superset with w2d1s2." },
+        { slot_id: "w2d1s2", exercise_id: "ex-2", exercise_name: "Made Up Name", notes: null },
+      ],
+      slotLookup,
+      slotDetailsLookup,
+      "p",
+      undefined,
+      {
+        nameById: new Map([
+          ["ex-1", "Hip Thrust"],
+          ["ex-2", "Reverse Lunge"],
+        ]),
+      },
+    )
+    expect(rows[0].notes).toBe("Superset with Reverse Lunge.")
+  })
+
+  it("appends 'each side' for per_side picks, once", () => {
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(weeks())
+    const rows = buildExerciseRows(
+      [{ slot_id: "w2d1s1", exercise_id: "ex-1", exercise_name: "Split Squat", notes: null, per_side: true }],
+      slotLookup,
+      slotDetailsLookup,
+      "p",
+    )
+    expect(rows[0].reps).toBe("8 each side")
+    expect(withSide("8 each leg", true)).toBe("8 each leg")
+    expect(withSide("30s/side", true)).toBe("30s/side")
+    expect(withSide("8", false)).toBe("8")
+  })
+
+  it("saves the slot's intensity_pct instead of null", () => {
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(weeks({ intensity_pct: 75 }))
+    const rows = buildExerciseRows(
+      [{ slot_id: "w2d1s1", exercise_id: "ex-1", exercise_name: "Squat", notes: null }],
+      slotLookup,
+      slotDetailsLookup,
+      "p",
+    )
+    expect(rows[0].intensity_pct).toBe(75)
+  })
+
+  it("runs the note guard with the athlete's sport and reports what it removed", () => {
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(weeks())
+    const cleaned: string[] = []
+    const rows = buildExerciseRows(
+      [
+        {
+          slot_id: "w2d1s1",
+          exercise_id: "ex-1",
+          exercise_name: "Lunge",
+          notes: "3 sets of 8. Like a golf swing. Stay tall.",
+        },
+      ],
+      slotLookup,
+      slotDetailsLookup,
+      "p",
+      undefined,
+      { athleteSport: "tennis", onCleanedNote: (_id, s) => cleaned.push(...s) },
+    )
+    expect(rows[0].notes).toBe("Stay tall.")
+    expect(cleaned).toEqual(["3 sets of 8.", "Like a golf swing."])
   })
 })
