@@ -26,7 +26,10 @@ import {
   exerciseAssignmentSchema,
   validateSkeletonAgainstAnalysis,
   validateAssignmentAgainstCeiling,
+  repairSkeletonTechniques,
 } from "./schemas.js"
+import { buildProfileContext, buildAthleteContext, resolveClientDifficulty, normalizeSport } from "./athlete-context.js"
+import { muscleVocabulary, normalizeSkeletonInPlace } from "./slot-normalize.js"
 import { PROFILE_ANALYZER_PROMPT, PROGRAM_ARCHITECT_PROMPT, EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
 import {
@@ -376,45 +379,13 @@ export async function generateProgramSync(
       }
     }
 
-    let age: number | null = null
-    if (profile?.date_of_birth) {
-      const birthDate = new Date(profile.date_of_birth)
-      if (!isNaN(birthDate.getTime())) age = new Date().getFullYear() - birthDate.getFullYear()
-    }
-
-    const profileContext = profile
-      ? JSON.stringify({
-          goals: profile.goals,
-          sport: profile.sport,
-          gender: profile.gender,
-          age,
-          date_of_birth: profile.date_of_birth,
-          experience_level: profile.experience_level,
-          movement_confidence: profile.movement_confidence,
-          sleep_hours: profile.sleep_hours,
-          stress_level: profile.stress_level,
-          occupation_activity_level: profile.occupation_activity_level,
-          training_years: profile.training_years,
-          injuries: profile.injuries,
-          injury_details: profile.injury_details,
-          available_equipment: profile.available_equipment,
-          preferred_session_minutes: profile.preferred_session_minutes,
-          preferred_training_days: profile.preferred_training_days,
-          preferred_day_names: profile.preferred_day_names,
-          preferred_techniques: profile.preferred_techniques,
-          time_efficiency_preference: profile.time_efficiency_preference,
-          height_cm: profile.height_cm,
-          weight_kg: profile.weight_kg,
-          exercise_likes: profile.exercise_likes,
-          exercise_dislikes: profile.exercise_dislikes,
-          training_background: profile.training_background,
-          additional_notes: profile.additional_notes,
-        })
-      : request.ignore_profile
+    const profileContext =
+      buildProfileContext(profile) ??
+      (request.ignore_profile
         ? JSON.stringify({
             note: "Coach has opted to ignore the client profile. Rely entirely on the training request parameters and coach instructions below. Do NOT assume any client-specific constraints — treat this as a coach-directed program.",
           })
-        : JSON.stringify({ note: "No profile found — use defaults for a general fitness client." })
+        : JSON.stringify({ note: "No profile found — use defaults for a general fitness client." }))
 
     const assessmentSection = assessmentContext
       ? `\n\n## Client Assessment Results
@@ -547,7 +518,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // the full exercise library is available for coach-directed programs.
     // Also skipped in strict pool mode — the coach hand-picked these exact
     // exercises, so difficulty pruning would starve the curated pool.
-    const clientDifficultyLevel = profile?.experience_level ?? (request.ignore_profile ? "elite" : "beginner")
+    const clientDifficultyLevel = resolveClientDifficulty(profile, request.ignore_profile)
     let compressed = poolActive
       ? poolFiltered
       : filterByDifficultyLevel(poolFiltered, clientDifficultyLevel, withPreferredPool(unlockedIds, preferredIds))
@@ -665,7 +636,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // Agent 2
     await updateJobProgress("designing_structure", 3, "Designing program structure & weekly layout")
     await onProgress?.("Designing program structure", 2, 5)
-    const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}${coachInstructionsSection}${buildPoolPatternSection(compressed, poolActive)}`
+    const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}${coachInstructionsSection}${buildPoolPatternSection(compressed, poolActive)}\n\n## Muscle names\ntarget_muscles may only use these values: ${muscleVocabulary(allExercises).join(", ")}`
 
     console.log("[orchestrator:sync] Running Agent 2 (program architect)...")
     deadline?.assertLive("program architect")
@@ -689,6 +660,20 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         dayFixes.map((f) => `wk${f.week_number} d${f.from_day}→d${f.to_day}`).join(", "),
       )
     }
+    const techniqueFixes = repairSkeletonTechniques(skeleton, analysis.technique_plan)
+    if (techniqueFixes.length > 0) {
+      console.warn(
+        `[orchestrator:sync] Repaired ${techniqueFixes.length} technique(s) to the week default: ` +
+          techniqueFixes.map((f) => `${f.slot_id} ${f.from}→${f.to}`).join(", "),
+      )
+    }
+    if (muscleVocabulary(allExercises).length === 0) {
+      console.warn(
+        "[orchestrator:sync] Muscle vocabulary is empty (no primary_muscles value has 3+ uses in the library) — the slot normalizer is a no-op this run",
+      )
+    }
+    const slotChanges = normalizeSkeletonInPlace(skeleton.weeks, muscleVocabulary(allExercises))
+    if (slotChanges.length > 0) console.log(`[orchestrator:sync] Normalised ${slotChanges.length} slot field(s)`)
     // Backfill total_sessions if the AI omitted it or returned 0
     if (!skeleton.total_sessions) {
       skeleton.total_sessions = skeleton.weeks.reduce((sum, w) => sum + w.days.length, 0)
@@ -738,7 +723,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const constraintsContext = JSON.stringify({
       exercise_constraints: analysis.exercise_constraints,
       available_equipment: effectiveEquipment,
-      client_difficulty: profile?.experience_level ?? "beginner",
+      client_difficulty: clientDifficultyLevel,
+      athlete: buildAthleteContext(profile),
     })
 
     // Fold the instruction-parsed bans and the coach's persistent blocklist into
@@ -823,7 +809,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       "filtered exercises...",
     )
     const completedWeeksSync: WeekAssignment[] = []
-    const clientDifficultySync = profile?.experience_level ?? "beginner"
+    const clientDifficultySync = clientDifficultyLevel
 
     // Build an exercise ID set for quick lookup to strip hallucinated IDs
     const exerciseIdSet = new Set(compressed.map((e) => e.id))
@@ -1156,7 +1142,17 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       // Commit this week before starting the next one. Everything written here
       // survives a later timeout, a crash, or a cancellation.
       const weekProgramId = await ensureProgram()
-      const weekRows = buildExerciseRows(weekAssignment.assignments, slotLookup, slotDetailsLookup, weekProgramId)
+      const weekRows = buildExerciseRows(
+        weekAssignment.assignments,
+        slotLookup,
+        slotDetailsLookup,
+        weekProgramId,
+        undefined,
+        {
+          nameById: new Map(allExercises.map((e: { id: string; name: string }) => [e.id, e.name])),
+          athleteSport: normalizeSport(profile?.sport),
+        },
+      )
       await bulkAddExercisesToProgram(weekRows)
 
       completedWeeksSync.push({ week_number: weekNum, assignments: weekAssignment.assignments })

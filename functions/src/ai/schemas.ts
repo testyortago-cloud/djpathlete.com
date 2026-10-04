@@ -221,6 +221,35 @@ export function validateSkeletonAgainstAnalysis(
 }
 
 /**
+ * A disallowed technique is the ARCHITECT's error, but the retry loop re-runs
+ * only the selector, which cannot change a slot's technique — so those retries
+ * could never pass (2026-10-04). Repair it once, in code, right after the
+ * architect. Mutates in place; returns what changed for the log.
+ */
+export function repairSkeletonTechniques(
+  skeleton: {
+    weeks: Array<{ week_number: number; days: Array<{ slots: Array<{ slot_id: string; technique: string }> }> }>
+  },
+  // Structural, not TechniquePlanWeek[]: the orchestrator's ProfileAnalysis type carries plain strings.
+  plan: Array<{ week_number: number; allowed_techniques: readonly string[]; default_technique: string }>,
+): Array<{ slot_id: string; from: string; to: string }> {
+  const byWeek = new Map(plan.map((p) => [p.week_number, p]))
+  const changes: Array<{ slot_id: string; from: string; to: string }> = []
+  for (const week of skeleton.weeks) {
+    const p = byWeek.get(week.week_number)
+    if (!p) continue
+    const allowed = new Set<string>(p.allowed_techniques)
+    for (const day of week.days)
+      for (const slot of day.slots) {
+        if (allowed.has(slot.technique)) continue
+        changes.push({ slot_id: slot.slot_id, from: slot.technique, to: p.default_technique })
+        slot.technique = p.default_technique
+      }
+  }
+  return changes
+}
+
+/**
  * Validate exercise assignments (Agent 3 output) against the difficulty_ceiling
  * produced by Agent 1. For each week, the assigned exercise must not exceed the
  * ceiling's max_tier; if its tier equals max_tier, its difficulty_score must

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
   profileAnalysisSchema,
   validateSkeletonAgainstAnalysis,
+  repairSkeletonTechniques,
   validateAssignmentAgainstCeiling,
   exerciseAssignmentSchema,
 } from "../schemas.js"
@@ -285,5 +286,34 @@ describe("exerciseAssignmentSchema fit and per_side", () => {
         substitution_notes: [],
       }),
     ).toThrow()
+  })
+})
+
+describe("repairSkeletonTechniques", () => {
+  const plan = [
+    { week_number: 1, allowed_techniques: ["straight_set", "superset"], default_technique: "straight_set", notes: "" },
+  ] as const
+  function sk(technique: string) {
+    return {
+      weeks: [
+        {
+          week_number: 1,
+          phase: "p",
+          intensity_modifier: "m",
+          days: [{ day_of_week: 1, label: "L", focus: "f", slots: [{ slot_id: "w1d1s1", technique }] }],
+        },
+      ],
+    }
+  }
+  it("rewrites a disallowed technique to the week's default and reports it", () => {
+    const s = sk("dropset")
+    expect(repairSkeletonTechniques(s as never, [...plan] as never)).toEqual([
+      { slot_id: "w1d1s1", from: "dropset", to: "straight_set" },
+    ])
+    expect(s.weeks[0].days[0].slots[0].technique).toBe("straight_set")
+  })
+  it("leaves allowed techniques and weeks without a plan alone", () => {
+    expect(repairSkeletonTechniques(sk("superset") as never, [...plan] as never)).toEqual([])
+    expect(repairSkeletonTechniques(sk("dropset") as never, [])).toEqual([])
   })
 })
