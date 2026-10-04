@@ -6,17 +6,14 @@ import type {
   ExerciseAssignment,
   ValidationResult,
 } from "./types.js"
-import {
-  callAgent,
-  MODEL_SONNET,
-  MODEL_PROGRAM_ARCHITECT,
-  MODEL_EXERCISE_SELECTOR,
-  PROGRAM_AGENT_EFFORT,
-} from "./anthropic.js"
+import { callAgent, MODEL_PROGRAM_ARCHITECT, MODEL_EXERCISE_SELECTOR, PROGRAM_AGENT_EFFORT } from "./anthropic.js"
 import { isAbortError, type Deadline } from "../lib/deadline.js"
 import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints } from "./exercise-filter.js"
-import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
-import { EXERCISE_SELECTOR_PROMPT, WEEK_PROFILE_ANALYZER_PROMPT } from "./prompts.js"
+import { programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
+import { EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
+import { buildProfileContext, buildAthleteContext, resolveClientDifficulty } from "./athlete-context.js"
+import { muscleVocabulary, normalizeSkeletonInPlace } from "./slot-normalize.js"
+import { gradeFits, type SlotFitItem } from "./slot-fit.js"
 import { validateProgram } from "./validate.js"
 import { formatExerciseLibrary, filterByDifficultyLevel, filterByProgressionPhase } from "./exercise-context.js"
 import { extractInstructionIntent, resolveIntentToExerciseIds } from "./instruction-intent.js"
@@ -201,6 +198,8 @@ export interface WeekGenerationResult {
    * instructions, checked".
    */
   instruction_check: InstructionCheck | null
+  /** Picks that do not really match their slot (slot-fit.ts). Shown, never rebuilt. */
+  slot_fit?: SlotFitItem[]
 }
 
 // ─── Local Supabase helpers (not shared — specific to week orchestrator) ────
@@ -476,10 +475,13 @@ export function computeRpeLogQuality(logs: Array<{ rpe?: number | null; weight_k
  * movement patterns used, and exercise count. This gives the AI full
  * progression context without sending every exercise detail for every week.
  */
-function buildWeekFocusSummary(exercises: Record<string, unknown>[]): {
+export function buildWeekFocusSummary(exercises: Record<string, unknown>[]): {
   week: number
   days: number
   exercises: number
+  /** Load, so a past deload is visible to the architect (2026-10-04). */
+  total_sets: number
+  avg_rpe: number | null
   primary_muscles: string[]
   movement_patterns: string[]
   exercise_names: string[]
@@ -491,16 +493,20 @@ function buildWeekFocusSummary(exercises: Record<string, unknown>[]): {
       muscles: Map<string, number>
       patterns: Map<string, number>
       names: string[]
+      sets: number
+      rpes: number[]
     }
   >()
 
   for (const pe of exercises) {
     const week = pe.week_number as number
     if (!weekMap.has(week)) {
-      weekMap.set(week, { days: new Set(), muscles: new Map(), patterns: new Map(), names: [] })
+      weekMap.set(week, { days: new Set(), muscles: new Map(), patterns: new Map(), names: [], sets: 0, rpes: [] })
     }
     const w = weekMap.get(week)!
     w.days.add(pe.day_of_week as number)
+    if (typeof pe.sets === "number") w.sets += pe.sets
+    if (typeof pe.rpe_target === "number") w.rpes.push(pe.rpe_target)
 
     const ex = pe.exercises as { name?: string; movement_pattern?: string; primary_muscles?: string[] } | undefined
     if (ex?.name) w.names.push(ex.name)
@@ -520,6 +526,10 @@ function buildWeekFocusSummary(exercises: Record<string, unknown>[]): {
       week,
       days: data.days.size,
       exercises: data.names.length,
+      total_sets: data.sets,
+      avg_rpe: data.rpes.length
+        ? Math.round((data.rpes.reduce((s, r) => s + r, 0) / data.rpes.length) * 10) / 10
+        : null,
       primary_muscles: Array.from(data.muscles.entries())
         .sort((a, b) => b[1] - a[1])
         .slice(0, 6)
@@ -599,7 +609,7 @@ export function targetConflict(
 // ─── Instruction compliance ─────────────────────────────────────────────────
 
 /**
- * What the PLANNING agents (architect, analyzer, selector) read on a rebuild:
+ * What the PLANNING agents (architect, selector) read on a rebuild:
  * the coach's instructions first, then the misses the first attempt made. Never
  * handed to the instruction parser or the enricher — those read only what the
  * coach wrote, so a pipeline message can never unlock or ban an exercise.
@@ -901,22 +911,21 @@ async function buildWeekAttempt(
     date: p.completed_at,
   }))
 
-  const profileContext = profile
-    ? JSON.stringify({
-        goals: profile.goals,
-        experience_level: profile.experience_level,
-        injuries: profile.injuries,
-        injury_details: profile.injury_details,
-        available_equipment: profile.available_equipment,
-        preferred_session_minutes: profile.preferred_session_minutes,
-        preferred_training_days: profile.preferred_training_days,
-        preferred_techniques: profile.preferred_techniques,
-        sleep_hours: profile.sleep_hours,
-        stress_level: profile.stress_level,
-      })
-    : request.ignore_profile
+  const profileContext =
+    buildProfileContext(profile) ??
+    (request.ignore_profile
       ? "Coach-directed mode — client profile intentionally ignored. Rely on coach instructions and program context."
-      : "No profile available"
+      : "No profile available")
+  const athlete = buildAthleteContext(profile)
+  // Resolve client difficulty for filtering and ceiling construction
+  const clientDifficultyLevel = resolveClientDifficulty(profile, request.ignore_profile)
+  const ceilingTier: "beginner" | "intermediate" | "advanced" =
+    clientDifficultyLevel === "beginner"
+      ? "beginner"
+      : clientDifficultyLevel === "intermediate"
+        ? "intermediate"
+        : "advanced"
+  const ceilingScore = newWeekNumber <= 2 ? 4 : 6
 
   await updateJobProgress(
     "context_loaded",
@@ -958,14 +967,16 @@ async function buildWeekAttempt(
           exercise: (pe.exercises as { name?: string })?.name ?? "Unknown",
           movement_pattern: (pe.exercises as { movement_pattern?: string })?.movement_pattern,
           primary_muscles: (pe.exercises as { primary_muscles?: string[] })?.primary_muscles,
+          sets: pe.sets,
+          rpe: pe.rpe_target,
         }))
     : []
 
   // The coach's words plus Opus 5.5's reading of them as counts and areas.
   // `agentInstructions` is the original first, the rewrite beneath it, the
   // original winning any disagreement; `plannedInstructions` (below) adds any
-  // rebuild feedback, and is what the three PLANNING agents read (analyzer,
-  // architect, selector). The enricher and the instruction parser below keep
+  // rebuild feedback, and is what the two PLANNING agents read (architect,
+  // selector). The enricher and the instruction parser below keep
   // `request.admin_instructions` alone, so neither a rewrite nor feedback can
   // ever unlock or ban an exercise.
   const instructionsUsed = await enrichCoachInstructions(
@@ -979,7 +990,7 @@ async function buildWeekAttempt(
   )
   const agentInstructions = buildAgentInstructions(request.admin_instructions, instructionsUsed)
   // On a rebuild, the first attempt's misses ride beneath the coach's words —
-  // for the planning agents only (architect, analyzer, selector).
+  // for the planning agents only (architect, selector).
   const plannedInstructions = appendComplianceFeedback(agentInstructions, complianceFeedback)
   if (instructionsUsed?.enriched) {
     console.log(`[week-orchestrator] Coach instructions enriched:\n${instructionsUsed.enriched}`)
@@ -1000,9 +1011,15 @@ ${
     ? `
 ## Other Days Already Programmed in Week ${newWeekNumber}
 ${JSON.stringify(sameWeekOtherDays)}
-IMPORTANT: The day you are designing must COMPLEMENT these existing days. Do NOT duplicate the same primary muscle groups or movement patterns.`
+IMPORTANT: COMPLEMENT these days — do not load a movement pattern heavily (compound at RPE 8+) within 48 hours of a day that already does. On full_body and DUP programs, training the same patterns on several days is expected.`
     : ""
 }
+
+## Log Quality
+${lowQuality ? `LOW (${(logQuality.quality * 100).toFixed(0)}% of ${logQuality.sample_size} recent logs include RPE). Do NOT autoregulate from these logs — keep each slot's prescription matching the prior week.` : `OK (${(logQuality.quality * 100).toFixed(0)}% of ${logQuality.sample_size} recent logs include RPE).`}
+
+## Muscle names
+target_muscles may only use these values: ${muscleVocabulary(fullLibrary).join(", ")}
 
 ## Client Profile
 ${profileContext}
@@ -1013,9 +1030,9 @@ ${progressSummary.length > 0 ? JSON.stringify(progressSummary) : "No logs yet �
 ## ${isSingleDay ? "Target Day" : "New Week Number"}
 ${isSingleDay ? `${targetDayName} (day_of_week=${request.target_day_of_week}) in Week ${newWeekNumber}` : newWeekNumber}
 
-## Coach Instructions (HIGHEST PRIORITY — these override ALL default rules)
+## Coach Instructions (ladder rank 3 — above every default, below safety)
 ${plannedInstructions || "No specific instructions — use standard progression logic based on the client's performance data."}
-${plannedInstructions ? "\nYou MUST follow these instructions. If they conflict with default technique, structure, or progression rules, the coach's instructions WIN." : ""}${buildPoolPatternSection(
+${plannedInstructions ? "\nYou MUST follow these instructions. Where they conflict with a default technique, structure or progression rule, the coach's instructions win — never over injury exclusions, the coach's equipment setting or blocked exercises." : ""}${buildPoolPatternSection(
     // Mirror the injury filter the selector applies below, so the architect is
     // never told the pool covers a pattern whose only exercises get injury-pruned.
     poolActive
@@ -1091,6 +1108,19 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     }
   }
 
+  if (muscleVocabulary(fullLibrary).length === 0) {
+    console.warn(
+      "[week-orchestrator] Muscle vocabulary is empty (no primary_muscles value has 3+ uses in the library) — target_muscles are kept as the architect wrote them this run",
+    )
+  }
+  const slotChanges = normalizeSkeletonInPlace(skeleton.weeks, muscleVocabulary(fullLibrary))
+  if (slotChanges.length > 0) {
+    console.log(
+      `[week-orchestrator] Normalised ${slotChanges.length} slot field(s): ` +
+        slotChanges.map((c) => `${c.slot_id}.${c.field} ${JSON.stringify(c.from)}→${JSON.stringify(c.to)}`).join("; "),
+    )
+  }
+
   if (!skeleton.total_sessions) {
     skeleton.total_sessions = skeleton.weeks.reduce((sum, w) => sum + w.days.length, 0)
   }
@@ -1121,24 +1151,10 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   // resolveEffectiveEquipment for the full precedence.
   const exerciseIdSet = new Set(allExercises.map((e) => e.id))
 
-  // Resolve client difficulty for filtering and ceiling construction
-  const clientDifficultyLevel = profile?.experience_level ?? (request.ignore_profile ? "advanced" : "intermediate")
-  const ceilingTier: "beginner" | "intermediate" | "advanced" =
-    clientDifficultyLevel === "beginner"
-      ? "beginner"
-      : clientDifficultyLevel === "intermediate"
-        ? "intermediate"
-        : "advanced"
-  const ceilingScore = newWeekNumber <= 2 ? 4 : 6
-
-  // ── Step 2.5: Real Agent 1 (Profile Analyzer, week-scoped) ───────────────
   const policyInstructions = formatCoachPolicyAsInstructions(coachPolicy)
-  // Two texts on purpose: the analyzer PLANS, so it reads the rewrite; the
-  // instruction parser turns named exercises and equipment into unlock/ban
-  // sets, so it reads only what the coach actually wrote.
+  // The instruction parser turns named exercises and equipment into unlock/ban
+  // sets, so it reads only what the coach actually wrote (plus the studio policy).
   const combinedInstructions = [request.admin_instructions, policyInstructions].filter(Boolean).join("\n\n")
-  const analyzerInstructions = [plannedInstructions, policyInstructions].filter(Boolean).join("\n\n")
-  const coachInstructionsSectionForAnalyzer = buildCoachInstructionsSection(analyzerInstructions)
 
   // Coach instructions become concrete unlock/ban sets against the FULL library,
   // before any filtering narrows it — the exercises a coach names are exactly the
@@ -1175,81 +1191,34 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   // check never fails a week for something the selector was never told about.
   const coachNamed = coachNamedMatches(intentResolution.matched, request.admin_instructions, intentResolution.bannedIds)
 
-  const analyzerMessage = `## Client Profile
-${profileContext}
-
-## Program Summary
-${JSON.stringify(programSummary)}
-
-## Prior Weeks Focus Summary
-${weekFocusSummary.length > 0 ? JSON.stringify(weekFocusSummary) : "No prior weeks."}
-
-## Log Quality
-${
-  lowQuality
-    ? `LOW (${(logQuality.quality * 100).toFixed(0)}% of ${logQuality.sample_size} recent logs include RPE). Do NOT autoregulate based on this data — keep prescriptions matching the prior week. Use fixed progression only (e.g., +small linear bumps based on weeks elapsed, not RPE).`
-    : `OK (${(logQuality.quality * 100).toFixed(0)}% of ${logQuality.sample_size} recent logs include RPE).`
-}
-
-## Target Week
-${newWeekNumber}${coachInstructionsSectionForAnalyzer}
-
-Output the JSON for this single target week. technique_plan and difficulty_ceiling MUST contain exactly one entry with week_number=${newWeekNumber}.`
-
-  let analysis: ProfileAnalysis
-  try {
-    deadline?.assertLive("profile analyzer")
-    const analyzerResult = await callAgent<ProfileAnalysis>(
-      WEEK_PROFILE_ANALYZER_PROMPT,
-      analyzerMessage,
-      profileAnalysisSchema,
-      { model: MODEL_SONNET, cacheSystemPrompt: true, signal: deadline?.signal },
-    )
-    tokenUsage.architect += analyzerResult.tokens_used // reuse architect bucket; no schema change
-    tokenUsage.cache_creation += analyzerResult.cache_creation_tokens ?? 0
-    tokenUsage.cache_read += analyzerResult.cache_read_tokens ?? 0
-    analysis = analyzerResult.content
-    if (analysis.technique_plan[0]) analysis.technique_plan[0].week_number = newWeekNumber
-    if (analysis.difficulty_ceiling[0]) analysis.difficulty_ceiling[0].week_number = newWeekNumber
-    console.log(
-      `[week-orchestrator] Agent 1 (week-scoped) — techniques: ${analysis.technique_plan[0]?.allowed_techniques.join(",")}; ceiling: ${analysis.difficulty_ceiling[0]?.max_tier}/${analysis.difficulty_ceiling[0]?.max_score}`,
-    )
-  } catch (e) {
-    console.warn(
-      `[week-orchestrator] Agent 1 failed, falling back to mock analysis: ${e instanceof Error ? e.message : e}`,
-    )
-    const fallback: ProfileAnalysis = {
-      recommended_split: program.split_type as ProfileAnalysis["recommended_split"],
-      recommended_periodization: program.periodization as ProfileAnalysis["recommended_periodization"],
-      volume_targets: [{ muscle_group: "full_body", sets_per_week: 12, priority: "medium" }],
-      exercise_constraints: [],
-      session_structure: {
-        warm_up_minutes: 5,
-        main_work_minutes: 45,
-        cool_down_minutes: 5,
-        total_exercises: 6,
-        compound_count: 3,
-        isolation_count: 3,
+  // 2026-10-04: the week-scoped analyzer ran AFTER the architect and nothing
+  // checked its output; only training_age_category reached code (the filter).
+  const analysis: ProfileAnalysis = {
+    recommended_split: program.split_type as ProfileAnalysis["recommended_split"],
+    recommended_periodization: program.periodization as ProfileAnalysis["recommended_periodization"],
+    volume_targets: [{ muscle_group: "full_body", sets_per_week: 12, priority: "medium" }],
+    exercise_constraints: [],
+    session_structure: {
+      warm_up_minutes: 5,
+      main_work_minutes: 45,
+      cool_down_minutes: 5,
+      total_exercises: 6,
+      compound_count: 3,
+      isolation_count: 3,
+    },
+    training_age_category: (clientDifficultyLevel === "beginner"
+      ? "novice"
+      : clientDifficultyLevel) as ProfileAnalysis["training_age_category"],
+    technique_plan: [
+      {
+        week_number: newWeekNumber,
+        allowed_techniques: ["straight_set"],
+        default_technique: "straight_set",
+        notes: "code",
       },
-      training_age_category: clientDifficultyLevel as ProfileAnalysis["training_age_category"],
-      technique_plan: [
-        {
-          week_number: newWeekNumber,
-          allowed_techniques: ["straight_set"],
-          default_technique: "straight_set",
-          notes: "fallback",
-        },
-      ],
-      difficulty_ceiling: [
-        {
-          week_number: newWeekNumber,
-          max_tier: ceilingTier,
-          max_score: ceilingScore,
-        },
-      ],
-      notes: "fallback",
-    }
-    analysis = fallback
+    ],
+    difficulty_ceiling: [{ week_number: newWeekNumber, max_tier: ceilingTier, max_score: ceilingScore }],
+    notes: "",
   }
 
   // Apply hard-exclusion difficulty filter + earned-progression filter for this week.
@@ -1448,7 +1417,8 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   // produced the original bug.
   const constraintsContext = JSON.stringify({
     available_equipment: effectiveEquipment,
-    client_difficulty: profile?.experience_level ?? (request.ignore_profile ? "advanced" : "intermediate"),
+    client_difficulty: clientDifficultyLevel,
+    athlete: buildAthleteContext(profile),
   })
 
   // Exercise Selector with dedup retry loop
@@ -1808,6 +1778,15 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     }
   }
 
+  // Graded AFTER the post-hoc dedup: a swap can put a different exercise in the slot.
+  const slotFit = gradeFits(skeleton.weeks, assignment.assignments, allExercises)
+  if (slotFit.length > 0) {
+    console.log(
+      `[week-orchestrator] ${slotFit.length} poor fit(s): ` +
+        slotFit.map((f) => `${f.exercise_name} in ${f.slot_pattern} (${f.reason})`).join("; "),
+    )
+  }
+
   // What the instruction checker reads: the coach's ORIGINAL words (never the
   // rewrite or any rebuild feedback), the finished day/week, and the pool and
   // named-exercise facts the pipeline already resolved.
@@ -1841,13 +1820,24 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     // and reported to the coach instead — they explain WHY a week came out the way
     // it did, which is exactly the signal that used to be missing.
     const strippedNotes: string[] = []
+    const cleanedNotes: string[] = []
     const exerciseRows = buildExerciseRows(
       assignment.assignments,
       slotLookup,
       slotDetailsLookup,
       request.program_id,
       (_slotId, sentences) => strippedNotes.push(...sentences),
+      {
+        nameById: new Map(allExercises.map((e) => [e.id, e.name])),
+        athleteSport: athlete.sport,
+        onCleanedNote: (_slotId, sentences) => cleanedNotes.push(...sentences),
+      },
     )
+    if (cleanedNotes.length > 0) {
+      console.log(
+        `[week-orchestrator] note-guard removed ${cleanedNotes.length} sentence(s): ${cleanedNotes.join(" | ")}`,
+      )
+    }
     if (strippedNotes.length > 0) {
       console.log(
         `[week-orchestrator] Stripped ${strippedNotes.length} pipeline-internals sentence(s) from client notes`,
@@ -1956,6 +1946,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       warnings,
       instructions_used: instructionsUsed,
       instruction_check: check,
+      slot_fit: slotFit,
     }
   }
 

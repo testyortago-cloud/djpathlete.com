@@ -134,36 +134,8 @@ describe("generateWeekSync wiring", () => {
   })
 
   it("fetches coach policy and usage history before generating", async () => {
-    // Agent 1 → analysis, Agent 2 → skeleton, Agent 3 → assignments
+    // Architect → skeleton, then selector → assignments (no week analyzer since 2026-10-04)
     callAgentMock
-      .mockResolvedValueOnce({
-        content: {
-          recommended_split: "full_body",
-          recommended_periodization: "linear",
-          volume_targets: [{ muscle_group: "x", sets_per_week: 10, priority: "medium" }],
-          exercise_constraints: [],
-          session_structure: {
-            warm_up_minutes: 5,
-            main_work_minutes: 45,
-            cool_down_minutes: 5,
-            total_exercises: 4,
-            compound_count: 2,
-            isolation_count: 2,
-          },
-          training_age_category: "intermediate",
-          technique_plan: [
-            {
-              week_number: 5,
-              allowed_techniques: ["straight_set"],
-              default_technique: "straight_set",
-              notes: "",
-            },
-          ],
-          difficulty_ceiling: [{ week_number: 5, max_tier: "intermediate", max_score: 6 }],
-          notes: "",
-        },
-        tokens_used: 100,
-      })
       .mockResolvedValueOnce({
         content: {
           weeks: [

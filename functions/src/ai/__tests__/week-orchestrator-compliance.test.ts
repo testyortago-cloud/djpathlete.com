@@ -220,7 +220,7 @@ describe("compliance feedback never reaches the instruction parser or the enrich
 
   it("the planning agents read plannedInstructions", () => {
     expect(src).toContain("const plannedInstructions = appendComplianceFeedback(agentInstructions, complianceFeedback)")
-    expect(src).toMatch(/const analyzerInstructions = \[plannedInstructions, policyInstructions\]/)
+    expect(src).not.toMatch(/analyzerInstructions/)
     expect(src).toContain("buildCoachInstructionsSection(plannedInstructions)")
   })
 
