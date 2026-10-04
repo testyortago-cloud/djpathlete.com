@@ -1,0 +1,34 @@
+{
+  "put": {
+    "puts": [
+      {
+        "status": 200,
+        "url": "https://storage.googleapis.com/darrenjpaulcom.firebasestorage.app/quiz-media/rotational-performance-index/1791089063528-3-short-lever-copenhagen-mistakes.mp4"
+      },
+      {
+        "status": 200,
+        "url": "https://storage.googleapis.com/darrenjpaulcom.firebasestorage.app/quiz-media/rotational-performance-index/1791089067118-3-short-lever-copenhagen-mistakes.mp4-poster.jpg"
+      }
+    ],
+    "failed": [
+      "https://storage.googleapis.com/darrenjpaulcom.firebasestorage.app/quiz-media/rotational-performance-index/1791089063528-3-short-lever-copenhagen-mistakes.mp4 net::ERR_ABORTED",
+      "https://storage.googleapis.com/darrenjpaulcom.firebasestorage.app/quiz-media/rotational-performance-index/1791089067118-3-short-lever-copenhagen-mistakes.mp4-poster.jpg net::ERR_ABORTED"
+    ]
+  },
+  "pickerErrors": [],
+  "created": {
+    "funnelId": "51b2c4fb-2a6a-41d7-be57-71e883f26801",
+    "slug": "rpi-capture-056505",
+    "cloneQuizId": "dbe3558a-4a93-456c-9c3c-ec8d63490673"
+  },
+  "mistakesSrc": "https://firebasestorage.googleapis.com/v0/b/darrenjpaulcom.firebasestorage.app/o/quiz-media%2Frotational-reboot%2F3-short-lever-copenhagen-mistakes.mp4?alt=media",
+  "rows": {
+    "gap": 1,
+    "solid": 1
+  },
+  "resultHeight": 1251.59375,
+  "athlete": {
+    "map": 0,
+    "mirror": 0
+  }
+}
