@@ -1,4 +1,4 @@
-import { AlertTriangle, ListChecks, Sparkles } from "lucide-react"
+import { AlertTriangle, ListChecks, Shuffle, Sparkles } from "lucide-react"
 
 /**
  * Coach-facing notices from an AI generation — pool attrition, slots that had to
@@ -179,6 +179,58 @@ export function InstructionCheckPanel({
         <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{`Rebuilt once to fix: ${check.rebuild_reason}`}</p>
       ) : null}
       {check.note ? <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{check.note}</p> : null}
+    </details>
+  )
+}
+
+/**
+ * Picks the AI had to make that do not really match their slot
+ * (functions/src/ai/slot-fit.ts). Shown even when the coach gave no
+ * instructions — the instruction panel hides itself then, this must not.
+ */
+export interface SlotFitItem {
+  day_of_week: number
+  slot_role: string
+  slot_pattern: string
+  exercise_name: string
+  reason: string
+}
+
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+/** Defensive read of `result.slot_fit` — older deployments never wrote it. */
+export function extractSlotFit(result: unknown): SlotFitItem[] {
+  const raw = (result as { slot_fit?: unknown } | null)?.slot_fit
+  if (!Array.isArray(raw)) return []
+  return raw.filter(
+    (i): i is SlotFitItem =>
+      !!i &&
+      typeof i === "object" &&
+      typeof (i as SlotFitItem).day_of_week === "number" &&
+      typeof (i as SlotFitItem).exercise_name === "string" &&
+      typeof (i as SlotFitItem).slot_pattern === "string" &&
+      typeof (i as SlotFitItem).reason === "string",
+  )
+}
+
+export function SlotFitPanel({ items, defaultOpen = false }: { items: SlotFitItem[]; defaultOpen?: boolean }) {
+  if (items.length === 0) return null
+  return (
+    <details open={defaultOpen} className="w-full rounded-lg border border-border bg-surface/50 p-3 text-left">
+      <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-foreground">
+        <Shuffle className="size-3.5 shrink-0 text-accent" />
+        {`Substitutes the AI had to make — ${items.length}`}
+      </summary>
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {items.map((it, i) => (
+          <li key={i} className="text-xs leading-relaxed">
+            <span className="font-medium text-foreground">
+              {`${DAY_NAMES[it.day_of_week - 1] ?? `Day ${it.day_of_week}`} · ${it.exercise_name}`}
+            </span>
+            <span className="text-muted-foreground">{` (${it.slot_pattern} slot) — ${it.reason}`}</span>
+          </li>
+        ))}
+      </ul>
     </details>
   )
 }

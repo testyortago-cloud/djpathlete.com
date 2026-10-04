@@ -27,6 +27,8 @@ import {
   InstructionsUsedPanel,
   extractInstructionsUsed,
   InstructionCheckPanel,
+  SlotFitPanel,
+  extractSlotFit,
   extractInstructionCheck,
 } from "@/components/admin/GenerationWarnings"
 import { EquipmentOverrideField } from "@/components/admin/EquipmentOverrideField"
@@ -483,6 +485,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
             {isComplete && <GenerationWarnings warnings={extractWarnings(result)} />}
             {isComplete && <InstructionsUsedPanel used={extractInstructionsUsed(result)} defaultOpen />}
             {isComplete && <InstructionCheckPanel check={extractInstructionCheck(result)} defaultOpen />}
+            {isComplete && <SlotFitPanel items={extractSlotFit(result)} defaultOpen />}
             {isGenerating && (
               <p className="text-xs text-center text-muted-foreground/70">
                 Usually takes 1–2 minutes. You can keep this tab open or come back later.
