@@ -717,6 +717,7 @@ export function QuizEditor({
                         />
                         <Field
                           label="Results map label"
+                          maxLength={80}
                           value={question.reportLabel ?? ""}
                           onChange={(v) => patchQuestion(question.id, { reportLabel: v.trim() ? v : null })}
                         />

@@ -258,4 +258,11 @@ describe("QuizEditor", () => {
       ),
     ).toBe(true)
   })
+
+  it("caps the results-map label at the 80 characters the save route accepts", () => {
+    render(<QuizEditor initial={healthy()} />)
+    openQuestions()
+    fireEvent.click(screen.getAllByText(/Video and results map/)[0])
+    expect(screen.getAllByLabelText("Results map label")[0].getAttribute("maxlength")).toBe("80")
+  })
 })
