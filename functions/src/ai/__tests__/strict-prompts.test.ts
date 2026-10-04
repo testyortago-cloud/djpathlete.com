@@ -36,6 +36,16 @@ describe("strict prompts (2026-10-04)", () => {
   it("the time cap yields to a coach-stated count", () => {
     expect(PROGRAM_ARCHITECT_PROMPT).toMatch(/NEVER exceed these caps unless the coach stated an exercise count/)
   })
+  it("the trim rule also yields to a coach-stated count", () => {
+    expect(PROGRAM_ARCHITECT_PROMPT).toContain(
+      "REMOVE the lowest-priority exercise slot — unless the coach stated an exercise count",
+    )
+  })
+  it("selector contradictions are gone", () => {
+    expect(EXERCISE_SELECTOR_PROMPT).not.toMatch(/EXCLUDED unless explicitly overridden/)
+    expect(EXERCISE_SELECTOR_PROMPT).not.toContain("you MAY reuse an exercise")
+    expect(EXERCISE_SELECTOR_PROMPT).not.toMatch(/A tennis player benefits|A soccer player benefits|A court-sport athlete benefits/)
+  })
   it("coach instructions sit below safety", () => {
     const s = buildCoachInstructionsSection("4 power exercises")
     expect(s).toContain("ladder rank 3")
