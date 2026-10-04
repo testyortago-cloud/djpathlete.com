@@ -28,7 +28,7 @@ import {
   validateAssignmentAgainstCeiling,
   repairSkeletonTechniques,
 } from "./schemas.js"
-import { buildProfileContext, buildAthleteContext, resolveClientDifficulty, normalizeSport } from "./athlete-context.js"
+import { buildProfileContext, buildAthleteContext, normalizeSport } from "./athlete-context.js"
 import { muscleVocabulary, normalizeSkeletonInPlace, stripUnrequestedIntensity } from "./slot-normalize.js"
 import { PROFILE_ANALYZER_PROMPT, PROGRAM_ARCHITECT_PROMPT, EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
@@ -518,7 +518,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // the full exercise library is available for coach-directed programs.
     // Also skipped in strict pool mode — the coach hand-picked these exact
     // exercises, so difficulty pruning would starve the curated pool.
-    const clientDifficultyLevel = resolveClientDifficulty(profile, request.ignore_profile)
+    // Full programs deliberately keep their pre-2026-10-04 difficulty defaults (full generation is unmeasured on the current model); only Week/Day uses resolveClientDifficulty.
+    const clientDifficultyLevel = profile?.experience_level ?? (request.ignore_profile ? "elite" : "beginner")
     let compressed = poolActive
       ? poolFiltered
       : filterByDifficultyLevel(poolFiltered, clientDifficultyLevel, withPreferredPool(unlockedIds, preferredIds))
@@ -728,7 +729,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const constraintsContext = JSON.stringify({
       exercise_constraints: analysis.exercise_constraints,
       available_equipment: effectiveEquipment,
-      client_difficulty: clientDifficultyLevel,
+      // Pre-2026-10-04 default kept for full programs (see clientDifficultyLevel).
+      client_difficulty: profile?.experience_level ?? "beginner",
       athlete: buildAthleteContext(profile),
     })
 
@@ -814,7 +816,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       "filtered exercises...",
     )
     const completedWeeksSync: WeekAssignment[] = []
-    const clientDifficultySync = clientDifficultyLevel
+    // Pre-2026-10-04 default kept for full programs (see clientDifficultyLevel).
+    const clientDifficultySync = profile?.experience_level ?? "beginner"
 
     // Build an exercise ID set for quick lookup to strip hallucinated IDs
     const exerciseIdSet = new Set(compressed.map((e) => e.id))

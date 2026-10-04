@@ -9,7 +9,12 @@ describe("full-program orchestrator strict wiring (2026-10-04)", () => {
   it("uses the shared profile, athlete and difficulty builders", () => {
     expect(src).toMatch(/buildProfileContext\(profile\)/)
     expect(src).toMatch(/athlete: buildAthleteContext\(profile\)/)
-    expect(src).toMatch(/resolveClientDifficulty\(profile, request\.ignore_profile\)/)
+  })
+  it("full programs keep their pre-2026-10-04 difficulty defaults (Week/Day alone uses resolveClientDifficulty)", () => {
+    expect(src).toContain('const clientDifficultyLevel = profile?.experience_level ?? (request.ignore_profile ? "elite" : "beginner")')
+    expect(src).toContain('client_difficulty: profile?.experience_level ?? "beginner"')
+    expect(src).toContain('const clientDifficultySync = profile?.experience_level ?? "beginner"')
+    expect(src).not.toMatch(/resolveClientDifficulty\(/)
   })
   it("repairs techniques after the architect instead of retrying the selector", () => {
     expect(src).toMatch(/repairSkeletonTechniques\(skeleton, analysis\.technique_plan, /)

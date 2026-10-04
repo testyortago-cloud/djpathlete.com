@@ -8,7 +8,7 @@ Branch base: the worktree was first created on top of the unmerged `worktree-rpi
 
 Generate Week and Generate Day now tell the AI everything their own rules depend on, stop it contradicting itself, and check its output in code.
 
-- **The AI gets the athlete's data.** Week/Day use the full client profile (sport, age, movement confidence, dislikes, background). The exercise picker receives the athlete's sport, injuries, movement confidence and dislikes. One "no profile" difficulty default replaces three conflicting ones.
+- **The AI gets the athlete's data.** Week/Day use the full client profile (sport, age, movement confidence, dislikes, background). The exercise picker receives the athlete's sport, injuries, movement confidence and dislikes. One "no profile" difficulty default replaces the conflicting ones in Week/Day (full programs keep their old defaults).
 - **Notes are cues only.** Code removes any note sentence that states sets, reps, rest, RPE, a percentage or a per-side count, and any sentence naming a sport other than the athlete's. A note that is entirely prescription saves as empty. The picker returns `per_side`, and code adds "each side" to the reps. Names inside notes come from the library, not from the model.
 - **Poor substitutes are reported.** Each pick carries `fit` (exact / close / poor) and a reason. Code re-checks it against the slot's movement type. Poor fits are listed on the finished generation under "Substitutes the AI had to make" (dialog and dock). They never trigger a rebuild.
 - **Muscle names come from a closed list** built from the exercise library. Sets, rest, RPE and percentage are clamped in code. The coach's percentage is now saved; an invented one is removed unless the coach wrote a percentage.
@@ -47,7 +47,7 @@ Per request, instructions unmet: t1 1→2, t2 4→5, t3 6→2, t4 6→5, t5 2→
 
 See the "Rulings" list in the hand-off message. The two that change behaviour you may care about:
 
-- **Full-program difficulty default.** With "ignore profile" it is now "advanced" (was effectively "beginner" in weeks 1-2: full programs were limited to beginner exercises). With no profile it is "intermediate" (was "beginner"). Say so if you want the old behaviour for full programs.
+- **Full-program difficulty default: unchanged.** The single default ("advanced" under ignore profile, "intermediate" with no profile) applies to Week/Day only. Full programs keep their old defaults ("elite" under ignore profile, "beginner" otherwise, and "beginner" for the selector and weekly sync), because full generation is unmeasured on the current model. Reverted at the owner's request after the first draft changed them.
 - **Percentages in your instructions.** One "%" anywhere in the coach's text keeps every slot's percentage for that run; without one, the AI's percentages are removed.
 
 ## Known limits (deferred, none block merge)

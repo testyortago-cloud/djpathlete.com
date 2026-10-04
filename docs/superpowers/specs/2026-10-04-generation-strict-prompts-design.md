@@ -61,9 +61,12 @@ since June — revisit when full generation is used again); assessment handling;
   `{ sport, experience_level, movement_confidence, injury_details, exercise_dislikes }`, added to the selector's
   `Constraints` JSON in both orchestrators (`week-orchestrator.ts:1449`, `orchestrator.ts:738`). When sport is
   null the block carries `"sport": null` and the prompt says: "sport is null: do not mention any sport".
-- **One client-difficulty default.** `resolveClientDifficulty(profile, ignoreProfile)` replaces the three
-  conflicting fallbacks (`week-orchestrator.ts:1125`, `:1451`; `orchestrator.ts:741`). Value: profile level, else
-  `"advanced"` under ignore_profile (coach-directed), else `"intermediate"`.
+- **One client-difficulty default, Week/Day only.** `resolveClientDifficulty(profile, ignoreProfile)` replaces the
+  conflicting fallbacks in the Week/Day path (`week-orchestrator.ts:1125`, `:1451`). Value: profile level, else
+  `"advanced"` under ignore_profile (coach-directed), else `"intermediate"`. **Full programs
+  (`orchestrator.ts`) deliberately keep their pre-2026-10-04 defaults** (owner decision, 2026-10-04: full generation
+  is unmeasured on the current model): `profile?.experience_level ?? (ignore_profile ? "elite" : "beginner")` for
+  the exercise filter, `?? "beginner"` for the selector constraints and the per-week sync level. A test pins this.
 - **Program arc carries load.** `buildWeekFocusSummary` adds `total_sets` and `avg_rpe` per week, so a past deload
   is visible to the architect.
 
@@ -179,7 +182,7 @@ a failure path (its "fall back to mock analysis" branch becomes the normal path)
 
 ## Testing
 
-- **Unit tests, one per pure function:** `normalizeSport`, `buildAthleteContext`, `resolveClientDifficulty`,
+- **Unit tests, one per pure function:** `normalizeSport`, `buildAthleteContext`, `resolveClientDifficulty` (Week/Day only; full programs keep their old defaults, pinned by `orchestrator-strict`),
   `cleanNote` (each sentence class, plus tempo and "tennis ball" kept), `per_side` append, library-name use in
   `buildExerciseRows`, `gradeFit`, `muscleVocabulary`, `normalizeSlotMuscles`, `clampSlot`, `intensity_pct`
   persisted, `repairSkeletonTechniques`. Each gets a mutant run (house rule: a green test proves nothing until a
