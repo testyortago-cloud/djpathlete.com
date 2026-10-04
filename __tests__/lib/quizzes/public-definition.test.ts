@@ -130,3 +130,37 @@ describe("publicQuizDefinition", () => {
     expect(values).not.toContain(3)
   })
 })
+
+describe("publicQuizDefinition — mistakes clip and results-map fields", () => {
+  const base: QuizDefinition = {
+    id: "q", key: "k", name: "n", status: "active",
+    introHeadline: "", introBody: "", gateHeadline: "", gateBody: "", resultHeadline: "",
+    seedMarker: null, branches: [], tiers: [], profiles: [],
+    questions: [{
+      id: "m1", quizId: "q", branchId: null, position: 30, prompt: "Copenhagen — left side: how many?",
+      helpText: null, mediaUrl: "https://x/demo.mp4", mediaPosterUrl: "https://x/demo.jpg",
+      mistakesMediaUrl: "https://x/mistakes.mp4", mistakesMediaPosterUrl: "https://x/mistakes.jpg",
+      reportLabel: "Short lever Copenhagen", side: "left", isActive: true,
+      options: [{ id: "o1", questionId: "m1", position: 1, label: "All three", weight: 3, routesToBranchId: null, profileId: null }],
+    }],
+  }
+
+  it("ships the mistakes clip and its poster", () => {
+    const q = publicQuizDefinition(base).questions[0]
+    expect(q.mistakesMediaUrl).toBe("https://x/mistakes.mp4")
+    expect(q.mistakesMediaPosterUrl).toBe("https://x/mistakes.jpg")
+  })
+
+  it("never ships reportLabel or side — the browser has no use for them before the result", () => {
+    const json = JSON.stringify(publicQuizDefinition(base))
+    expect(json).not.toContain("Short lever Copenhagen")
+    expect(json).not.toMatch(/reportLabel|"side"/)
+  })
+
+  it("ships null, not undefined, when a question has no mistakes clip", () => {
+    const def = { ...base, questions: [{ ...base.questions[0], mistakesMediaUrl: undefined, mistakesMediaPosterUrl: undefined }] }
+    const q = publicQuizDefinition(def).questions[0]
+    expect(q.mistakesMediaUrl).toBeNull()
+    expect(q.mistakesMediaPosterUrl).toBeNull()
+  })
+})

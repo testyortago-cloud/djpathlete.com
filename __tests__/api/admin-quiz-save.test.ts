@@ -202,6 +202,18 @@ describe("PATCH /api/admin/quizzes/[id]", () => {
     )
   })
 
+  it("saves the results-map label, side and mistakes clip on a question", async () => {
+    const q = { id: Q_A1, reportLabel: "Copenhagen", side: "left", mistakesMediaUrl: "https://x/m.mp4" }
+    const res = await patch({ questions: [q] })
+    expect(res.status).toBe(200)
+    expect(saveQuizDefinition).toHaveBeenCalledWith(BUSINESS_ID, expect.objectContaining({ questions: [q] }))
+  })
+
+  it("rejects a side that is not left or right, and writes nothing", async () => {
+    expect((await patch({ questions: [{ id: Q_A1, side: "middle" }] })).status).toBe(400)
+    expect(saveQuizDefinition).not.toHaveBeenCalled()
+  })
+
   it("rejects a malformed payload before writing anything", async () => {
     expect((await patch({ options: [{ id: "not-a-uuid", weight: 1 }] })).status).toBe(400)
     expect(saveQuizDefinition).not.toHaveBeenCalled()

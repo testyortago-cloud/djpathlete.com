@@ -39,6 +39,8 @@ export const runtime = "nodejs"
  * perfectly good clip the first time the bucket is renamed.
  */
 const mediaUrlField = z.string().url().max(2000).nullable()
+const reportLabelField = z.string().trim().min(1).max(80).nullable()
+const sideField = z.enum(["left", "right"]).nullable()
 
 const bodySchema = z.object({
   quiz: z
@@ -62,6 +64,10 @@ const bodySchema = z.object({
         helpText: z.string().max(500).nullable().optional(),
         mediaUrl: mediaUrlField.optional(),
         mediaPosterUrl: mediaUrlField.optional(),
+        mistakesMediaUrl: mediaUrlField.optional(),
+        mistakesMediaPosterUrl: mediaUrlField.optional(),
+        reportLabel: reportLabelField.optional(),
+        side: sideField.optional(),
         isActive: z.boolean().optional(),
       }),
     )
@@ -141,6 +147,10 @@ const bodySchema = z.object({
         // through unchanged.
         mediaUrl: mediaUrlField.default(null),
         mediaPosterUrl: mediaUrlField.default(null),
+        mistakesMediaUrl: mediaUrlField.default(null),
+        mistakesMediaPosterUrl: mediaUrlField.default(null),
+        reportLabel: reportLabelField.default(null),
+        side: sideField.default(null),
         isActive: z.boolean(),
         // TWO IS THE FLOOR, matching the gate's own "fewer than two options"
         // blocker. Accepting zero would let the editor create a question that

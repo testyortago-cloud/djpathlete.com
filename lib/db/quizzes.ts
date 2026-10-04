@@ -24,6 +24,7 @@ import type {
   QuizOption,
   QuizProfile,
   QuizQuestion,
+  QuizSide,
   QuizStatus,
   QuizTier,
 } from "@/lib/quizzes/types"
@@ -139,6 +140,10 @@ async function assemble(quizRow: Row, opts: { includeInactive?: boolean } = {}):
     helpText: strOrNull(row.help_text),
     mediaUrl: strOrNull(row.media_url),
     mediaPosterUrl: strOrNull(row.media_poster_url),
+    mistakesMediaUrl: strOrNull(row.mistakes_media_url),
+    mistakesMediaPosterUrl: strOrNull(row.mistakes_media_poster_url),
+    reportLabel: strOrNull(row.report_label),
+    side: row.side === "left" || row.side === "right" ? row.side : null,
     isActive: row.is_active !== false,
     options: optionsByQuestion.get(str(row.id)) ?? [],
   }))
@@ -417,6 +422,10 @@ export async function createQuizFrom(businessId: string, input: { source: QuizDe
     help_text: question.helpText,
     media_url: question.mediaUrl,
     media_poster_url: question.mediaPosterUrl,
+    mistakes_media_url: question.mistakesMediaUrl ?? null,
+    mistakes_media_poster_url: question.mistakesMediaPosterUrl ?? null,
+    report_label: question.reportLabel ?? null,
+    side: question.side ?? null,
     is_active: question.isActive,
   }))
   await insertMapped(
@@ -505,6 +514,10 @@ export interface QuizSaveInput {
     helpText?: string | null
     mediaUrl?: string | null
     mediaPosterUrl?: string | null
+    mistakesMediaUrl?: string | null
+    mistakesMediaPosterUrl?: string | null
+    reportLabel?: string | null
+    side?: QuizSide | null
     isActive?: boolean
   }[]
   options?: { id: string; label?: string; weight?: number; routesToBranchId?: string | null; profileId?: string | null }[]
@@ -520,6 +533,10 @@ export interface QuizSaveInput {
     helpText: string | null
     mediaUrl: string | null
     mediaPosterUrl: string | null
+    mistakesMediaUrl?: string | null
+    mistakesMediaPosterUrl?: string | null
+    reportLabel?: string | null
+    side?: QuizSide | null
     isActive: boolean
     options: { id: string; position: number; label: string; weight: number; routesToBranchId: string | null; profileId: string | null }[]
   }[]
@@ -717,6 +734,10 @@ export async function saveQuizDefinition(businessId: string, input: QuizSaveInpu
       help_text: question.helpText,
       media_url: question.mediaUrl,
       media_poster_url: question.mediaPosterUrl,
+      mistakes_media_url: question.mistakesMediaUrl ?? null,
+      mistakes_media_poster_url: question.mistakesMediaPosterUrl ?? null,
+      report_label: question.reportLabel ?? null,
+      side: question.side ?? null,
       is_active: question.isActive,
     })
     if (error) throw error
@@ -781,6 +802,10 @@ export async function saveQuizDefinition(businessId: string, input: QuizSaveInpu
     if (question.helpText !== undefined) patch.help_text = question.helpText
     if (question.mediaUrl !== undefined) patch.media_url = question.mediaUrl
     if (question.mediaPosterUrl !== undefined) patch.media_poster_url = question.mediaPosterUrl
+    if (question.mistakesMediaUrl !== undefined) patch.mistakes_media_url = question.mistakesMediaUrl
+    if (question.mistakesMediaPosterUrl !== undefined) patch.mistakes_media_poster_url = question.mistakesMediaPosterUrl
+    if (question.reportLabel !== undefined) patch.report_label = question.reportLabel
+    if (question.side !== undefined) patch.side = question.side
     if (question.isActive !== undefined) patch.is_active = question.isActive
     if (Object.keys(patch).length === 0) continue
     const { error } = await supabase.from("quiz_questions").update(patch).eq("id", question.id).eq("quiz_id", quizId)

@@ -15,6 +15,8 @@ export type QuizStatus = "draft" | "active" | "archived"
 export type QuizAttemptStatus = "in_progress" | "completed"
 export type QuizAlertStatus = "not_needed" | "sent" | "failed"
 
+export type QuizSide = "left" | "right"
+
 export interface QuizOption {
   id: string
   questionId: string
@@ -50,6 +52,17 @@ export interface QuizQuestion {
   mediaUrl: string | null
   /** Poster frame for `mediaUrl`. Null whenever `mediaUrl` is. */
   mediaPosterUrl: string | null
+  /**
+   * The "common mistakes" clip — Darren demonstrating each wrong version.
+   * OPTIONAL ON THE TYPE so hand-written fixtures predating it compile; the
+   * DB mapper always sets it.
+   */
+  mistakesMediaUrl?: string | null
+  mistakesMediaPosterUrl?: string | null
+  /** Row name on the results map. Server-only: never in the public definition. */
+  reportLabel?: string | null
+  /** Which side of a paired test. Server-only. */
+  side?: QuizSide | null
   isActive: boolean
   options: QuizOption[]
 }
