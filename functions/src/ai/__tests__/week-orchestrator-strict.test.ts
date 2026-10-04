@@ -29,6 +29,18 @@ describe("week/day orchestrator strict wiring (2026-10-04)", () => {
     expect(src).toMatch(/nameById: new Map\(allExercises\.map/)
     expect(src).toMatch(/slot_fit: slotFit/)
   })
+  it("strips percentages the coach did not give, right after normalising (final review I2)", () => {
+    const normAt = src.indexOf("normalizeSkeletonInPlace(skeleton.weeks, muscleVocabulary(fullLibrary))")
+    const stripAt = src.indexOf("stripUnrequestedIntensity(skeleton.weeks, request.admin_instructions)")
+    expect(stripAt).toBeGreaterThan(normAt)
+    expect(normAt).toBeGreaterThan(-1)
+  })
+  it("the slot schema allows intensity_pct only from the coach's words", () => {
+    expect(src).toMatch(/"intensity_pct": number \| null \(percentage of 1RM — ONLY when the coach's words give a percentage; otherwise null\)/)
+  })
+  it("no longer imports the uncalled validateProgram", () => {
+    expect(src).not.toMatch(/import \{ validateProgram \}/)
+  })
 })
 
 describe("buildWeekFocusSummary carries load", () => {

@@ -273,7 +273,7 @@ Given a profile analysis and training parameters, you must output a JSON object 
               "tempo": string | null (e.g., "3-1-2-0" = eccentric-pause-concentric-pause),
               "group_tag": string | null (same tag = superset, e.g., "A1", "A2"),
               "technique": "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap" | "cluster_set" | "complex" | "emom" | "wave_loading" (default "straight_set"),
-              "intensity_pct": number | null (percentage of 1RM, e.g., 75 for 75%. Use when coach specifies percentage-based loading)
+              "intensity_pct": number | null (percentage of 1RM, e.g., 75 for 75%. Use ONLY when the coach's words give a percentage; otherwise null)
             }
           ]
         }
@@ -416,11 +416,7 @@ Rules:
    - "complex": multiple exercises performed as one flowing unit (e.g., clean + front squat + press). Express as reps: "3+3+3". Use group_tag to link the exercises — the Exercise Selector will assign one exercise per slot but the group_tag + complex technique signals they're performed together.
    - "emom": every minute on the minute — time-domain work. Express as reps: "10 cal" or "5 reps" with sets representing total minutes.
    - "wave_loading": ascending/descending sets (e.g., 3/2/1/3/2/1). Express as reps: "3/2/1/3/2/1". Set intensity_pct only when the coach gave percentages.
-22. INTENSITY_PCT FIELD — when the coach specifies percentage-based loading (e.g., "75% 1RM"), set intensity_pct to the number (75). This is OPTIONAL — most slots use RPE instead. Use intensity_pct for:
-   - Testing weeks (work up to specific percentages)
-   - Wave loading (each wave at specific percentages)
-   - Percentage-based strength programs
-   - Taper weeks (specific deload percentages)
+22. INTENSITY_PCT FIELD — set intensity_pct ONLY when the coach's words give a percentage (e.g., "75% 1RM" → 75); otherwise null. Never choose a percentage yourself, for testing, wave or taper weeks included — use rpe_target instead. A percentage becomes the athlete's suggested weight.
 23. CONDITIONING / FINISHER SLOTS — when the coach requests conditioning work:
    - Use role: "conditioning" with movement_pattern: "conditioning"
    - target_muscles: the muscles the work mostly loads, from the Muscle names list (e.g. ["quadriceps", "glutes"])
@@ -467,7 +463,7 @@ Your selection philosophy:
 
 ${PRIORITY_LADDER}
 
-THE ATHLETE: Constraints.athlete holds sport (null when none is given), experience_level, movement_confidence, injury_details (empty = no known injuries) and exercise_dislikes. When sport is null, ignore sport_tags and never mention a sport. Avoid every exercise named in exercise_dislikes unless the coach's words ask for it.
+THE ATHLETE: Constraints.athlete holds sport (null when none is given), experience_level, movement_confidence, injury_details (empty = no known injuries) and exercise_dislikes. When sport is null and the coach's words name no sport, ignore sport_tags and never mention a sport. Avoid every exercise named in exercise_dislikes unless the coach's words ask for it.
 
 HARD CONSTRAINTS FROM AGENT 1 (MUST OBEY):
 
@@ -537,7 +533,7 @@ Rules:
    - "build" intent exercises (strength/capacity building): prefer for strength-focused compound slots and targeted accessory/isolation work
    - When the athlete's sport demands power and speed, weight selections toward "express" intent exercises more heavily
 10. For isolation and accessory roles, prefer exercises that address the athlete's specific needs — sport-specific demands, identified weak links, injury prevention areas, movement deficiencies — rather than generic choices.
-11. SPORT-SPECIFIC SELECTION: when Constraints.athlete.sport is set, STRONGLY prefer exercises whose sport_tags include that sport. Sport-tagged exercises have verified high biomechanical transfer to that sport's demands. For warm-up and accessory slots, sport-tagged exercises are especially valuable. For compound slots, sport tags should inform the choice when multiple options match equally. When sport is null, ignore sport_tags entirely.
+11. SPORT-SPECIFIC SELECTION: when Constraints.athlete.sport is set, STRONGLY prefer exercises whose sport_tags include that sport. Sport-tagged exercises have verified high biomechanical transfer to that sport's demands. For warm-up and accessory slots, sport-tagged exercises are especially valuable. For compound slots, sport tags should inform the choice when multiple options match equally. When Constraints.athlete.sport is null and the coach's words name no sport, ignore sport_tags entirely.
 12. INJURY-JOINT AWARENESS: when Constraints.athlete.injury_details is not empty, cross-reference the injury area with joints_loaded on candidate exercises. An exercise with "high" load on an injured joint is EXCLUDED, always. An exercise with "moderate" load on an injured joint should include a modification note (e.g., "reduce range of motion", "use lighter load"). If the injury area maps to a joint (e.g., "knee pain" maps to knee), systematically avoid high-knee-load exercises.
 13. PLANE OF MOTION BALANCE: across each training day, at least one exercise should be frontal or transverse plane (not all sagittal). When Constraints.athlete.sport is a rotational sport (tennis, pickleball, padel, golf, baseball, cricket), at least 2 exercises per session should include transverse plane work. Use the plane_of_motion field on exercises to ensure balanced programming.
 14. If no perfect match exists in the library, choose the closest available exercise and note it in substitution_notes. Explain WHY you chose the substitute and how it still serves the slot's purpose.

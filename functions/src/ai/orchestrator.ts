@@ -29,7 +29,7 @@ import {
   repairSkeletonTechniques,
 } from "./schemas.js"
 import { buildProfileContext, buildAthleteContext, resolveClientDifficulty, normalizeSport } from "./athlete-context.js"
-import { muscleVocabulary, normalizeSkeletonInPlace } from "./slot-normalize.js"
+import { muscleVocabulary, normalizeSkeletonInPlace, stripUnrequestedIntensity } from "./slot-normalize.js"
 import { PROFILE_ANALYZER_PROMPT, PROGRAM_ARCHITECT_PROMPT, EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
 import {
@@ -660,7 +660,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         dayFixes.map((f) => `wk${f.week_number} d${f.from_day}→d${f.to_day}`).join(", "),
       )
     }
-    const techniqueFixes = repairSkeletonTechniques(skeleton, analysis.technique_plan)
+    // The coach's own words only: the policy text lists DISALLOWED techniques by name, which would shield them.
+    const techniqueFixes = repairSkeletonTechniques(skeleton, analysis.technique_plan, request.additional_instructions)
     if (techniqueFixes.length > 0) {
       console.warn(
         `[orchestrator:sync] Repaired ${techniqueFixes.length} technique(s) to the week default: ` +
@@ -674,6 +675,10 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     }
     const slotChanges = normalizeSkeletonInPlace(skeleton.weeks, muscleVocabulary(allExercises))
     if (slotChanges.length > 0) console.log(`[orchestrator:sync] Normalised ${slotChanges.length} slot field(s)`)
+    const pctStripped = stripUnrequestedIntensity(skeleton.weeks, combinedInstructions)
+    if (pctStripped.length > 0) {
+      console.log(`[orchestrator:sync] Cleared ${pctStripped.length} intensity_pct value(s) the coach did not give`)
+    }
     // Backfill total_sessions if the AI omitted it or returned 0
     if (!skeleton.total_sessions) {
       skeleton.total_sessions = skeleton.weeks.reduce((sum, w) => sum + w.days.length, 0)
@@ -1053,6 +1058,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           const skelCheck = validateSkeletonAgainstAnalysis(
             weekSkeletonPayload as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[0],
             analysis as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[1],
+            request.additional_instructions,
           )
           if (!skelCheck.ok) {
             for (const v of skelCheck.violations) {

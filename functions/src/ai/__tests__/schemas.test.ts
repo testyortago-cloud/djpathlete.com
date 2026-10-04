@@ -316,4 +316,30 @@ describe("repairSkeletonTechniques", () => {
     expect(repairSkeletonTechniques(sk("superset") as never, [...plan] as never)).toEqual([])
     expect(repairSkeletonTechniques(sk("dropset") as never, [])).toEqual([])
   })
+  it("I3: keeps a technique the coach named, and still rewrites an unnamed one", () => {
+    const kept = sk("cluster_set")
+    expect(repairSkeletonTechniques(kept as never, [...plan] as never, "Use cluster sets on the squat")).toEqual([])
+    expect(kept.weeks[0].days[0].slots[0].technique).toBe("cluster_set")
+    const fixed = sk("dropset")
+    expect(repairSkeletonTechniques(fixed as never, [...plan] as never, "Use cluster sets on the squat")).toEqual([
+      { slot_id: "w1d1s1", from: "dropset", to: "straight_set" },
+    ])
+  })
+  it("I3: falls back to the first allowed technique when the default is not allowed", () => {
+    const badPlan = [{ week_number: 1, allowed_techniques: ["superset"], default_technique: "straight_set" }]
+    const s = sk("dropset")
+    expect(repairSkeletonTechniques(s as never, badPlan)).toEqual([{ slot_id: "w1d1s1", from: "dropset", to: "superset" }])
+  })
+  it("I3: a slot repaired to straight_set loses its group tag", () => {
+    const s = sk("giant_set")
+    ;(s.weeks[0].days[0].slots[0] as { group_tag?: string | null }).group_tag = "A1"
+    repairSkeletonTechniques(s as never, [...plan] as never)
+    expect(s.weeks[0].days[0].slots[0]).toMatchObject({ technique: "straight_set", group_tag: null })
+  })
+  it("I3: the validator agrees with the repair about coach-named techniques", () => {
+    const named = sk("cluster_set")
+    const analysis = { technique_plan: [...plan] }
+    expect(validateSkeletonAgainstAnalysis(named as never, analysis as never, "cluster sets please").ok).toBe(true)
+    expect(validateSkeletonAgainstAnalysis(named as never, analysis as never).ok).toBe(false)
+  })
 })

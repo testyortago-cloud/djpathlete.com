@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest"
-import { muscleVocabulary, normalizeSkeletonInPlace, normalizeMuscleName } from "../slot-normalize.js"
+import {
+  muscleVocabulary,
+  normalizeSkeletonInPlace,
+  normalizeMuscleName,
+  stripUnrequestedIntensity,
+} from "../slot-normalize.js"
 import type { ProgramWeek } from "../types.js"
 
 const VOCAB = ["glutes", "quadriceps", "shoulders", "hamstrings", "core", "obliques", "upper_back", "chest", "lats"]
@@ -90,5 +95,26 @@ describe("normalizeSkeletonInPlace — numbers", () => {
     const b = week({ sets: 0 })
     normalizeSkeletonInPlace(b, VOCAB)
     expect(b[0].days[0].slots[0].sets).toBe(1)
+  })
+})
+
+describe("stripUnrequestedIntensity (final review I2)", () => {
+  it("keeps slot percentages when the coach gave one", () => {
+    const w = week({ intensity_pct: 75 })
+    expect(stripUnrequestedIntensity(w, "Squat at 75 % of max")).toEqual([])
+    expect(w[0].days[0].slots[0].intensity_pct).toBe(75)
+  })
+  it("nulls every invented percentage and reports each change", () => {
+    const w = week({ intensity_pct: 85 })
+    expect(stripUnrequestedIntensity(w, "Heavy lower body, 4 days")).toEqual([
+      { slot_id: "w1d1s1", field: "intensity_pct", from: 85, to: null },
+    ])
+    expect(w[0].days[0].slots[0].intensity_pct).toBeNull()
+  })
+  it("nulls when there are no coach words at all, and ignores slots already null", () => {
+    const w = week({ intensity_pct: 70 })
+    expect(stripUnrequestedIntensity(w, undefined)).toHaveLength(1)
+    expect(w[0].days[0].slots[0].intensity_pct).toBeNull()
+    expect(stripUnrequestedIntensity(week({}), undefined)).toEqual([])
   })
 })

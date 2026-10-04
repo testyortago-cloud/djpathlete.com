@@ -128,3 +128,21 @@ export function normalizeSkeletonInPlace(weeks: ProgramWeek[], vocab: string[]):
       }
   return changes
 }
+
+/**
+ * intensity_pct × estimated 1RM becomes the athlete's suggested weight, so a
+ * percentage the architect invented is a load nobody chose. Keep slot
+ * percentages only when the coach's words contain one.
+ */
+export function stripUnrequestedIntensity(weeks: ProgramWeek[], coachText: string | undefined): SlotChange[] {
+  if (/\d\s*%/.test(coachText ?? "")) return []
+  const changes: SlotChange[] = []
+  for (const week of weeks)
+    for (const day of week.days)
+      for (const slot of day.slots) {
+        if (slot.intensity_pct == null) continue
+        changes.push({ slot_id: slot.slot_id, field: "intensity_pct", from: slot.intensity_pct, to: null })
+        slot.intensity_pct = null
+      }
+  return changes
+}

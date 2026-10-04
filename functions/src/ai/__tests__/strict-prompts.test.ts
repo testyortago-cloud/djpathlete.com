@@ -46,6 +46,17 @@ describe("strict prompts (2026-10-04)", () => {
     expect(EXERCISE_SELECTOR_PROMPT).not.toContain("you MAY reuse an exercise")
     expect(EXERCISE_SELECTOR_PROMPT).not.toMatch(/A tennis player benefits|A soccer player benefits|A court-sport athlete benefits/)
   })
+  it("intensity_pct comes only from the coach's words (final review I2)", () => {
+    expect(PROGRAM_ARCHITECT_PROMPT).toContain(
+      "22. INTENSITY_PCT FIELD — set intensity_pct ONLY when the coach's words give a percentage",
+    )
+    expect(PROGRAM_ARCHITECT_PROMPT).not.toMatch(/Use intensity_pct for:|Taper weeks \(specific deload percentages\)/)
+  })
+  it("a coach-named sport counts when the profile has none (final review M2)", () => {
+    expect(EXERCISE_SELECTOR_PROMPT).toContain(
+      "When Constraints.athlete.sport is null and the coach's words name no sport, ignore sport_tags entirely.",
+    )
+  })
   it("coach instructions sit below safety", () => {
     const s = buildCoachInstructionsSection("4 power exercises")
     expect(s).toContain("ladder rank 3")

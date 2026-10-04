@@ -12,9 +12,8 @@ import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints
 import { programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
 import { EXERCISE_SELECTOR_PROMPT, PRIORITY_LADDER } from "./prompts.js"
 import { buildProfileContext, buildAthleteContext, resolveClientDifficulty } from "./athlete-context.js"
-import { muscleVocabulary, normalizeSkeletonInPlace } from "./slot-normalize.js"
+import { muscleVocabulary, normalizeSkeletonInPlace, stripUnrequestedIntensity } from "./slot-normalize.js"
 import { gradeFits, type SlotFitItem } from "./slot-fit.js"
-import { validateProgram } from "./validate.js"
 import { formatExerciseLibrary, filterByDifficultyLevel, filterByProgressionPhase } from "./exercise-context.js"
 import { extractInstructionIntent, resolveIntentToExerciseIds } from "./instruction-intent.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
@@ -259,7 +258,7 @@ const SLOT_SCHEMA = `{
               "tempo": string | null,
               "group_tag": string | null,
               "technique": "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap" | "cluster_set" | "complex" | "emom" | "wave_loading",
-              "intensity_pct": number | null (percentage of 1RM, optional)
+              "intensity_pct": number | null (percentage of 1RM — ONLY when the coach's words give a percentage; otherwise null)
             }`
 
 /**
@@ -1124,6 +1123,10 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
       `[week-orchestrator] Normalised ${slotChanges.length} slot field(s): ` +
         slotChanges.map((c) => `${c.slot_id}.${c.field} ${JSON.stringify(c.from)}→${JSON.stringify(c.to)}`).join("; "),
     )
+  }
+  const pctStripped = stripUnrequestedIntensity(skeleton.weeks, request.admin_instructions)
+  if (pctStripped.length > 0) {
+    console.log(`[week-orchestrator] Cleared ${pctStripped.length} intensity_pct value(s) the coach did not give`)
   }
 
   if (!skeleton.total_sessions) {

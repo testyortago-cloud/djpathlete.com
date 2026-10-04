@@ -195,6 +195,7 @@ export interface ValidatorResult {
 export function validateSkeletonAgainstAnalysis(
   skeleton: z.infer<typeof programSkeletonSchema>,
   analysis: z.infer<typeof profileAnalysisSchema>,
+  coachText?: string,
 ): ValidatorResult {
   const planByWeek = new Map<number, TechniquePlanWeek>()
   for (const wk of analysis.technique_plan) planByWeek.set(wk.week_number, wk)
@@ -209,7 +210,7 @@ export function validateSkeletonAgainstAnalysis(
     const allowed = new Set<string>(plan.allowed_techniques)
     for (const day of week.days) {
       for (const slot of day.slots) {
-        if (!allowed.has(slot.technique)) {
+        if (!allowed.has(slot.technique) && !coachNamesTechnique(slot.technique, coachText)) {
           violations.push(
             `week ${week.week_number} slot ${slot.slot_id}: technique "${slot.technique}" not allowed (allowed: ${plan.allowed_techniques.join(", ")})`,
           )
@@ -228,10 +229,14 @@ export function validateSkeletonAgainstAnalysis(
  */
 export function repairSkeletonTechniques(
   skeleton: {
-    weeks: Array<{ week_number: number; days: Array<{ slots: Array<{ slot_id: string; technique: string }> }> }>
+    weeks: Array<{
+      week_number: number
+      days: Array<{ slots: Array<{ slot_id: string; technique: string; group_tag?: string | null }> }>
+    }>
   },
   // Structural, not TechniquePlanWeek[]: the orchestrator's ProfileAnalysis type carries plain strings.
   plan: Array<{ week_number: number; allowed_techniques: readonly string[]; default_technique: string }>,
+  coachText?: string,
 ): Array<{ slot_id: string; from: string; to: string }> {
   const byWeek = new Map(plan.map((p) => [p.week_number, p]))
   const changes: Array<{ slot_id: string; from: string; to: string }> = []
@@ -239,14 +244,38 @@ export function repairSkeletonTechniques(
     const p = byWeek.get(week.week_number)
     if (!p) continue
     const allowed = new Set<string>(p.allowed_techniques)
+    const to = allowed.has(p.default_technique) ? p.default_technique : (p.allowed_techniques[0] ?? p.default_technique)
     for (const day of week.days)
       for (const slot of day.slots) {
-        if (allowed.has(slot.technique)) continue
-        changes.push({ slot_id: slot.slot_id, from: slot.technique, to: p.default_technique })
-        slot.technique = p.default_technique
+        if (allowed.has(slot.technique) || coachNamesTechnique(slot.technique, coachText)) continue
+        changes.push({ slot_id: slot.slot_id, from: slot.technique, to })
+        slot.technique = to
+        if (to === "straight_set") slot.group_tag = null
       }
   }
   return changes
+}
+
+/**
+ * Coach-named techniques outrank technique_plan (architect rule 13), so the
+ * repair and the validator both leave them alone. Over-matches "no supersets"
+ * on purpose: the cost is only that the coach's own words win.
+ */
+const TECHNIQUE_WORDS: Record<string, RegExp> = {
+  cluster_set: /cluster/i,
+  rest_pause: /rest[- ]?pause/i,
+  dropset: /drop[- ]?set/i,
+  emom: /\bemom\b|every minute on the minute/i,
+  wave_loading: /wave/i,
+  complex: /\bcomplex(es)?\b/i,
+  circuit: /circuit/i,
+  giant_set: /giant/i,
+  superset: /superset|tri[- ]?set/i,
+  amrap: /\bamrap\b/i,
+}
+
+export function coachNamesTechnique(technique: string, coachText: string | undefined | null): boolean {
+  return !!coachText && !!TECHNIQUE_WORDS[technique]?.test(coachText)
 }
 
 /**

@@ -989,7 +989,7 @@ export interface EquipmentViolation {
  * Exercises the selector chose that the client cannot actually perform.
  *
  * This is the last line of defence, and on the add-a-week path it is the ONLY
- * one: `validateProgram` is imported by week-orchestrator.ts but never called,
+ * one: week-orchestrator.ts never calls `validateProgram`,
  * so nothing else compares the finished week against the equipment it assumes.
  * A "hotel, no equipment" week shipped with TRX glides and a cable-machine
  * stretch in it on 2026-09-21 without a single warning (see
