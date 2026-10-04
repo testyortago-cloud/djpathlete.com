@@ -27,6 +27,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { getQuizDefinition } from "@/lib/db/quizzes"
 import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
+import { presentResult } from "@/lib/quizzes/present-result"
 import { sanitiseAnswers, scoreQuiz } from "@/lib/quizzes/score"
 
 export const runtime = "nodejs"
@@ -84,17 +85,5 @@ export async function POST(request: Request) {
   const answers = sanitiseAnswers(definition, body.answers)
   const result = scoreQuiz(definition, answers)
 
-  const tier = definition.tiers.find((candidate) => candidate.key === result.tierKey) ?? null
-  const profile = definition.profiles.find((candidate) => candidate.key === result.profileKey) ?? null
-  const branch = definition.branches.find((candidate) => candidate.key === result.branchKey) ?? null
-
-  return NextResponse.json({
-    testRun: true,
-    score: result.score,
-    tier: tier
-      ? { key: tier.key, headline: tier.headline, body: tier.body, ctaLabel: tier.ctaLabel, ctaHref: tier.ctaHref }
-      : null,
-    profile: profile ? { key: profile.key, name: profile.name, description: profile.description } : null,
-    branch: branch ? { key: branch.key, name: branch.name } : null,
-  })
+  return NextResponse.json({ testRun: true, ...presentResult(definition, result, answers) })
 }

@@ -51,6 +51,7 @@ import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { hasEmailConsentDisplayName, renderEmailConsentWording } from "@/lib/lead-engine/email-consent-wording"
+import { presentResult } from "@/lib/quizzes/present-result"
 import { sanitiseAnswers, scoreQuiz } from "@/lib/quizzes/score"
 import { quizSubmitterRole } from "@/lib/quizzes/submitter-role"
 import type { QuizDefinition } from "@/lib/quizzes/types"
@@ -269,7 +270,7 @@ export async function POST(request: Request) {
     },
   )
 
-  return NextResponse.json(presentResult(definition, result))
+  return NextResponse.json(presentResult(definition, result, answers))
 }
 
 /**
@@ -539,20 +540,5 @@ async function handoff(input: {
     } catch (error) {
       logFailure("recordEmailConsent", error, correlation)
     }
-  }
-}
-
-/** The visitor-facing shape. Carries no weight and no raw total. */
-function presentResult(definition: QuizDefinition, result: ReturnType<typeof scoreQuiz>) {
-  const tier = definition.tiers.find((candidate) => candidate.key === result.tierKey) ?? null
-  const profile = definition.profiles.find((candidate) => candidate.key === result.profileKey) ?? null
-  const branch = definition.branches.find((candidate) => candidate.key === result.branchKey) ?? null
-  return {
-    score: result.score,
-    tier: tier
-      ? { key: tier.key, headline: tier.headline, body: tier.body, ctaLabel: tier.ctaLabel, ctaHref: tier.ctaHref }
-      : null,
-    profile: profile ? { key: profile.key, name: profile.name, description: profile.description } : null,
-    branch: branch ? { key: branch.key, name: branch.name } : null,
   }
 }

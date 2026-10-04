@@ -79,6 +79,8 @@ describe("POST /api/quiz/preview-submit", () => {
     expect(json.score).toBe(100)
     expect(json.tier.key).toBe("green")
     expect(json.branch.key).toBe("ceiling_breaker")
+    expect(Array.isArray(json.mirror)).toBe(true)
+    expect(Array.isArray(json.map)).toBe(true)
   })
 
   it("3. 404s for an anonymous request", async () => {
