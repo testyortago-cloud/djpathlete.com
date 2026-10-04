@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { buildArchitectPrompt, buildDesignDirective, describeDaySize } from "../ai/week-orchestrator.js"
+import { PRIORITY_LADDER } from "../ai/prompts.js"
 
 /**
  * Regression cover for the 2026-09-07 report: a coach edited the Full Body Day
@@ -137,5 +138,22 @@ describe("day architect system prompt", () => {
   it("tells the model a per-pattern list is summed, not read as sets", () => {
     expect(day).toMatch(/sum the lines and build that many slots/)
     expect(day).toMatch(/count of EXERCISES, never of sets/)
+  })
+})
+
+describe("week/day architect strict prompt (2026-10-04)", () => {
+  for (const mode of ["week", "day"] as const) {
+    it(`${mode}: carries the ladder and drops the compound-continuity goal`, () => {
+      const p = buildArchitectPrompt(mode)
+      expect(p).toContain(PRIORITY_LADDER)
+      expect(p).not.toMatch(/continuity for compound lifts/)
+      expect(p).not.toMatch(/3% repetition/)
+      expect(p).toContain("Muscle names")
+    })
+  }
+  it("day: overlap is about heavy loading, not shared patterns", () => {
+    const p = buildArchitectPrompt("day")
+    expect(p).toMatch(/within 48 hours/)
+    expect(p).not.toMatch(/avoid duplicating the same muscle groups or movement patterns/)
   })
 })

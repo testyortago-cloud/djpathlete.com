@@ -160,7 +160,7 @@ export function buildPriorContextFromExistingExercises(
     lines.push("")
     lines.push("RULES FOR USING THIS CONTEXT:")
     lines.push(
-      "- EVERY working exercise (compounds, accessories, isolations) MUST be different each week. Target < 3% repetition.",
+      "- EVERY working exercise (compounds, accessories, isolations) MUST be different each week; code checks this against the AVOID list.",
     )
     lines.push("- For compound slots: pick a DIFFERENT exercise that trains the same movement pattern and muscles.")
     lines.push(
@@ -281,7 +281,7 @@ export function buildPriorWeekContext(priorWeeks: WeekAssignment[], allWeeks: Pr
     lines.push("")
     lines.push("RULES FOR USING THIS CONTEXT:")
     lines.push(
-      "- EVERY working exercise (compounds, accessories, isolations) MUST be different each week. Target < 3% repetition.",
+      "- EVERY working exercise (compounds, accessories, isolations) MUST be different each week; code checks this against the AVOID list.",
     )
     lines.push("- For compound slots: pick a DIFFERENT exercise that trains the same movement pattern and muscles.")
     lines.push(

@@ -76,14 +76,15 @@ export function extractInjuredJoints(injuryDetails: Array<{ area?: string }> | n
 
 export function buildCoachInstructionsSection(instructions: string | undefined): string {
   if (!instructions) return ""
-  return `\n\n## COACH INSTRUCTIONS (HIGHEST PRIORITY — these override ALL default rules)\n${instructions}\n\nYou MUST follow these instructions exactly. They override ALL default rules including:
+  return `\n\n## COACH INSTRUCTIONS (ladder rank 3 — above every default, below safety)\n${instructions}\n\nYou MUST follow these instructions exactly. They override every default rule (ladder ranks 4-6), including:
 - **Structure**: If the coach specifies exercise counts (e.g., "4 power exercises", "2 quad exercises", "3 compounds and 2 accessories"), create exactly that many slots with the matching roles/patterns. Do NOT add extra slots or ignore the counts.
 - **Periodization**: If the coach requests deload weeks, specific phases, or intensity patterns (e.g., "deload on week 4", "first 2 weeks hypertrophy then strength"), structure the program exactly as described.
 - **Technique**: If the coach names a set technique (e.g., "no supersets", "use circuits", "use cluster sets", "rest-pause on compounds", "wave loading"), apply EXACTLY that technique even if default rules would suggest otherwise. Do not silently substitute supersets or straight sets because they are more familiar — if the coach asked for cluster sets, the program uses cluster sets.
 - **Exercise focus**: If the coach requests specific focus areas, muscle groups, or movement patterns, prioritize those in slot design and exercise selection.
 - **Session design**: If the coach specifies session structure (e.g., "start with plyometrics", "finish with core"), follow that order.
+- **Never overridden by these**: injury exclusions, the coach's explicit equipment setting, blocked exercises, and the exercise library itself.
 
-The coach is the authority. Their instructions reflect knowledge of the athlete that may not be in the profile. When in doubt, follow the coach's intent over any algorithmic default.`
+The coach knows this athlete. When in doubt, follow the coach's intent over any default in this prompt.`
 }
 
 // ─── Exercise Pool ─────────────────────────────────────────────────────────

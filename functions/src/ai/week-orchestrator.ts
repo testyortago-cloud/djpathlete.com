@@ -10,7 +10,7 @@ import { callAgent, MODEL_PROGRAM_ARCHITECT, MODEL_EXERCISE_SELECTOR, PROGRAM_AG
 import { isAbortError, type Deadline } from "../lib/deadline.js"
 import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints } from "./exercise-filter.js"
 import { programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
-import { EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
+import { EXERCISE_SELECTOR_PROMPT, PRIORITY_LADDER } from "./prompts.js"
 import { buildProfileContext, buildAthleteContext, resolveClientDifficulty } from "./athlete-context.js"
 import { muscleVocabulary, normalizeSkeletonInPlace } from "./slot-normalize.js"
 import { gradeFits, type SlotFitItem } from "./slot-fit.js"
@@ -362,12 +362,12 @@ export function buildArchitectPrompt(mode: "week" | "day"): string {
   const goals = isDay
     ? `1. Follows the program's established split, periodization, and structure
 2. Progresses appropriately based on the client's actual performance data
-3. Maintains exercise continuity for compound lifts while rotating accessories
+3. Rotates every working exercise from prior weeks while keeping each slot's movement pattern and purpose
 4. Respects the admin coach's specific instructions (if provided)
 5. Fits logically within the existing week — consider what other days already have`
     : `1. Follows the program's established split, periodization, and structure
 2. Progresses appropriately based on the client's actual performance data
-3. Maintains exercise continuity for compound lifts while rotating accessories
+3. Rotates every working exercise from prior weeks while keeping each slot's movement pattern and purpose
 4. Respects the admin coach's specific instructions (if provided)
 5. Builds on the program's progression arc — review the full week-by-week summary to understand themes, muscle emphasis shifts, and training phases across the entire program history`
 
@@ -380,26 +380,28 @@ export function buildArchitectPrompt(mode: "week" | "day"): string {
     ? `Rules:
 1. Output EXACTLY ONE day in the "days" array — the specific day_of_week requested.
 2. MATCH the program's existing structure for this day: look at what this day_of_week typically contains in prior weeks (muscle groups, exercise count, session focus). The prior-week exercise count is only a DEFAULT — rule 6 overrides it whenever the coach states counts of their own.
-3. COMPLEMENT other days already programmed in this week — avoid duplicating the same muscle groups or movement patterns.
-4. PROGRESS appropriately based on the client's logged performance.
+3. COMPLEMENT other days already programmed in this week: do not load a movement pattern heavily (primary/secondary compound at RPE 8+) within 48 hours of another day that already does. On full_body and DUP programs, training the same patterns on several days is expected.
+4. PROGRESS appropriately based on the client's logged performance. Primary compounds: RPE 6-7 in week 1, 7-8 in week 2, 8-9 from week 3 until a deload.
 5. ROTATE ALL WORKING EXERCISES — use DIFFERENT exercises than prior weeks for the same slot roles.
-6. COACH INSTRUCTIONS ARE HIGHEST PRIORITY — they override ALL default rules including technique selection, exercise structure, and progression logic:
+6. COACH INSTRUCTIONS (ladder rank 3) override every default in this prompt, including technique selection, exercise structure, and progression logic — never injury exclusions, the coach's equipment setting or blocked exercises:
    - If the coach names a technique (e.g., "no supersets", "use straight sets only", "use cluster sets", "rest-pause on compounds"), apply EXACTLY that technique regardless of the client's level or time constraints — never substitute supersets because they are more familiar.
    - If the coach specifies exercise counts (e.g., "4 power exercises", "2 quad exercises"), create EXACTLY that many slots with matching roles/patterns/muscles. A per-pattern list ("3 squat pattern, 3 hinge, 3 upper push, 3 upper pull, 3 core") is a count PER LINE — sum the lines and build that many slots. This OVERRIDES the prior-week exercise count in rule 2 and any session time budget, even when the total is far larger or smaller than prior weeks. A leading number is a count of EXERCISES, never of sets, unless the coach writes "sets".
    - If the coach says "make this a deload day", set intensity_modifier to "low/deload" and reduce slot count.
    - If the coach specifies session structure (e.g., "start with plyometrics"), arrange slots accordingly.
 7. Use the slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
 8. NULL METRIC HANDLING: When the recent performance logs show completed exercises with null rpe or null weight_kg, do NOT use them as a progression signal. Repeat the prior week's load/intensity prescription verbatim for those exercises. Only auto-progress where rpe was actually logged.
-9. Output ONLY the JSON object, no additional text.`
+9. Use only values from the "Muscle names" list in the user message for target_muscles.
+10. Output ONLY the JSON object, no additional text.`
     : `Rules:
 1. MATCH the existing program structure: same split type, same number of training days per week, same day_of_week values.
 2. PROGRESS appropriately based on the client's logged performance:
+   - Primary compounds: RPE 6-7 in week 1, 7-8 in week 2, 8-9 from week 3 until a deload.
    - If the client hit their targets comfortably (RPE < prescribed), increase load or volume slightly.
    - If the client struggled (RPE higher than prescribed, missed reps), maintain or slightly reduce.
    - If it's time for a deload (typically every 3-4 weeks of hard training), reduce volume by 40-50%.
-3. ROTATE ALL WORKING EXERCISES every week — compounds, accessories, and isolations MUST all use DIFFERENT exercises than prior weeks. For compound slots, pick a different exercise that trains the SAME movement pattern and muscles (e.g., Week 1 Back Squat → Week 2 Front Squat). Target < 3% repetition score.
+3. ROTATE ALL WORKING EXERCISES every week — compounds, accessories, and isolations MUST all use DIFFERENT exercises than prior weeks. For compound slots, pick a different exercise that trains the SAME movement pattern and muscles (e.g., Week 1 Back Squat → Week 2 Front Squat). Code rejects any working exercise_id from the AVOID list.
 4. ACCESSORY and ISOLATION slots — additionally vary the movement patterns or target muscles every 2-3 weeks for even more variety.
-5. COACH INSTRUCTIONS ARE HIGHEST PRIORITY — they override ALL default rules including technique selection, exercise structure, and progression logic. The coach may specify:
+5. COACH INSTRUCTIONS (ladder rank 3) override every default in this prompt, including technique selection, exercise structure, and progression logic — never injury exclusions, the coach's equipment setting or blocked exercises. The coach may specify:
    - A THEME or FOCUS AREA (e.g., "lower leg focus", "glute emphasis", "no equipment this week")
    - A SHIFT in emphasis while maintaining a theme (e.g., "keep lower leg theme but add glutes")
    - Equipment constraints for this specific week (e.g., "bodyweight only", "bands only")
@@ -412,12 +414,15 @@ export function buildArchitectPrompt(mode: "week" | "day"): string {
 7. Use the same slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
 8. Review the FULL PROGRAM PROGRESSION summary — understand the arc of the entire program (what muscles were emphasized each week, how themes evolved) before designing this week.
 9. NULL METRIC HANDLING: When the recent performance logs show completed exercises with null rpe or null weight_kg, do NOT use them as a progression signal. Repeat the prior week's load/intensity prescription verbatim for those exercises. Only auto-progress where rpe was actually logged. Do NOT add new accessory volume justified by "the client tolerated last week well" if last week has no rpe.
-10. Output ONLY the JSON object, no additional text.`
+10. Use only values from the "Muscle names" list in the user message for target_muscles.
+11. Output ONLY the JSON object, no additional text.`
 
   return `You are a performance system architect designing ${entity} an ongoing training program. You have access to the full program history (week-by-week progression summary + detailed recent weeks) and the client's actual training logs.
 
 Your job is to design ${entityShort} that:
 ${goals}
+
+${PRIORITY_LADDER}
 
 Given the program context, client progress data, and coach instructions, output a JSON object with this structure — it MUST contain exactly ONE week${daysConstraint ? ` with ${daysConstraint}` : " in the"} "days" array:
 
