@@ -199,6 +199,18 @@ async function main() {
     perModel[model] = { ...u, est_cost: Number(est.toFixed(4)) }
   }
 
+  const { scoreRows } = await import("./lib/score-generation")
+  const { data: savedRows } = await supabase
+    .from("program_exercises")
+    .select("notes")
+    .eq("program_id", programId)
+    .eq("week_number", week)
+    .match(day !== undefined ? { day_of_week: day } : {})
+  const { data: clientRow } = await supabase.from("client_profiles").select("sport").eq("user_id", clientId).maybeSingle()
+  const athleteSport =
+    typeof clientRow?.sport === "string" && clientRow.sport.trim() ? clientRow.sport.trim().toLowerCase() : null
+  const score = scoreRows((savedRows ?? []) as Array<{ notes: string | null }>, athleteSport)
+
   // Clean up exactly what this run wrote.
   const after = await scope()
   const ids = (after.data ?? []).map((r: { id: string }) => r.id)
@@ -225,6 +237,8 @@ async function main() {
     est_cost_usd: Number(estimate.toFixed(4)),
     reported_cost_usd: Number(reported.toFixed(4)),
     per_model: perModel,
+    score,
+    slot_fit: (result as { slot_fit?: unknown[] } | null)?.slot_fit?.length ?? null,
     cleaned_rows: ids.length,
   }
   appendFileSync(out, JSON.stringify(summary) + "\n")
@@ -238,6 +252,10 @@ async function main() {
   console.log(`  cost: ~$${summary.est_cost_usd} (OpenRouter-reported $${summary.reported_cost_usd})`)
   for (const [m, u] of Object.entries(perModel))
     console.log(`    ${m}: ${u.calls} calls, ${u.prompt} in (${u.cached} cached) / ${u.completion} out ≈ $${u.est_cost}`)
+  console.log(
+    `  notes: ${score.notes_foreign_sport} foreign-sport, ${score.notes_prescription} prescription (of ${score.rows}); poor fits: ${summary.slot_fit ?? "n/a"}`,
+  )
+  for (const s of score.samples) console.log(`    · ${s}`)
   console.log(`  cleaned ${ids.length} rows`)
 }
 
