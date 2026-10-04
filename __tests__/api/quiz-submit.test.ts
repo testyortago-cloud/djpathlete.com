@@ -145,6 +145,8 @@ describe("POST /api/quiz/submit", () => {
     const json = await res.json()
     // Worst answers over a max of 4 -> 0, which is the `red` band.
     expect(json.score).toBe(0)
+    expect(Array.isArray(json.mirror)).toBe(true)
+    expect(Array.isArray(json.map)).toBe(true)
     expect(json.tier.key).toBe("red")
     expect(completeAttempt).toHaveBeenCalledWith(expect.objectContaining({ score: 0, maxScore: 4, rawScore: 0 }))
   })

@@ -1908,10 +1908,12 @@ ${ROOT} .djp-s-quiz .djp-quiz-scale { font-size: 0.8125rem; color: var(--muted-f
 ${ROOT} .djp-s-quiz .djp-quiz-profile { padding: 1rem; border-radius: var(--radius); background: var(--surface); margin: 1.25rem 0; }
 ${ROOT} .djp-s-quiz .djp-quiz-profile-name { font-weight: 700; margin: 0 0 0.25rem; }
 ${ROOT} .djp-s-quiz .djp-quiz-profile-body { margin: 0; color: var(--muted-foreground); }
+${ROOT} .djp-s-quiz .djp-quiz-profile-body + .djp-quiz-profile-body { margin-top: 0.75rem; }
 ${ROOT} .djp-s-quiz .djp-quiz-toggle { display: inline-flex; gap: 0.25rem; padding: 0.25rem; margin: 0 0 0.75rem; border-radius: 999px; background: var(--surface); }
 ${ROOT} .djp-s-quiz .djp-quiz-toggle button { border: none; background: transparent; font: inherit; font-size: 0.8125rem; font-weight: 600; color: var(--muted-foreground); padding: 0.375rem 0.875rem; border-radius: 999px; cursor: pointer; }
 ${ROOT} .djp-s-quiz .djp-quiz-toggle button[aria-pressed="true"] { background: var(--background); color: inherit; }
 ${ROOT} .djp-s-quiz .djp-quiz-section-title { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted-foreground); margin: 1.5rem 0 0.625rem; }
+${ROOT} .djp-s-quiz .djp-quiz-mirror { margin-bottom: 1rem; }
 ${ROOT} .djp-s-quiz .djp-quiz-mirror dl { margin: 0; display: grid; gap: 0.5rem; }
 ${ROOT} .djp-s-quiz .djp-quiz-mirror dt { font-size: 0.8125rem; color: var(--muted-foreground); }
 ${ROOT} .djp-s-quiz .djp-quiz-mirror dd { margin: 0; font-weight: 600; }
