@@ -1,4 +1,5 @@
 import { getSupabase } from "../lib/supabase.js"
+import { splitSentences } from "./note-guard.js"
 
 // ─── Supabase Helpers ──────────────────────────────────────────────────────
 
@@ -776,11 +777,6 @@ const ID_FRAGMENT_RE = /\s*\((?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|(?=[
 // legitimately train in a swimming pool.
 const PIPELINE_INTERNALS_RE =
   /(exercise pool|exercise library|in the library|from the library|only \d+ exercises?|limited (?:exercise )?(?:pool|library)|\bslots? \d+|substitution notes?|same exercise as|duplicate of)/i
-
-/** Split on sentence boundaries, keeping the terminator with its sentence. */
-function splitSentences(text: string): string[] {
-  return text.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [text]
-}
 
 /**
  * Remove any sentence that narrates AI-pipeline internals.
