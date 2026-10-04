@@ -1,6 +1,8 @@
 # Strict generation prompts — results
 
-Branch `worktree-generation-strict-prompts` (worktree `.claude/worktrees/generation-strict-prompts`), 17 commits on `87a097c1`, head `39cd4db7`. Spec and plan: `docs/superpowers/specs|plans/2026-10-04-generation-strict-prompts*`. Not merged, not pushed, not deployed.
+Branch `worktree-generation-strict-prompts` (worktree `.claude/worktrees/generation-strict-prompts`), 18 commits on `main@4a41e2aa`. Spec and plan: `docs/superpowers/specs|plans/2026-10-04-generation-strict-prompts*`. Not merged, not pushed, not deployed. The replay numbers below were taken on the code at commit `39cd4db7` before the branch was moved onto `main`; the move changed no generation file, and the functions typecheck and 24 test files were re-run clean afterwards.
+
+Branch base: the worktree was first created on top of the unmerged `worktree-rpi-video-quiz-gaps` work (14 quiz commits, migrations 00286/00287). Merging that would have shipped the quiz branch and applied its migrations to production, so the 18 commits were rebased onto `main`. Verified: `git log main..HEAD` has no quiz commits and the diff touches no quiz or migration file.
 
 ## What changed
 
