@@ -19,13 +19,20 @@
 import { useCallback, useMemo, useState } from "react"
 import { browserTimezone } from "@/lib/browser-timezone"
 import type { PublicQuizDefinition, PublicQuizQuestion } from "@/lib/quizzes/public-definition"
+import type { MapRow, MirrorLine } from "@/lib/quizzes/report"
 
 export interface QuizResultView {
   score: number
   tier: { key: string; headline: string; body: string; ctaLabel: string | null; ctaHref: string | null } | null
   profile: { key: string; name: string; description: string } | null
   branch: { key: string; name: string } | null
+  /** Absent on a response from before the mini-assessment shipped. */
+  mirror?: MirrorLine[]
+  map?: MapRow[]
 }
+
+const STATUS_LABEL: Record<MapRow["status"], string> = { solid: "Solid", watch: "Watch", leak: "Leak", gap: "Left/right gap" }
+const SIDE_LABEL = { left: "Left", right: "Right", single: "Score" } as const
 
 interface QuizRunnerProps {
   definition: PublicQuizDefinition
@@ -73,6 +80,8 @@ export function QuizRunner({
   const [result, setResult] = useState<QuizResultView | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Keyed by question id, so it resets on every question change with no effect.
+  const [mistakesFor, setMistakesFor] = useState<string | null>(null)
   const [startedAt] = useState(() => Date.now())
 
   const [name, setName] = useState("")
@@ -239,7 +248,58 @@ export function QuizRunner({
         {result.tier ? <p className="djp-quiz-tier">{result.tier.headline}</p> : null}
         <p className="djp-quiz-score">{result.score}</p>
         <p className="djp-quiz-scale">out of 100</p>
-        {result.tier ? <p className="djp-quiz-profile-body">{result.tier.body}</p> : null}
+        {(() => {
+          const map = result.map ?? []
+          const assessment = map.length > 0
+          const sides = (row: MapRow) =>
+            (["left", "right", "single"] as const).flatMap((side) => (row[side] === null ? [] : [[side, row[side] as number] as const]))
+          return (
+            <>
+              {assessment && result.mirror?.length ? (
+                <div className="djp-quiz-mirror">
+                  <p className="djp-quiz-section-title">What you told us</p>
+                  <dl>
+                    {result.mirror.map((line) => (
+                      <div key={line.prompt}>
+                        <dt>{line.prompt}</dt>
+                        <dd>{line.answer}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              ) : null}
+              {result.tier
+                ? result.tier.body.split(/\n\s*\n/).map((paragraph, index) => (
+                    <p key={index} className="djp-quiz-profile-body">{paragraph}</p>
+                  ))
+                : null}
+              {assessment ? (
+                <div className="djp-quiz-map">
+                  <p className="djp-quiz-section-title">Your movement map</p>
+                  <ul>
+                    {map.map((row) => (
+                      <li key={row.label} className="djp-quiz-map-row">
+                        <span className="djp-quiz-map-label">{row.label}</span>
+                        <span className="djp-quiz-map-sides">
+                          {sides(row).map(([side, points]) => (
+                            <span key={side} className="djp-quiz-meter" aria-label={`${SIDE_LABEL[side]}: ${points} of ${row.max}`}>
+                              {side === "single" ? null : <span className="djp-quiz-meter-side">{side === "left" ? "L" : "R"}</span>}
+                              <span className="djp-quiz-meter-track">
+                                <span className="djp-quiz-meter-fill" style={{ width: `${(points / row.max) * 100}%` }} />
+                              </span>
+                              <span className="djp-quiz-meter-value">{points}/{row.max}</span>
+                            </span>
+                          ))}
+                        </span>
+                        <span className="djp-quiz-status" data-status={row.status}>{STATUS_LABEL[row.status]}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          )
+        })()}
         {result.profile ? (
           <div className="djp-quiz-profile">
             <p className="djp-quiz-profile-name">{result.profile.name}</p>
@@ -392,20 +452,28 @@ export function QuizRunner({
         are being asked to compare their own attempt against it.
         `preload="none"` with a poster keeps a 12-question walk from fetching
         nine videos up front over a phone connection.
+        The mistakes clip keeps its audio track, so a visitor can unmute
+        Darren naming each mistake.
       */}
-      {current.mediaUrl ? (
-        <video
-          key={current.mediaUrl}
-          className="djp-quiz-media"
-          src={current.mediaUrl}
-          poster={current.mediaPosterUrl ?? undefined}
-          preload="none"
-          controls
-          loop
-          muted
-          playsInline
-        />
-      ) : null}
+      {(() => {
+        const showMistakes = mistakesFor === current.id && Boolean(current.mistakesMediaUrl)
+        const src = showMistakes ? current.mistakesMediaUrl : current.mediaUrl
+        const poster = showMistakes ? current.mistakesMediaPosterUrl : current.mediaPosterUrl
+        return (
+          <>
+            {current.mistakesMediaUrl ? (
+              <div className="djp-quiz-toggle" role="group" aria-label="Which clip to watch">
+                <button type="button" aria-pressed={!showMistakes} onClick={() => setMistakesFor(null)}>How to do it</button>
+                <button type="button" aria-pressed={showMistakes} onClick={() => setMistakesFor(current.id)}>Common mistakes</button>
+              </div>
+            ) : null}
+            {src ? (
+              <video key={src} className="djp-quiz-media" src={src} poster={poster ?? undefined}
+                preload="none" controls loop muted playsInline />
+            ) : null}
+          </>
+        )
+      })()}
       <ul className="djp-quiz-options">
         {current.options.map((option) => (
           <li key={option.id}>

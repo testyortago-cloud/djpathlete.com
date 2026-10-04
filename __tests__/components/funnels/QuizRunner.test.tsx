@@ -327,3 +327,82 @@ describe("QuizRunner — the walk", () => {
     await waitFor(() => expect(screen.getByText(/Submissions are disabled/)).toBeTruthy())
   })
 })
+
+describe("QuizRunner — the mistakes clip", () => {
+  const withClip: PublicQuizDefinition = {
+    ...DEFINITION,
+    questions: DEFINITION.questions.map((q) =>
+      q.id === "q-router" ? { ...q, mediaUrl: "https://x/demo.mp4", mistakesMediaUrl: "https://x/mistakes.mp4", mistakesMediaPosterUrl: "https://x/m.jpg" } : q,
+    ),
+  }
+
+  it("shows no toggle when a question has no mistakes clip", () => {
+    renderRunner()
+    start()
+    expect(screen.queryByRole("button", { name: "Common mistakes" })).toBeNull()
+  })
+
+  it("swaps the player to the mistakes clip and back", () => {
+    const { container } = render(<QuizRunner definition={withClip} submitLabel="See my result" />)
+    start()
+    const src = () => container.querySelector("video.djp-quiz-media")?.getAttribute("src")
+    expect(src()).toBe("https://x/demo.mp4")
+    fireEvent.click(screen.getByRole("button", { name: "Common mistakes" }))
+    expect(src()).toBe("https://x/mistakes.mp4")
+    expect(container.querySelector("video.djp-quiz-media")?.getAttribute("poster")).toBe("https://x/m.jpg")
+    fireEvent.click(screen.getByRole("button", { name: "How to do it" }))
+    expect(src()).toBe("https://x/demo.mp4")
+  })
+})
+
+describe("QuizRunner — the mini-assessment result", () => {
+  async function walkToResult(body: Record<string, unknown>) {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+      String(url).includes("/api/quiz/progress")
+        ? new Response(JSON.stringify({ attemptId: "att-1" }), { status: 200 })
+        : new Response(JSON.stringify(body), { status: 200 }),
+    ))
+    const view = renderRunner()
+    start()
+    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Sam" } })
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sam@example.com" } })
+    fireEvent.click(screen.getByRole("button", { name: "See my result" }))
+    await waitFor(() => expect(screen.getByText("Real gaps")).toBeTruthy())
+    return view
+  }
+  const tier = { key: "orange", headline: "Real gaps", body: "First para.\n\nSecond para.", ctaLabel: "Go", ctaHref: "/x" }
+
+  it("renders the mirror, the map rows with sides and status, and splits the body into paragraphs", async () => {
+    await walkToResult({
+      score: 48, tier, profile: null, branch: null,
+      mirror: [{ prompt: "Which sport?", answer: "Golf" }],
+      map: [{ label: "Short lever Copenhagen", left: 3, right: 1, single: null, max: 3, status: "gap" }],
+    })
+    expect(screen.getByText("What you told us")).toBeTruthy()
+    expect(screen.getByText("Golf")).toBeTruthy()
+    expect(screen.getByText("Your movement map")).toBeTruthy()
+    expect(screen.getByText("Short lever Copenhagen")).toBeTruthy()
+    expect(screen.getByText("Left/right gap")).toBeTruthy()
+    expect(screen.getByLabelText("Left: 3 of 3")).toBeTruthy()
+    expect(screen.getByLabelText("Right: 1 of 3")).toBeTruthy()
+    expect(screen.getByText("First para.")).toBeTruthy()
+    expect(screen.getByText("Second para.")).toBeTruthy()
+  })
+
+  it("athlete-quiz result unchanged: no mirror, no map when the map is empty", async () => {
+    const { container } = await walkToResult({
+      score: 48, tier: { ...tier, body: "One para." }, profile: null, branch: null,
+      mirror: [{ prompt: "Which sport?", answer: "Golf" }], map: [],
+    })
+    expect(screen.queryByText("What you told us")).toBeNull()
+    expect(screen.queryByText("Your movement map")).toBeNull()
+    expect(container.querySelectorAll("p.djp-quiz-profile-body")).toHaveLength(1)
+  })
+
+  it("tolerates an older server response with no mirror or map", async () => {
+    await walkToResult({ score: 48, tier, profile: null, branch: null })
+    expect(screen.queryByText("Your movement map")).toBeNull()
+  })
+})
