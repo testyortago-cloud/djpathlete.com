@@ -49,6 +49,44 @@ describe("cleanNote — fix round 1", () => {
   })
 })
 
+describe("cleanNote — final review", () => {
+  it("I1: drops every common rest wording", () => {
+    for (const s of [
+      "Rest 60-90 seconds.",
+      "Rest: 45.",
+      "90s rest.",
+      "Full 120s rest between sets.",
+      "15 seconds rest between sides.",
+    ]) {
+      expect(cleanNote(`${s} Brace.`, none)).toEqual({ text: "Brace.", stripped: [s] })
+    }
+  })
+  it("I1: keeps rest-as-a-cue and tempo wording", () => {
+    for (const s of [
+      "Rest the bar on your traps, elbows at 45 degrees.",
+      "Keep the rest of your body still for 3 seconds.",
+      "Lower over 3 seconds.",
+    ]) {
+      expect(cleanNote(s, none)).toEqual({ text: s, stripped: [] })
+    }
+  })
+  it("M1: a multi-word athlete sport keeps its own cues", () => {
+    const note = "Stay low like a hockey stop."
+    expect(cleanNote(note, { athleteSport: "ice hockey" }).text).toBe(note)
+    expect(cleanNote("Swing like golf. Stay tall.", { athleteSport: "ice hockey" }).text).toBe("Stay tall.")
+  })
+  it("M3: a newline ends a sentence, so one prescription line does not take the bullet list", () => {
+    const r = cleanNote("- Brace your core\n- Rest 90 seconds\n- Drive up", none)
+    expect(r.stripped).toEqual(["- Rest 90 seconds"])
+    expect(r.text).toContain("Brace your core")
+    expect(r.text).toContain("Drive up")
+    const p = cleanNote("Brace your core.\nRest 90 seconds.\nDrive up.", none)
+    expect(p.stripped).toEqual(["Rest 90 seconds."])
+    expect(p.text).toContain("Brace your core.")
+    expect(p.text).toContain("Drive up.")
+  })
+})
+
 describe("cleanNote — sport sentences", () => {
   it("drops a sport the athlete does not play (live case: golf cue for a tennis player)", () => {
     const r = cleanNote("Rotate like a golf swing. Stay tall.", { athleteSport: "tennis" })

@@ -10,13 +10,16 @@
 /** Split on sentence boundaries, keeping the terminator with its sentence. */
 export function splitSentences(text: string): string[] {
   // A . ! ? only ends a sentence when whitespace or the end of the text follows (so "1.5" stays whole).
-  return text.match(/(?:[^.!?]|[.!?](?!\s|$))+(?:[.!?]+|$)/g) ?? [text]
+  // A newline also ends one, so a bulleted note loses only its prescription line.
+  return text.match(/(?:[^.!?\n]|[.!?](?!\s|$))+(?:[.!?]+\n?|\n|$)|\n/g) ?? [text]
 }
 
 const PRESCRIPTION_RES: RegExp[] = [
   /\b\d+\s*(?:sets?|reps?|repetitions?)\b/i,
   /\b\d+\s*[x×]\s*\d+/i,
-  /\brest\s*(?:for\s+|of\s+|about\s+)?\d+(?:\.\d+)?\s*(?:s|sec|secs|seconds?|min|mins|minutes?)\b/i,
+  /\brest\s*[:~]?\s*(?:for\s+|of\s+|about\s+)?\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*(?:s|sec|secs|seconds?|min|mins|minutes?)\b/i,
+  /\brest\s*:\s*\d+/i, // "Rest: 45" — a colon makes a bare number a rest
+  /\b\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*(?:s|sec|secs|seconds?|min|mins|minutes?)\s+(?:of\s+)?rest\b/i,
   /\d\s*%/,
   /\bRPE\s*(?:of\s*)?\d|\d\s*RPE\b/i,
   /\b\d+\s*(?:each|per)\s*(?:side|leg|arm)\b/i,
@@ -28,7 +31,8 @@ const SPORT_RE =
 function namesForeignSport(sentence: string, athleteSport: string | null): boolean {
   const withoutEquipment = sentence.replace(/tennis balls?/gi, "")
   for (const m of withoutEquipment.matchAll(SPORT_RE)) {
-    if (m[1].toLowerCase() !== athleteSport) return true
+    // Whole word of the athlete's sport, so "ice hockey" owns "hockey".
+    if (!athleteSport?.split(/[^a-z]+/).includes(m[1].toLowerCase())) return true
   }
   return false
 }
