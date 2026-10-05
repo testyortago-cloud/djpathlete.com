@@ -286,35 +286,3 @@ export async function copyExercisesFromProgram(args: CopyFromProgramArgs) {
   return data as (ProgramExercise & { exercises: unknown })[]
 }
 
-export async function duplicateProgramExercises(sourceProgramId: string, targetProgramId: string) {
-  const supabase = getClient()
-  const { data: existing, error: fetchError } = await supabase
-    .from("program_exercises")
-    .select("*")
-    .eq("program_id", sourceProgramId)
-  if (fetchError) throw fetchError
-  if (!existing || existing.length === 0) return []
-
-  const toInsert = existing.map((ex: ProgramExercise) => ({
-    program_id: targetProgramId,
-    exercise_id: ex.exercise_id,
-    day_of_week: ex.day_of_week,
-    week_number: ex.week_number,
-    order_index: ex.order_index,
-    sets: ex.sets,
-    reps: ex.reps,
-    duration_seconds: ex.duration_seconds,
-    rest_seconds: ex.rest_seconds,
-    notes: ex.notes,
-    rpe_target: ex.rpe_target,
-    intensity_pct: ex.intensity_pct,
-    tempo: ex.tempo,
-    group_tag: ex.group_tag,
-    technique: ex.technique,
-    suggested_weight_kg: ex.suggested_weight_kg,
-  }))
-
-  const { data, error } = await supabase.from("program_exercises").insert(toInsert).select()
-  if (error) throw error
-  return data as ProgramExercise[]
-}
