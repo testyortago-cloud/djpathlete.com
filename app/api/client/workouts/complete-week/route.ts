@@ -38,10 +38,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Assignment is not active" }, { status: 400 })
     }
 
-    // Payment access guard — block pending week advancement before any mutation
-    const { ok } = await assertAssignmentPayable(assignmentId, assignment.current_week)
-    if (!ok) {
-      return NextResponse.json({ error: "Payment required to advance this program." }, { status: 402 })
+    // Access guard — block pending payment or an unreleased week before any mutation
+    const access = await assertAssignmentPayable(assignmentId, assignment.current_week)
+    if (!access.ok) {
+      return access.reason === "not_released"
+        ? NextResponse.json({ error: "This week isn't available yet." }, { status: 403 })
+        : NextResponse.json({ error: "Payment required to advance this program." }, { status: 402 })
     }
 
     const result = await advanceWeek(assignmentId)

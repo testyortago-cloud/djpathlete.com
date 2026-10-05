@@ -17,8 +17,12 @@ export async function POST(request: Request) {
     }
     const { assignment_id, week_number, day_of_week, session_date, prs } = parsed.data
 
-    const { ok } = await assertAssignmentPayable(assignment_id)
-    if (!ok) return NextResponse.json({ error: "Payment required to access this program." }, { status: 402 })
+    const access = await assertAssignmentPayable(assignment_id, week_number)
+    if (!access.ok) {
+      return access.reason === "not_released"
+        ? NextResponse.json({ error: "This week isn't available yet." }, { status: 403 })
+        : NextResponse.json({ error: "Payment required to access this program." }, { status: 402 })
+    }
 
     const ws = await ensureSession({
       user_id: session.user.id,

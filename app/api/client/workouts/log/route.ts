@@ -43,11 +43,13 @@ export async function POST(request: Request) {
       session_date,
     } = parsed.data
 
-    // Payment access guard — block pending assignments before any mutation
+    // Access guard: block a pending assignment, and a week the client cannot see, before any write.
     if (assignment_id) {
-      const { ok } = await assertAssignmentPayable(assignment_id)
-      if (!ok) {
-        return NextResponse.json({ error: "Payment required to access this program." }, { status: 402 })
+      const access = await assertAssignmentPayable(assignment_id, week_number ?? undefined)
+      if (!access.ok) {
+        return access.reason === "not_released"
+          ? NextResponse.json({ error: "This week isn't available yet." }, { status: 403 })
+          : NextResponse.json({ error: "Payment required to access this program." }, { status: 402 })
       }
     }
 
