@@ -11,7 +11,27 @@
 // later stage. Writing a consent row now would mean inventing the wording it
 // claims to quote.
 
-import { recordContactEvent } from "@/lib/db/contacts"
+import { recordContactEvent, recordEventForExistingContact, upsertContactIdentity } from "@/lib/db/contacts"
+
+/**
+ * The same contact and timeline row as `recordContactEvent`, WITHOUT its
+ * enrolment. `recordContactEvent` is the only caller of `enrollIfTriggered`
+ * (enroll-call-site-inventory.test.ts), so a form that must not start a
+ * sequence takes this path rather than passing it a flag: the GHL import and
+ * the hand-made pipeline card are non-enrolling the same way.
+ */
+async function recordContactWithoutFollowUp(input: Parameters<typeof recordContactEvent>[0]): Promise<{ contactId: string }> {
+  const { contactId } = await upsertContactIdentity({
+    email: input.email,
+    phone: input.phone,
+    name: input.name,
+    attributionSessionId: input.attributionSessionId,
+    timezone: input.timezone,
+    businessId: input.businessId,
+  })
+  await recordEventForExistingContact({ contactId, businessId: input.businessId, source: input.source, metadata: input.metadata })
+  return { contactId }
+}
 
 export async function captureContactFromSubmission(input: {
   name: string | null
@@ -41,10 +61,16 @@ export async function captureContactFromSubmission(input: {
    * a collision that has not happened yet rather than changing one that has.
    */
   metadata?: Record<string, unknown>
+  /**
+   * `false` for a form the owner marked "existing clients" (`skipFollowUp`):
+   * the contact is filed, no new-lead sequence starts. Omitted means it starts.
+   */
+  startFollowUp?: boolean
 }): Promise<string | null> {
   if (!input.email && !input.phone) return null
+  const record = input.startFollowUp === false ? recordContactWithoutFollowUp : recordContactEvent
   try {
-    const { contactId } = await recordContactEvent({
+    const { contactId } = await record({
       email: input.email,
       phone: input.phone,
       name: input.name,

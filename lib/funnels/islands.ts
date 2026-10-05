@@ -189,6 +189,13 @@ export const formIslandSchema = z
     leadMagnetId: z.string().uuid().nullable().optional(),
     consentText: z.string().max(300).optional(),
     /**
+     * For a form the business's EXISTING clients fill in (the pre-visit
+     * onboarding form): the person is still filed as a contact, but no
+     * new-lead sequence starts. Absent means the follow-up starts, which is
+     * every form before this key existed.
+     */
+    skipFollowUp: z.boolean().optional(),
+    /**
      * The camp or clinic this form sells, when `successMode` is "checkout".
      *
      * A uuid the OWNER supplies through `island-fields.ts`, exactly as the event

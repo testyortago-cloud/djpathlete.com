@@ -243,6 +243,9 @@ export async function POST(request: Request) {
     payload,
     businessId,
     timezone: parsedBody.timezone ?? null,
+    // The owner's "existing clients" switch on the PUBLISHED form (e.g. the
+    // pre-visit onboarding form): file the contact, start no new-lead sequence.
+    startFollowUp: config.skipFollowUp !== true,
     // G10. What the FORM declares about who filled it in, so a sequence can
     // write to a parent differently from an athlete. Derived server-side
     // from the published field list (`fields`, re-read from the published

@@ -2,7 +2,9 @@
 import { describe, it, expect, vi } from "vitest"
 
 const recordContactEvent = vi.fn(async () => ({ contactId: "c1", created: true, merged: false }))
-vi.mock("@/lib/db/contacts", () => ({ recordContactEvent }))
+const upsertContactIdentity = vi.fn(async () => ({ contactId: "c2", created: false, merged: false, identifierConflicts: [] }))
+const recordEventForExistingContact = vi.fn(async () => undefined)
+vi.mock("@/lib/db/contacts", () => ({ recordContactEvent, upsertContactIdentity, recordEventForExistingContact }))
 
 describe("funnel submit → contact spine", () => {
   it("passes the submitted identifiers and the attribution session through", async () => {
@@ -92,6 +94,33 @@ describe("funnel submit → contact spine", () => {
       businessId: "platform-biz",
     })
     expect(recordContactEvent).toHaveBeenCalledWith(expect.objectContaining({ metadata: { sport: "lacrosse" } }))
+  })
+
+  it("files a form with lead follow-up OFF through the non-enrolling pair, never recordContactEvent", async () => {
+    // The pre-visit onboarding form: the person is already a booked client, so
+    // the "new lead" sequence must not start. Structural, like the GHL import
+    // and the hand-made card: recordContactEvent is the ONLY caller of
+    // enrollIfTriggered, so not calling it cannot enrol anybody.
+    recordContactEvent.mockClear()
+    const { captureContactFromSubmission } = await import("@/lib/funnels/capture-contact")
+    const id = await captureContactFromSubmission({
+      name: "Sam",
+      email: "sam@example.com",
+      phone: "+15005550006",
+      attributionSessionId: "sess-9",
+      payload: { goals: "Throw harder" },
+      businessId: "platform-biz",
+      startFollowUp: false,
+    })
+    expect(id).toBe("c2")
+    expect(recordContactEvent).not.toHaveBeenCalled()
+    expect(upsertContactIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "sam@example.com", phone: "+15005550006", name: "Sam", businessId: "platform-biz" }),
+    )
+    // Still on the contact's timeline as how they arrived.
+    expect(recordEventForExistingContact).toHaveBeenCalledWith(
+      expect.objectContaining({ contactId: "c2", source: "funnel_form", metadata: { goals: "Throw harder" } }),
+    )
   })
 
   it("never throws when the contact write fails — the submission still stands", async () => {

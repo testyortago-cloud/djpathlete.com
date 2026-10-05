@@ -58,6 +58,10 @@ describe("buildOnboardingDoc", () => {
     expect(fields.map((f) => f.name)).toEqual(expect.arrayContaining(["first_name", "last_name"]))
   })
 
+  it("starts no new-lead follow-up: the people filling it in are already booked clients", () => {
+    expect((form.props as { skipFollowUp?: boolean }).skipFollowUp).toBe(true)
+  })
+
   it("keeps GHL's dropdown choices", () => {
     expect(fields.find((f) => f.name === "training_history")?.options).toEqual([
       "New / just starting",

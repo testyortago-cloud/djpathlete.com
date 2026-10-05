@@ -49,6 +49,7 @@ export const ISLAND_TRAITS: Record<IslandName, IslandTrait[]> = {
     { name: "successMessage", label: "Success message", type: "text" },
     { name: "redirectUrl", label: "Redirect URL (if redirecting)", type: "text" },
     { name: "consentText", label: "Consent text (optional)", type: "text" },
+    { name: "skipFollowUp", label: "Existing clients: don't start lead follow-up", type: "checkbox" },
     { name: "fields", label: "Fields (JSON)", type: "json" },
     // The camp a checkout form sells. A uuid the OWNER supplies here, never
     // the model — UUID_FIELD_PATHS tells the prompt to omit it, and publishGate

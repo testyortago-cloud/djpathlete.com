@@ -33,6 +33,8 @@ export function buildOnboardingDoc(input: { businessName: string }): SectionDoc 
           heading: "Before your first session",
           sub: "Please complete this short form before your first in-person session. It helps me understand your background, injury history and goals, so we can make the most of our time together.",
           formKey: "pre-visit",
+          // Booked clients, not leads: file the contact, start no new-lead nurture.
+          skipFollowUp: true,
           submitLabel: "Submit & confirm pre-visit details",
           successMode: "message",
           successMessage: "Thank you. Your details are in, and I'll read them before your first session.",

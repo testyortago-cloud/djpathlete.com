@@ -22,7 +22,13 @@ type Marker = { x: number; y: number; caption: string }
 const APP = process.env.APP ?? "http://localhost:3050"
 const OUT = "screenshots/funnel-pages"
 const CLONE_REF = "anjvztjiokcgiyhobknq"
-const TEST_INBOX = "tayawaschoolworks@gmail.com"
+// A fresh plus-address per run, so "no sequence run for this contact" below
+// cannot be satisfied by a run an earlier capture left behind.
+const TEST_INBOX = `tayawaschoolworks+onb${Date.now()}@gmail.com`
+// And a fresh phone: contacts match on phone too, and a reused test number
+// joins an old contact whose old nurture run would hide a new one. Ofcom's
+// drama range (07700 900000-900999) is never assigned. No SMS opt-in is ticked.
+const TEST_PHONE = `+447700900${String(Date.now()).slice(-3)}`
 const DESKTOP = { viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 }
 const MOBILE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }
 const shots: { file: string; text: string }[] = []
@@ -145,7 +151,7 @@ async function main() {
     const pick = (name: string, value: string) => v.locator(`[data-djp-field="${name}"] select`).selectOption(value)
     await fill("first_name", "Sam")
     await fill("last_name", "Rivera (test)")
-    await fill("phone", "+15005550006")
+    await fill("phone", TEST_PHONE)
     await fill("email", TEST_INBOX)
     await fill("age", "17")
     await pick("currently_training", "Yes")
@@ -179,6 +185,18 @@ async function main() {
     const { data: activeDoc } = await db.from("legal_documents").select("id, version").eq("document_type", "liability_waiver").eq("is_active", true).single()
     console.log(`  row ${row.id}: accepted ${row.waiver_accepted_at}, doc ${row.waiver_document_id} (active ${activeDoc?.id} v${activeDoc?.version}), ip ${row.ip_address}`)
     if (row.waiver_document_id !== (activeDoc?.id ?? null)) throw new Error("the filed document is not the active one")
+
+    // skipFollowUp: the person is filed as a contact, and NO sequence run starts.
+    // The presence control is the contact itself: zero runs for a contact that
+    // does not exist would prove nothing.
+    await new Promise((resolve) => setTimeout(resolve, 3000)) // capture runs after the response
+    const { data: contact } = await db.from("contacts").select("id, created_at").ilike("email", TEST_INBOX).maybeSingle()
+    if (!contact || Date.parse(contact.created_at) < Date.parse(startedAt) - 5000) {
+      throw new Error(`NO NEW CONTACT filed for ${TEST_INBOX}`)
+    }
+    const { count: runs } = await db.from("sequence_runs").select("id", { count: "exact", head: true }).eq("contact_id", contact.id)
+    console.log(`  contact ${contact.id}: ${runs} sequence run(s)`)
+    if (runs !== 0) throw new Error(`the onboarding form started ${runs} sequence run(s)`)
 
     const l = await desk.newPage()
     await l.goto(`${APP}/admin/funnels/leads?funnelId=${onboarding.id}`, { waitUntil: "networkidle", timeout: 180_000 })

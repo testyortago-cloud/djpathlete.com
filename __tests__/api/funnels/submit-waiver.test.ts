@@ -34,7 +34,10 @@ vi.mock("@/lib/db/funnels", () => ({
 vi.mock("@/lib/db/legal-documents", () => ({
   getActiveDocument: (...a: unknown[]) => getActiveDocument(...a),
 }))
-vi.mock("@/lib/funnels/capture-contact", () => ({ captureContactFromSubmission: vi.fn(async () => null) }))
+const captureContactFromSubmission = vi.fn(async () => null)
+vi.mock("@/lib/funnels/capture-contact", () => ({
+  captureContactFromSubmission: (...a: unknown[]) => captureContactFromSubmission(...(a as [])),
+}))
 vi.mock("@/lib/db/contact-consents", () => ({ recordConsent: vi.fn() }))
 vi.mock("@/lib/db/businesses", () => ({
   getBusinessSettings: vi.fn(async () => ({ business_id: "biz-1", display_name: "Acme Fitness" })),
@@ -121,6 +124,18 @@ describe("POST /api/funnels/submit — waiver on a plain form", () => {
     const row = createSubmission.mock.calls[0][1]
     expect(row.waiver_document_id).toBeNull()
     expect(typeof row.waiver_accepted_at).toBe("string")
+  })
+
+  it("starts no lead follow-up for a form that says so, and does for one that does not", async () => {
+    // MUTANT KILLED: ignoring the form's `skipFollowUp`, which puts a booked
+    // client filling in the pre-visit form into the new-lead nurture.
+    getPublishedFormConfig.mockResolvedValue({ formKey: "pre-visit", successMode: "message", skipFollowUp: true, fields: WAIVER_FORM })
+    await POST(request({ first_name: "Sam", waiver: "on" }))
+    expect(captureContactFromSubmission).toHaveBeenLastCalledWith(expect.objectContaining({ startFollowUp: false }))
+
+    getPublishedFormConfig.mockResolvedValue({ formKey: "pre-visit", successMode: "message", fields: WAIVER_FORM })
+    await POST(request({ first_name: "Sam", waiver: "on" }))
+    expect(captureContactFromSubmission).toHaveBeenLastCalledWith(expect.objectContaining({ startFollowUp: true }))
   })
 
   it("reads no legal document, and writes no waiver columns, for a form without a waiver", async () => {

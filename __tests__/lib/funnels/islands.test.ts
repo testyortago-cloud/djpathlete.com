@@ -234,6 +234,16 @@ describe("the field-role contract", () => {
     expect(formIslandSchema.safeParse(optin({ type: "text", required: true })).success).toBe(false)
   })
 
+  it("keeps a form's 'no lead follow-up' switch, and the builder offers it", () => {
+    // MUTANT KILLED: leaving `skipFollowUp` out of the schema. Zod strips an
+    // unknown key, so the published config would never carry it and the
+    // pre-visit form's clients would be enrolled in the new-lead nurture.
+    const form = { formKey: "pre-visit", fields: [{ name: "email", label: "Email", type: "email" }], skipFollowUp: true }
+    const parsed = formIslandSchema.safeParse(form)
+    expect(parsed.success && parsed.data.skipFollowUp).toBe(true)
+    expect(ISLAND_TRAITS.form.find((t) => t.name === "skipFollowUp")?.type).toBe("checkbox")
+  })
+
   it("keeps unroled fields — the owner's own questions survive", () => {
     const form = checkoutForm()
     form.fields.push({ name: "level", label: "Current level", type: "select", options: ["New", "Club"] })
