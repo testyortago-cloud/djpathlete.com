@@ -4,6 +4,9 @@ import { programFormSchema } from "@/lib/validators/program"
 import { createProgram } from "@/lib/db/programs"
 import { createStripeProductAndPrice } from "@/lib/stripe"
 import { withAudit } from "@/lib/audit/with-audit"
+import { z } from "zod"
+import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
+import { getProgramFolder } from "@/lib/db/program-folders"
 
 export const POST = withAudit(
   {
@@ -31,6 +34,20 @@ export const POST = withAudit(
 
       const data = result.data
 
+      // "New program" in the Library tab sends folder_id. Read off the RAW body: the form schema strips
+      // it. A folder of this business makes the row a library program; is_template is never taken
+      // from the body.
+      let libraryFields: { is_template: true; folder_id: string; is_public: false } | null = null
+      const rawFolderId = (body as { folder_id?: unknown }).folder_id
+      if (rawFolderId !== undefined) {
+        const folderId = z.string().uuid().safeParse(rawFolderId)
+        if (!folderId.success) return NextResponse.json({ error: "Folder not found." }, { status: 404 })
+        const { businessId } = await resolveAdminTenantForRequest(request)
+        const folder = await getProgramFolder(businessId, folderId.data)
+        if (!folder) return NextResponse.json({ error: "Folder not found." }, { status: 404 })
+        libraryFields = { is_template: true, folder_id: folder.id, is_public: false }
+      }
+
       // Create Stripe Product + Price for paid programs
       let stripe_product_id: string | null = null
       let stripe_price_id: string | null = null
@@ -56,6 +73,7 @@ export const POST = withAudit(
         created_by: session?.user?.id ?? null,
         is_ai_generated: false,
         ai_generation_params: null,
+        ...(libraryFields ?? {}),
       })
 
       // Update Stripe product metadata with actual program ID

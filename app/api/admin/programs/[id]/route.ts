@@ -46,6 +46,9 @@ export const PATCH = withAudit(
 
       const data = result.data
       const existing = await getProgramById(id)
+      // A library program is never public (DB check programs_template_never_public). Keep the
+      // pricing sheet's toggle from turning a save into a 500.
+      if (existing.is_template) data.is_public = false
 
       let stripe_product_id = existing.stripe_product_id
       let stripe_price_id = existing.stripe_price_id
