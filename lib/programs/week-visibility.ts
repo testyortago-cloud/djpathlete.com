@@ -18,7 +18,7 @@ type WeekAccessFields = Pick<
  * has no schedule (every week visible).
  *
  * TWIN: program_assignment_release_clock() in
- * supabase/migrations/00288_program_library_and_week_release.sql freezes with
+ * supabase/migrations/00289_program_library_and_week_release.sql freezes with
  * the same formula. Change both.
  */
 export function releasedThroughWeek(a: ReleaseFields, now: Date): number | null {

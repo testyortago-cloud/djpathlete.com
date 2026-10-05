@@ -31,7 +31,7 @@ const row = (week_number: number, extra: Partial<Row> = {}): Row => ({
 })
 
 describe("releasedThroughWeek", () => {
-  it("is null without a schedule — every assignment made before 00288", () => {
+  it("is null without a schedule — every assignment made before 00289", () => {
     expect(releasedThroughWeek(noSched, at(100))).toBeNull()
   })
   it("releases one more week on each 7th day after the anchor, not before", () => {

@@ -37,7 +37,7 @@ records why each choice was made.
   - `grep` the output for your own files: there must be zero errors in them.
 - **Commits:** plain conventional messages. **NO `Co-Authored-By` trailer and no tool attribution of any
   kind.** Never stage `JOURNAL.md` or anything under `screenshots/` until Task 11.
-- **Migration:** `00288` only. Apply it to the **dev clone `anjvztjiokcgiyhobknq` only**, never to prod
+- **Migration:** `00289` only. Apply it to the **dev clone `anjvztjiokcgiyhobknq` only**, never to prod
   (`epzuvzkokzqtzomeyoha`). Prod applies itself on push to `main`.
 - **Never add a `SINGLETON_BUSINESS_ID` reference.** Tenant ids come from `resolveAdminTenant()`
   (server components) or `resolveAdminTenantForRequest(request)` (route handlers), both in
@@ -125,13 +125,13 @@ Usage, from the worktree root:
 
 ---
 
-### Task 1: Migration 00288, row types, applied to the dev clone
+### Task 1: Migration 00289, row types, applied to the dev clone
 
 **Files:**
-- Create: `supabase/migrations/00288_program_library_and_week_release.sql`
+- Create: `supabase/migrations/00289_program_library_and_week_release.sql`
 - Modify: `types/database.ts` (`Program` ~L408, `ProgramAssignment` ~L462, `ProgramWeekAccess` ~L479)
 - Modify: `lib/db/week-access.ts` (the two `updateWeekAccess*` `Pick` lists)
-- Scratch: `<scratchpad>/probe-00288.sql`
+- Scratch: `<scratchpad>/probe-00289.sql`
 
 **Interfaces:**
 - Produces, as DB objects:
@@ -147,7 +147,7 @@ Usage, from the worktree root:
 - [ ] **Step 1: Write the migration**
 
 ```sql
--- 00288_program_library_and_week_release.sql
+-- 00289_program_library_and_week_release.sql
 --
 -- Program library (folders of ready-made programs) and weekly week-release.
 -- Spec: docs/superpowers/specs/2026-10-05-program-library-and-week-release-design.md
@@ -251,14 +251,14 @@ CREATE TRIGGER program_assignment_release_clock
 - [ ] **Step 2: Apply to the dev clone**
 
 Run:
-`/opt/homebrew/bin/node -r dotenv/config <scratchpad>/clone-sql.mjs supabase/migrations/00288_program_library_and_week_release.sql dotenv_config_path=.env.local dotenv_config_quiet=true`
+`/opt/homebrew/bin/node -r dotenv/config <scratchpad>/clone-sql.mjs supabase/migrations/00289_program_library_and_week_release.sql dotenv_config_path=.env.local dotenv_config_quiet=true`
 Expected: `201 []`, or another 2xx status. Any 4xx: read the message, fix the SQL, and re-run. The DDL is
 not re-runnable once it has partly applied, so on a partial failure drop the objects that did get
 created before re-running.
 
 - [ ] **Step 3: Probe the trigger and constraints (rolled back by design)**
 
-Create `<scratchpad>/probe-00288.sql`:
+Create `<scratchpad>/probe-00289.sql`:
 
 ```sql
 DO $$
@@ -311,7 +311,7 @@ BEGIN
 END $$;
 ```
 
-Run: `/opt/homebrew/bin/node -r dotenv/config <scratchpad>/clone-sql.mjs <scratchpad>/probe-00288.sql dotenv_config_path=.env.local dotenv_config_quiet=true`
+Run: `/opt/homebrew/bin/node -r dotenv/config <scratchpad>/clone-sql.mjs <scratchpad>/probe-00289.sql dotenv_config_path=.env.local dotenv_config_quiet=true`
 Expected: a non-2xx status whose body contains exactly `PROBE PASSED (rolled back)`. Any other message
 (an `ASSERT` text, or "template without a folder was accepted") is a failure: fix the migration and
 re-apply. The final `RAISE` rolls back every probe write.
@@ -350,7 +350,7 @@ In `interface ProgramAssignment`, after `expires_at`:
 
 ```ts
   /**
-   * Weekly release. null = no schedule, every week visible (every assignment made before 00288).
+   * Weekly release. null = no schedule, every week visible (every assignment made before 00289).
    * Otherwise weeks 1..base were released before release_anchor_at; one more every 7 days after.
    */
   release_base_week?: number | null
@@ -392,7 +392,7 @@ Expected: equals `TSC_BASELINE`.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add supabase/migrations/00288_program_library_and_week_release.sql types/database.ts lib/db/week-access.ts
+git add supabase/migrations/00289_program_library_and_week_release.sql types/database.ts lib/db/week-access.ts
 git commit -m "feat(programs): schema for the program library and weekly week release"
 ```
 
@@ -453,7 +453,7 @@ const row = (week_number: number, extra: Partial<Row> = {}): Row => ({
 })
 
 describe("releasedThroughWeek", () => {
-  it("is null without a schedule — every assignment made before 00288", () => {
+  it("is null without a schedule — every assignment made before 00289", () => {
     expect(releasedThroughWeek(noSched, at(100))).toBeNull()
   })
   it("releases one more week on each 7th day after the anchor, not before", () => {
@@ -588,7 +588,7 @@ type WeekAccessFields = Pick<
  * has no schedule (every week visible).
  *
  * TWIN: program_assignment_release_clock() in
- * supabase/migrations/00288_program_library_and_week_release.sql freezes with
+ * supabase/migrations/00289_program_library_and_week_release.sql freezes with
  * the same formula. Change both.
  */
 export function releasedThroughWeek(a: ReleaseFields, now: Date): number | null {

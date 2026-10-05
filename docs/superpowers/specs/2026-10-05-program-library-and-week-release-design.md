@@ -40,7 +40,7 @@ Decisions the owner made while brainstorming:
 
 ## Design
 
-### 1. Schema — migration `00288_program_library_and_week_release.sql`
+### 1. Schema — migration `00289_program_library_and_week_release.sql`
 
 All changes are additive. Old code keeps working against the new schema, and existing rows behave as
 they do today.
