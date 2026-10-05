@@ -44,7 +44,7 @@ interface FunnelFormProps {
   /**
    * The active liability waiver, already rendered to HTML by the server wrapper.
    *
-   * PRESENT ONLY ON A CHECKOUT FORM, and what makes the consent tick beside it
+   * PRESENT ONLY ON A FORM WITH A WAIVER TICK, and what makes the consent tick beside it
    * informed rather than nominal: the server files the waiver document's id, the
    * visitor's IP and their user agent as evidence of agreement, so the document
    * has to be in front of them. `null` falls back to a link, which is the same
@@ -305,6 +305,26 @@ export function FunnelForm({
     <form className="djp-form" onSubmit={handleSubmit} noValidate data-djp-form={formKey}>
       {fields.map((field, index) => (
         <Fragment key={field.name}>
+          {/* THE WAIVER SITS ABOVE THE TICK'S ROW, as its own block. Inside the
+              row it was a third flex child of a row-reversed checkbox line, and
+              the document rendered squeezed between the tick and its label. */}
+          {field.role === "waiver_accepted" ? (
+            <div className="djp-waiver" data-djp-waiver>
+              {waiverHtml ? (
+                // The document itself. Server-rendered from `legal_documents`,
+                // never authored here.
+                <div dangerouslySetInnerHTML={{ __html: waiverHtml }} />
+              ) : (
+                <p>
+                  Please read the{" "}
+                  <a href="/liability-waiver" target="_blank" rel="noreferrer">
+                    liability waiver
+                  </a>{" "}
+                  before continuing.
+                </p>
+              )}
+            </div>
+          ) : null}
           <div
             className="djp-field"
             data-djp-field={field.name}
@@ -329,23 +349,6 @@ export function FunnelForm({
                 </span>
               ) : null}
             </label>
-            {field.role === "waiver_accepted" ? (
-              <div className="djp-waiver" data-djp-waiver>
-                {waiverHtml ? (
-                  // The document itself. Server-rendered from `legal_documents`,
-                  // never authored here.
-                  <div dangerouslySetInnerHTML={{ __html: waiverHtml }} />
-                ) : (
-                  <p>
-                    Please read the{" "}
-                    <a href="/liability-waiver" target="_blank" rel="noreferrer">
-                      liability waiver
-                    </a>{" "}
-                    before continuing.
-                  </p>
-                )}
-              </div>
-            ) : null}
             {renderControl(field, formKey, editable, index)}
           </div>
           {/* THE SMS CONSENT CHECKBOX, under every phone field, UNCHECKED by

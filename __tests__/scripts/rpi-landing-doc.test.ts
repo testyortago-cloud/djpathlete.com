@@ -2,7 +2,7 @@
 // __tests__/scripts/rpi-landing-doc.test.ts
 //
 // The RPI landing page is written straight onto a funnel step by
-// scripts/seed-rpi-landing-funnel.ts. It never passes through the AI page
+// scripts/seed-funnel-pages.ts. It never passes through the AI page
 // builder, so these tests are what checks it against the section grammar.
 import { describe, it, expect } from "vitest"
 import { buildRpiLandingDoc, RPI_QUIZ_STEP_SLUG } from "@/scripts/lib/rpi-landing-doc"

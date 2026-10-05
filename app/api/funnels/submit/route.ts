@@ -17,7 +17,8 @@ import { getSetting } from "@/lib/db/system-settings"
 import { getAttributionBySession } from "@/lib/db/marketing-attribution"
 import { createEventSignupCheckout } from "@/lib/events/checkout"
 import { FUNNEL_CHECKOUT_DEFAULT, FUNNEL_CHECKOUT_FLAG } from "@/lib/funnels/checkout/flag"
-import { labelForRole, signupInputFromRoles, submitterRole } from "@/lib/funnels/checkout/roles"
+import { isTicked, labelForRole, signupInputFromRoles, submitterRole } from "@/lib/funnels/checkout/roles"
+import { getActiveDocument } from "@/lib/db/legal-documents"
 import { createEventSignupSchema } from "@/lib/validators/event-signups"
 import { getBaseUrl } from "@/lib/url"
 import { sendNewFunnelLeadEmail } from "@/lib/email"
@@ -177,6 +178,28 @@ export async function POST(request: Request) {
     if (value.length > 0) payload[field.name] = value
   }
 
+  // THE WAIVER, ON ANY FORM (00288). `required` above only rejects "", and a
+  // client can post "false", so a plain form's tick is checked as a tick here.
+  // A CHECKOUT form keeps its old order: the lead is written first and the
+  // paying branch refuses an unticked waiver, so a parent who could not pay is
+  // still in the owner's leads.
+  // A ticked waiver files WHICH document was in force and when; the row already
+  // carries the IP and user agent.
+  const waiverField = fields.find((field) => field.role === "waiver_accepted")
+  const waiverTicked = waiverField ? isTicked(parsedBody.values[waiverField.name] ?? "") : false
+  if (waiverField && !waiverTicked && config.successMode !== "checkout") {
+    return NextResponse.json({ error: `${waiverField.label} must be accepted.` }, { status: 400 })
+  }
+  // A failed document read files the tick without its document id rather than
+  // 500ing: losing which version was in force is recoverable from the dates;
+  // losing the lead is not.
+  const waiverEvidence = waiverTicked
+    ? {
+        waiver_accepted_at: new Date().toISOString(),
+        waiver_document_id: (await getActiveDocument("liability_waiver").catch(() => null))?.id ?? null,
+      }
+    : {}
+
   const email = findByType(fields, payload, "email")
   const phone = findByType(fields, payload, "tel")
   const name = buildName(fields, payload)
@@ -201,6 +224,7 @@ export async function POST(request: Request) {
       ip_address: ip === "unknown" ? null : ip,
       user_agent: request.headers.get("user-agent"),
       lead_user_id: leadUserId,
+      ...waiverEvidence,
     })
   } catch (error) {
     console.error("[funnels/submit] failed to record submission:", error)

@@ -701,10 +701,20 @@ export interface CreateSubmissionInput {
   kind?: FunnelSubmissionKind
   /** 00230. The completed quiz attempt this lead came from. */
   quiz_attempt_id?: string | null
+  /**
+   * 00288. When the visitor ticked the form's waiver, and which document was in
+   * force (null when none was active). Given only for a form with a waiver tick;
+   * omitted, neither column is written at all.
+   */
+  waiver_accepted_at?: string
+  waiver_document_id?: string | null
 }
 
-/** The two columns 00230 added. Named once, for the retry below. */
-const POST_00230_COLUMNS = ["kind", "quiz_attempt_id"] as const
+/**
+ * Columns newer than the table's original shape, which the retry below may
+ * drop: 00230's two, and 00288's waiver pair. Named once.
+ */
+const POST_00230_COLUMNS = ["kind", "quiz_attempt_id", "waiver_accepted_at", "waiver_document_id"] as const
 
 /**
  * PostgREST's "column not in the schema cache".
@@ -735,6 +745,11 @@ export async function createSubmission(businessId: string, input: CreateSubmissi
     lead_user_id: input.lead_user_id ?? null,
     kind: input.kind ?? "form",
     quiz_attempt_id: input.quiz_attempt_id ?? null,
+    // ONLY ON A WAIVER FORM. Writing `null` on every other lead would put every
+    // lead, not just the rare waiver one, through the 00288 deploy race.
+    ...(input.waiver_accepted_at
+      ? { waiver_accepted_at: input.waiver_accepted_at, waiver_document_id: input.waiver_document_id ?? null }
+      : {}),
   }
 
   const { data, error } = await supabase.from("funnel_submissions").insert(row).select("*").single()
@@ -756,7 +771,9 @@ export async function createSubmission(businessId: string, input: CreateSubmissi
 
   const legacy = { ...row } as Record<string, unknown>
   for (const column of POST_00230_COLUMNS) delete legacy[column]
-  console.warn("[funnels] funnel_submissions is pre-00230; the lead was kept without its kind")
+  console.warn(
+    "[funnels] funnel_submissions is missing a newer column (00230/00288); the lead was kept without its kind or waiver document",
+  )
 
   const { data: retried, error: retryError } = await supabase
     .from("funnel_submissions")

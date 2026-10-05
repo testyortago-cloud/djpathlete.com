@@ -70,6 +70,20 @@ export function submitterRole(fields: FunnelFormField[]): "parent" | "athlete" {
   return asksAboutAParent ? "parent" : "athlete"
 }
 
+/**
+ * Whether a submitted checkbox value is a tick.
+ *
+ * An unchecked checkbox submits NOTHING; a checked one submits "on". So
+ * presence is the signal — but not blindly: a client can post any string, and
+ * `Boolean("false")` is true. The three strings that look like a tick and mean
+ * the opposite are rejected explicitly, because this is the legal gate. Shared
+ * by the checkout mapping below and the plain-form waiver in the submit route.
+ */
+export function isTicked(value: string): boolean {
+  const ticked = value.trim().toLowerCase()
+  return ticked !== "" && ticked !== "false" && ticked !== "0" && ticked !== "off"
+}
+
 export function signupInputFromRoles(fields: FunnelFormField[], values: Record<string, string>): RoleMappedSignup {
   const get = (role: string): string => {
     const field = fields.find((candidate) => candidate.role === role)
@@ -81,12 +95,7 @@ export function signupInputFromRoles(fields: FunnelFormField[], values: Record<s
     return value === "" ? null : value
   }
 
-  // An unchecked checkbox submits NOTHING; a checked one submits "on". So
-  // presence is the signal — but not blindly: a client can post any string, and
-  // `Boolean("false")` is true. The three strings that look like a tick and mean
-  // the opposite are rejected explicitly, because this is the legal gate.
-  const ticked = get("waiver_accepted").toLowerCase()
-  const waiverAccepted = ticked !== "" && ticked !== "false" && ticked !== "0" && ticked !== "off"
+  const waiverAccepted = isTicked(get("waiver_accepted"))
 
   // `Number("")` is 0 and `parseInt("13 years")` is 13 — neither is what an age
   // field means, and both would sail past a range check. Only a clean integer

@@ -3,7 +3,7 @@
 // clone, and burns callouts into each PNG.
 //
 //   npx next dev --webpack --port 3050          # in another terminal
-//   npx tsx scripts/seed-rpi-landing-funnel.ts .env.local --execute
+//   npx tsx scripts/seed-funnel-pages.ts rpi .env.local --execute
 //   npx tsx scripts/capture-rpi-landing-funnel.ts .env.local
 //
 // WRITES NOTHING to any database: the funnel must already exist (the seed

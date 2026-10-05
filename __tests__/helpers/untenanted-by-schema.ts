@@ -137,6 +137,8 @@ export const UNTENANTED_BY_SCHEMA: UntenantedRead[] = [
     row: "G43",
     surfaces: [
       "components/funnels/islands/FormIsland.tsx",
+      // Files which document a plain form's waiver tick accepted (00288).
+      "app/api/funnels/submit/route.ts",
       "app/(marketing)/camps/page.tsx",
       "app/(marketing)/clinics/page.tsx",
     ],

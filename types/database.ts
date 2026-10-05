@@ -3438,6 +3438,13 @@ export interface FunnelSubmission {
   kind: FunnelSubmissionKind
   /** 00230. The completed attempt. The score lives THERE, never copied here. */
   quiz_attempt_id: string | null
+  /**
+   * 00288. Set only on a submission from a form with a waiver tick. Optional
+   * because a pre-00288 row read has no such keys, and so does every fixture
+   * written before it.
+   */
+  waiver_accepted_at?: string | null
+  waiver_document_id?: string | null
 }
 
 // --- Lead Engine Stage 3: the public chat assistant (00227) ------------------

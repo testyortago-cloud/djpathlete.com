@@ -54,6 +54,18 @@ describe("a funnel form that takes payment", () => {
     expect(screen.getByText("Waiver terms here")).toBeInTheDocument()
   })
 
+  it("puts the waiver box above the tick's row, not inside it", () => {
+    // MUTANT KILLED: rendering the box inside `.djp-field[data-djp-field-type=
+    // "checkbox"]`. That row is laid out horizontally (row-reverse), so the
+    // document landed squeezed BETWEEN the tick and its label, seen on the
+    // pre-visit onboarding form's first render.
+    setup({ waiverHtml: "<p>Waiver terms here</p>" })
+    const box = screen.getByText("Waiver terms here").closest("[data-djp-waiver]")!
+    expect(box.closest('[data-djp-field-type="checkbox"]')).toBeNull()
+    const tickRow = screen.getByLabelText(/I accept the waiver/).closest(".djp-field")!
+    expect(box.nextElementSibling).toBe(tickRow)
+  })
+
   it("falls back to a link when no waiver document is active", () => {
     // MUTANT: rendering nothing. The tick would then claim acceptance of a
     // document the parent was never offered, and the server would file that as

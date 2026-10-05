@@ -137,6 +137,21 @@ describe("the gate", () => {
 })
 
 describe("validation matches the live route", () => {
+  it("refuses a waiver posted as \"false\" on a plain form, as the live route does (00288)", async () => {
+    // MUTANT KILLED: relying on `required` alone, which passes "false". The
+    // live route refuses it with isTicked, and a test run that passed what the
+    // live page refuses is preview and publish disagreeing.
+    const waiverFields = [
+      { name: "email", label: "Email", type: "email", required: true },
+      { name: "waiver", label: "I agree to the waiver", type: "checkbox", required: true, role: "waiver_accepted" },
+    ]
+    mock(getDraft).mockResolvedValue({ doc: docWith({ fields: waiverFields }), docInvalid: false, revision: 1 })
+    const refused = await post({ ...GOOD, values: { email: "jane@example.com", waiver: "false" } })
+    expect(refused.status).toBe(400)
+    expect((await refused.json()).error).toBe("I agree to the waiver must be accepted.")
+    expect((await post({ ...GOOD, values: { email: "jane@example.com", waiver: "on" } })).status).toBe(200)
+  })
+
   it("rejects a missing required field, naming it the way the label does", async () => {
     const response = await post({ ...GOOD, values: { name: "Jane", email: "" } })
     expect(response.status).toBe(400)

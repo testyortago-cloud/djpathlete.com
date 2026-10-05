@@ -217,6 +217,23 @@ describe("the field-role contract", () => {
     expect(formIslandSchema.safeParse(leadgen).success).toBe(true)
   })
 
+  it("requires the waiver field to be a required checkbox on a lead-gen form too", () => {
+    // MUTANT: leaving the waiver check below the checkout-only return. A
+    // non-checkout form's waiver now files evidence (00288), so an optional
+    // or free-text "waiver" there would be a gate that can be left blank.
+    const optin = (waiver: Record<string, unknown>) => ({
+      formKey: "pre-visit",
+      successMode: "message",
+      fields: [
+        { name: "email", label: "Email", type: "email", required: true },
+        { name: "waiver", label: "I agree", role: "waiver_accepted", ...waiver },
+      ],
+    })
+    expect(formIslandSchema.safeParse(optin({ type: "checkbox", required: true })).success).toBe(true)
+    expect(formIslandSchema.safeParse(optin({ type: "checkbox", required: false })).success).toBe(false)
+    expect(formIslandSchema.safeParse(optin({ type: "text", required: true })).success).toBe(false)
+  })
+
   it("keeps unroled fields — the owner's own questions survive", () => {
     const form = checkoutForm()
     form.fields.push({ name: "level", label: "Current level", type: "select", options: ["New", "Club"] })

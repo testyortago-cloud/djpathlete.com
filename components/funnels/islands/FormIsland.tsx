@@ -19,14 +19,17 @@ interface FormIslandProps {
 export async function FormIsland({ props, context }: FormIslandProps) {
   const fields = (props.fields as FunnelFormField[]) ?? []
 
-  // THE WAIVER IS FETCHED ONLY FOR A CHECKOUT FORM. Every lead-gen form in the
-  // app renders through here too, and a legal_documents read on each of them
-  // would be a query bought for nothing.
+  // THE WAIVER IS FETCHED ONLY FOR A FORM WITH A WAIVER TICK. Every lead-gen
+  // form in the app renders through here too, and a legal_documents read on
+  // each of them would be a query bought for nothing. It used to be "only a
+  // checkout form", which left a plain form's tick (the pre-visit onboarding
+  // form) beside a link instead of the document it agrees to.
   //
   // Prepared exactly as app/(marketing)/camps/[slug]/page.tsx prepares it — same
   // reader, same renderer — so the funnel and the event page show one document
   // one way. `null` when nothing is active, which FunnelForm turns into a link.
-  const waiverDoc = props.successMode === "checkout" ? await getActiveDocument("liability_waiver") : null
+  const hasWaiver = props.successMode === "checkout" || fields.some((field) => field.role === "waiver_accepted")
+  const waiverDoc = hasWaiver ? await getActiveDocument("liability_waiver") : null
   const waiverHtml = waiverDoc?.content ? renderLegalContent(waiverDoc.content) : null
 
   // THE SMS/EMAIL CONSENT WORDING IS FETCHED ONLY WHEN THE FORM HAS A PHONE

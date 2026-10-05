@@ -37,6 +37,7 @@ import { getDraft } from "@/lib/db/funnel-builder"
 import { getFunnelById, getFunnelBySlug, getStep, listSteps } from "@/lib/db/funnels"
 import { getEventById } from "@/lib/db/events"
 import { funnelFormFieldSchema, type FunnelFormField } from "@/lib/funnels/islands"
+import { isTicked } from "@/lib/funnels/checkout/roles"
 import { livePathToPreview } from "@/lib/funnels/preview-path"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
@@ -137,6 +138,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 })
     }
     if (value.length > 0) captured.push({ label: field.label, value })
+  }
+
+  // The live route's waiver rule (00288), so a test run never passes what the
+  // live page refuses. Checkout keeps the live route's order: there the paying
+  // branch refuses an unticked waiver, after the lead is written.
+  const waiverField = fields.find((field) => field.role === "waiver_accepted")
+  if (waiverField && props.successMode !== "checkout" && !isTicked(values[waiverField.name] ?? "")) {
+    return NextResponse.json({ error: `${waiverField.label} must be accepted.` }, { status: 400 })
   }
 
   return NextResponse.json({ ok: true, outcome: await outcomeFor(props, businessId), captured })

@@ -130,7 +130,10 @@ export const funnelFormFieldSchema = z.object({
   placeholder: z.string().max(120).optional(),
   /** Only meaningful for type=select. */
   options: z.array(z.string().min(1).max(80)).max(30).optional(),
-  /** See `FORM_FIELD_ROLES`. Read only when `successMode` is "checkout". */
+  /**
+   * See `FORM_FIELD_ROLES`. Read only when `successMode` is "checkout", except
+   * `waiver_accepted`, which shows and files the live waiver on any form (00288).
+   */
   role: z.enum(FORM_FIELD_ROLES).optional(),
 })
 
@@ -231,6 +234,23 @@ export const formIslandSchema = z
       seen.set(role, index)
     })
 
+    // THE WAIVER RULE HOLDS IN EVERY MODE. A plain form's waiver tick files
+    // evidence too (00288, the submit route), so an optional or free-text
+    // "waiver" anywhere would be a gate that can be left blank.
+    // `required` carries `.default(false)`, and a superRefine can see raw input
+    // on some paths — so compare against `!== true`, never `=== false`.
+    const waiverIndex = seen.get("waiver_accepted")
+    if (waiverIndex !== undefined) {
+      const waiver = fields[waiverIndex]
+      if (waiver && (waiver.type !== "checkbox" || waiver.required !== true)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["fields", waiverIndex, "type"],
+          message: "The waiver field must be a required checkbox — a legal gate that can be left blank is not a gate.",
+        })
+      }
+    }
+
     if (value.successMode !== "checkout") return
 
     if (typeof value.eventId !== "string" || value.eventId === "") {
@@ -262,19 +282,6 @@ export const formIslandSchema = z
      */
     const rejectField = (index: number, message: string) => {
       ctx.addIssue({ code: "custom", path: ["fields", index, "type"], message })
-    }
-
-    // `required` carries `.default(false)`, and a superRefine can see raw input
-    // on some paths — so compare against `!== true`, never `=== false`.
-    const waiverIndex = seen.get("waiver_accepted")
-    if (waiverIndex !== undefined) {
-      const waiver = fields[waiverIndex]
-      if (waiver && (waiver.type !== "checkbox" || waiver.required !== true)) {
-        rejectField(
-          waiverIndex,
-          "The waiver field must be a required checkbox — a legal gate that can be left blank is not a gate.",
-        )
-      }
     }
 
     const emailIndex = seen.get("parent_email")

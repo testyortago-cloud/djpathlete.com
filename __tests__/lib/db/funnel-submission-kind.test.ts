@@ -93,6 +93,29 @@ describe("createSubmission", () => {
     expect(inserted).toHaveLength(1)
   })
 
+  it("writes the waiver evidence when given, and no waiver columns at all when not (00288)", async () => {
+    // MUTANT KILLED: always writing `waiver_*: null`. Then EVERY lead, waiver
+    // or not, would hit the 00288 deploy race below instead of only the rare
+    // form that has a waiver tick.
+    await createSubmission(BUSINESS_ID, { ...BASE, waiver_document_id: "doc-7", waiver_accepted_at: "2026-10-05T12:00:00Z" })
+    await createSubmission(BUSINESS_ID, BASE)
+    expect(inserted[0].waiver_document_id).toBe("doc-7")
+    expect(inserted[0].waiver_accepted_at).toBe("2026-10-05T12:00:00Z")
+    expect(Object.keys(inserted[1])).not.toContain("waiver_document_id")
+    expect(Object.keys(inserted[1])).not.toContain("waiver_accepted_at")
+  })
+
+  it("keeps a waiver lead when the 00288 columns do not exist yet, dropping only them", async () => {
+    // The tick itself survives in `payload` (the field's own "on"); only which
+    // document was in force is lost for the length of one deploy.
+    nextError = { code: "SOMETHING_ELSE", message: "column 'waiver_document_id' does not exist" }
+    await createSubmission(BUSINESS_ID, { ...BASE, waiver_document_id: "doc-7", waiver_accepted_at: "2026-10-05T12:00:00Z" })
+    expect(inserted).toHaveLength(2)
+    expect(Object.keys(inserted[1])).not.toContain("waiver_document_id")
+    expect(Object.keys(inserted[1])).not.toContain("waiver_accepted_at")
+    expect(inserted[1].payload).toEqual(BASE.payload)
+  })
+
   it("carries the PostgREST code on the thrown error, so a duplicate is tellable from a failure", async () => {
     // The unique index on quiz_attempt_id is what makes one completion one
     // lead. Its caller needs to tell 23505 ("already recorded") from a real

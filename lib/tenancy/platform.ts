@@ -417,7 +417,8 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     a coach's host is mailed by the platform's newsletter. G38.
  *   - `getActiveDocument` (lib/db/legal-documents.ts) reads
  *     `legal_documents`. Public surfaces that resolved a Host tenant reach
- *     it: the funnel form (components/funnels/islands/FormIsland.tsx), the
+ *     it: the funnel form (components/funnels/islands/FormIsland.tsx) and the
+ *     submission it files (app/api/funnels/submit/route.ts, 00288), the
  *     camp and clinic pages (app/(marketing)/camps/page.tsx,
  *     app/(marketing)/clinics/page.tsx, and each event's own page) and the
  *     event signup and checkout. Every business's customers see, and record

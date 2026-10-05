@@ -432,6 +432,21 @@ function LeadRows({
                   </p>
                 ) : null}
                 <AnswerList payload={lead.payload} />
+                {lead.waiver_accepted_at ? (
+                  // 00288's evidence, in words: when, and from where. Which
+                  // document was in force is on the row (waiver_document_id).
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Accepted the liability waiver on{" "}
+                    {new Date(lead.waiver_accepted_at).toLocaleString(undefined, {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                    {lead.ip_address ? ` from ${lead.ip_address}` : ""}.
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label
