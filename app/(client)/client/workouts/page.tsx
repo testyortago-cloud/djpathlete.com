@@ -19,6 +19,7 @@ import { isAssignmentExpired } from "@/lib/utils"
 import { effectiveTotalWeeks, sourceWeekForDisplay } from "@/lib/program-weeks"
 import { WaiverGate } from "@/components/client/WaiverGate"
 import { PendingPaymentCard } from "@/components/client/PendingPaymentCard"
+import { buildWeekGate, formatUnlockDate } from "@/lib/programs/week-visibility"
 import type { Program, ProgramAssignment, Exercise, ProgramExercise, ProgramWeekAccess } from "@/types/database"
 
 export const dynamic = "force-dynamic"
@@ -79,6 +80,7 @@ export default async function ClientWorkoutsPage() {
   if (!session?.user) redirect("/login")
 
   const userId = session.user.id
+  const now = new Date()
 
   let activeAssignments: AssignmentWithProgram[] = []
   let pendingPaymentAssignments: AssignmentWithProgram[] = []
@@ -186,6 +188,9 @@ export default async function ClientWorkoutsPage() {
       const totalWeeks = effectiveTotalWeeks(assignment.total_weeks, program.duration_weeks, maxContentWeek)
       // Use DB-tracked current_week; fall back to date-based calculation
       const currentWeek = assignment.current_week ?? getCurrentWeekFromDate(assignment.start_date, totalWeeks)
+      // What this client may see. Hidden and not-yet-released weeks get no workouts at all, and a
+      // paid week awaiting payment gets only its price (the Unlock card) — never its exercises.
+      const gate = buildWeekGate(assignment, weekAccessByAssignment[assignment.id] ?? [], totalWeeks, now)
 
       // Group exercises by week_number, then by day_of_week
       const weekMap = new Map<number, Map<number, ProgramExerciseWithExercise[]>>()
@@ -210,6 +215,7 @@ export default async function ClientWorkoutsPage() {
       > = {}
 
       for (let w = 1; w <= totalWeeks; w++) {
+        if (!gate.open.has(w)) continue
         // Find the best source week: exact match, or the closest defined week <= w
         const sourceWeek = sourceWeekForDisplay(w, definedWeeks)
         if (sourceWeek == null) continue
@@ -227,13 +233,10 @@ export default async function ClientWorkoutsPage() {
         }
       }
 
-      // Build week access map: weekNumber → { locked, priceCents }
-      const assignmentAccess = weekAccessByAssignment[assignment.id] ?? []
-      const lockedWeeks: Record<number, { priceCents: number }> = {}
-      for (const wa of assignmentAccess) {
-        if (wa.payment_status === "pending" && wa.access_type === "paid") {
-          lockedWeeks[wa.week_number] = { priceCents: wa.price_cents ?? 0 }
-        }
+      const lockedWeeks = gate.locked
+      const unavailableWeeks: Record<number, { unlocksOn: string | null }> = {}
+      for (const [week, u] of Object.entries(gate.unavailable)) {
+        unavailableWeeks[Number(week)] = { unlocksOn: u.unlocksOn ? formatUnlockDate(u.unlocksOn) : null }
       }
 
       return {
@@ -248,6 +251,7 @@ export default async function ClientWorkoutsPage() {
         totalWeeks,
         weeks,
         lockedWeeks,
+        unavailableWeeks,
       }
     })
 
@@ -278,6 +282,7 @@ export default async function ClientWorkoutsPage() {
     const program = assignment.programs
     const maxContentWeek = exercises.reduce((m, e) => Math.max(m, e.week_number), 0)
     const totalWeeks = effectiveTotalWeeks(assignment.total_weeks, program.duration_weeks, maxContentWeek)
+    const gate = buildWeekGate(assignment, weekAccessByAssignment[assignment.id] ?? [], totalWeeks, now)
 
     // Collect unique (week, day) combos with counts
     const dayMap = new Map<
@@ -320,6 +325,7 @@ export default async function ClientWorkoutsPage() {
     const uniqueDefinedWeeks = [...new Set(definedWeeks)].sort((a, b) => a - b)
 
     for (let w = 1; w <= totalWeeks; w++) {
+      if (!gate.open.has(w)) continue
       // Find the best source week
       const sourceWeek = sourceWeekForDisplay(w, uniqueDefinedWeeks)
       if (sourceWeek == null) continue

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
-import { CheckCircle2, ChevronLeft, ChevronRight, Dumbbell, Calendar, Lock } from "lucide-react"
+import { CheckCircle2, ChevronLeft, ChevronRight, Dumbbell, Calendar, Lock, CalendarClock } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { WorkoutDay } from "@/components/client/WorkoutDay"
@@ -36,6 +36,8 @@ interface ProgramWorkout {
   totalWeeks: number
   weeks: Record<number, WorkoutDayEntry[]>
   lockedWeeks?: Record<number, { priceCents: number }>
+  /** Weeks the client can't see yet: a scheduled week carries its unlock day, a coach-hidden week null. */
+  unavailableWeeks?: Record<number, { unlocksOn: string | null }>
 }
 
 interface WorkoutTabsProps {
@@ -178,6 +180,7 @@ function ProgramDetail({
   const router = useRouter()
   const [isPurchasing, setIsPurchasing] = useState(false)
   const lockedWeeks = program.lockedWeeks ?? {}
+  const unavailableWeeks = program.unavailableWeeks ?? {}
 
   async function handlePurchaseWeek(weekNumber: number) {
     setIsPurchasing(true)
@@ -211,7 +214,12 @@ function ProgramDetail({
     .sort((a, b) => a - b)
   // currentWeek=0 means program hasn't started yet — default to week 1
   const effectiveCurrentWeek = program.currentWeek || 1
-  const safeCurrentWeek = weekKeys.includes(effectiveCurrentWeek) ? effectiveCurrentWeek : (weekKeys[0] ?? 1)
+  const safeCurrentWeek =
+    weekKeys.includes(effectiveCurrentWeek) ||
+    lockedWeeks[effectiveCurrentWeek] ||
+    unavailableWeeks[effectiveCurrentWeek]
+      ? effectiveCurrentWeek
+      : (weekKeys[0] ?? 1)
 
   const [selectedWeek, setSelectedWeek] = useState(safeCurrentWeek)
   const [sessionLoggedIds, setSessionLoggedIds] = useState<Set<string>>(new Set())
@@ -341,12 +349,16 @@ function ProgramDetail({
             <p className="text-sm font-semibold text-foreground">
               Week {selectedWeek}
               {lockedWeeks[selectedWeek] && <Lock className="inline size-3 ml-1 text-warning" />}
+              {unavailableWeeks[selectedWeek] && <Lock className="inline size-3 ml-1 text-muted-foreground" />}
               <span className="text-muted-foreground font-normal"> / {program.totalWeeks}</span>
             </p>
-            {isCurrentWeek && !lockedWeeks[selectedWeek] && (
+            {isCurrentWeek && !lockedWeeks[selectedWeek] && !unavailableWeeks[selectedWeek] && (
               <p className="text-[10px] text-primary font-medium">Current week</p>
             )}
             {lockedWeeks[selectedWeek] && <p className="text-[10px] text-warning font-medium">Payment required</p>}
+            {unavailableWeeks[selectedWeek] && (
+              <p className="text-[10px] text-muted-foreground font-medium">Not available yet</p>
+            )}
           </div>
           <Button
             size="icon"
@@ -435,7 +447,33 @@ function ProgramDetail({
       {/* Workout content for selected day */}
       <div className="space-y-6">
         <AnimatePresence mode="wait">
-          {lockedWeeks[selectedWeek] ? (
+          {unavailableWeeks[selectedWeek] ? (
+            <motion.div
+              key={`unavailable-${selectedWeek}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <div className="bg-white rounded-xl border border-border p-8 text-center space-y-3">
+                <div className="flex justify-center">
+                  <div className="size-14 rounded-full bg-muted flex items-center justify-center">
+                    <CalendarClock className="size-7 text-muted-foreground" />
+                  </div>
+                </div>
+                <h3 className="text-base font-semibold text-foreground">
+                  {unavailableWeeks[selectedWeek].unlocksOn
+                    ? `Week ${selectedWeek} unlocks on ${unavailableWeeks[selectedWeek].unlocksOn}`
+                    : `Week ${selectedWeek} isn't available yet`}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {unavailableWeeks[selectedWeek].unlocksOn
+                    ? "Your coach opens one new week at a time. Come back that day to see your workouts."
+                    : "Your coach will open this week for you."}
+                </p>
+              </div>
+            </motion.div>
+          ) : lockedWeeks[selectedWeek] ? (
             <motion.div
               key={`locked-${selectedWeek}`}
               initial={{ opacity: 0 }}
@@ -526,7 +564,7 @@ function ProgramDetail({
       )}
 
       {/* Complete Week button — only shown on the current week when all exercises are logged and week is not locked */}
-      {isCurrentWeek && !lockedWeeks[selectedWeek] && (
+      {isCurrentWeek && !lockedWeeks[selectedWeek] && !unavailableWeeks[selectedWeek] && (
         <CompleteWeekButton
           assignmentId={program.assignmentId}
           currentWeek={effectiveCurrentWeek}
