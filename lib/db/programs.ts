@@ -11,13 +11,42 @@ export async function getPrograms() {
   // UNTENANTED BY SCHEMA (G37). `programs` has no `business_id` column, so
   // this is every business's programmes, and there is no predicate to add
   // without inventing the column. Staff holding `programs` (the Coach preset)
-  // read it through /admin/programs. Listed on the shelf in
+  // read it through /admin/programs. Library programs (is_template) are excluded:
+  // they are never assigned or sold directly. Listed on the shelf in
   // lib/tenancy/platform.ts; the table converts first, then this read.
   const { data, error } = await supabase
     .from("programs")
     .select("*")
     .eq("is_active", true)
+    .eq("is_template", false)
     .order("created_at", { ascending: false })
+  if (error) throw error
+  return data as Program[]
+}
+
+/**
+ * The library: template programs in this business's folders. Tenant-scoped
+ * through program_folders.business_id. `programs` itself has no business_id
+ * (G37), but every template has a folder (DB check programs_template_has_folder),
+ * so the folder is the tenant predicate. Two reads rather than an embed: an
+ * embed hint is what 500'd the leads inbox in G31.
+ */
+export async function getLibraryPrograms(businessId: string): Promise<Program[]> {
+  const supabase = getClient()
+  const { data: folders, error: folderError } = await supabase
+    .from("program_folders")
+    .select("id")
+    .eq("business_id", businessId)
+  if (folderError) throw folderError
+  const folderIds = (folders ?? []).map((f: { id: string }) => f.id)
+  if (folderIds.length === 0) return []
+  const { data, error } = await supabase
+    .from("programs")
+    .select("*")
+    .eq("is_active", true)
+    .eq("is_template", true)
+    .in("folder_id", folderIds)
+    .order("name", { ascending: true })
   if (error) throw error
   return data as Program[]
 }

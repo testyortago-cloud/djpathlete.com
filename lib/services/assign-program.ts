@@ -156,6 +156,10 @@ export interface AssignProgramInput {
   complimentary?: boolean
   /** The payment has already settled — see `computeAssignmentPaymentStatus`. */
   prepaid?: boolean
+  /** Weekly release: weeks visible at the start. Omitted by every caller but "Give to client" = no schedule. */
+  releaseBaseWeek?: number | null
+  /** When the 7-day clock starts. The DB trigger clears it while payment is pending. */
+  releaseAnchorAt?: string | null
 }
 
 export interface AssignProgramResult {
@@ -177,12 +181,17 @@ export async function assignProgram(input: AssignProgramInput): Promise<AssignPr
     assignedBy = null,
     complimentary = false,
     prepaid = false,
+    releaseBaseWeek = null,
+    releaseAnchorAt = null,
   } = input
 
   const existing = await getAssignmentByUserAndProgram(userId, programId)
   if (existing && existing.status === "active") return { assignment: null, skipped: true }
 
   const program = await getProgramById(programId)
+  if (program.is_template) {
+    throw new Error("A library program cannot be assigned directly; give the client a copy instead.")
+  }
   const premiumWeeks = await getPremiumWeeks(programId)
   const totalWeeks = program.duration_weeks ?? 1
   const paymentStatus = computeAssignmentPaymentStatus(program.payment_type, complimentary, prepaid)
@@ -199,6 +208,9 @@ export async function assignProgram(input: AssignProgramInput): Promise<AssignPr
     total_weeks: totalWeeks,
     payment_status: paymentStatus,
     expires_at: null,
+    ...(releaseBaseWeek != null
+      ? { release_base_week: releaseBaseWeek, release_anchor_at: releaseAnchorAt ?? new Date().toISOString() }
+      : {}),
   })
 
   await createWeekAccessBulk(buildWeekAccessRows(assignment.id, totalWeeks, premiumWeeks))

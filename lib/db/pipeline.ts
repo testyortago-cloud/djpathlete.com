@@ -2128,6 +2128,7 @@ export async function listGrantablePrograms(): Promise<
     .from("programs")
     .select("id, name, price_cents")
     .eq("is_active", true)
+    .eq("is_template", false)
     .not("stripe_price_id", "is", null)
     .order("name")
   if (error) throw new Error(`programs read failed: ${error.message}`)
