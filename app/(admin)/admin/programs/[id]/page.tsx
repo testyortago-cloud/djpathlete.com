@@ -74,7 +74,13 @@ export default async function ProgramBuilderPage({ params }: { params: Promise<{
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <Link
-          href={program.is_template ? "/admin/programs?tab=library" : "/admin/programs"}
+          href={
+            program.is_template
+              ? program.folder_id
+                ? `/admin/programs?tab=library&folder=${program.folder_id}`
+                : "/admin/programs?tab=library"
+              : "/admin/programs"
+          }
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="size-4" />

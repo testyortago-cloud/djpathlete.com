@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
+import { auth } from "@/lib/auth"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { duplicateWeekExercises } from "@/lib/db/program-exercises"
 
 const duplicateWeekSchema = z.object({
@@ -9,6 +11,10 @@ const duplicateWeekSchema = z.object({
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const session = await auth()
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    }
     const { id } = await params
     const body = await request.json()
     const result = duplicateWeekSchema.safeParse(body)

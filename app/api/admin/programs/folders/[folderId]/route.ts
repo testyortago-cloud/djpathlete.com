@@ -17,7 +17,10 @@ export const PATCH = withAudit(
   {
     action: "program_folder.updated",
     category: "admin_write",
-    target: async (_req, ctx) => ({ type: "program_folder", id: ((await ctx.params) as { folderId: string }).folderId }),
+    target: async (_req, ctx) => ({
+      type: "program_folder",
+      id: ((await ctx.params) as { folderId: string }).folderId,
+    }),
   },
   async (request, context) => {
     try {
@@ -46,7 +49,10 @@ export const DELETE = withAudit(
   {
     action: "program_folder.deleted",
     category: "admin_write",
-    target: async (_req, ctx) => ({ type: "program_folder", id: ((await ctx.params) as { folderId: string }).folderId }),
+    target: async (_req, ctx) => ({
+      type: "program_folder",
+      id: ((await ctx.params) as { folderId: string }).folderId,
+    }),
   },
   async (request, context) => {
     try {

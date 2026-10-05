@@ -2,11 +2,17 @@ import { NextResponse } from "next/server"
 import { getAssignmentById, updateAssignment, deleteAssignment } from "@/lib/db/assignments"
 import { withAudit } from "@/lib/audit/with-audit"
 import { recordAudit } from "@/lib/audit/record"
+import { auth } from "@/lib/auth"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const session = await auth()
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    }
     const { id } = await params
     const body = await request.json()
     const { status, start_date, notes, payment_status, expires_at, release_schedule } = body
@@ -50,6 +56,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "release_schedule must be true or false" }, { status: 400 })
     }
 
+    if (release_schedule !== undefined && (status || payment_status)) {
+      return NextResponse.json({ error: "Change the weekly release on its own." }, { status: 400 })
+    }
+
     // Verify assignment exists
     const existing = await getAssignmentById(id)
     if (!existing) {
@@ -67,7 +77,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (notes !== undefined) updates.notes = notes
     if (payment_status) updates.payment_status = payment_status
     if (expires_at !== undefined) updates.expires_at = expires_at
-    if (release_schedule === true) {
+    if (release_schedule === true && existing.release_base_week == null) {
       // Start from the week the client is on, so nothing they can already see disappears. The clock
       // runs only while the assignment is active and paid; the DB trigger takes over from here.
       const running =
@@ -79,7 +89,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       updates.release_anchor_at = null
     }
 
-    const updated = await updateAssignment(id, updates)
+    // Turning the schedule on when it is already on leaves it alone.
+    const updated = Object.keys(updates).length > 0 ? await updateAssignment(id, updates) : existing
 
     // Audit: slug depends on payload — status change vs general update.
     void recordAudit({
@@ -116,6 +127,10 @@ export const DELETE = withAudit(
   async (_request, context) => {
     const { params } = context as unknown as { params: Promise<{ id: string }> }
     try {
+      const session = await auth()
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+      }
       const { id } = await params
 
       const existing = await getAssignmentById(id)

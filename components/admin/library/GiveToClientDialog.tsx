@@ -72,7 +72,8 @@ export function GiveToClientDialog({ open, onOpenChange, program, clients }: Giv
     !!program &&
     !!clientId &&
     name.trim().length > 0 &&
-    (!releaseWeekly || (weeksAtStart >= 1 && weeksAtStart <= duration))
+    /^\d{4}-\d{2}-\d{2}$/.test(startDate) &&
+    (!releaseWeekly || (Number.isInteger(weeksAtStart) && weeksAtStart >= 1 && weeksAtStart <= duration))
 
   async function submit() {
     if (!program || !clientId) return
@@ -86,7 +87,7 @@ export function GiveToClientDialog({ open, onOpenChange, program, clients }: Giv
           name: name.trim(),
           start_date: startDate,
           release_weekly: releaseWeekly,
-          weeks_visible_at_start: weeksAtStart,
+          weeks_visible_at_start: releaseWeekly ? weeksAtStart : 1,
           complimentary,
         }),
       })
@@ -162,7 +163,7 @@ export function GiveToClientDialog({ open, onOpenChange, program, clients }: Giv
             <Input
               id="give-name"
               value={name}
-              maxLength={200}
+              maxLength={100}
               onChange={(e) => {
                 setName(e.target.value)
                 setNameTouched(true)

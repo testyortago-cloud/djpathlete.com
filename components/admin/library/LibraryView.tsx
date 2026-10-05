@@ -75,11 +75,6 @@ export function LibraryView({ folders, programs, initialFolderId }: LibraryViewP
   const [deleteTarget, setDeleteTarget] = useState<Program | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // Keep the selection valid after a folder is created or deleted (router.refresh()).
-  useEffect(() => {
-    if (!folders.some((f) => f.id === folderId)) setFolderId(folders[0]?.id ?? null)
-  }, [folders, folderId])
-
   useEffect(() => {
     let cancelled = false
     fetch("/api/admin/users?role=client")
@@ -97,8 +92,10 @@ export function LibraryView({ folders, programs, initialFolderId }: LibraryViewP
   for (const p of programs) {
     if (p.folder_id) countByFolder.set(p.folder_id, (countByFolder.get(p.folder_id) ?? 0) + 1)
   }
-  const current = folders.find((f) => f.id === folderId) ?? null
-  const rows = programs.filter((p) => p.folder_id === folderId)
+  // Derived, so a folder created or deleted (router.refresh()) never leaves a stale selection.
+  const selectedId = folders.some((f) => f.id === folderId) ? folderId : (folders[0]?.id ?? null)
+  const current = folders.find((f) => f.id === selectedId) ?? null
+  const rows = programs.filter((p) => p.folder_id === selectedId)
 
   async function send(url: string, init: RequestInit, success: string): Promise<boolean> {
     setBusy(true)
@@ -150,10 +147,12 @@ export function LibraryView({ folders, programs, initialFolderId }: LibraryViewP
               <button
                 type="button"
                 onClick={() => setFolderId(f.id)}
-                aria-current={f.id === folderId ? "true" : undefined}
+                aria-current={f.id === selectedId ? "true" : undefined}
                 className={cn(
                   "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm",
-                  f.id === folderId ? "bg-primary/10 font-medium text-primary" : "text-foreground hover:bg-surface/50",
+                  f.id === selectedId
+                    ? "bg-primary/10 font-medium text-primary"
+                    : "text-foreground hover:bg-surface/50",
                 )}
               >
                 <Folder className="size-4 shrink-0" />

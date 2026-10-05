@@ -99,7 +99,12 @@ describe("save to library", () => {
     copyProgram.mockResolvedValue({ id: "copy-1" })
     const res = await saveToLibrary(json({ folder_id: FOLDER }), ctx({ id: "p1" }))
     expect(res.status).toBe(201)
-    expect(copyProgram).toHaveBeenCalledWith("p1", { is_template: true, folder_id: FOLDER, is_public: false, name: "Block A" })
+    expect(copyProgram).toHaveBeenCalledWith("p1", {
+      is_template: true,
+      folder_id: FOLDER,
+      is_public: false,
+      name: "Block A",
+    })
   })
 })
 

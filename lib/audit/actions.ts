@@ -33,11 +33,31 @@ export const AUDIT_ACTIONS = [
   { slug: "assignment.status_changed", category: "admin_write", description: "Assignment status changed" },
   { slug: "assignment.updated", category: "admin_write", description: "Assignment updated (non-status fields)" },
   { slug: "assignment.deleted", category: "admin_write", description: "Assignment removed" },
-  { slug: "assignment.release_schedule_changed", category: "admin_write", description: "Weekly week-release turned on or off for a client" },
-  { slug: "assignment.week_visibility_changed", category: "admin_write", description: "A client's week shown, hidden or put back on the weekly schedule" },
-  { slug: "program.given_to_client", category: "admin_write", description: "Library program copied and given to a client" },
-  { slug: "program.saved_to_library", category: "admin_write", description: "Program copied into the library" },
-  { slug: "program_folder.created", category: "admin_write", description: "Library folder created" },
+  {
+    slug: "assignment.release_schedule_changed",
+    category: "admin_write",
+    description: "Weekly week-release turned on or off for a client",
+  },
+  {
+    slug: "assignment.week_visibility_changed",
+    category: "admin_write",
+    description: "A client's week shown, hidden or put back on the weekly schedule",
+  },
+  {
+    slug: "program.given_to_client",
+    category: "admin_write",
+    description: "Library program copied and given to a client",
+  },
+  {
+    slug: "program.saved_to_library",
+    category: "admin_write",
+    description: "Program copied into the library",
+  },
+  {
+    slug: "program_folder.created",
+    category: "admin_write",
+    description: "Library folder created",
+  },
   { slug: "program_folder.updated", category: "admin_write", description: "Library folder renamed" },
   { slug: "program_folder.deleted", category: "admin_write", description: "Library folder deleted" },
 

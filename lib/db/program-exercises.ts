@@ -285,4 +285,3 @@ export async function copyExercisesFromProgram(args: CopyFromProgramArgs) {
   if (error) throw error
   return data as (ProgramExercise & { exercises: unknown })[]
 }
-

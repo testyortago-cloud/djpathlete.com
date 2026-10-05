@@ -59,12 +59,7 @@ export interface WeekGate {
   unavailable: Record<number, { unlocksOn: string | null }>
 }
 
-export function buildWeekGate(
-  a: ReleaseFields,
-  rows: WeekAccessFields[],
-  totalWeeks: number,
-  now: Date,
-): WeekGate {
+export function buildWeekGate(a: ReleaseFields, rows: WeekAccessFields[], totalWeeks: number, now: Date): WeekGate {
   const byWeek = new Map(rows.map((r) => [r.week_number, r]))
   const gate: WeekGate = { open: new Set(), locked: {}, unavailable: {} }
   for (let w = 1; w <= totalWeeks; w++) {

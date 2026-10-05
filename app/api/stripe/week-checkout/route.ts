@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { weekCheckoutSchema } from "@/lib/validators/week-access"
 import { getWeekAccess } from "@/lib/db/week-access"
 import { getAssignmentById } from "@/lib/db/assignments"
+import { weekState } from "@/lib/programs/week-visibility"
 import { getProgramById } from "@/lib/db/programs"
 import { createWeekCheckoutSession } from "@/lib/stripe"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
@@ -37,6 +38,10 @@ export async function POST(request: Request) {
     const weekAccess = await getWeekAccess(assignmentId, weekNumber)
     if (!weekAccess) {
       return NextResponse.json({ error: "Week access record not found." }, { status: 404 })
+    }
+
+    if (weekState(weekNumber, assignment, weekAccess.visibility, new Date()) !== "visible") {
+      return NextResponse.json({ error: "This week isn't available yet." }, { status: 403 })
     }
 
     if (weekAccess.payment_status === "paid" || weekAccess.payment_status === "not_required") {

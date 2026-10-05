@@ -67,6 +67,9 @@ export function SaveToLibraryDialog({ open, onOpenChange, program }: SaveToLibra
           return
         }
         target = body.folder.id
+        // Keep it selected so a retry after a failed save does not POST the folder again (409).
+        setFolders((fs) => [...(fs ?? []), body.folder])
+        setFolderId(body.folder.id)
       }
       const res = await fetch(`/api/admin/programs/${program.id}/save-to-library`, {
         method: "POST",
@@ -126,7 +129,7 @@ export function SaveToLibraryDialog({ open, onOpenChange, program }: SaveToLibra
           </div>
           <div className="space-y-2">
             <Label htmlFor="save-name">Name in the library</Label>
-            <Input id="save-name" value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />
+            <Input id="save-name" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
           </div>
         </div>
         <DialogFooter>

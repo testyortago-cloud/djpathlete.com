@@ -29,7 +29,13 @@ beforeEach(() => {
 
 describe("assignProgram and the library", () => {
   it("refuses a library program — clients only ever get a copy", async () => {
-    getProgramById.mockResolvedValue({ id: "p1", name: "P", payment_type: "free", duration_weeks: 12, is_template: true })
+    getProgramById.mockResolvedValue({
+      id: "p1",
+      name: "P",
+      payment_type: "free",
+      duration_weeks: 12,
+      is_template: true,
+    })
     await expect(assignProgram(base)).rejects.toThrow(/library/i)
     expect(createAssignment).not.toHaveBeenCalled()
   })

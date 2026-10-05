@@ -29,7 +29,10 @@ export default async function ProgramsPage({
   let library: { folders: ProgramFolder[]; programs: Program[] } | null = null
   if (showLibrary) {
     const { businessId } = await resolveAdminTenant()
-    const [folders, libraryPrograms] = await Promise.all([listProgramFolders(businessId), getLibraryPrograms(businessId)])
+    const [folders, libraryPrograms] = await Promise.all([
+      listProgramFolders(businessId),
+      getLibraryPrograms(businessId),
+    ])
     library = { folders, programs: libraryPrograms }
   }
 

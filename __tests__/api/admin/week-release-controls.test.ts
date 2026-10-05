@@ -26,6 +26,8 @@ vi.mock("@/lib/db/week-access", () => ({
   getWeekAccessByAssignment: vi.fn(),
 }))
 
+import { auth } from "@/lib/auth"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { PATCH as patchAssignment } from "@/app/api/admin/assignments/[id]/route"
 import { POST as weekAccessPOST } from "@/app/api/admin/programs/[id]/week-access/route"
 
@@ -77,6 +79,41 @@ describe("PATCH release_schedule", () => {
   it("rejects a non-boolean", async () => {
     getAssignmentById.mockResolvedValue({ id: "a1", status: "active", payment_status: "paid", current_week: 3 })
     expect((await patch({ release_schedule: "yes" })).status).toBe(400)
+    expect(updateAssignment).not.toHaveBeenCalled()
+  })
+})
+
+describe("PATCH release_schedule edge cases", () => {
+  it("leaves an already-running schedule alone", async () => {
+    const existing = { id: "a1", status: "active", payment_status: "paid", current_week: 5, release_base_week: 2 }
+    getAssignmentById.mockResolvedValue(existing)
+    const res = await patch({ release_schedule: true })
+    expect(res.status).toBe(200)
+    expect(updateAssignment).not.toHaveBeenCalled()
+    expect((await res.json()).id).toBe("a1")
+  })
+
+  it.each([{ status: "paused" }, { payment_status: "paid" }])(
+    "rejects release_schedule sent with %j",
+    async (extra) => {
+      getAssignmentById.mockResolvedValue({ id: "a1", status: "active", payment_status: "paid", current_week: 1 })
+      const res = await patch({ release_schedule: true, ...extra })
+      expect(res.status).toBe(400)
+      expect(updateAssignment).not.toHaveBeenCalled()
+    },
+  )
+})
+
+describe("PATCH auth", () => {
+  it("403s a non-admin and never updates", async () => {
+    vi.mocked(canAccessAdminPath).mockResolvedValueOnce(false)
+    expect((await patch({ notes: "x" })).status).toBe(403)
+    expect(updateAssignment).not.toHaveBeenCalled()
+  })
+
+  it("403s no session", async () => {
+    vi.mocked(auth).mockResolvedValueOnce(null as never)
+    expect((await patch({ notes: "x" })).status).toBe(403)
     expect(updateAssignment).not.toHaveBeenCalled()
   })
 })

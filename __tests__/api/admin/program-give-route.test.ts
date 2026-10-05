@@ -32,7 +32,14 @@ import { POST } from "@/app/api/admin/programs/[id]/give/route"
 
 const CLIENT = "44444444-4444-4444-8444-444444444444"
 const TEMPLATE = { id: "tpl-1", name: "12-Week Strength", is_template: true, folder_id: "f1", duration_weeks: 12 }
-const COPY = { id: "copy-1", name: "12-Week Strength – Jo", payment_type: "free", price_cents: null, description: null, billing_interval: null }
+const COPY = {
+  id: "copy-1",
+  name: "12-Week Strength – Jo",
+  payment_type: "free",
+  price_cents: null,
+  description: null,
+  billing_interval: null,
+}
 const body = (extra: Record<string, unknown> = {}) => ({
   user_id: CLIENT,
   name: "12-Week Strength – Jo",
@@ -83,7 +90,9 @@ describe("POST /api/admin/programs/[id]/give", () => {
 
   it("with weekly release off, assigns with no schedule", async () => {
     await POST(req(body({ release_weekly: false })), ctx)
-    expect(assignProgram).toHaveBeenCalledWith(expect.objectContaining({ releaseBaseWeek: null, releaseAnchorAt: null }))
+    expect(assignProgram).toHaveBeenCalledWith(
+      expect.objectContaining({ releaseBaseWeek: null, releaseAnchorAt: null }),
+    )
   })
 
   it("refuses a program that is not in the library, and copies nothing", async () => {
@@ -104,10 +113,18 @@ describe("POST /api/admin/programs/[id]/give", () => {
   })
 
   it("creates a fresh Stripe price for a paid copy, keyed to the copy", async () => {
-    copyProgram.mockResolvedValue({ ...COPY, payment_type: "subscription", price_cents: 4900, billing_interval: "week" })
+    copyProgram.mockResolvedValue({
+      ...COPY,
+      payment_type: "subscription",
+      price_cents: 4900,
+      billing_interval: "week",
+    })
     await POST(req(body()), ctx)
     expect(createStripe).toHaveBeenCalledWith(expect.objectContaining({ programId: "copy-1", priceCents: 4900 }))
-    expect(updateProgram).toHaveBeenCalledWith("copy-1", { stripe_product_id: "prod_new", stripe_price_id: "price_new" })
+    expect(updateProgram).toHaveBeenCalledWith("copy-1", {
+      stripe_product_id: "prod_new",
+      stripe_price_id: "price_new",
+    })
   })
 
   it("deletes the copy when assigning fails — nothing half-done is left behind", async () => {

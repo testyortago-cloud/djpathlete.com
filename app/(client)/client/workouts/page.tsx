@@ -106,21 +106,18 @@ export default async function ClientWorkoutsPage() {
     // DB tables may not exist yet — render gracefully with empty data
   }
 
-  // Fetch week access data for all active assignments
-  let weekAccessByAssignment: Record<string, ProgramWeekAccess[]> = {}
-  try {
-    const assignmentIds = activeAssignments.map((a) => a.id)
-    if (assignmentIds.length > 0) {
-      const allWeekAccess = await getWeekAccessByAssignments(assignmentIds)
-      for (const wa of allWeekAccess) {
-        if (!weekAccessByAssignment[wa.assignment_id]) {
-          weekAccessByAssignment[wa.assignment_id] = []
-        }
-        weekAccessByAssignment[wa.assignment_id].push(wa)
+  // Fetch week access data for all active assignments. No try/catch: on a DB error the page must
+  // fail closed, not show hidden or unpaid weeks as open.
+  const weekAccessByAssignment: Record<string, ProgramWeekAccess[]> = {}
+  const assignmentIds = activeAssignments.map((a) => a.id)
+  if (assignmentIds.length > 0) {
+    const allWeekAccess = await getWeekAccessByAssignments(assignmentIds)
+    for (const wa of allWeekAccess) {
+      if (!weekAccessByAssignment[wa.assignment_id]) {
+        weekAccessByAssignment[wa.assignment_id] = []
       }
+      weekAccessByAssignment[wa.assignment_id].push(wa)
     }
-  } catch {
-    // Table may not exist yet
   }
 
   // Latest form-review submission per program-exercise (for the 🎥 status chip)

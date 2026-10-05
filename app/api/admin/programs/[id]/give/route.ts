@@ -35,7 +35,10 @@ export const POST = withAudit(
 
       const parsed = giveProgramSchema.safeParse(await request.json().catch(() => null))
       if (!parsed.success) {
-        return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten().fieldErrors }, { status: 400 })
+        return NextResponse.json(
+          { error: "Invalid data", details: parsed.error.flatten().fieldErrors },
+          { status: 400 },
+        )
       }
       const input = parsed.data
 
@@ -85,7 +88,10 @@ export const POST = withAudit(
       } catch (err) {
         console.error(`[give] rolling back copy ${copy.id}:`, err)
         await deleteProgram(copy.id).catch((e) => console.error(`[give] rollback of ${copy.id} failed:`, e))
-        return NextResponse.json({ error: "Couldn't give the program to this client. Nothing was saved." }, { status: 500 })
+        return NextResponse.json(
+          { error: "Couldn't give the program to this client. Nothing was saved." },
+          { status: 500 },
+        )
       }
     } catch (err) {
       if (err instanceof NoAccessibleBusinessError) return NextResponse.json({ error: err.message }, { status: 403 })

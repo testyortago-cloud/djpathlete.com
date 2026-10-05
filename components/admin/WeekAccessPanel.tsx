@@ -417,12 +417,22 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {state !== "visible" && (
-                        <Button size="sm" variant="outline" onClick={() => setVisibility("shown")} disabled={actionLoading}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setVisibility("shown")}
+                          disabled={actionLoading}
+                        >
                           <Eye className="size-3 mr-1.5" /> Show now
                         </Button>
                       )}
                       {vis !== "hidden" && (
-                        <Button size="sm" variant="outline" onClick={() => setVisibility("hidden")} disabled={actionLoading}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setVisibility("hidden")}
+                          disabled={actionLoading}
+                        >
                           <EyeOff className="size-3 mr-1.5" /> Hide
                         </Button>
                       )}
