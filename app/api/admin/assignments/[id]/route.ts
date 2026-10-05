@@ -9,7 +9,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { id } = await params
     const body = await request.json()
-    const { status, start_date, notes, payment_status, expires_at } = body
+    const { status, start_date, notes, payment_status, expires_at, release_schedule } = body
 
     // Must provide at least one field to update
     if (
@@ -17,7 +17,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       start_date === undefined &&
       notes === undefined &&
       payment_status === undefined &&
-      expires_at === undefined
+      expires_at === undefined &&
+      release_schedule === undefined
     ) {
       return NextResponse.json({ error: "No update fields provided" }, { status: 400 })
     }
@@ -45,6 +46,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
+    if (release_schedule !== undefined && typeof release_schedule !== "boolean") {
+      return NextResponse.json({ error: "release_schedule must be true or false" }, { status: 400 })
+    }
+
     // Verify assignment exists
     const existing = await getAssignmentById(id)
     if (!existing) {
@@ -62,17 +67,34 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (notes !== undefined) updates.notes = notes
     if (payment_status) updates.payment_status = payment_status
     if (expires_at !== undefined) updates.expires_at = expires_at
+    if (release_schedule === true) {
+      // Start from the week the client is on, so nothing they can already see disappears. The clock
+      // runs only while the assignment is active and paid; the DB trigger takes over from here.
+      const running =
+        (status ?? existing.status) === "active" && (payment_status ?? existing.payment_status) !== "pending"
+      updates.release_base_week = Math.max(1, existing.current_week ?? 1)
+      updates.release_anchor_at = running ? new Date().toISOString() : null
+    } else if (release_schedule === false) {
+      updates.release_base_week = null
+      updates.release_anchor_at = null
+    }
 
     const updated = await updateAssignment(id, updates)
 
     // Audit: slug depends on payload — status change vs general update.
     void recordAudit({
-      action: status ? "assignment.status_changed" : "assignment.updated",
+      action: status
+        ? "assignment.status_changed"
+        : release_schedule !== undefined
+          ? "assignment.release_schedule_changed"
+          : "assignment.updated",
       category: "admin_write",
       target: { type: "assignment", id },
       metadata: status
         ? { new_status: status }
-        : { changed: Object.keys(body) },
+        : release_schedule !== undefined
+          ? { release_schedule }
+          : { changed: Object.keys(body) },
       request,
     })
 

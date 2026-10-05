@@ -12,8 +12,22 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Unlock, Gift, CheckCircle2, Clock, ChevronDown, ChevronUp, RefreshCw, Users } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import {
+  Unlock,
+  Gift,
+  CheckCircle2,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+  Users,
+  Eye,
+  EyeOff,
+  CalendarClock,
+} from "lucide-react"
 import type { ProgramWeekAccess } from "@/types/database"
+import { weekState, unlockDate, formatUnlockDate } from "@/lib/programs/week-visibility"
 
 interface AssignmentInfo {
   id: string
@@ -22,6 +36,10 @@ interface AssignmentInfo {
   notes: string | null
   payment_status: string
   expires_at: string | null
+  status: string
+  current_week: number
+  release_base_week: number | null
+  release_anchor_at: string | null
 }
 
 interface WeekAccessPanelProps {
@@ -40,6 +58,7 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
   // Selected week modal state
   const [selectedWeek, setSelectedWeek] = useState<{
     assignmentId: string
+    assignment: AssignmentInfo
     weekNumber: number
     clientName: string
     access: ProgramWeekAccess | null
@@ -68,9 +87,9 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
     return accessByAssignment[assignmentId]?.find((a) => a.week_number === weekNumber)
   }
 
-  function openWeekModal(assignmentId: string, weekNumber: number, clientName: string) {
-    const access = getAccessForWeek(assignmentId, weekNumber) ?? null
-    setSelectedWeek({ assignmentId, weekNumber, clientName, access })
+  function openWeekModal(assignment: AssignmentInfo, weekNumber: number, clientName: string) {
+    const access = getAccessForWeek(assignment.id, weekNumber) ?? null
+    setSelectedWeek({ assignmentId: assignment.id, assignment, weekNumber, clientName, access })
   }
 
   async function handleAction(action: "grant_free" | "mark_paid") {
@@ -104,6 +123,71 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
       setActionLoading(false)
     }
   }
+
+  async function setVisibility(visibility: "auto" | "shown" | "hidden") {
+    if (!selectedWeek) return
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/admin/programs/${programId}/week-access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assignmentId: selectedWeek.assignmentId,
+          weekNumber: selectedWeek.weekNumber,
+          action: "set_visibility",
+          visibility,
+        }),
+      })
+      if (!res.ok) throw new Error("Failed")
+      const w = selectedWeek.weekNumber
+      toast.success(
+        visibility === "hidden"
+          ? `Week ${w} is hidden from ${selectedWeek.clientName}`
+          : visibility === "shown"
+            ? `Week ${w} is open for ${selectedWeek.clientName}`
+            : `Week ${w} follows the weekly schedule again`,
+      )
+      setSelectedWeek(null)
+      await fetchData()
+    } catch {
+      toast.error("Couldn't change this week")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  async function toggleSchedule(assignmentId: string, on: boolean) {
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/admin/assignments/${assignmentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ release_schedule: on }),
+      })
+      if (!res.ok) throw new Error("Failed")
+      toast.success(on ? "One week at a time is on" : "Every week is now visible")
+      await fetchData()
+    } catch {
+      toast.error("Couldn't change the weekly release")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  function scheduleSummary(a: AssignmentInfo, now: Date): string {
+    if (a.release_base_week == null) return "This client can see every week."
+    if (!a.release_anchor_at) return "New weeks are paused until this client's payment is active again."
+    for (let w = 1; w <= totalWeeks; w++) {
+      if (weekState(w, a, getAccessForWeek(a.id, w)?.visibility, now) === "scheduled") {
+        const d = unlockDate(w, a)
+        if (d) return `A new week opens every 7 days. Next: week ${w} on ${formatUnlockDate(d.toISOString())}.`
+      }
+    }
+    return "A new week opens every 7 days. Every week is already open."
+  }
+
+  // The panel renders only after a client-side fetch, so there is no hydration mismatch.
+  const now = new Date()
 
   // Compute modal state helpers
   const modalAccess = selectedWeek?.access
@@ -151,8 +235,8 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
         <div className="mt-4 space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
-              Premium weeks are set in <strong>Pricing &amp; access</strong>. Here you can grant a client a premium
-              week for free, or mark one paid (cash/Venmo).
+              Choose which weeks each client can see, and handle paid weeks. Premium prices are set in{" "}
+              <strong>Pricing &amp; access</strong>.
             </p>
             <Button variant="ghost" size="sm" onClick={fetchData} disabled={loading} className="shrink-0">
               <RefreshCw className={`size-3 ${loading ? "animate-spin" : ""}`} />
@@ -170,16 +254,29 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                 const clientName = clientNames[assignment.user_id] ?? "Unknown Client"
                 return (
                   <div key={assignment.id} className="border border-border rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-sm font-medium">{clientName}</span>
-                      <Badge variant="outline" className="text-[10px]">
-                        {assignment.payment_status}
-                      </Badge>
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{clientName}</span>
+                        <Badge variant="outline" className="text-[10px]">
+                          {assignment.payment_status}
+                        </Badge>
+                      </div>
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Switch
+                          checked={assignment.release_base_week != null}
+                          disabled={actionLoading}
+                          onCheckedChange={(v) => toggleSchedule(assignment.id, v)}
+                          aria-label={`Release one week at a time for ${clientName}`}
+                        />
+                        One week at a time
+                      </label>
                     </div>
+                    <p className="text-xs text-muted-foreground mb-3">{scheduleSummary(assignment, now)}</p>
 
                     <div className="flex flex-wrap gap-1.5">
                       {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((week) => {
                         const access = getAccessForWeek(assignment.id, week)
+                        const state = weekState(week, assignment, access?.visibility, now)
                         const weekIsIncluded = !access || access.access_type === "included"
                         const weekIsPending = !weekIsIncluded && access?.payment_status === "pending"
                         const weekIsGranted =
@@ -192,8 +289,11 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                         return (
                           <button
                             key={week}
-                            onClick={() => openWeekModal(assignment.id, week, clientName)}
-                            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs border transition-colors cursor-pointer ${
+                            onClick={() => openWeekModal(assignment, week, clientName)}
+                            title={
+                              state === "hidden" ? "Hidden by you" : state === "scheduled" ? "Not out yet" : "Visible"
+                            }
+                            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs border transition-colors cursor-pointer${state !== "visible" ? " opacity-60" : ""} ${
                               weekIsPending
                                 ? "border-warning/40 bg-warning/5 text-warning hover:bg-warning/10"
                                 : weekIsPaid || weekIsGranted
@@ -201,7 +301,11 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                                   : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:bg-primary/5"
                             }`}
                           >
-                            {weekIsPending ? (
+                            {state === "hidden" ? (
+                              <EyeOff className="size-3" />
+                            ) : state === "scheduled" ? (
+                              <CalendarClock className="size-3" />
+                            ) : weekIsPending ? (
                               <Clock className="size-3" />
                             ) : weekIsPaid ? (
                               <CheckCircle2 className="size-3" />
@@ -231,6 +335,12 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                       </span>
                       <span className="flex items-center gap-0.5">
                         <CheckCircle2 className="size-2.5 text-success" /> Paid
+                      </span>
+                      <span className="flex items-center gap-0.5">
+                        <CalendarClock className="size-2.5" /> Not out yet
+                      </span>
+                      <span className="flex items-center gap-0.5">
+                        <EyeOff className="size-2.5" /> Hidden
                       </span>
                     </div>
                   </div>
@@ -283,6 +393,48 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                 </Badge>
               )}
             </div>
+
+            {selectedWeek &&
+              (() => {
+                const vis = modalAccess?.visibility ?? "auto"
+                const state = weekState(selectedWeek.weekNumber, selectedWeek.assignment, vis, new Date())
+                const date = unlockDate(selectedWeek.weekNumber, selectedWeek.assignment)
+                const label =
+                  state === "hidden"
+                    ? "No, you hid this week"
+                    : state === "scheduled"
+                      ? date
+                        ? `Not yet. It opens on ${formatUnlockDate(date.toISOString())}`
+                        : "Not yet. New weeks are paused"
+                      : vis === "shown"
+                        ? "Yes, you opened it early"
+                        : "Yes"
+                return (
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <p className="text-xs">
+                      <span className="text-muted-foreground">Can the client see it? </span>
+                      {label}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {state !== "visible" && (
+                        <Button size="sm" variant="outline" onClick={() => setVisibility("shown")} disabled={actionLoading}>
+                          <Eye className="size-3 mr-1.5" /> Show now
+                        </Button>
+                      )}
+                      {vis !== "hidden" && (
+                        <Button size="sm" variant="outline" onClick={() => setVisibility("hidden")} disabled={actionLoading}>
+                          <EyeOff className="size-3 mr-1.5" /> Hide
+                        </Button>
+                      )}
+                      {vis !== "auto" && (
+                        <Button size="sm" variant="ghost" onClick={() => setVisibility("auto")} disabled={actionLoading}>
+                          Back to the weekly schedule
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
 
             {isIncluded && (
               <p className="text-xs text-muted-foreground">

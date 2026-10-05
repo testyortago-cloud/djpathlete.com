@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getActiveAssignmentsForProgram } from "@/lib/db/assignments"
-import { getWeekAccessByAssignment, createWeekAccess, updateWeekAccess } from "@/lib/db/week-access"
+import { getActiveAssignmentsForProgram, getAssignmentById } from "@/lib/db/assignments"
+import { getWeekAccessByAssignment, getWeekAccess, createWeekAccess, updateWeekAccess } from "@/lib/db/week-access"
 import { weekAccessSchema } from "@/lib/validators/week-access"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { recordAudit } from "@/lib/audit/record"
 
 /** GET — Fetch all week access records for all active assignments on a program */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -70,7 +71,7 @@ export async function PUT(request: Request) {
 }
 
 /** POST — Grant free access to a specific week for an assignment */
-export async function POST(request: Request) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
@@ -82,6 +83,39 @@ export async function POST(request: Request) {
 
     if (!assignmentId || !weekNumber) {
       return NextResponse.json({ error: "assignmentId and weekNumber required" }, { status: 400 })
+    }
+
+    if (action === "set_visibility") {
+      const { visibility } = body as { visibility?: unknown }
+      if (visibility !== "auto" && visibility !== "shown" && visibility !== "hidden") {
+        return NextResponse.json({ error: "visibility must be auto, shown or hidden" }, { status: 400 })
+      }
+      const { id: programId } = await params
+      const assignment = await getAssignmentById(assignmentId)
+      if (!assignment || assignment.program_id !== programId) {
+        return NextResponse.json({ error: "Assignment not found" }, { status: 404 })
+      }
+      const existing = await getWeekAccess(assignmentId, weekNumber)
+      const row = existing
+        ? await updateWeekAccess(existing.id, { visibility })
+        : await createWeekAccess({
+            assignment_id: assignmentId,
+            week_number: weekNumber,
+            access_type: "included",
+            price_cents: null,
+            payment_status: "not_required",
+            stripe_session_id: null,
+            stripe_payment_id: null,
+            visibility,
+          })
+      void recordAudit({
+        action: "assignment.week_visibility_changed",
+        category: "admin_write",
+        target: { type: "assignment", id: assignmentId },
+        metadata: { week_number: weekNumber, visibility },
+        request,
+      })
+      return NextResponse.json(row)
     }
 
     if (action === "grant_free") {
