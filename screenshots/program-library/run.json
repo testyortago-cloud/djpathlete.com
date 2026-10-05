@@ -1,0 +1,136 @@
+{
+  "startedAt": "2026-10-05T14:19:54.213Z",
+  "app": "http://localhost:3051",
+  "assertions": [
+    {
+      "name": "admin session is signed in",
+      "ok": true,
+      "evidence": "http://localhost:3051/admin/programs?tab=library"
+    },
+    {
+      "name": "library copy exists, is a template, in the folder, no Stripe ids",
+      "ok": true,
+      "evidence": "[{\"id\":\"ce22977d-cafd-4b91-940e-552deca189f7\",\"name\":\"Strength Foundation\",\"is_template\":true,\"folder_id\":\"5dacc0aa-ef13-4c1d-839c-5f894936f99b\",\"stripe_price_id\":null}]"
+    },
+    {
+      "name": "folder delete is refused while it holds a program",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "copy is assigned to the test client with release on and 1 week visible",
+      "ok": true,
+      "evidence": "[{\"id\":\"eb1a4945-2f55-4575-902e-fbf91bb87d02\",\"user_id\":\"74fcf62e-e12a-4dba-b359-7b90200a7c72\",\"release_base_week\":1,\"release_anchor_at\":\"2026-10-05T14:20:13.313+00:00\",\"status\":\"active\"}]"
+    },
+    {
+      "name": "client session is signed in on /client/workouts",
+      "ok": true,
+      "evidence": "http://localhost:3051/client/workouts"
+    },
+    {
+      "name": "client HTML does NOT contain the week-2-only exercise \"Bulgarian split squat single leg frog jumps\"",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "control: client HTML DOES contain the week-1 exercise \"Copenhagens short lever\"",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "client stepping to week 2 sees 'Week 2 unlocks on ...'",
+      "ok": true,
+      "evidence": "Week 2 unlocks on Monday, October 12"
+    },
+    {
+      "name": "week-2 name still absent after stepping to week 2",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "client stepping to the hidden week 4 sees \"isn't available yet\"",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "direct POST /api/client/workouts/session week 1 returns 200",
+      "ok": true,
+      "evidence": "status 200"
+    },
+    {
+      "name": "direct POST /api/client/workouts/session week 2 returns 403",
+      "ok": true,
+      "evidence": "status 403"
+    },
+    {
+      "name": "after Show now, client HTML DOES contain the week-2 exercise \"Bulgarian split squat single leg frog jumps\"",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "after Show now, POST week 2 returns 200",
+      "ok": true,
+      "evidence": "status 200"
+    },
+    {
+      "name": "no uncaught page errors",
+      "ok": true,
+      "evidence": ""
+    }
+  ],
+  "beats": [
+    "[+   0.6s] week-1 name: \"Copenhagens short lever\"  week-2-only name: \"Bulgarian split squat single leg frog jumps\"",
+    "[+   4.3s] PASS admin session is signed in -- http://localhost:3051/admin/programs?tab=library",
+    "[+   4.3s] admin opened the Library tab",
+    "[+   5.0s] shot 08-empty-library",
+    "[+   6.7s] folder \"12-week strength\" created through the UI",
+    "[+   8.3s] folder \"Return from injury\" created through the UI",
+    "[+  13.0s] shot 03-save-to-library",
+    "[+  14.8s] saved to library through the UI",
+    "[+  14.9s] PASS library copy exists, is a template, in the folder, no Stripe ids -- [{\"id\":\"ce22977d-cafd-4b91-940e-552deca189f7\",\"name\":\"Strength Foundation\",\"is_template\":true,\"folder_id\":\"5dacc0aa-ef13-4c1d-839c-5f894936f99b\",\"stripe_price_id\":null}]",
+    "[+  15.6s] shot 01-library-folders-and-programs",
+    "[+  15.6s] PASS folder delete is refused while it holds a program",
+    "[+  16.2s] shot 09-folder-delete-refused",
+    "[+  18.0s] shot 02-give-to-a-client",
+    "[+  20.1s] program given through the UI; copy adbf5b69-07b6-4bde-9abe-dc71efeea3ec",
+    "[+  20.2s] PASS copy is assigned to the test client with release on and 1 week visible -- [{\"id\":\"eb1a4945-2f55-4575-902e-fbf91bb87d02\",\"user_id\":\"74fcf62e-e12a-4dba-b359-7b90200a7c72\",\"release_base_week\":1,\"release_anchor_at\":\"2026-10-05T14:20:13.313+00:00\",\"status\":\"active\"}]",
+    "[+  25.9s] coach hid week 4 through the UI",
+    "[+  26.5s] shot 04-week-panel",
+    "[+  27.2s] shot 05-week-show-or-hide",
+    "[+  32.2s] PASS client session is signed in on /client/workouts -- http://localhost:3051/client/workouts",
+    "[+  34.1s] client accepted the liability waiver through the UI (removed again in cleanup)",
+    "[+  34.9s] PASS client HTML does NOT contain the week-2-only exercise \"Bulgarian split squat single leg frog jumps\"",
+    "[+  34.9s] PASS control: client HTML DOES contain the week-1 exercise \"Copenhagens short lever\"",
+    "[+  34.9s] (info) first two words of the week-2 name appear in HTML: false",
+    "[+  35.5s] shot 06-client-week-1",
+    "[+  35.8s] PASS client stepping to week 2 sees 'Week 2 unlocks on ...' -- Week 2 unlocks on Monday, October 12",
+    "[+  35.8s] PASS week-2 name still absent after stepping to week 2",
+    "[+  36.4s] shot 07-client-week-2-unlocks",
+    "[+  36.7s] PASS client stepping to the hidden week 4 sees \"isn't available yet\"",
+    "[+  37.1s] PASS direct POST /api/client/workouts/session week 1 returns 200 -- status 200",
+    "[+  37.5s] PASS direct POST /api/client/workouts/session week 2 returns 403 -- status 403",
+    "[+  43.6s] coach clicked Show now on week 2 through the UI",
+    "[+  43.8s] week access rows: [{\"week_number\":1,\"visibility\":\"auto\"},{\"week_number\":2,\"visibility\":\"shown\"},{\"week_number\":3,\"visibility\":\"auto\"},{\"week_number\":4,\"visibility\":\"hidden\"}]",
+    "[+  46.7s] PASS after Show now, client HTML DOES contain the week-2 exercise \"Bulgarian split squat single leg frog jumps\"",
+    "[+  47.2s] PASS after Show now, POST week 2 returns 200 -- status 200",
+    "[+  47.2s] PASS no uncaught page errors",
+    "[+ 149.4s] cleanup workout_sessions: ok",
+    "[+ 149.5s] cleanup program_week_access: ok",
+    "[+ 149.5s] cleanup program_assignments: ok",
+    "[+ 149.6s] cleanup user_consents: ok",
+    "[+ 149.7s] cleanup programs: ok",
+    "[+ 149.8s] cleanup program_folders: ok",
+    "[+ 149.9s] cleanup verified: folders left 0, programs left 0, assignments left 0"
+  ],
+  "shots": [
+    "08-empty-library",
+    "03-save-to-library",
+    "01-library-folders-and-programs",
+    "09-folder-delete-refused",
+    "02-give-to-a-client",
+    "04-week-panel",
+    "05-week-show-or-hide",
+    "06-client-week-1",
+    "07-client-week-2-unlocks"
+  ]
+}
