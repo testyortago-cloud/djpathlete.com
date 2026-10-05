@@ -61,9 +61,10 @@ create trigger set_updated_at before update on public.program_folders
 
 alter table public.programs
   add column is_template boolean not null default false,
-  add column folder_id uuid references public.program_folders(id) on delete set null,
+  add column folder_id uuid references public.program_folders(id) on delete restrict,
   add constraint programs_template_never_public check (not (is_template and is_public)),
-  add constraint programs_folder_only_on_template check (folder_id is null or is_template);
+  add constraint programs_template_has_folder
+    check ((is_template and folder_id is not null) or (not is_template and folder_id is null));
 
 alter table public.program_assignments
   add column release_base_week integer check (release_base_week >= 1),
@@ -120,29 +121,32 @@ weeks that are `visible`.
 
 - Two tabs: **Client programs** (today's list, `is_template = false`) and **Library**.
 - **Library tab:**
-  - On the left: the folder list with an "Unfiled" entry, plus New / Rename / Delete. Deleting a folder
-    moves its programs to Unfiled, and the confirm dialog says so.
+  - On the left: the folder list, plus New / Rename / Delete. **Every library program is in a folder**
+    (DB check `programs_template_has_folder`). A folder can be deleted only once it is empty: the
+    foreign key is `ON DELETE RESTRICT`, and the button says "Move or delete its programs first".
   - On the right: a `DataTable` (the house standard) of the folder's programs. Row actions: Edit (the
     existing builder at `/admin/programs/[id]`), Move to folder, **Give to client**, and Copy (a new
     library program in the same folder).
-  - "New library program" uses the existing create route, with `is_template: true` accepted on create
-    only.
+  - "New program" in the Library tab opens the existing `ProgramFormDialog`, which posts `folder_id` to
+    the existing create route. A valid folder of the tenant makes the new row `is_template = true`; the
+    flag is never accepted from the body.
 - Every client-program row gets **Save to library**: pick or create a folder, then the program is copied
   in. This is how existing work goes into the library.
-- **One read seam.** `getPrograms()` excludes templates by default, so every existing picker stays clean:
-  the assign dialog, session-pack and form-review links, the funnel product picker and the stats cards.
-  `getLibraryPrograms(businessId)` is the new reader. The "Copy from another program" dialog opts in to
-  templates, because copying from the library is useful there.
+- **Readers that exclude templates.** `getPrograms()` feeds the admin list, dashboard, analytics, the
+  session-pack picker, the funnel offer catalogue and lead-engine facts. `listGrantablePrograms()`
+  feeds the pipeline grant. Both gain `is_template = false`. The public store and `listPublicProgrammes`
+  are already covered by the never-public check. `getAllPrograms()` (funnel recognition only) and the
+  copy-sources route (the "Copy from another program" dialog, where library programs are useful) keep
+  them.
 - **Guards:**
   - `assignProgram` throws on a template.
-  - Checkout refuses a template.
-  - The DB check keeps templates out of the public store.
-- **Tenancy:**
-  - Folders are tenant-scoped through `resolveAdminTenantForRequest`, and every folder query filters on
-    `business_id`.
-  - A library listing shows the tenant's folders, plus unfiled templates.
-  - Unfiled templates are untenanted, like every `programs` row. Fixing that is G37's scope, not this
-    one, and is flagged here rather than taken on.
+  - Checkout already refuses a private program to anyone without an assignment, and a template never
+    has one.
+  - `PATCH /api/admin/programs/[id]` forces `is_public = false` on a template.
+- **Tenancy:** folders are tenant-scoped through `resolveAdminTenant[ForRequest]`, and every folder query
+  filters on `business_id`. Because every template has a folder, `getLibraryPrograms(businessId)` is
+  tenant-scoped too: two reads (the tenant's folder ids, then templates in them), not an embed.
+  `programs` itself is still untenanted (G37); that is flagged here rather than taken on.
 
 ### 4. Copying — `lib/services/copy-program.ts`
 
@@ -167,11 +171,11 @@ Overrides used by the callers:
 | Save to library | `is_template=true, folder_id=<picked>, is_public=false` |
 | Copy within library | `is_template=true`, same folder, name `"<name> (copy)"` |
 
-**Stripe ids are shared.** The copy keeps `stripe_product_id` and `stripe_price_id`. Checkout sends
-`metadata.programId` = the copy's id (`lib/stripe.ts`), so the webhook resolves the right program. The
-plan must check what `PATCH /api/admin/programs/[id]` does to the old Price when a template's price
-changes. If it archives the Price, the give flow instead creates a fresh product and price for the copy
-with `createStripeProductAndPrice`.
+**Stripe ids are never copied.** This was checked while planning: `PATCH /api/admin/programs/[id]`
+archives the old Price when a price changes (`archiveAndCreateNewPrice`) and renames the Product when the
+name changes. Two programs sharing those ids would break each other's checkout and relabel each other.
+`copyProgram` nulls both ids. The give route creates a fresh product and price for a paid copy with
+`createStripeProductAndPrice`, using `programId` = the copy's id.
 
 ### 5. Give to client — `POST /api/admin/programs/[id]/give`
 
@@ -206,25 +210,30 @@ has one client, so this is the right place for it.
     already seen stay visible.
   - **Off:** base and anchor both null.
 - **Each week chip shows its state:** Visible, Unlocks <date>, or Hidden by you. The existing week modal
-  gains **Show now** / **Hide** / **Back to schedule**, which write `visibility` through the existing
-  `PUT /api/admin/programs/[id]/week-access`.
+  gains **Show now** / **Hide** / **Back to schedule**. They write `visibility` through a new
+  `set_visibility` action on the existing `POST /api/admin/programs/[id]/week-access`, which also
+  checks that the assignment belongs to that program.
 - **Audit:** `assignment.release_schedule_changed` and `assignment.week_visibility_changed`.
 - `resyncProgramWeekAccess` and the add-week and delete-week paths must keep `visibility` as it is. The
   plan verifies each one.
 
 ### 7. Client side — enforced on the server
 
-- **One builder:** `lib/services/client-program-view.ts`.
-  - **Input:** assignment, exercises, week-access rows, now.
-  - **Output:** `weeks` (exercises for visible, unlocked weeks only), `lockedWeeks` (visible paid weeks
-    as `{week, price_cents}` with **no exercises**) and `nextUnlock`.
-  - **Callers:** `workouts`, `progress` and `reassessment` pages. A hidden week's exercises never leave
-    the server.
-- **`WorkoutTabs`:**
-  - Shows tabs for visible weeks only.
-  - Under them, one line: "Week 4 unlocks on Mon 19 Oct."
-  - Weeks hidden by hand do not appear at all.
-  - The locked-week Unlock card still works, but now from `lockedWeeks`.
+- **One gate:** `buildWeekGate(assignment, weekAccessRows, totalWeeks, now)` in
+  `lib/programs/week-visibility.ts`. It returns `open` (weeks whose workouts may be sent), `locked`
+  (visible paid weeks: price only, **no exercises**) and `unavailable` (a scheduled week with its unlock
+  date, or a hidden week with none).
+  - The workouts page builds week tabs **and the calendar view** (which today lists every week's
+    exercise names) only from `open` weeks. A hidden week's workouts never leave the server.
+  - `progress` and `reassessment` are left alone, checked while planning. `progress` sends only a
+    count of planned days for the current week. `reassessment` reads only a *completed* assignment,
+    and only exercise names.
+- **`WorkoutTabs`:** the client moves between weeks with previous/next arrows over 1..total, so a week
+  can't simply vanish.
+  - A scheduled week shows a card: "Week 4 unlocks on Monday, October 19."
+  - A week hidden by hand shows: "Week 4 isn't available yet."
+  - Neither card carries any workout content.
+  - The locked-week Unlock card still works, now from `locked`.
 - **`isAccessAllowed`** gains the visibility check. The `session` and `log` routes pass `week_number`
   and answer 403 for a hidden, scheduled or locked week. This also closes today's paid-week gap.
 - **Webhook paths:** `handleSubscriptionCheckout` (`:1137`) reactivates an existing assignment. It
@@ -257,7 +266,7 @@ has one client, so this is the right place for it.
   - anchor 3 days in the future still shows `base`
   - `shown` above the released week, `hidden` below it
   - paused (anchor null)
-  - `nextUnlock` past the last week returns null
+  - `buildWeekGate`: open, locked, scheduled-with-date, hidden-without-date, paused-without-date
 - **Unit, `copyProgram`:**
   - every exercise column is carried, `slot_role` named
   - 2,300 rows copy across three pages, using a fake that **enforces** the 1000-row cap
@@ -270,8 +279,8 @@ has one client, so this is the right place for it.
   - audit row written
 - **Route, `session` / `log`:** 403 for a hidden and for a scheduled week, 200 for a visible week. The
   200 is the presence control.
-- **`client-program-view`:** a scheduled week's exercise ids are absent from the output while a visible
-  week's ids are present. A locked week has a price and no exercises.
+- **Real page:** as a client in the dev app, a week-2-only exercise name is absent from
+  `/client/workouts`' HTML (which includes the data payload) while a week-1 name is present.
 - **Guards:** `assignProgram` throws on a template; `getPrograms()` excludes templates.
 - **Trigger:** applied to the dev clone. Probe freeze, resume and pending-insert with scratch rows on the
   clone only, then delete them. Run `npm run test:integration:drift` and
