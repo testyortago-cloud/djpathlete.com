@@ -53,14 +53,21 @@ export function TemplateSelector({ onSelect, scope, currentText = "" }: Template
     }
   }, [open])
 
-  function handleSelectBuiltIn(template: BuiltInTemplate) {
-    onSelect(template.prompt)
+  // Callers append the template below what is already typed. The textarea is a fixed 8 rows, so the
+  // appended text lands off-screen and looks like the pick did nothing. Scroll the sibling textarea to it.
+  function pick(prompt: string) {
+    onSelect(prompt)
     setOpen(false)
+    const textarea = ref_.current?.closest(".space-y-2")?.querySelector("textarea")
+    requestAnimationFrame(() => textarea?.scrollTo({ top: textarea.scrollHeight }))
+  }
+
+  function handleSelectBuiltIn(template: BuiltInTemplate) {
+    pick(template.prompt)
   }
 
   function handleSelectCustom(template: PromptTemplate) {
-    onSelect(template.prompt)
-    setOpen(false)
+    pick(template.prompt)
   }
 
   async function handleDelete(template: PromptTemplate, e: React.MouseEvent) {
