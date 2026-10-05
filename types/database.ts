@@ -426,6 +426,13 @@ export interface Program {
   is_public: boolean
   is_ai_generated: boolean
   ai_generation_params: Record<string, unknown> | null
+  /**
+   * Library program: never assigned or sold directly — "Give to client" copies it.
+   * DB default false; optional so insert payloads and fixtures may omit it.
+   */
+  is_template?: boolean
+  /** The library folder. Set exactly when is_template (DB check programs_template_has_folder). */
+  folder_id?: string | null
   created_at: string
   updated_at: string
 }
@@ -472,6 +479,13 @@ export interface ProgramAssignment {
   total_weeks: number | null
   payment_status: AssignmentPaymentStatus
   expires_at: string | null
+  /**
+   * Weekly release. null = no schedule, every week visible (every assignment made before 00289).
+   * Otherwise weeks 1..base were released before release_anchor_at; one more every 7 days after.
+   */
+  release_base_week?: number | null
+  /** When the release clock last (re)started; null = paused. A DB trigger maintains it on status/payment changes. */
+  release_anchor_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -485,6 +499,20 @@ export interface ProgramWeekAccess {
   payment_status: WeekPaymentStatus
   stripe_session_id: string | null
   stripe_payment_id: string | null
+  /** DB default 'auto'; optional so insert payloads may omit it. */
+  visibility?: WeekVisibility
+  created_at: string
+  updated_at: string
+}
+
+/** Coach override for one client's week. 'auto' follows the weekly release schedule. */
+export type WeekVisibility = "auto" | "shown" | "hidden"
+
+export interface ProgramFolder {
+  id: string
+  business_id: string
+  name: string
+  sort_order: number
   created_at: string
   updated_at: string
 }

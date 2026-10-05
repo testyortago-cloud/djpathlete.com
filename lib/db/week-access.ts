@@ -74,7 +74,7 @@ export async function updateWeekAccess(
   updates: Partial<
     Pick<
       ProgramWeekAccess,
-      "access_type" | "price_cents" | "payment_status" | "stripe_session_id" | "stripe_payment_id"
+      "access_type" | "price_cents" | "payment_status" | "stripe_session_id" | "stripe_payment_id" | "visibility"
     >
   >,
 ) {
@@ -91,7 +91,7 @@ export async function updateWeekAccessByAssignmentAndWeek(
   updates: Partial<
     Pick<
       ProgramWeekAccess,
-      "access_type" | "price_cents" | "payment_status" | "stripe_session_id" | "stripe_payment_id"
+      "access_type" | "price_cents" | "payment_status" | "stripe_session_id" | "stripe_payment_id" | "visibility"
     >
   >,
 ) {
