@@ -1,11 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { Pencil, UserPlus, Sparkles } from "lucide-react"
+import { Pencil, UserPlus, Sparkles, Send } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ProgramFormDialog } from "@/components/admin/ProgramFormDialog"
 import { AssignProgramDialog } from "@/components/admin/AssignProgramDialog"
+import { GiveToClientDialog } from "@/components/admin/library/GiveToClientDialog"
 import type { Program, User } from "@/types/database"
 
 import type { AssignmentPaymentStatus } from "@/types/database"
@@ -91,6 +92,7 @@ export function ProgramHeader({
 }: ProgramHeaderProps) {
   const [editOpen, setEditOpen] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
+  const [giveOpen, setGiveOpen] = useState(false)
 
   return (
     <>
@@ -146,10 +148,17 @@ export function ProgramHeader({
               <Pencil className="size-3.5" />
               Edit
             </Button>
-            <Button size="sm" onClick={() => setAssignOpen(true)}>
-              <UserPlus className="size-3.5" />
-              Assign
-            </Button>
+            {program.is_template ? (
+              <Button size="sm" onClick={() => setGiveOpen(true)}>
+                <Send className="size-3.5" />
+                Give to client
+              </Button>
+            ) : (
+              <Button size="sm" onClick={() => setAssignOpen(true)}>
+                <UserPlus className="size-3.5" />
+                Assign
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -166,6 +175,8 @@ export function ProgramHeader({
         assignmentMap={assignmentMap}
         assignmentDetails={assignmentDetails}
       />
+
+      <GiveToClientDialog open={giveOpen} onOpenChange={setGiveOpen} program={program} clients={clients} />
     </>
   )
 }

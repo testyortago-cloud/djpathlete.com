@@ -32,6 +32,8 @@ interface ProgramFormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   program?: Program | null
+  /** Create the program inside this library folder. Ignored when editing. */
+  folderId?: string
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -111,7 +113,7 @@ const stepVariants = {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDialogProps) {
+export function ProgramFormDialog({ open, onOpenChange, program, folderId }: ProgramFormDialogProps) {
   const router = useRouter()
   const isEditing = !!program
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -280,7 +282,7 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
       const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(result.data),
+        body: JSON.stringify(!isEditing && folderId ? { ...result.data, folder_id: folderId } : result.data),
       })
 
       if (!response.ok) {

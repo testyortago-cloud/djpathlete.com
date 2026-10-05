@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Plus,
   Pencil,
+  FolderPlus,
   Trash2,
   ClipboardList,
   LayoutGrid,
@@ -32,6 +33,7 @@ import {
 } from "@/components/ui/dialog"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ProgramFormDialog } from "@/components/admin/ProgramFormDialog"
+import { SaveToLibraryDialog } from "@/components/admin/library/SaveToLibraryDialog"
 import { AiGenerateDialog } from "@/components/admin/AiGenerateDialog"
 import { AiProgramChatDialog } from "@/components/admin/AiProgramChatDialog"
 import { ExcelImportDialog } from "@/components/admin/ExcelImportDialog"
@@ -101,6 +103,7 @@ export function ProgramList({ programs, athleteCounts = {}, excelImportEnabled =
   const [editingProgram, setEditingProgram] = useState<Program | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Program | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [saveTarget, setSaveTarget] = useState<Program | null>(null)
 
   // Clients — fetched once for the Excel import dialog's client picker /
   // post-import "Assign to Clients" step (mirrors AiGenerateDialog's own
@@ -216,7 +219,7 @@ export function ProgramList({ programs, athleteCounts = {}, excelImportEnabled =
       {/* Header with Add button */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <p className="text-sm text-muted-foreground">
-          {programs.length} program{programs.length !== 1 ? "s" : ""} in library
+          {programs.length} client program{programs.length !== 1 ? "s" : ""}
         </p>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setChatDialogOpen(true)}>
@@ -415,6 +418,15 @@ export function ProgramList({ programs, athleteCounts = {}, excelImportEnabled =
                           <LayoutGrid className="size-3.5" />
                         </Button>
                       </Link>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => setSaveTarget(program)}
+                        title="Save a copy to your library"
+                        aria-label={`Save ${program.name} to your library`}
+                      >
+                        <FolderPlus className="size-3.5" />
+                      </Button>
                       <Button variant="ghost" size="icon-xs" onClick={() => handleEdit(program)} title="Edit program">
                         <Pencil className="size-3.5" />
                       </Button>
@@ -486,6 +498,7 @@ export function ProgramList({ programs, athleteCounts = {}, excelImportEnabled =
 
       {/* Create/Edit Dialog */}
       <ProgramFormDialog open={formOpen} onOpenChange={setFormOpen} program={editingProgram} />
+      <SaveToLibraryDialog open={!!saveTarget} onOpenChange={(o) => !o && setSaveTarget(null)} program={saveTarget} />
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>

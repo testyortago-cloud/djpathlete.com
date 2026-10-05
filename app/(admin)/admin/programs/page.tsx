@@ -1,19 +1,37 @@
+import Link from "next/link"
 import { BarChart3, Brain, ClipboardCheck, CheckCircle } from "lucide-react"
-import { getPrograms } from "@/lib/db/programs"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
+import { getPrograms, getLibraryPrograms } from "@/lib/db/programs"
+import { listProgramFolders } from "@/lib/db/program-folders"
 import { getAssignments, getAssignmentCountsByProgram } from "@/lib/db/assignments"
 import { getSetting } from "@/lib/db/system-settings"
 import { ProgramList } from "@/components/admin/ProgramList"
-import type { Program, ProgramAssignment } from "@/types/database"
+import { LibraryView } from "@/components/admin/library/LibraryView"
+import { cn } from "@/lib/utils"
+import type { Program, ProgramAssignment, ProgramFolder } from "@/types/database"
 
 export const metadata = { title: "Programs" }
 
-export default async function ProgramsPage() {
+export default async function ProgramsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; folder?: string }>
+}) {
+  const { tab, folder } = await searchParams
+  const showLibrary = tab === "library"
   const [programs, athleteCounts, assignments, excelImportEnabled] = await Promise.all([
     getPrograms(),
     getAssignmentCountsByProgram(),
     getAssignments(),
     getSetting<boolean>("feature_program_excel_import_enabled", true),
   ])
+
+  let library: { folders: ProgramFolder[]; programs: Program[] } | null = null
+  if (showLibrary) {
+    const { businessId } = await resolveAdminTenant()
+    const [folders, libraryPrograms] = await Promise.all([listProgramFolders(businessId), getLibraryPrograms(businessId)])
+    library = { folders, programs: libraryPrograms }
+  }
 
   const progList = programs as Program[]
   const asgList = assignments as ProgramAssignment[]
@@ -74,7 +92,34 @@ export default async function ProgramsPage() {
         </div>
       </div>
 
-      <ProgramList programs={programs} athleteCounts={athleteCounts} excelImportEnabled={excelImportEnabled} />
+      <nav aria-label="Program views" className="mb-4 inline-flex rounded-lg border border-border bg-white p-1 text-sm">
+        <Link
+          href="/admin/programs"
+          aria-current={!showLibrary ? "page" : undefined}
+          className={cn(
+            "rounded-md px-3 py-1.5",
+            !showLibrary ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          Client programs
+        </Link>
+        <Link
+          href="/admin/programs?tab=library"
+          aria-current={showLibrary ? "page" : undefined}
+          className={cn(
+            "rounded-md px-3 py-1.5",
+            showLibrary ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          Library
+        </Link>
+      </nav>
+
+      {library ? (
+        <LibraryView folders={library.folders} programs={library.programs} initialFolderId={folder} />
+      ) : (
+        <ProgramList programs={programs} athleteCounts={athleteCounts} excelImportEnabled={excelImportEnabled} />
+      )}
     </div>
   )
 }
