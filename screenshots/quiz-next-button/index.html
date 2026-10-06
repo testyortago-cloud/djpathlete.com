@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quiz Next button</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:1320px;margin:0 auto;padding:24px;background:#f6f6f4;color:#13323c}
+figure{margin:0 0 40px}figcaption{margin:0 0 10px}img{max-width:100%;border:1px solid #ddd;border-radius:8px}</style>
+<h1>The quiz waits for “Next”</h1>
+<p>Real app on the dev clone, a <code>/preview/rotational-performance-index</code> test run (nothing saved). Desktop 1280 wide; phone 390 wide at 2x. Funnel pages have no dark mode.</p>
+<figure><figcaption><b>1.</b> The first test, scrolled down to the answers. Nothing is picked yet, so “Next” is faded and does nothing.</figcaption><img src="01-answers-wait-for-next.png" alt=""></figure>
+<figure><figcaption><b>2.</b> After a click on the top answer, the same test is still on screen. The answer is highlighted and “Next” is ready.</figcaption><img src="02-picked-answer-waits.png" alt=""></figure>
+<figure><figcaption><b>3.</b> After “Next”, the page scrolls back up by itself. The visitor sees the new test’s name and clip, not just its answers.</figcaption><img src="03-next-opens-the-next-test-at-its-top.png" alt=""></figure>
+<figure><figcaption><b>4.</b> From the second question on, “Back” returns to the previous one with its answer still picked. Question 1 has no Back, since nothing comes before it.</figcaption><img src="04-back-from-question-two.png" alt=""></figure>
+<figure><figcaption><b>5.</b> On a phone, “Next” sits right under the answers, beside “Back” from the second question on.</figcaption><img src="05-phone-next-under-the-answers.png" alt=""></figure>
