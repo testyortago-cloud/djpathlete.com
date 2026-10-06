@@ -16,7 +16,7 @@
 // own copy from the database or the visitor's own input, and both go through
 // React's text escaping. A test asserts the source contains no such call.
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { browserTimezone } from "@/lib/browser-timezone"
 import { readCarriedContact } from "@/lib/funnels/carried-contact"
 import type { PublicQuizDefinition, PublicQuizQuestion } from "@/lib/quizzes/public-definition"
@@ -87,6 +87,11 @@ export function QuizRunner({
   // Keyed by question id, so it resets on every question change with no effect.
   const [mistakesFor, setMistakesFor] = useState<string | null>(null)
   const [startedAt] = useState(() => Date.now())
+  // The quiz's outer element, whichever screen is showing.
+  const rootRef = useRef<HTMLElement | null>(null)
+  const setRoot = useCallback((el: HTMLElement | null) => {
+    rootRef.current = el
+  }, [])
 
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -160,19 +165,23 @@ export function QuizRunner({
     [attemptId, definition.id, isPreview, testRun],
   )
 
-  const choose = useCallback(
-    (questionId: string, optionId: string) => {
-      const next = { ...answers, [questionId]: optionId }
-      setAnswers(next)
-      void postProgress(next)
-      // Recomputing the walk here would use the STALE `walk` above, so the
-      // decision is only "was this the last question I currently know about?".
-      // Answering the router lengthens the walk, and the effect is that the
-      // next render simply has more to show.
-      setIndex((i) => i + 1)
-    },
-    [answers, postProgress],
-  )
+  /**
+   * PICKING AN ANSWER ONLY SELECTS IT. Moving on is the Next button's job.
+   * It used to advance on the click, and the owner reported (2026-10-06) that
+   * tapping the same spot flicked through every movement test unread: the
+   * next question's top answer lands exactly where the last click was.
+   */
+  const choose = useCallback((questionId: string, optionId: string) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: optionId }))
+  }, [])
+
+  const next = useCallback(() => {
+    void postProgress(answers)
+    // The walk has already been recomputed from the selection, so answering
+    // the router lengthens it before this runs and the next render simply has
+    // more to show.
+    setIndex((i) => i + 1)
+  }, [answers, postProgress])
 
   const back = useCallback(() => {
     setError(null)
@@ -180,6 +189,15 @@ export function QuizRunner({
   }, [])
 
   const atEnd = index >= walk.length
+
+  // A new screen starts at its top. A visitor scrolled down to the answers
+  // (below a tall clip) would otherwise land on the next question's answers
+  // with its prompt and video above the fold. Only when the top is above the
+  // viewport, so a quiz further down the page never yanks it on load.
+  useEffect(() => {
+    const el = rootRef.current
+    if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView?.({ block: "start", behavior: "smooth" })
+  }, [index, phase])
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -241,7 +259,7 @@ export function QuizRunner({
 
   if (phase === "intro") {
     return (
-      <div className="djp-quiz">
+      <div className="djp-quiz" ref={setRoot}>
         {testRun ? <p className="djp-test-run">Test run</p> : null}
         {definition.introHeadline ? <h3 className="djp-quiz-prompt">{definition.introHeadline}</h3> : null}
         {definition.introBody ? <p className="djp-quiz-help">{definition.introBody}</p> : null}
@@ -256,7 +274,7 @@ export function QuizRunner({
 
   if (phase === "result" && result) {
     return (
-      <div className="djp-quiz djp-quiz-result">
+      <div className="djp-quiz djp-quiz-result" ref={setRoot}>
         {testRun ? <p className="djp-test-run">Test run</p> : null}
         {result.tier ? <p className="djp-quiz-tier">{result.tier.headline}</p> : null}
         <p className="djp-quiz-score">{result.score}</p>
@@ -334,7 +352,7 @@ export function QuizRunner({
   // already saved by then, so a drop-off here is still a known lead.
   if (phase === "gate" || atEnd) {
     return (
-      <form className="djp-quiz djp-quiz-gate" onSubmit={submit} noValidate>
+      <form className="djp-quiz djp-quiz-gate" ref={setRoot} onSubmit={submit} noValidate>
         {testRun ? <p className="djp-test-run">Test run</p> : null}
         {definition.gateHeadline ? <h3 className="djp-quiz-prompt">{definition.gateHeadline}</h3> : null}
         {definition.gateBody ? <p className="djp-quiz-help">{definition.gateBody}</p> : null}
@@ -414,11 +432,11 @@ export function QuizRunner({
         {error ? <p className="djp-quiz-error">{error}</p> : null}
 
         <div className="djp-quiz-nav">
-          <button type="submit" className="djp-btn djp-btn-primary" disabled={busy}>
-            {busy ? "Scoring…" : submitLabel}
-          </button>
           <button type="button" className="djp-quiz-back" onClick={back}>
             Back
+          </button>
+          <button type="submit" className="djp-btn djp-btn-primary" disabled={busy}>
+            {busy ? "Scoring…" : submitLabel}
           </button>
         </div>
       </form>
@@ -448,7 +466,7 @@ export function QuizRunner({
   const progress = totalKnown && walk.length > 0 ? Math.round((index / walk.length) * 100) : 0
 
   return (
-    <div className="djp-quiz">
+    <div className="djp-quiz" ref={setRoot}>
       {testRun ? <p className="djp-test-run">Test run</p> : null}
       <div className="djp-quiz-progress">
         <div className="djp-quiz-progress-bar" style={{ width: `${progress}%` }} />
@@ -503,13 +521,28 @@ export function QuizRunner({
           </li>
         ))}
       </ul>
-      {index > 0 ? (
-        <div className="djp-quiz-nav">
+      <div className="djp-quiz-nav">
+        {/* Back on the left, Next on the right: the order a visitor expects. */}
+        {index > 0 ? (
           <button type="button" className="djp-quiz-back" onClick={back}>
             Back
           </button>
-        </div>
-      ) : null}
+        ) : null}
+        {/*
+          The faded look is inline because a published page serves the CSS
+          frozen at its publish, so a styles.ts rule would not reach a live
+          quiz until its owner published again.
+        */}
+        <button
+          type="button"
+          className="djp-btn djp-btn-primary"
+          disabled={!answered}
+          style={answered ? undefined : { opacity: 0.5, cursor: "not-allowed" }}
+          onClick={next}
+        >
+          Next
+        </button>
+      </div>
     </div>
   )
 }

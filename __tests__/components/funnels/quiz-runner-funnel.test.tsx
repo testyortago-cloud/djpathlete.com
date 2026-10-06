@@ -53,6 +53,7 @@ async function complete(props: Record<string, unknown> = {}) {
   render(<QuizRunner definition={DEFINITION} submitLabel="See my result" {...props} />)
   fireEvent.click(screen.getByRole("button", { name: "Start" }))
   fireEvent.click(await screen.findByRole("button", { name: "Yes" }))
+  fireEvent.click(screen.getByRole("button", { name: "Next" }))
   fireEvent.change(await screen.findByLabelText("Your name"), { target: { value: "Sam Athlete" } })
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sam@example.com" } })
   fireEvent.click(screen.getByRole("button", { name: "See my result" }))

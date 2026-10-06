@@ -58,6 +58,12 @@ function start() {
   fireEvent.click(screen.getByRole("button", { name: "Start" }))
 }
 
+/** Pick an answer, then press Next. Picking alone no longer moves on. */
+function answer(label: string) {
+  fireEvent.click(screen.getByRole("button", { name: label }))
+  fireEvent.click(screen.getByRole("button", { name: "Next" }))
+}
+
 beforeEach(() => {
   vi.restoreAllMocks()
   vi.stubGlobal(
@@ -76,9 +82,48 @@ describe("QuizRunner — the walk", () => {
     // each option leads to.
     expect(screen.queryByText("An Alpha question")).toBeNull()
 
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    answer("I am an Alpha")
     expect(screen.getByText("An Alpha question")).toBeTruthy()
     expect(screen.queryByText("Which describes you?")).toBeNull()
+  })
+
+  it("1a. picking an answer only selects it; Next moves on, and is disabled until something is picked", () => {
+    // THE OWNER'S REPORT (2026-10-06): a click on an answer jumped straight to
+    // the next test, and the page stayed scrolled down, so tapping the same
+    // spot flicked through every movement test without showing its title.
+    renderRunner()
+    start()
+    const next = screen.getByRole("button", { name: "Next" }) as HTMLButtonElement
+    expect(next.disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    expect(screen.getByText("Which describes you?")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "I am an Alpha" }).getAttribute("aria-pressed")).toBe("true")
+    expect(next.disabled).toBe(false)
+
+    // Changing your mind before Next is allowed.
+    fireEvent.click(screen.getByRole("button", { name: "I am a Beta" }))
+    expect(screen.getByRole("button", { name: "I am an Alpha" }).getAttribute("aria-pressed")).toBe("false")
+
+    fireEvent.click(next)
+    expect(screen.getByText("A Beta question")).toBeTruthy()
+  })
+
+  it("1a2. Next brings the top of the quiz back into view when the visitor had scrolled past it", () => {
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { value: scrollIntoView, configurable: true })
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ top: -400 } as DOMRect)
+    try {
+      renderRunner()
+      start()
+      scrollIntoView.mockClear()
+      answer("I am an Alpha")
+      expect(screen.getByText("An Alpha question")).toBeTruthy()
+      expect(scrollIntoView).toHaveBeenCalled()
+    } finally {
+      rect.mockRestore()
+      delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView
+    }
   })
 
   it("1b. does not promise a TOTAL before the router is answered", () => {
@@ -96,7 +141,7 @@ describe("QuizRunner — the walk", () => {
     expect(screen.getByText("Question 1")).toBeTruthy()
     expect(screen.queryByText(/Question 1 of/)).toBeNull()
 
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    answer("I am an Alpha")
     // Once the branch is known the total is real, so it is shown.
     expect(screen.getByText("Question 2 of 2")).toBeTruthy()
   })
@@ -104,7 +149,7 @@ describe("QuizRunner — the walk", () => {
   it("2. goes back to the previous question with the previous answer still selected", () => {
     renderRunner()
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    answer("I am an Alpha")
     fireEvent.click(screen.getByRole("button", { name: "Back" }))
 
     expect(screen.getByText("Which describes you?")).toBeTruthy()
@@ -116,16 +161,16 @@ describe("QuizRunner — the walk", () => {
     renderRunner()
     start()
     expect(screen.queryByLabelText("Email")).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    answer("I am an Alpha")
     expect(screen.queryByLabelText("Email")).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("Alpha answer")
     expect(screen.getByLabelText("Email")).toBeTruthy()
   })
 
   it("4. asks a different second question depending on the router answer", () => {
     renderRunner()
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am a Beta" }))
+    answer("I am a Beta")
     expect(screen.getByText("A Beta question")).toBeTruthy()
     expect(screen.queryByText("An Alpha question")).toBeNull()
   })
@@ -158,8 +203,8 @@ describe("QuizRunner — the walk", () => {
     try {
       renderRunner()
       start()
-      fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-      fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+      answer("I am an Alpha")
+      answer("Alpha answer")
       await waitFor(() => expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe("sam@example.com"))
       expect((screen.getByLabelText("Your name") as HTMLInputElement).value).toBe("Sam Park")
     } finally {
@@ -170,16 +215,16 @@ describe("QuizRunner — the walk", () => {
   it("4e. leaves the gate empty when nothing was carried over", () => {
     renderRunner()
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("I am an Alpha")
+    answer("Alpha answer")
     expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe("")
   })
 
   it("5. a testRun makes ZERO progress calls", async () => {
     renderRunner({ testRun: true })
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("I am an Alpha")
+    answer("Alpha answer")
     await waitFor(() => expect(screen.getByLabelText("Email")).toBeTruthy())
 
     const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
@@ -189,7 +234,7 @@ describe("QuizRunner — the walk", () => {
   it("5b. a normal run DOES post progress — so test 5 is not vacuous", async () => {
     renderRunner()
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    answer("I am an Alpha")
     await waitFor(() => {
       const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
       expect(calls.filter((c) => String(c[0]).includes("/api/quiz/progress")).length).toBeGreaterThan(0)
@@ -216,8 +261,8 @@ describe("QuizRunner — the walk", () => {
     )
     renderRunner()
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("I am an Alpha")
+    answer("Alpha answer")
     fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Sam" } })
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sam@example.com" } })
     fireEvent.click(screen.getByRole("button", { name: "See my result" }))
@@ -243,16 +288,16 @@ describe("QuizRunner — the walk", () => {
   it("shows no SMS checkbox when no wording was supplied", () => {
     renderRunner()
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("I am an Alpha")
+    answer("Alpha answer")
     expect(screen.queryByRole("checkbox")).toBeNull()
   })
 
   it("shows the SMS checkbox with the exact wording it was given", () => {
     renderRunner({ smsConsentWording: "I agree to receive text messages from DJP Athlete." })
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("I am an Alpha")
+    answer("Alpha answer")
     expect(screen.getByRole("checkbox")).toBeTruthy()
     expect(screen.getByText("I agree to receive text messages from DJP Athlete.")).toBeTruthy()
   })
@@ -260,8 +305,8 @@ describe("QuizRunner — the walk", () => {
   it("shows no email consent checkbox when no wording was supplied", () => {
     renderRunner()
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("I am an Alpha")
+    answer("Alpha answer")
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0)
   })
 
@@ -271,8 +316,8 @@ describe("QuizRunner — the walk", () => {
         "Yes, DJP Athlete can email me training tips, news and offers. I can unsubscribe at any time.",
     })
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("I am an Alpha")
+    answer("Alpha answer")
     const checkbox = screen.getByRole("checkbox") as HTMLInputElement
     expect(checkbox.checked).toBe(false)
     expect(
@@ -287,8 +332,8 @@ describe("QuizRunner — the walk", () => {
         "Yes, DJP Athlete can email me training tips, news and offers. I can unsubscribe at any time.",
     })
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("I am an Alpha")
+    answer("Alpha answer")
     expect(screen.getAllByRole("checkbox")).toHaveLength(2)
   })
 
@@ -310,8 +355,8 @@ describe("QuizRunner — the walk", () => {
         "Yes, DJP Athlete can email me training tips, news and offers. I can unsubscribe at any time.",
     })
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("I am an Alpha")
+    answer("Alpha answer")
     fireEvent.click(screen.getByRole("checkbox"))
     fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Sam" } })
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sam@example.com" } })
@@ -346,8 +391,8 @@ describe("QuizRunner — the walk", () => {
         "Yes, DJP Athlete can email me training tips, news and offers. I can unsubscribe at any time.",
     })
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("I am an Alpha")
+    answer("Alpha answer")
     fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Sam" } })
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sam@example.com" } })
     fireEvent.click(screen.getByRole("button", { name: "See my result" }))
@@ -366,8 +411,8 @@ describe("QuizRunner — the walk", () => {
   it("refuses to submit in a plain preview that is not a test run", async () => {
     renderRunner({ isPreview: true })
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("I am an Alpha")
+    answer("Alpha answer")
     fireEvent.click(screen.getByRole("button", { name: "See my result" }))
     await waitFor(() => expect(screen.getByText(/Submissions are disabled/)).toBeTruthy())
   })
@@ -409,8 +454,8 @@ describe("QuizRunner — the mini-assessment result", () => {
     ))
     const view = renderRunner()
     start()
-    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
-    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    answer("I am an Alpha")
+    answer("Alpha answer")
     fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Sam" } })
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sam@example.com" } })
     fireEvent.click(screen.getByRole("button", { name: "See my result" }))
