@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RPI funnel after the cleanup</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:1320px;margin:0 auto;padding:24px;background:#f6f6f4;color:#13323c}
+figure{margin:0 0 40px}figcaption{margin:0 0 10px}img{max-width:100%;border:1px solid #ddd;border-radius:8px}</style>
+<h1>Rotational Performance Index funnel, after the 2026-10-06 cleanup</h1>
+<p>Real app on the dev clone, which holds the same pages and quiz as production now does. Shots 1-5 and 7 are a <code>/preview/rotational-performance-index</code> test run (nothing saved). Desktop 1280 wide; phone 390 wide at 2x. Funnel pages and the admin have no dark mode.</p>
+<figure><figcaption><b>1.</b> The visitor fills in the landing page form. The sport is asked here and nowhere else.</figcaption><img src="01-landing-form-asks-sport.png" alt=""></figure>
+<figure><figcaption><b>2.</b> Pressing the button lands on the first movement test. There is no second sales page and no Start screen.</figcaption><img src="02-quiz-opens-on-the-first-test.png" alt=""></figure>
+<figure><figcaption><b>3.</b> After the nine test screens (five tests, four of them done on each side), four short questions follow.</figcaption><img src="03-four-questions-after-the-tests.png" alt=""></figure>
+<figure><figcaption><b>4.</b> At the end, the visitor does not type their name and email again. They press the button.</figcaption><img src="04-name-and-email-already-filled.png" alt=""></figure>
+<figure><figcaption><b>5.</b> The score and the movement map show straight away. This was a test run, so nothing was saved.</figcaption><img src="05-result.png" alt=""></figure>
+<figure><figcaption><b>6.</b> On the funnels board, “Go live” now puts the funnel live instead of refusing because the quiz was offline.</figcaption><img src="06-go-live-works.png" alt=""></figure>
+<figure><figcaption><b>7.</b> On a phone, the page opens on the first test. Its clip is a short scroll down.</figcaption><img src="07-phone-quiz-opens-on-the-first-test.png" alt=""></figure>
