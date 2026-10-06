@@ -2049,12 +2049,25 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           </a>
         </Button>
 
-        <Button asChild variant="ghost" size="sm">
-          <a href={props.publicUrl} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="size-4" aria-hidden />
-            Live page
-          </a>
-        </Button>
+        {/* Greyed out until this page has a published version: before that the
+            link can only answer "Page not found", which is what the owner got
+            on 2026-10-06 and read as the page being broken. The span carries
+            the hint, since a disabled button takes no pointer events. */}
+        {publishedVersion !== null ? (
+          <Button asChild variant="ghost" size="sm">
+            <a href={props.publicUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="size-4" aria-hidden />
+              Live page
+            </a>
+          </Button>
+        ) : (
+          <span title="Not live yet. Press Publish first.">
+            <Button variant="ghost" size="sm" disabled>
+              <ExternalLink className="size-4" aria-hidden />
+              Live page
+            </Button>
+          </span>
+        )}
 
         {blockingCount > 0 ? (
           <Button

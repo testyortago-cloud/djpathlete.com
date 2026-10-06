@@ -1366,4 +1366,17 @@ describe("<FunnelBuilder> — Publish after a publish", () => {
     expect(screen.getByText(/v2 live/i)).toBeInTheDocument()
     expect(publishButton()).toBeEnabled()
   })
+
+  it("greys out Live page until the page has been published, then links to it", () => {
+    // 2026-10-06: the owner pressed Live page on a never-published landing
+    // page and got "Page not found". MUTANT: rendering the link regardless of
+    // `publishedVersion` brings back the dead link in the first half.
+    const { unmount } = render(<FunnelBuilder {...baseProps()} />)
+    expect(screen.getByRole("button", { name: /live page/i })).toBeDisabled()
+    expect(screen.queryByRole("link", { name: /live page/i })).toBeNull()
+    unmount()
+
+    render(<FunnelBuilder {...baseProps({ initialPublishedVersion: 1 })} />)
+    expect(screen.getByRole("link", { name: /live page/i })).toBeInTheDocument()
+  })
 })
