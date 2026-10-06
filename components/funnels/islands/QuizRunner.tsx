@@ -16,8 +16,9 @@
 // own copy from the database or the visitor's own input, and both go through
 // React's text escaping. A test asserts the source contains no such call.
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { browserTimezone } from "@/lib/browser-timezone"
+import { readCarriedContact } from "@/lib/funnels/carried-contact"
 import type { PublicQuizDefinition, PublicQuizQuestion } from "@/lib/quizzes/public-definition"
 import type { MapRow, MirrorLine } from "@/lib/quizzes/report"
 
@@ -73,7 +74,10 @@ export function QuizRunner({
   funnelId,
   stepId,
 }: QuizRunnerProps) {
-  const [phase, setPhase] = useState<Phase>("intro")
+  // No intro copy means no intro screen: a quiz behind a landing page that
+  // already said what it is opens straight on its first question, rather than
+  // on a lone "Start" button.
+  const [phase, setPhase] = useState<Phase>(definition.introHeadline || definition.introBody ? "intro" : "questions")
   const [index, setIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [attemptId, setAttemptId] = useState<string | null>(null)
@@ -90,6 +94,15 @@ export function QuizRunner({
   const [smsConsent, setSmsConsent] = useState(false)
   const [emailConsent, setEmailConsent] = useState(false)
   const [website, setWebsite] = useState("")
+
+  // A landing form earlier in the funnel may already have the name and email.
+  // After mount, never in the initialiser: the server render has no storage.
+  useEffect(() => {
+    const carried = readCarriedContact()
+    if (!carried) return
+    if (carried.name) setName((current) => current || carried.name)
+    if (carried.email) setEmail((current) => current || carried.email)
+  }, [])
 
   /**
    * THE BRANCH IS DERIVED FROM THE ANSWERS, exactly as the server derives it.
@@ -429,7 +442,9 @@ export function QuizRunner({
    * looked at the counter, which is exactly the class of false-positive a
    * guard's own tests structurally cannot see.
    */
-  const totalKnown = branchId !== null
+  // A quiz with no branches has nothing to lengthen its walk, so its total is
+  // known from the first question.
+  const totalKnown = branchId !== null || definition.branches.length === 0
   const progress = totalKnown && walk.length > 0 ? Math.round((index / walk.length) * 100) : 0
 
   return (

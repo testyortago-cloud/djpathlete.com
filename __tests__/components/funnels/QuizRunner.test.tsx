@@ -130,6 +130,51 @@ describe("QuizRunner — the walk", () => {
     expect(screen.queryByText("An Alpha question")).toBeNull()
   })
 
+  it("4b. a quiz with no branches and no intro copy opens on question one, with its total", () => {
+    const flat: PublicQuizDefinition = {
+      ...DEFINITION,
+      introHeadline: "",
+      introBody: "",
+      branches: [],
+      questions: [
+        { ...DEFINITION.questions[1], id: "q-1", branchId: null, position: 10, prompt: "First shared" },
+        { ...DEFINITION.questions[2], id: "q-2", branchId: null, position: 20, prompt: "Second shared" },
+      ],
+    }
+    render(<QuizRunner definition={flat} submitLabel="See my result" />)
+    expect(screen.queryByRole("button", { name: "Start" })).toBeNull()
+    expect(screen.getByText("First shared")).toBeTruthy()
+    expect(screen.getByText("Question 1 of 2")).toBeTruthy()
+  })
+
+  it("4c. still shows the intro screen when the quiz has intro copy", () => {
+    renderRunner()
+    expect(screen.getByRole("button", { name: "Start" })).toBeTruthy()
+    expect(screen.queryByText("Which describes you?")).toBeNull()
+  })
+
+  it("4d. prefills the gate from the name and email a landing form carried over", async () => {
+    window.sessionStorage.setItem("djp-funnel-contact", JSON.stringify({ name: "Sam Park", email: "sam@example.com" }))
+    try {
+      renderRunner()
+      start()
+      fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+      fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+      await waitFor(() => expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe("sam@example.com"))
+      expect((screen.getByLabelText("Your name") as HTMLInputElement).value).toBe("Sam Park")
+    } finally {
+      window.sessionStorage.clear()
+    }
+  })
+
+  it("4e. leaves the gate empty when nothing was carried over", () => {
+    renderRunner()
+    start()
+    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    fireEvent.click(screen.getByRole("button", { name: "Alpha answer" }))
+    expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe("")
+  })
+
   it("5. a testRun makes ZERO progress calls", async () => {
     renderRunner({ testRun: true })
     start()

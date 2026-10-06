@@ -90,6 +90,36 @@ describe("FunnelForm submit routing", () => {
   })
 })
 
+describe("carrying the name and email to the next step", () => {
+  const CONTACT_FIELDS = [
+    { name: "athlete_name", label: "Athlete name", type: "text" as const, role: "athlete_name" as const, required: true },
+    { name: "parent_email", label: "Email", type: "email" as const, role: "parent_email" as const, required: true },
+  ]
+
+  function submitContact() {
+    fireEvent.change(screen.getByLabelText(/athlete name/i), { target: { value: "Sam Park" } })
+    fireEvent.change(screen.getByLabelText(/^email/i), { target: { value: "sam@example.com" } })
+    fireEvent.click(screen.getByRole("button", { name: /request a spot/i }))
+  }
+
+  beforeEach(() => window.sessionStorage.clear())
+
+  it("saves them before following a same-site redirect, for the quiz gate to prefill", async () => {
+    renderForm({ fields: CONTACT_FIELDS, successMode: "redirect", redirectUrl: "/go/rotational-performance-index/quiz" })
+    submitContact()
+    await waitFor(() => expect(window.sessionStorage.getItem("djp-funnel-contact")).not.toBeNull())
+    expect(JSON.parse(window.sessionStorage.getItem("djp-funnel-contact")!)).toEqual({ name: "Sam Park", email: "sam@example.com" })
+  })
+
+  it("does not hand them to another site", async () => {
+    renderForm({ fields: CONTACT_FIELDS, successMode: "redirect", redirectUrl: "https://example.com/thanks" })
+    submitContact()
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 10))
+    expect(window.sessionStorage.getItem("djp-funnel-contact")).toBeNull()
+  })
+})
+
 describe("what a test run reports", () => {
   it("shows what would have been captured, and that nothing was saved", async () => {
     mock(fetch).mockResolvedValue(

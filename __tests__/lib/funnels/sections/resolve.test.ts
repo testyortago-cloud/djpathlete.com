@@ -1817,7 +1817,8 @@ describe("loadCatalogues", () => {
         {
           id: "quiz-active",
           status: "active",
-          gateBlocker: "There is no router question: no shared question routes to a branch.",
+          // The stub definition is empty, so the gate's FIRST reason is carried.
+          gateBlocker: "There are no questions, so the quiz would ask nothing.",
         },
         { id: "quiz-draft", status: "draft", gateBlocker: null },
       ],

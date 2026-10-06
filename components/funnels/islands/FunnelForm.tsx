@@ -29,6 +29,7 @@
 
 import { Fragment, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { browserTimezone } from "@/lib/browser-timezone"
+import { contactFromForm, saveCarriedContact } from "@/lib/funnels/carried-contact"
 import type { FunnelFormField } from "@/lib/funnels/islands"
 
 interface FunnelFormProps {
@@ -279,6 +280,9 @@ export function FunnelForm({
         // published JSON, and this line navigates a visitor who has just handed
         // over their email. Two cheap checks beat one.
         if (/^(?!\/\/)(\/|https:\/\/)/.test(redirectUrl)) {
+          // Same-origin steps only: a quiz further down this funnel prefills
+          // its gate from this, so the visitor is not asked twice.
+          if (redirectUrl.startsWith("/")) saveCarriedContact(contactFromForm(fields, values))
           window.location.href = redirectUrl
           return
         }

@@ -42,8 +42,17 @@ export function quizGate(definition: QuizDefinition): QuizGateResult {
   const active = definition.questions.filter((question) => question.isActive)
   const routers = routerQuestions(active)
 
-  // 1. No router question.
-  if (routers.length === 0) {
+  // 0. Nothing to ask. Blocker 1 used to catch this as a side effect, which
+  // stopped being true once a quiz without branches needed no router.
+  if (active.length === 0) {
+    blockers.push("There are no questions, so the quiz would ask nothing.")
+  }
+
+  // 1. No router question — on a quiz that HAS branches. A quiz with no
+  // branches asks everyone every question, so it has nothing to route and
+  // `walkedQuestions(definition, null)` is its whole walk. The RPI quiz is
+  // one: its owner moved the sport question onto the landing page's form.
+  if (routers.length === 0 && definition.branches.length > 0) {
     blockers.push("There is no router question: no shared question routes to a branch.")
   }
 

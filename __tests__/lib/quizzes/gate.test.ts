@@ -94,6 +94,25 @@ describe("quizGate — blockers", () => {
     expect(blockersOf(d)).toMatch(/no router question/i)
   })
 
+  it("1b. passes a quiz with NO branches and no router — everyone walks every question", () => {
+    const d = derive((x) => {
+      x.branches = []
+      x.questions = x.questions.filter((q) => q.branchId === null && q.id !== "router")
+      x.questions.push(question("s1", 40, null, [option("s1-y", "s1", 1, { weight: 3 }), option("s1-n", "s1", 2)]))
+    })
+    expect(blockersOf(d)).toBe("")
+    expect(quizGate(d).ok).toBe(true)
+  })
+
+  it("0. blocks a quiz with no active questions, branches or not", () => {
+    const d = derive((x) => {
+      x.branches = []
+      x.questions = []
+    })
+    expect(quizGate(d).ok).toBe(false)
+    expect(blockersOf(d)).toMatch(/no questions/i)
+  })
+
   it("2. blocks a router option that routes nowhere", () => {
     const d = derive((x) => {
       x.questions.find((q) => q.id === "router")!.options[1].routesToBranchId = null
