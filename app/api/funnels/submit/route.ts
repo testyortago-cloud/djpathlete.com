@@ -7,7 +7,7 @@
 // discarded. A tampered payload therefore cannot inject extra columns, and a
 // form key that was never published cannot submit at all.
 
-import { NextResponse } from "next/server"
+import { after, NextResponse } from "next/server"
 import { submittedTimezone } from "@/lib/validators/timezone"
 import { z } from "zod"
 import { createServiceRoleClient } from "@/lib/supabase"
@@ -31,6 +31,7 @@ import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { hasEmailConsentDisplayName, renderEmailConsentWording } from "@/lib/lead-engine/email-consent-wording"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
+import { LEAD_ALERT_ROLES, listBusinessMemberUserIds } from "@/lib/db/business-members"
 
 /** Bots submit instantly; a person cannot read and fill a form this fast. */
 const MIN_ELAPSED_MS = 1500
@@ -257,39 +258,46 @@ export async function POST(request: Request) {
   })
 
   // ---------------------------------------------------------------------------
-  // SMS consent (Lead Engine Stage 2, Task 6). FIRE AND FORGET, for the same
+  // SMS consent (Lead Engine Stage 2, Task 6). NOT AWAITED, for the same
   // reason `notifyCoachOfLead` below is: the lead is already captured, and a
   // consent-row failure must never turn "we have your details" into an error
   // for someone who has already handed over their phone number. Only fires
   // when there is a contact to attach the row to and a phone that was
   // actually captured — an unchecked or absent box writes no row at all.
+  //
+  // Handed to `after()`, never a bare `void`: see the coach alert below for
+  // what a bare `void` cost on 2026-10-06.
   // ---------------------------------------------------------------------------
   if (contactId && phone && parsedBody.sms_consent === true) {
-    void recordFunnelSmsConsent({
-      contactId,
-      ip: ip === "unknown" ? null : ip,
-      userAgent: request.headers.get("user-agent"),
-      businessId,
-    }).catch((error) => {
-      console.error("[funnels/submit] sms consent write failed (the lead was saved):", shapeConsentError(error))
-    })
+    after(
+      recordFunnelSmsConsent({
+        contactId,
+        ip: ip === "unknown" ? null : ip,
+        userAgent: request.headers.get("user-agent"),
+        businessId,
+      }).catch((error) => {
+        console.error("[funnels/submit] sms consent write failed (the lead was saved):", shapeConsentError(error))
+      }),
+    )
   }
 
-  // Email consent (decision 7). Same fire-and-forget shape as the SMS block
-  // above, for the same reason: the lead is already captured, and a
+  // Email consent (decision 7). Same not-awaited, `after()` shape as the SMS
+  // block above, for the same reason: the lead is already captured, and a
   // consent-row failure must never turn "we have your details" into an error.
   // Only fires when there is a contact to attach the row to and an email that
   // was actually captured — an unchecked or absent box, or a form with no
   // email field at all, writes no row.
   if (contactId && email && parsedBody.email_consent === true) {
-    void recordFunnelEmailConsent({
-      contactId,
-      ip: ip === "unknown" ? null : ip,
-      userAgent: request.headers.get("user-agent"),
-      businessId,
-    }).catch((error) => {
-      console.error("[funnels/submit] email consent write failed (the lead was saved):", shapeConsentError(error))
-    })
+    after(
+      recordFunnelEmailConsent({
+        contactId,
+        ip: ip === "unknown" ? null : ip,
+        userAgent: request.headers.get("user-agent"),
+        businessId,
+      }).catch((error) => {
+        console.error("[funnels/submit] email consent write failed (the lead was saved):", shapeConsentError(error))
+      }),
+    )
   }
 
   recordAudit({
@@ -300,29 +308,36 @@ export async function POST(request: Request) {
   })
 
   // ---------------------------------------------------------------------------
-  // Tell the coach. FIRE AND FORGET, AND THAT IS THE WHOLE DESIGN.
+  // Tell the coach. NOT AWAITED, BUT KEPT ALIVE WITH `after()`.
   //
   // The submission is already written and the visitor's success does not depend
-  // on our mail provider being up. `void` plus a swallowed rejection is what
-  // keeps a Resend outage from turning "we have your details" into "something
-  // went wrong, please try again" for someone who has already handed over their
-  // email — and who, on a second attempt, becomes a duplicate lead.
+  // on our mail provider being up. Not awaiting, plus a swallowed rejection, is
+  // what keeps a Resend outage from turning "we have your details" into
+  // "something went wrong, please try again" for someone who has already handed
+  // over their email — and who, on a second attempt, becomes a duplicate lead.
   //
-  // The awaited alternative was considered and rejected: an alert is worth less
-  // than the lead it is about.
+  // `after()` is what makes "not awaited" safe on Vercel. This was a bare `void`
+  // until 2026-10-06, and the first real landing-page lead never reached the
+  // coach: the instance froze the moment the response went out, and when the
+  // next request thawed it 46 s later, the Resend call failed with "Unable to
+  // fetch data. The request could not be resolved." The consent rows above
+  // landed 23 s late through the same freeze. `after()` holds the function
+  // open until the promise settles, without making the visitor wait for it.
   // ---------------------------------------------------------------------------
-  void notifyCoachOfLead({
-    businessId,
-    funnelId: parsedBody.funnelId,
-    funnel,
-    step,
-    name,
-    email,
-    phone,
-    answers: payload,
-  }).catch((error) => {
-    console.error("[funnels/submit] lead alert failed (the lead was saved):", error)
-  })
+  after(
+    notifyCoachOfLead({
+      businessId,
+      funnelId: parsedBody.funnelId,
+      funnel,
+      step,
+      name,
+      email,
+      phone,
+      answers: payload,
+    }).catch((error) => {
+      console.error("[funnels/submit] lead alert failed (the lead was saved):", error)
+    }),
+  )
 
   // Read here, not inside the closure: TypeScript does not carry the `!config`
   // narrowing above into a closure body, and widening it back to
@@ -513,13 +528,13 @@ async function recordFunnelEmailConsent(input: {
 }
 
 /**
- * Looks up the page's name and emails the coach.
+ * Looks up the page's name, rings the admin bell and emails the coach.
  *
  * Neither `funnel` nor `step` is fetched in here: both were already read on
  * the hot path above (the funnel for the status gate, the step for the
  * funnel/step cross-check), and they are the same rows either way — a second
- * read of either would only cost an extra round trip for a fire-and-forget
- * email.
+ * read of either would only cost an extra round trip for a not-awaited
+ * alert.
  */
 async function notifyCoachOfLead(input: {
   /**
@@ -540,6 +555,17 @@ async function notifyCoachOfLead(input: {
 
   const pageName = [funnel?.name, step?.name].filter(Boolean).join(" · ") || "a landing page"
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.darrenjpaul.com"
+  const leadsPath = `/admin/funnels/leads?funnelId=${encodeURIComponent(input.funnelId)}`
+
+  // The bell in the admin header, which /api/contact and /api/inquiry have
+  // always rung and this route never did. Its own try, ahead of the email:
+  // a failed bell must not cost the coach the email, and a failed email must
+  // not cost them the bell.
+  try {
+    await ringLeadBell({ ...input, pageName, link: leadsPath })
+  } catch (error) {
+    console.error("[funnels/submit] lead bell failed (the lead was saved):", error)
+  }
 
   await sendNewFunnelLeadEmail({
     businessId: input.businessId,
@@ -550,7 +576,7 @@ async function notifyCoachOfLead(input: {
     answers: input.answers,
     // Deep-linked to this page's leads, filtered, so the click lands on the
     // one lead the email is about rather than on the whole inbox.
-    leadsUrl: `${base}/admin/funnels/leads?funnelId=${encodeURIComponent(input.funnelId)}`,
+    leadsUrl: `${base}${leadsPath}`,
     // Set at creation by templates that capture leads. Read here rather than
     // stored on the step, because the owner thinks of it as "who hears about
     // THIS campaign", not about one page of it. Still ADDITIVE since G30: the
@@ -558,6 +584,47 @@ async function notifyCoachOfLead(input: {
     // alertAddressing, migration 00282) goes first and these are added to it.
     extraRecipients: funnel?.notify_emails ?? null,
   })
+}
+
+/**
+ * One bell row per owner and coach of the business whose page this is --
+ * the same recipients /api/contact uses, scoped to the Host tenant so one
+ * business's lead never bells another's staff.
+ */
+async function ringLeadBell(input: {
+  businessId: string
+  pageName: string
+  link: string
+  name: string | null
+  email: string | null
+  phone: string | null
+}): Promise<void> {
+  const userIds = await listBusinessMemberUserIds(input.businessId, LEAD_ALERT_ROLES)
+  if (userIds.length === 0) return
+
+  const who = input.name?.trim() || input.email?.trim() || "Someone"
+  const message = [
+    `Page: ${input.pageName}`,
+    input.email ? `Email: ${input.email}` : null,
+    input.phone ? `Phone: ${input.phone}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n")
+
+  const { error } = await createServiceRoleClient()
+    .from("notifications")
+    .insert(
+      userIds.map((userId) => ({
+        user_id: userId,
+        type: "info" as const,
+        title: `New Lead — ${who}`,
+        message,
+        is_read: false,
+        link: input.link,
+      })),
+    )
+  // Rethrown as an Error: a raw PostgREST error object logs as [object Object].
+  if (error) throw new Error(`notifications insert failed (${error.code}): ${error.message}`)
 }
 
 function findByType(

@@ -55,6 +55,18 @@ vi.mock("@/lib/events/checkout", () => ({ createEventSignupCheckout: vi.fn() }))
 // boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
 // platform's, so a route that hard-codes platformBusinessId() cannot pass.
 vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
+// The route hands its not-awaited work to next/server's `after()`, which throws
+// outside a real request scope. The promises it is given are already running,
+// so a no-op keeps this suite's `flush()` timing exactly what it was.
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: vi.fn(),
+}))
+// No owners or coaches, so the lead bell returns before touching the database.
+vi.mock("@/lib/db/business-members", () => ({
+  LEAD_ALERT_ROLES: ["owner", "coach"],
+  listBusinessMemberUserIds: vi.fn(async () => []),
+}))
 
 import { POST } from "@/app/api/funnels/submit/route"
 import { renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
