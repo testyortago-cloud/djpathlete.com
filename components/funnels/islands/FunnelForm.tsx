@@ -249,6 +249,10 @@ export function FunnelForm({
           // The scheme check is re-applied anyway: two cheap checks beat one on
           // a line that navigates.
           if (outcome.href.startsWith("/") && !outcome.href.startsWith("//")) {
+            // As on the live page, so the owner's test run shows the quiz gate
+            // prefilled exactly as a visitor will see it. Browser-only; the
+            // test run still writes nothing.
+            saveCarriedContact(contactFromForm(fields, values))
             window.location.href = outcome.href
             return
           }

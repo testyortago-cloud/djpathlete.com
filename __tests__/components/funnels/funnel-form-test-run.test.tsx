@@ -111,6 +111,15 @@ describe("carrying the name and email to the next step", () => {
     expect(JSON.parse(window.sessionStorage.getItem("djp-funnel-contact")!)).toEqual({ name: "Sam Park", email: "sam@example.com" })
   })
 
+  it("saves them on a test run's redirect too, so the owner's preview matches the live page", async () => {
+    mock(fetch).mockResolvedValue(
+      jsonResponse({ ok: true, outcome: { kind: "redirect", href: "/preview/rotational-performance-index/quiz" } }),
+    )
+    renderForm({ fields: CONTACT_FIELDS, testRun: true, successMode: "redirect", redirectUrl: "/go/rotational-performance-index/quiz" })
+    submitContact()
+    await waitFor(() => expect(window.sessionStorage.getItem("djp-funnel-contact")).not.toBeNull())
+  })
+
   it("does not hand them to another site", async () => {
     renderForm({ fields: CONTACT_FIELDS, successMode: "redirect", redirectUrl: "https://example.com/thanks" })
     submitContact()
