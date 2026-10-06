@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { after, NextResponse } from "next/server"
 import { inquiryFormSchema, SERVICE_LABELS } from "@/lib/validators/inquiry"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
@@ -246,21 +246,26 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
     if (contactId && phone && sms_consent === true) {
       const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null
       const userAgent = request.headers.get("user-agent")
-      void recordInquirySmsConsent({ contactId, ip, userAgent, source: contactSource, businessId }).catch((err) => {
-        console.error("Inquiry sms consent write failed (the lead was saved):", shapeConsentError(err))
-      })
+      after(
+        recordInquirySmsConsent({ contactId, ip, userAgent, source: contactSource, businessId }).catch((err) => {
+          console.error("Inquiry sms consent write failed (the lead was saved):", shapeConsentError(err))
+        }),
+      )
     }
 
-    // Email consent (decision 7). Same fire-and-forget shape as the SMS block
-    // above. `email` needs no presence check — the schema REQUIRES one on
+    // Email consent (decision 7). Same not-awaited, `after()` shape as the SMS
+    // block above (a bare `void` can be frozen mid-write on Vercel; see the
+    // coach alert in app/api/funnels/submit/route.ts). `email` needs no presence check — the schema REQUIRES one on
     // every inquiry — so this only ever gates on a contact existing and the
     // box having been ticked.
     if (contactId && email_consent === true) {
       const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null
       const userAgent = request.headers.get("user-agent")
-      void recordInquiryEmailConsent({ contactId, ip, userAgent, source: contactSource, businessId }).catch((err) => {
-        console.error("Inquiry email consent write failed (the lead was saved):", shapeConsentError(err))
-      })
+      after(
+        recordInquiryEmailConsent({ contactId, ip, userAgent, source: contactSource, businessId }).catch((err) => {
+          console.error("Inquiry email consent write failed (the lead was saved):", shapeConsentError(err))
+        }),
+      )
     }
 
     // WHO GETS THE BELL: this business's owners and coaches (LEAD_ALERT_ROLES,

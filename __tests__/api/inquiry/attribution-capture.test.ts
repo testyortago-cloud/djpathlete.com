@@ -6,6 +6,14 @@
 // silently runs nothing.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
+// The route hands its consent writes to next/server's `after()`, which throws
+// outside a real request scope. The promises are already running, so a no-op
+// keeps this suite's timing what it was.
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: vi.fn(),
+}))
+
 /**
  * Regression cover for the break that made Google Ads unmeasurable: the ad
  * landing pages (/online, /in-person) submit through /api/inquiry, which read

@@ -9,6 +9,14 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
+// The route hands its consent writes to next/server's `after()`, which throws
+// outside a real request scope. The promises are already running, so a no-op
+// keeps this suite's timing what it was.
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: vi.fn(),
+}))
+
 type Row = Record<string, any>
 
 const state: { users: Row[]; notifications: Row[] } = { users: [], notifications: [] }
