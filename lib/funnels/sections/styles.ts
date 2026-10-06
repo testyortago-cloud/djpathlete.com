@@ -1846,31 +1846,84 @@ ${ROOT} .djp-s-quiz .djp-quiz-options {
   padding: 0;
   list-style: none;
 }
+/* THE ANSWERS READ AS ANSWERS. They were white on the white card with a
+   var(--surface) hairline, so the owner saw a page of blank boxes (2026-10-06).
+   Each one now carries a light wash, a visible edge and a radio circle, and
+   the picked one fills that circle and takes the accent.
+   Every colour is a wash of a token, never a literal: render.test.ts resolves
+   colours by token, and a color-mix of one var under 50% is a wash it models
+   (the ground behind still governs legibility). --djp-pair-fg is used rather
+   than --foreground so the band variant, which drops the card, washes in the
+   section's own foreground instead of dark ink on a dark band.
+   --djp-quiz-pick is the picked colour: --accent-on-paper on the card (proven
+   legible against --background and --surface), handed back to the pair
+   foreground by the band variant below, where an accent ring on an accent
+   band would vanish. */
 ${ROOT} .djp-s-quiz .djp-quiz-option {
-  display: block;
+  --djp-quiz-pick: var(--accent-on-paper, var(--accent));
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
   width: 100%;
   text-align: left;
-  padding: 0.875rem 1rem;
-  border: 1px solid var(--surface);
+  padding: 1rem 1.125rem;
+  border: 1.5px solid color-mix(in oklch, var(--djp-pair-fg) 16%, transparent);
   border-radius: var(--radius);
-  background: transparent;
+  background: color-mix(in oklch, var(--djp-pair-fg) 4%, transparent);
   font: inherit;
+  font-weight: 500;
   color: inherit;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 }
-${ROOT} .djp-s-quiz .djp-quiz-option:hover { border-color: var(--accent); }
-${ROOT} .djp-s-quiz .djp-quiz-option[aria-pressed="true"] { border-color: var(--accent); background: var(--surface); }
+${ROOT} .djp-s-quiz .djp-quiz-option::before {
+  content: "";
+  flex: none;
+  box-sizing: border-box;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  border: 2px solid color-mix(in oklch, var(--djp-pair-fg) 35%, transparent);
+  transition: border-color 0.15s ease, border-width 0.15s ease;
+}
+/* Hover only where there is a pointer: on a phone a tap leaves :hover stuck on
+   whatever sits under the finger, which is the next question's answer. */
+@media (hover: hover) {
+  ${ROOT} .djp-s-quiz .djp-quiz-option:hover {
+    border-color: color-mix(in oklch, var(--djp-pair-fg) 40%, transparent);
+    background: color-mix(in oklch, var(--djp-pair-fg) 7%, transparent);
+  }
+}
+${ROOT} .djp-s-quiz .djp-quiz-option:active { transform: scale(0.99); }
+${ROOT} .djp-s-quiz .djp-quiz-option:focus-visible { outline: 2px solid var(--djp-quiz-pick); outline-offset: 2px; }
+${ROOT} .djp-s-quiz .djp-quiz-option[aria-pressed="true"] {
+  border-color: var(--djp-quiz-pick);
+  background: color-mix(in oklch, var(--djp-quiz-pick) 10%, transparent);
+  box-shadow: 0 0 0 1px var(--djp-quiz-pick);
+  font-weight: 600;
+}
+/* A thick ring with a hollow centre is the picked radio. No fill, so nothing
+   here paints a background the contrast harness would have to model. */
+${ROOT} .djp-s-quiz .djp-quiz-option[aria-pressed="true"]::before { border: 6px solid var(--djp-quiz-pick); }
 ${ROOT} .djp-s-quiz .djp-quiz-nav { display: flex; gap: 0.75rem; align-items: center; }
+/* AN OUTLINED BUTTON THE SIZE OF NEXT, not an underlined grey word. Beside the
+   new Next button the old link read as no Back at all (owner, 2026-10-06).
+   Same box as .djp-btn so the pair lines up; the edge is a wash of the pair
+   foreground so it holds on the card and on a band alike. */
 ${ROOT} .djp-s-quiz .djp-quiz-back {
-  background: none;
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--djp-radius, 0.6rem);
+  border: 2px solid color-mix(in oklch, var(--djp-pair-fg) 25%, transparent);
+  background: transparent;
   font: inherit;
-  color: var(--muted-foreground);
-  text-decoration: underline;
+  font-weight: 600;
+  color: inherit;
   cursor: pointer;
-  padding: 0;
+  transition: border-color 0.15s ease;
 }
+${ROOT} .djp-s-quiz .djp-quiz-back:hover { border-color: color-mix(in oklch, var(--djp-pair-fg) 55%, transparent); }
 ${ROOT} .djp-s-quiz .djp-quiz-gate { display: flex; flex-direction: column; gap: 0.875rem; max-width: 26rem; }
 ${ROOT} .djp-s-quiz .djp-quiz-field { display: flex; flex-direction: column; gap: 0.375rem; }
 ${ROOT} .djp-s-quiz .djp-quiz-label { font-size: 0.875rem; font-weight: 600; }
@@ -1964,6 +2017,7 @@ ${ROOT} .djp-s-quiz.djp-v-band .djp-quiz {
   box-shadow: none;
   padding: 0;
 }
+${ROOT} .djp-s-quiz.djp-v-band .djp-quiz-option { --djp-quiz-pick: var(--djp-pair-fg); }
 
 /* split — the intro copy and the quiz card side by side, so the pitch for
    taking the quiz sits beside the quiz itself instead of above it. Both are
