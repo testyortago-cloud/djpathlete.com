@@ -52,6 +52,7 @@ export function RegisterForm() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [error, setError] = useState<string | null>(null)
+  const [accountExists, setAccountExists] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -108,6 +109,7 @@ export function RegisterForm() {
   async function doSubmit() {
     setError(null)
     setFieldErrors({})
+    setAccountExists(false)
     setIsLoading(true)
 
     try {
@@ -131,6 +133,15 @@ export function RegisterForm() {
       })
 
       const data = await res.json()
+
+      if (res.status === 409) {
+        // People who forgot they signed up kept retrying this form (13 times
+        // for one athlete). Point them at the way in instead of a dead end.
+        setAccountExists(true)
+        setStep(1)
+        setIsLoading(false)
+        return
+      }
 
       if (!res.ok) {
         const { message, fieldErrors: fe } = summarizeApiError(res, data, "Registration failed. Please try again.")
@@ -213,6 +224,29 @@ export function RegisterForm() {
           labels={REGISTER_FIELD_LABELS}
         />
       </div>
+
+      {accountExists && (
+        <div role="status" className="mb-4 rounded-xl border border-accent/40 bg-accent/10 p-4 text-sm text-foreground">
+          <p className="font-medium text-primary">You already have an account with this email.</p>
+          <p className="mt-1">
+            Log in instead. Forgot your password? We can email you a code so you can sign in without it.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href={`/login?mode=code&email=${encodeURIComponent(email)}`}
+              className="rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition-all hover:bg-primary/90"
+            >
+              Email me a sign-in code
+            </Link>
+            <Link
+              href="/login"
+              className="rounded-full border border-border bg-background px-4 py-2 text-xs font-medium text-primary transition-all hover:bg-surface/50"
+            >
+              Log in with my password
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* ── Step 1: Account details (always shown on step 1) ── */}
       {step === 1 && (

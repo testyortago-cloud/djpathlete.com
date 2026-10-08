@@ -15,6 +15,7 @@ export const AUDIT_ACTIONS = [
   { slug: "auth.register", category: "auth", description: "New account registered" },
   { slug: "auth.password_reset_request", category: "auth", description: "Password reset email requested" },
   { slug: "auth.password_reset_complete", category: "auth", description: "Password successfully reset" },
+  { slug: "auth.login_code_request", category: "auth", description: "Sign-in code email requested" },
   { slug: "auth.email_verified", category: "auth", description: "Email address verified" },
 
   // user / admin_write

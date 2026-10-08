@@ -4,6 +4,7 @@ import { compare } from "bcryptjs"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { decode as defaultDecode } from "next-auth/jwt"
 import { recordAudit } from "@/lib/audit/record"
+import { authorizeEmailCode, toSessionUser } from "@/lib/auth-providers"
 import { sanitizePermissionMap, type PermissionMap } from "@/lib/permissions/registry"
 import { applyAbsoluteCap, SESSION_IDLE_MAX_AGE_SECONDS } from "@/lib/session-policy"
 import type { UserRole } from "@/types/database"
@@ -67,14 +68,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         })
 
         console.log(`[Auth] Login: ${user.email}, role: ${user.role}`)
-        return {
-          id: user.id,
-          email: user.email,
-          name: `${user.first_name} ${user.last_name}`,
-          role: user.role,
-          permissions: sanitizePermissionMap(user.permissions),
-        }
+        return toSessionUser(user)
       },
+    }),
+    // "Email me a sign-in code" on /login. The code comes from POST /api/auth/login-code.
+    Credentials({
+      id: "email-code",
+      name: "email-code",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        code: { label: "Code", type: "text" },
+      },
+      authorize: authorizeEmailCode,
     }),
   ],
   pages: {

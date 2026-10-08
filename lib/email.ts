@@ -76,7 +76,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string, first
                   Security Notice
                 </p>
                 <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:14px; color:#5c5750; line-height:1.7;">
-                  This link expires in <strong style="color:#0E3F50;">1 hour</strong>. If you didn&rsquo;t request this reset, you can safely ignore this email &mdash; your password will remain unchanged.
+                  This link expires in <strong style="color:#0E3F50;">24 hours</strong>. If you didn&rsquo;t request this reset, you can safely ignore this email &mdash; your password will remain unchanged.
                 </p>
               </td>
             </tr>
@@ -98,6 +98,59 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string, first
 
   if (error) {
     console.error("Failed to send password reset email:", error)
+    throw new Error("Failed to send email")
+  }
+}
+
+export async function sendLoginCodeEmail(to: string, code: string, firstName: string) {
+  const html = emailLayout(`
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          ${sectionLabel("Sign-in Code")}
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            Hi ${firstName},
+          </p>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            Type this code on the sign-in page to get into your DJP Athlete account. You don&rsquo;t need your password.
+          </p>
+
+          <p style="margin:0 0 8px; font-family:'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace; font-size:36px; font-weight:600; letter-spacing:10px; color:#0E3F50;">
+            ${code}
+          </p>
+
+          <!-- Security note -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:36px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #C49B7A;">
+            <tr>
+              <td style="padding:20px 24px;">
+                <p style="margin:0 0 4px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
+                  Security Notice
+                </p>
+                <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:14px; color:#5c5750; line-height:1.7;">
+                  This code works for <strong style="color:#0E3F50;">10 minutes</strong>, one time only. If you didn&rsquo;t ask for it, you can ignore this email &mdash; nobody can sign in without the code.
+                </p>
+              </td>
+            </tr>
+          </table>
+
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to,
+    // The code leads the subject so it shows in the phone's notification.
+    subject: `${code} is your DJP Athlete sign-in code`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send sign-in code email:", error)
     throw new Error("Failed to send email")
   }
 }

@@ -4,11 +4,12 @@ import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Eye, EyeOff, Clock } from "lucide-react"
+import { Eye, EyeOff, Clock, Mail } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 import { homeForRole, isTeamRole } from "@/lib/permissions/registry"
+import { LoginCodeForm } from "./LoginCodeForm"
 
 export function LoginForm() {
   const router = useRouter()
@@ -18,6 +19,9 @@ export function LoginForm() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  // ?mode=code&email=… is where /register sends someone who already has an account.
+  const [mode, setMode] = useState<"password" | "code">(searchParams.get("mode") === "code" ? "code" : "password")
+  const [email, setEmail] = useState(searchParams.get("email") ?? "")
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -43,6 +47,11 @@ export function LoginForm() {
       return
     }
 
+    await goHome()
+  }
+
+  // After either way of signing in: send the person to the right place.
+  async function goHome() {
     // Invalidate Next.js router cache before fetching fresh session
     router.refresh()
 
@@ -81,7 +90,11 @@ export function LoginForm() {
     <>
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-primary tracking-tight">Welcome back</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Log in to your DJP Athlete account</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {mode === "code"
+            ? "We'll email you a 6-digit code. No password needed."
+            : "Log in to your DJP Athlete account"}
+        </p>
       </div>
 
       {sessionExpired && !error && (
@@ -94,67 +107,101 @@ export function LoginForm() {
         </div>
       )}
 
-      <div className="mb-4">
-        <FormErrorBanner message={error} />
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="email" className="text-sm font-medium text-primary">
-            Email
-          </Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="you@example.com"
-            required
-            disabled={isLoading}
-            className="h-11 rounded-lg border-border focus:border-primary focus:ring-primary"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="password" className="text-sm font-medium text-primary">
-              Password
-            </Label>
-            <Link
-              href="/forgot-password"
-              className="text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
-            >
-              Forgot password?
-            </Link>
+      {mode === "code" ? (
+        <LoginCodeForm
+          initialEmail={email}
+          onSignedIn={goHome}
+          onUsePassword={(typed) => {
+            setEmail(typed)
+            setMode("password")
+          }}
+        />
+      ) : (
+        <>
+          <div className="mb-4">
+            <FormErrorBanner message={error} />
           </div>
-          <div className="relative">
-            <Input
-              id="password"
-              name="password"
-              type={showPassword ? "text" : "password"}
-              placeholder="••••••••"
-              required
-              disabled={isLoading}
-              className="h-11 rounded-lg border-border focus:border-primary focus:ring-primary pr-10"
-            />
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-sm font-medium text-primary">
+                Email
+              </Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={isLoading}
+                className="h-11 rounded-lg border-border focus:border-primary focus:ring-primary"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password" className="text-sm font-medium text-primary">
+                  Password
+                </Label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  required
+                  disabled={isLoading}
+                  className="h-11 rounded-lg border-border focus:border-primary focus:ring-primary pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+
             <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
-              tabIndex={-1}
+              type="submit"
+              disabled={isLoading}
+              className="w-full rounded-full bg-primary px-4 py-3 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
             >
-              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              {isLoading ? "Logging in..." : "Log In"}
             </button>
-          </div>
-        </div>
+          </form>
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="w-full rounded-full bg-primary px-4 py-3 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
-        >
-          {isLoading ? "Logging in..." : "Log In"}
-        </button>
-      </form>
+          <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            or
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setError(null)
+              setMode("code")
+            }}
+            disabled={isLoading}
+            className="flex w-full items-center justify-center gap-2 rounded-full border border-border bg-background px-4 py-3 text-sm font-medium text-primary transition-all hover:bg-surface/50 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
+          >
+            <Mail className="size-4" />
+            Email me a sign-in code
+          </button>
+        </>
+      )}
 
       <p className="mt-8 text-center text-sm text-muted-foreground">
         Don&apos;t have an account?{" "}
