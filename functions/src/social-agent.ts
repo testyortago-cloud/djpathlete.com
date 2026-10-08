@@ -376,13 +376,43 @@ export async function pickTopicWithBrief(args: {
 
 // ─── Copywriter ────────────────────────────────────────────────────────────
 
+/**
+ * The writer rules (and so what the reviewer checks against) when the source
+ * is a newsletter issue, IN PLACE OF the platform's social_caption row. Those
+ * rows and the voice profile were written for video posts: 150-300 words, a
+ * named training principle, a contrarian take, an anecdote and a URL CTA in
+ * every post. On a ~300-word issue that gave a post as long as the issue,
+ * with ideas the issue never had (a supercompensation paragraph, "I've worked
+ * with athletes who..."). Appending these rules to the row was tried first:
+ * the row's "150-300 words" still pulled drafts to ~150 words.
+ */
+export const NEWSLETTER_SHARE_RULES = [
+  "NEWSLETTER SHARE RULES. These override the voice profile and any reviewer checklist item they conflict with.",
+  "Write a LinkedIn post that promotes ONE newsletter issue. Someone who reads the post and then the issue should recognise every idea in the post. Voice: Darren's own, peer to peer, no fitness-bro slang.",
+  "- Shape: at most 6 sentences, under 120 words in total, each part its own short paragraph:",
+  "  1. One sentence: the issue's central idea, in its own terms.",
+  "  2. Two or three sentences developing it with at most ONE of the issue's examples or named people. Leave every other example for the issue: the post is a teaser, not a summary.",
+  "  3. One sentence: the question or takeaway the issue leaves the reader with.",
+  "  4. One sentence inviting the reader to subscribe to the newsletter.",
+  "  A draft longer than this fails review: cut whole sentences, starting with any second example.",
+  "- Use only ideas, examples and claims that appear in the issue. Do not add training principles, research, statistics, programs, anecdotes (\"I've worked with athletes who...\") or a \"most coaches say X, I disagree\" framing unless the issue itself contains them.",
+  "- Keep Darren's own wording where it is strong. One short quoted line from the issue is fine.",
+  "- No URL anywhere. A link card to the newsletter sign-up sits under the post. The last line invites the reader to subscribe to the newsletter: that line is the call to action, and it replaces any URL CTA the other rules ask for.",
+  "- Return caption_text and a hashtags array of at most 3 niche, industry-relevant tags (e.g. StrengthAndConditioning, AthleteDevelopment, never generic ones like Fitness).",
+].join("\n")
+
+/** The part of a topic the writer drafts from, and the reviewer checks a newsletter post against. */
+function sourceText(topic: BlogTopic): string {
+  return (topic.content ?? topic.excerpt ?? "").slice(0, 4000)
+}
+
 export interface BuildCopywriterMessageInput {
   topic: BlogTopic
   platform: AgentPlatform
 }
 
 export function buildCopywriterUserMessage(input: BuildCopywriterMessageInput): string {
-  const source = (input.topic.content ?? input.topic.excerpt ?? "").slice(0, 4000)
+  const source = sourceText(input.topic)
   return [
     `Platform: ${input.platform}`,
     input.topic.kind === "newsletter"
@@ -410,6 +440,8 @@ export interface BuildReviewerMessageInput {
   platform: AgentPlatform
   writerRules: string
   draft: Caption
+  /** When set, the reviewer cuts anything in the draft this text does not support. */
+  source?: string
 }
 
 export function buildReviewerUserMessage(input: BuildReviewerMessageInput): string {
@@ -421,6 +453,15 @@ export function buildReviewerUserMessage(input: BuildReviewerMessageInput): stri
     input.writerRules,
     "---",
     "",
+    ...(input.source
+      ? [
+          "Source the post must stay faithful to. Cut any idea, claim or anecdote in the draft that this source does not contain:",
+          "---",
+          input.source,
+          "---",
+          "",
+        ]
+      : []),
     "DRAFT caption_text:",
     "---",
     input.draft.caption_text,
@@ -494,12 +535,17 @@ async function draftForPlatform(args: {
   } = args
 
   try {
+    // A newsletter post is held to the issue: its own rules, its source shown
+    // to the reviewer, and no trending topics to work in.
+    const isNewsletter = topic.kind === "newsletter"
+    const rules = isNewsletter ? NEWSLETTER_SHARE_RULES : platformPrompt
+
     // Writer pass
-    const writerSystem = `${voiceProfile}\n\n---\n\n${platformPrompt}`
+    const writerSystem = `${voiceProfile}\n\n---\n\n${rules}`
     const writerUserMessage =
       toolPerfBlock +
       fewShotsRendered +
-      trendingBlock +
+      (isNewsletter ? "" : trendingBlock) +
       buildCopywriterUserMessage({ topic, platform })
     const writer = await callAgent<Caption>(writerSystem, writerUserMessage, captionSchema, {
       model: MODEL_SONNET,
@@ -512,8 +558,9 @@ async function draftForPlatform(args: {
       reviewerPrompt,
       buildReviewerUserMessage({
         platform,
-        writerRules: platformPrompt,
+        writerRules: rules,
         draft: writer.content,
+        source: isNewsletter ? sourceText(topic) : undefined,
       }),
       reviewedCaptionSchema,
       { model: MODEL_SONNET, maxTokens: 2000, cacheSystemPrompt: true },

@@ -20,6 +20,7 @@ import {
   handleSocialAgentRun,
   latestTavilyTopics,
   listConnectedSocialPlatforms,
+  NEWSLETTER_SHARE_RULES,
   pickNewsletterTopic,
   pickTopic,
   pickTopicWithBrief,
@@ -632,6 +633,13 @@ describe("handleSocialAgentRun — Share to LinkedIn (newsletter source, link ca
     { scope: "global", category: "social_caption_reviewer", prompt: "Review.", few_shot_examples: [] },
     { scope: "linkedin", category: "social_caption", prompt: "LinkedIn rules.", few_shot_examples: [] },
   ]
+  // A live trending row, so "the newsletter writer never saw it" means something.
+  const TRENDING_ROW = {
+    id: "t1",
+    title: "Zone 2 for teen athletes",
+    metadata: { source: "tavily", rank: 1 },
+    created_at: new Date().toISOString(),
+  }
   let postInserts: Array<Record<string, unknown>> = []
   let memoInserts: Array<Record<string, unknown>> = []
 
@@ -662,8 +670,9 @@ describe("handleSocialAgentRun — Share to LinkedIn (newsletter source, link ca
         case "prompt_templates":
           return table({ data: PROMPTS, error: null })
         case "agent_tool_baselines":
-        case "content_calendar":
           return table({ data: [], error: null })
+        case "content_calendar":
+          return table({ data: [TRENDING_ROW], error: null })
         case "social_posts":
           return table({ data: { id: "sp-1" }, error: null }, (row) => postInserts.push(row))
         case "social_captions":
@@ -787,6 +796,41 @@ describe("handleSocialAgentRun — Share to LinkedIn (newsletter source, link ca
       status: "completed",
       result: { blog_post_id: "b1", newsletter_id: null },
     })
+  })
+
+  // MUTANTS: newsletter rules for every topic, or for none; the LinkedIn row
+  // kept alongside them (its "150-300 words" is what kept drafts long); the
+  // writer keeps the trending block; the reviewer checks against the platform
+  // row; the reviewer is not shown the issue. The blog test below is the control.
+  it("holds a newsletter post to the issue: short-post rules in place of the platform row, the issue shown to the reviewer, no trending topics", async () => {
+    route({ newsletter: { id: "n1", subject: "Issue 12", preview_text: "", content: "<p>Rest is a skill.</p>" } })
+    job({ platform: "linkedin", newsletterId: "n1", siteUrl: SITE })
+    await handleSocialAgentRun("job-nl-rules")
+
+    const [writerSystem, writerMessage] = h.callAgent.mock.calls[0].map(String)
+    expect(writerSystem).toBe(`Voice.\n\n---\n\n${NEWSLETTER_SHARE_RULES}`)
+    expect(writerMessage).not.toContain("Zone 2 for teen athletes")
+
+    const reviewerMessage = String(h.callAgent.mock.calls[1][1])
+    expect(reviewerMessage).toContain(NEWSLETTER_SHARE_RULES)
+    expect(reviewerMessage).not.toContain("LinkedIn rules.")
+    expect(reviewerMessage).toContain("Source the post must stay faithful to.")
+    expect(reviewerMessage).toContain("Rest is a skill.")
+  })
+
+  it("leaves a blog post's prompts as they were: no newsletter rules, no source for the reviewer, trending topics kept", async () => {
+    route({
+      blog: { id: "b1", title: "ACL return", slug: "acl-return", excerpt: null, content: "Body.", cover_image_url: null },
+    })
+    job({ platform: "linkedin", blogPostId: "b1", siteUrl: SITE })
+    await handleSocialAgentRun("job-blog-rules")
+
+    const [writerSystem, writerMessage] = h.callAgent.mock.calls[0].map(String)
+    expect(writerSystem).toBe("Voice.\n\n---\n\nLinkedIn rules.")
+    expect(writerMessage).toContain("Zone 2 for teen athletes")
+    const reviewerMessage = String(h.callAgent.mock.calls[1][1])
+    expect(reviewerMessage).not.toContain("NEWSLETTER SHARE RULES")
+    expect(reviewerMessage).not.toContain("Source the post must stay faithful to")
   })
 
   it("fails the job when the newsletter issue does not exist, and drafts nothing", async () => {
