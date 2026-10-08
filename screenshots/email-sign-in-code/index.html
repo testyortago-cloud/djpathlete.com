@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Email sign-in code</title>
+<style>
+  body { margin: 0; padding: 32px 16px; background: #f6f5f3; color: #0E3F50; font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  p.lead { margin: 0 0 28px; color: #5c5750; }
+  figure { margin: 0 0 40px; }
+  figcaption { margin: 0 0 10px; font-weight: 600; }
+  figcaption span { color: #5c5750; font-weight: 400; }
+  img { display: block; max-width: 100%; height: auto; border: 1px solid #e4e1dc; border-radius: 8px; background: #fff; }
+  img.phone { max-width: 390px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>&ldquo;Email me a sign-in code&rdquo;</h1>
+  <p class="lead">Captured from the real /login and /register pages on the development clone (2026-10-08). The code was real: the script read it from the email Resend delivered to the test inbox, typed a wrong one first, then the right one. Light only &mdash; these pages have no dark mode.</p>
+
+  <figure><figcaption>1. Login page <span>&mdash; the new button under &ldquo;Log In&rdquo;</span></figcaption><img src="01-login-page.png" alt="Login page with the Email me a sign-in code button"></figure>
+  <figure><figcaption>2. Ask for a code <span>&mdash; email, then &ldquo;Send me a code&rdquo;</span></figcaption><img src="02-ask-for-a-code.png" alt="Email entry step"></figure>
+  <figure><figcaption>3. Enter the code <span>&mdash; same message whether or not the account exists; resend waits 60 s</span></figcaption><img src="03-enter-the-code.png" alt="Code entry step"></figure>
+  <figure><figcaption>4. Wrong code <span>&mdash; says what to do next</span></figcaption><img src="04-wrong-code.png" alt="Wrong code error"></figure>
+  <figure><figcaption>5. Signed in <span>&mdash; landed in the athlete area with no password typed</span></figcaption><img src="05-signed-in.png" alt="Signed in on the athlete questionnaire"></figure>
+  <figure><figcaption>6. The email <span>&mdash; the HTML Resend sent, shown in a browser</span></figcaption><img src="06-the-email.png" alt="The sign-in code email"></figure>
+  <figure><figcaption>7. Sign-up with an existing email <span>&mdash; points to the way in instead of a dead end</span></figcaption><img src="07-register-account-exists.png" alt="Register page saying the account already exists"></figure>
+  <figure><figcaption>8. From sign-up to the code <span>&mdash; email carried over</span></figcaption><img src="08-from-register-to-code.png" alt="Code option with email prefilled"></figure>
+  <figure><figcaption>9. On a phone <span>&mdash; 390 px wide; long emails wrap inside the box</span></figcaption><img class="phone" src="09-phone-enter-the-code.png" alt="Code entry on a phone"></figure>
+</main>
+</body>
+</html>

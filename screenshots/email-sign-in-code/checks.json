@@ -1,0 +1,22 @@
+{
+  "pageErrors": [],
+  "screenshots": [
+    "01-login-page",
+    "02-ask-for-a-code",
+    "03-enter-the-code",
+    "04-wrong-code",
+    "05-signed-in",
+    "06-the-email",
+    "07-register-account-exists",
+    "08-from-register-to-code",
+    "09-phone-enter-the-code"
+  ],
+  "darkMode": "No dark-mode provider or switch on the auth pages",
+  "landedOn": "/client/questionnaire",
+  "email": {
+    "id": "01a11c18-cb8d-7ece-b3be-8d0178f79a4a",
+    "subject": "524879 is your DJP Athlete sign-in code",
+    "from": "Darren J. Paul <noreply@send.darrenjpaul.com>",
+    "last_event": "delivered"
+  }
+}
