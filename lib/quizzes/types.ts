@@ -61,7 +61,7 @@ export interface QuizQuestion {
   mistakesMediaPosterUrl?: string | null
   /** Row name on the results map. Server-only: never in the public definition. */
   reportLabel?: string | null
-  /** Which side of a paired test. Server-only. */
+  /** Which side of a paired test. Shown to the visitor, and a row on the results map. */
   side?: QuizSide | null
   isActive: boolean
   options: QuizOption[]

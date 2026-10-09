@@ -18,7 +18,7 @@
 //
 // Spec: docs/superpowers/specs/2026-08-23-athlete-quiz-funnel-design.md §4.1
 
-import type { QuizDefinition } from "@/lib/quizzes/types"
+import type { QuizDefinition, QuizSide } from "@/lib/quizzes/types"
 
 export interface PublicQuizOption {
   id: string
@@ -38,6 +38,13 @@ export interface PublicQuizQuestion {
   mediaPosterUrl: string | null
   mistakesMediaUrl?: string | null
   mistakesMediaPosterUrl?: string | null
+  /**
+   * Ships deliberately: the visitor is shown which side they are scoring, in
+   * capitals. Both sides of a test share one clip, so without it the right
+   * side looked like the left one again (owner, 2026-10-09). Optional on the
+   * type so hand-written fixtures predating it compile.
+   */
+  side?: QuizSide | null
   options: PublicQuizOption[]
 }
 
@@ -83,6 +90,7 @@ export function publicQuizDefinition(definition: QuizDefinition): PublicQuizDefi
         mediaPosterUrl: question.mediaPosterUrl,
         mistakesMediaUrl: question.mistakesMediaUrl ?? null,
         mistakesMediaPosterUrl: question.mistakesMediaPosterUrl ?? null,
+        side: question.side ?? null,
         options: question.options
           .slice()
           .sort((a, b) => a.position - b.position)

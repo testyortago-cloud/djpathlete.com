@@ -265,4 +265,99 @@ describe("QuizEditor", () => {
     fireEvent.click(screen.getAllByText(/Video and results map/)[0])
     expect(screen.getAllByLabelText("Results map label")[0].getAttribute("maxlength")).toBe("80")
   })
+
+  // The movement tests' scoring points live in the help text, and the editor
+  // had no field for it: the owner could not change them at all.
+  it("edits a question's instructions and saves them with their line breaks", async () => {
+    render(<QuizEditor initial={healthy()} />)
+    openQuestions()
+    const field = screen.getAllByLabelText("Instructions under the question")[0]
+    expect(field.getAttribute("maxlength")).toBe("500")
+    fireEvent.change(field, { target: { value: "Lie face down.\n1. Hip stays down" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const body = JSON.parse((fetchMock.mock.calls.at(-1) as [string, RequestInit])[1].body as string)
+    expect(body.questions.find((q: { id: string }) => q.id === "q-router").helpText).toBe("Lie face down.\n1. Hip stays down")
+  })
+
+  it("saves cleared instructions as null, not as an empty string", async () => {
+    const withHelp = healthy()
+    withHelp.questions[0].helpText = "Old help"
+    render(<QuizEditor initial={withHelp} />)
+    openQuestions()
+    fireEvent.change(screen.getAllByLabelText("Instructions under the question")[0], { target: { value: "  " } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const body = JSON.parse((fetchMock.mock.calls.at(-1) as [string, RequestInit])[1].body as string)
+    expect(body.questions.find((q: { id: string }) => q.id === "q-router").helpText).toBeNull()
+  })
+})
+
+// The owner edited the RPI quiz on 2026-10-07 and no save ever reached the
+// server: the editor gave no sign the change was unsaved, and leaving the page
+// threw it away.
+describe("QuizEditor — unsaved changes", () => {
+  const editPrompt = () =>
+    fireEvent.change(screen.getByDisplayValue("Which describes you?"), { target: { value: "Which one are you?" } })
+  const leave = () => {
+    const event = new Event("beforeunload", { cancelable: true })
+    window.dispatchEvent(event)
+    return event.defaultPrevented
+  }
+
+  it("says nothing is unsaved until something changes, then says so", () => {
+    render(<QuizEditor initial={healthy()} />)
+    openQuestions()
+    expect(screen.queryByText("Unsaved changes")).toBeNull()
+    editPrompt()
+    expect(screen.getByText("Unsaved changes")).toBeTruthy()
+  })
+
+  it("clears the notice once the save succeeds", async () => {
+    render(<QuizEditor initial={healthy()} />)
+    openQuestions()
+    editPrompt()
+    expect(screen.getByText("Unsaved changes")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.queryByText("Unsaved changes")).toBeNull())
+  })
+
+  it("keeps the notice when the save is refused", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Invalid save." }), { status: 400 })))
+    render(<QuizEditor initial={healthy()} />)
+    openQuestions()
+    editPrompt()
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Invalid save.")).toBeTruthy())
+    expect(screen.getByText("Unsaved changes")).toBeTruthy()
+  })
+
+  it("asks before the browser leaves the page with unsaved changes, and not otherwise", () => {
+    render(<QuizEditor initial={healthy()} />)
+    openQuestions()
+    expect(leave()).toBe(false)
+    editPrompt()
+    expect(leave()).toBe(true)
+  })
+
+  it("asks before a link in the app takes the owner away, and stays when they say no", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false)
+    render(
+      <>
+        <a href="/admin/funnels">Funnels</a>
+        <QuizEditor initial={healthy()} />
+      </>,
+    )
+    openQuestions()
+    const click = () => !fireEvent.click(screen.getByText("Funnels"))
+    expect(click()).toBe(false)
+    expect(confirm).not.toHaveBeenCalled()
+    editPrompt()
+    expect(click()).toBe(true)
+    expect(confirm).toHaveBeenCalledTimes(1)
+    confirm.mockReturnValue(true)
+    expect(click()).toBe(false)
+  })
 })

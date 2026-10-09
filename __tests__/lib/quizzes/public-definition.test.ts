@@ -151,10 +151,20 @@ describe("publicQuizDefinition — mistakes clip and results-map fields", () => 
     expect(q.mistakesMediaPosterUrl).toBe("https://x/mistakes.jpg")
   })
 
-  it("never ships reportLabel or side — the browser has no use for them before the result", () => {
+  it("never ships reportLabel — the browser has no use for it before the result", () => {
     const json = JSON.stringify(publicQuizDefinition(base))
     expect(json).not.toContain("Short lever Copenhagen")
-    expect(json).not.toMatch(/reportLabel|"side"/)
+    expect(json).not.toMatch(/reportLabel/)
+  })
+
+  // It used to stay server-only too. The owner (2026-10-09) watched the left
+  // and right attempts of one test look identical, same clip and all, and
+  // worried a visitor would score the right side without noticing it changed.
+  // The runner now shows the side in big letters, so the browser needs it.
+  it("ships the side, so the visitor is shown which side they are scoring", () => {
+    expect(publicQuizDefinition(base).questions[0].side).toBe("left")
+    const unsided = { ...base, questions: [{ ...base.questions[0], side: undefined }] }
+    expect(publicQuizDefinition(unsided).questions[0].side).toBeNull()
   })
 
   it("ships null, not undefined, when a question has no mistakes clip", () => {

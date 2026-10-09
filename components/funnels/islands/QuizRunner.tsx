@@ -464,6 +464,11 @@ export function QuizRunner({
   // known from the first question.
   const totalKnown = branchId !== null || definition.branches.length === 0
   const progress = totalKnown && walk.length > 0 ? Math.round((index / walk.length) * 100) : 0
+  const previous = index > 0 ? walk[index - 1] : undefined
+  // The same clip on the other side: the one move where the screen barely changes.
+  const sideSwitched = Boolean(
+    current.side && previous?.side && previous.side !== current.side && current.mediaUrl && previous.mediaUrl === current.mediaUrl,
+  )
 
   return (
     <div className="djp-quiz" ref={setRoot}>
@@ -474,8 +479,23 @@ export function QuizRunner({
       <p className="djp-quiz-step">
         {totalKnown ? `Question ${index + 1} of ${walk.length}` : `Question ${index + 1}`}
       </p>
+      {/*
+        THE SIDE, IN CAPITALS, AND A WORD WHEN IT CHANGES. Both sides of a test
+        share one clip and one set of answers, so the right side used to look
+        exactly like the left one again. The owner (2026-10-09) worried a
+        visitor would think their click had not registered and score the right
+        side without doing it. The note says the last side was kept.
+      */}
+      {sideSwitched && previous?.side && current.side ? (
+        <p className="djp-quiz-switch" role="status">
+          {`${SIDE_LABEL[previous.side]} side saved. Now do the same test on your ${SIDE_LABEL[current.side].toUpperCase()} side.`}
+        </p>
+      ) : null}
+      {current.side ? (
+        <p className="djp-quiz-side" data-side={current.side}>{`${SIDE_LABEL[current.side].toUpperCase()} SIDE`}</p>
+      ) : null}
       <h3 className="djp-quiz-prompt">{current.prompt}</h3>
-      {current.helpText ? <p className="djp-quiz-help">{current.helpText}</p> : null}
+      {current.helpText ? <QuizHelp text={current.helpText} /> : null}
       {/*
         THE DEMO CLIP, AND WHY IT LOOPS SILENTLY WITH CONTROLS.
         `loop` + `muted` + `playsInline` is what lets it autoplay at all —
@@ -501,7 +521,9 @@ export function QuizRunner({
               </div>
             ) : null}
             {src ? (
-              <video key={src} className="djp-quiz-media" src={src} poster={poster ?? undefined}
+              // Keyed by the question too: both sides share one clip, and a
+              // key of the URL alone kept it playing on from the same moment.
+              <video key={`${current.id}:${src}`} className="djp-quiz-media" src={src} poster={poster ?? undefined}
                 preload="none" controls loop muted playsInline />
             ) : null}
           </>
@@ -543,6 +565,41 @@ export function QuizRunner({
           Next
         </button>
       </div>
+    </div>
+  )
+}
+
+/**
+ * The owner's help text, line by line. A line starting "1." or "-" joins a
+ * list, so each of a test's scoring points stands on its own line (owner,
+ * 2026-10-09: make it clearer what each point is for). Help with no line
+ * break renders exactly as it always has, as one paragraph.
+ */
+function QuizHelp({ text }: { text: string }) {
+  if (!text.includes("\n")) return <p className="djp-quiz-help">{text}</p>
+  const blocks: { list: "ol" | "ul" | null; lines: string[] }[] = []
+  for (const raw of text.split("\n")) {
+    const line = raw.trim()
+    if (!line) continue
+    const item = /^(?:(\d+)[.)]|[-•*])\s+(.+)$/.exec(line)
+    const list = item ? (item[1] ? "ol" : "ul") : null
+    const last = blocks.at(-1)
+    if (list && last?.list === list) last.lines.push(item![2])
+    else blocks.push({ list, lines: [item ? item[2] : line] })
+  }
+  return (
+    <div className="djp-quiz-help">
+      {blocks.map((block, i) => {
+        if (!block.list) return <p key={i}>{block.lines[0]}</p>
+        const List = block.list
+        return (
+          <List key={i}>
+            {block.lines.map((line, j) => (
+              <li key={j}>{line}</li>
+            ))}
+          </List>
+        )
+      })}
     </div>
   )
 }

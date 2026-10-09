@@ -11,7 +11,7 @@
 // The blockers are LISTED, never a silent disable. A greyed-out button with no
 // reason is a support ticket.
 
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { quizGate } from "@/lib/quizzes/gate"
 import { BUTTON_LABEL_MAX, BUTTON_LINK_RULE, isAllowedButtonLabel, isAllowedButtonLink } from "@/lib/quizzes/button-link"
@@ -52,6 +52,10 @@ export function QuizEditor({
 }) {
   const router = useRouter()
   const [quiz, setQuiz] = useState<QuizDefinition>(initial)
+  // The quiz as the server last confirmed it, so the editor can say an edit is
+  // not saved yet. The owner lost an edit to the RPI quiz on 2026-10-07: no
+  // save ever reached the server, and nothing on screen had said so.
+  const [lastSaved, setLastSaved] = useState<QuizDefinition>(initial)
   // Each band's button as last saved (or as loaded), so Save sends only the ones that changed.
   const savedButtons = useRef(buttonsOf(initial.tiers))
   const [panel, setPanel] = useState<Panel>("details")
@@ -82,6 +86,36 @@ export function QuizEditor({
   // Recomputed on every edit, so the reason a quiz cannot go live updates as
   // the operator fixes it rather than at save time.
   const gate = useMemo(() => quizGate(quiz), [quiz])
+
+  const dirty = useMemo(
+    () =>
+      newQuestionIds.size + newOptionIds.size + deletedQuestionIds.size + deletedOptionIds.size > 0 ||
+      JSON.stringify(quiz) !== JSON.stringify(lastSaved),
+    [quiz, lastSaved, newQuestionIds, newOptionIds, deletedQuestionIds, deletedOptionIds],
+  )
+
+  // Leaving with unsaved edits asks first: closing or reloading the tab, and a
+  // click on any link in the app. The capture listener runs before next/link's
+  // own handler, which skips navigating once the click is prevented.
+  useEffect(() => {
+    if (!dirty) return
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
+    }
+    const onClick = (event: MouseEvent) => {
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null
+      if (!link || link.getAttribute("target") === "_blank" || link.getAttribute("href")?.startsWith("#")) return
+      if (event.metaKey || event.ctrlKey || event.shiftKey) return
+      if (!window.confirm("You have unsaved changes to this quiz. Leave without saving them?")) event.preventDefault()
+    }
+    window.addEventListener("beforeunload", onBeforeUnload)
+    document.addEventListener("click", onClick, true)
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload)
+      document.removeEventListener("click", onClick, true)
+    }
+  }, [dirty])
 
   function patchQuestion(id: string, patch: Partial<QuizQuestion>) {
     setQuiz((q) => ({ ...q, questions: q.questions.map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
@@ -274,6 +308,7 @@ export function QuizEditor({
       })
       if (!res.ok) throw new Error("Could not mark it reviewed.")
       setQuiz((q) => ({ ...q, seedMarker: null }))
+      setLastSaved((q) => ({ ...q, seedMarker: null }))
       setMessage("Scoring marked as reviewed.")
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not mark it reviewed.")
@@ -309,6 +344,7 @@ export function QuizEditor({
       }
     }
     const sentButtons = buttonsOf(quiz.tiers)
+    const sent = quiz
 
     setBusy(true)
     setMessage(null)
@@ -435,6 +471,7 @@ export function QuizEditor({
         blockers?: string[]
       }
       if (saved.quiz) setQuiz(saved.quiz)
+      setLastSaved(saved.quiz ?? (nextStatus ? { ...sent, status: nextStatus } : sent))
       savedButtons.current = saved.quiz ? buttonsOf(saved.quiz.tiers) : sentButtons
       if (saved.answeredQuestionIds) setAnsweredQuestionIds(new Set(saved.answeredQuestionIds))
       else if (nextStatus) setQuiz((q) => ({ ...q, status: nextStatus }))
@@ -499,17 +536,24 @@ export function QuizEditor({
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+      {/* Sticky under the top bar: an edit to the ninth question is a long
+          scroll away from the only Save button. */}
+      <header className="sticky top-16 z-20 -mx-6 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface px-6 py-3">
         <div>
           <h1 className="text-2xl font-semibold text-primary">{quiz.name}</h1>
           <p className="mt-1 font-mono text-xs text-muted-foreground">{quiz.key}</p>
         </div>
         <div className="flex items-center gap-2">
+          {dirty ? <span className="text-sm font-medium text-warning">Unsaved changes</span> : null}
           <button
             type="button"
             onClick={() => void save()}
             disabled={busy}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface/50 disabled:opacity-50"
+            className={
+              dirty
+                ? "rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                : "rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface/50 disabled:opacity-50"
+            }
           >
             Save
           </button>
@@ -688,6 +732,21 @@ export function QuizEditor({
                       value={question.prompt}
                       onChange={(v) => patchQuestion(question.id, { prompt: v })}
                     />
+                    <label className="mt-3 block w-full">
+                      <span className="mb-1 block text-xs font-medium text-muted-foreground">
+                        Instructions under the question
+                      </span>
+                      <textarea
+                        className="w-full rounded border border-border px-3 py-2 text-sm"
+                        rows={question.helpText?.includes("\n") ? 6 : 2}
+                        maxLength={500}
+                        value={question.helpText ?? ""}
+                        onChange={(e) => patchQuestion(question.id, { helpText: e.target.value.trim() ? e.target.value : null })}
+                      />
+                    </label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Each line shows on its own line. Start a line with 1. or - to make a list.
+                    </p>
                     {!question.isActive ? (
                       <p className="mt-1 text-xs text-muted-foreground">
                         Nobody taking the quiz sees this yet. Write it, then choose &ldquo;Turn it
@@ -739,6 +798,7 @@ export function QuizEditor({
                       <p className="mt-2 text-xs text-muted-foreground">
                         Questions with the same results map label show as one row on the results page. Give a left and
                         a right attempt the same label and pick their sides, and the visitor sees both sides compared.
+                        The side also shows above the question, in capitals.
                       </p>
                     </details>
                   </div>

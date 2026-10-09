@@ -210,12 +210,25 @@ const MOVEMENT_TESTS: MovementTest[] = [
  * movement before answering, so there is no cost-free option to drift toward.
  */
 function movementOptions(): SeedOption[] {
+  // Each label leads with its points, so the four answers read as the total
+  // of the numbered list above them (owner, 2026-10-09).
   return [
-    { label: "All three — clean, no compensation", weight: 3 },
-    { label: "Two of the three", weight: 2 },
-    { label: "One of the three, or a real struggle", weight: 1 },
-    { label: "I couldn't do it at all", weight: 0 },
+    { label: "3 points — all three, clean, no compensation", weight: 3 },
+    { label: "2 points — two of the three", weight: 2 },
+    { label: "1 point — one of the three, or a real struggle", weight: 1 },
+    { label: "0 points — I couldn't do it at all", weight: 0 },
   ]
+}
+
+/**
+ * The setup, then the three points as a numbered list, one per line. The
+ * runner turns "1." lines into a list. It was one sentence with the points
+ * run together by semicolons, and the owner asked for each point to be clear
+ * (2026-10-09).
+ */
+function movementHelpText(test: { setup: string; points: readonly string[] }): string {
+  const points = test.points.map((point, i) => `${i + 1}. ${point[0].toUpperCase()}${point.slice(1)}`)
+  return [test.setup, "Watch the clip, try it, then give yourself 1 point for each:", ...points].join("\n")
 }
 
 function movementQuestions(): SeedQuestion[] {
@@ -233,7 +246,7 @@ function movementQuestions(): SeedQuestion[] {
         // The criteria live in help text rather than in the option labels so
         // the visitor reads them BEFORE attempting, which is the only order in
         // which they can honestly answer.
-        helpText: `${test.setup} Watch the clip, try it, then score yourself: ${test.points.join("; ")}.`,
+        helpText: movementHelpText(test),
         mediaUrl: clip(`${test.file}.mp4`),
         mediaPosterUrl: clip(`${test.file}-poster.jpg`),
         mistakesMediaUrl: clip(`${test.file}-mistakes.mp4`),

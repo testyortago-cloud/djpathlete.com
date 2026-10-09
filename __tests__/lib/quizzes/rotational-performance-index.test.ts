@@ -252,6 +252,26 @@ describe("the demo clips", () => {
       expect(question.helpText!.length).toBeGreaterThan(80)
     }
   })
+
+  // Owner, 2026-10-09: make the three points and the four answers clearly
+  // belong together.
+  it("lists the three points one per numbered line, worth 1 point each", () => {
+    for (const question of movement) {
+      const lines = question.helpText!.split("\n")
+      expect(lines).toContain("Watch the clip, try it, then give yourself 1 point for each:")
+      expect(lines.filter((line) => /^[123]\. [A-Z]/.test(line))).toHaveLength(3)
+      // The save route caps help text at 500 characters.
+      expect(question.helpText!.length).toBeLessThanOrEqual(500)
+    }
+  })
+
+  it("starts every answer with the points it scores", () => {
+    for (const question of movement) {
+      for (const option of question.options) {
+        expect(option.label.startsWith(`${option.weight} point${option.weight === 1 ? "" : "s"} — `)).toBe(true)
+      }
+    }
+  })
 })
 
 describe("what reaches the browser", () => {

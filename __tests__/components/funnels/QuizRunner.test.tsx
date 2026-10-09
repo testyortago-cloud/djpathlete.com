@@ -496,3 +496,105 @@ describe("QuizRunner — the mini-assessment result", () => {
     expect(screen.queryByText("Your movement map")).toBeNull()
   })
 })
+
+// The owner's 2026-10-09 recording: the left and right attempts of one test
+// look identical, and the clip carried on playing from the same frame when he
+// pressed Next. A visitor could think the click had not registered and score
+// the right side without ever doing it.
+describe("QuizRunner — paired left/right tests", () => {
+  const CLIP = "https://x/hip.mp4"
+  const paired: PublicQuizDefinition = {
+    ...DEFINITION,
+    introHeadline: "",
+    introBody: "",
+    branches: [],
+    questions: [
+      { id: "hip-l", branchId: null, position: 10, prompt: "Hip — left side", helpText: null, mediaUrl: CLIP, mediaPosterUrl: null, side: "left",
+        options: [{ id: "hl3", label: "3 points — all three", routesToBranchId: null }] },
+      { id: "hip-r", branchId: null, position: 20, prompt: "Hip — right side", helpText: null, mediaUrl: CLIP, mediaPosterUrl: null, side: "right",
+        options: [{ id: "hr3", label: "3 points — all three", routesToBranchId: null }] },
+      { id: "hop-l", branchId: null, position: 30, prompt: "Hop — left side", helpText: null, mediaUrl: "https://x/hop.mp4", mediaPosterUrl: null, side: "left",
+        options: [{ id: "pl3", label: "3 points — all three", routesToBranchId: null }] },
+      { id: "plain", branchId: null, position: 40, prompt: "How often do you train?", helpText: null, mediaUrl: null, mediaPosterUrl: null,
+        options: [{ id: "pn", label: "Never", routesToBranchId: null }] },
+    ],
+  }
+  const renderPaired = () => render(<QuizRunner definition={paired} submitLabel="See my result" />)
+
+  it("names the side in capitals above the question", () => {
+    renderPaired()
+    expect(screen.getByText("LEFT SIDE")).toBeTruthy()
+    answer("3 points — all three")
+    expect(screen.getByText("RIGHT SIDE")).toBeTruthy()
+    expect(screen.queryByText("LEFT SIDE")).toBeNull()
+  })
+
+  it("says the left side was saved and the same test now moves to the right side", () => {
+    renderPaired()
+    expect(screen.queryByText(/Now do the same test/)).toBeNull()
+    answer("3 points — all three")
+    expect(screen.getByText("Left side saved. Now do the same test on your RIGHT side.")).toBeTruthy()
+  })
+
+  it("does not claim 'the same test' when a new test starts on the other side", () => {
+    renderPaired()
+    answer("3 points — all three")
+    answer("3 points — all three")
+    expect(screen.getByText("Hop — left side")).toBeTruthy()
+    expect(screen.queryByText(/Now do the same test/)).toBeNull()
+  })
+
+  it("restarts the clip for the other side instead of carrying on from the same moment", () => {
+    const { container } = renderPaired()
+    const before = container.querySelector("video.djp-quiz-media")
+    answer("3 points — all three")
+    const after = container.querySelector("video.djp-quiz-media")
+    expect(after?.getAttribute("src")).toBe(CLIP)
+    // A NEW element, so it starts from its poster at 0:00. The old key was the
+    // clip's URL, which both sides share, so React kept the playing element.
+    expect(after).not.toBe(before)
+  })
+
+  it("shows no side badge on a question without a side", () => {
+    renderPaired()
+    for (let i = 0; i < 3; i++) answer("3 points — all three")
+    expect(screen.getByText("How often do you train?")).toBeTruthy()
+    expect(screen.queryByText(/SIDE$/)).toBeNull()
+  })
+})
+
+describe("QuizRunner — help text with lines and a numbered list", () => {
+  const withHelp = (helpText: string): PublicQuizDefinition => ({
+    ...DEFINITION,
+    introHeadline: "",
+    introBody: "",
+    branches: [],
+    questions: [{ id: "only", branchId: null, position: 10, prompt: "Hip test", helpText, mediaUrl: null, mediaPosterUrl: null,
+      options: [{ id: "o", label: "Done", routesToBranchId: null }] }],
+  })
+
+  it("turns numbered lines into a list, so each scoring point stands on its own", () => {
+    const { container } = render(
+      <QuizRunner
+        definition={withHelp("Lie face down.\nGive yourself 1 point for each:\n1. Your hip stays down\n2. Your foot stays turned out\n3. The leg stays up")}
+        submitLabel="See my result"
+      />,
+    )
+    const items = [...container.querySelectorAll(".djp-quiz-help ol li")].map((li) => li.textContent)
+    expect(items).toEqual(["Your hip stays down", "Your foot stays turned out", "The leg stays up"])
+    const paragraphs = [...container.querySelectorAll(".djp-quiz-help p")].map((p) => p.textContent)
+    expect(paragraphs).toEqual(["Lie face down.", "Give yourself 1 point for each:"])
+  })
+
+  it("turns dash lines into a bulleted list", () => {
+    const { container } = render(<QuizRunner definition={withHelp("Check:\n- one\n- two")} submitLabel="See my result" />)
+    expect([...container.querySelectorAll(".djp-quiz-help ul li")].map((li) => li.textContent)).toEqual(["one", "two"])
+  })
+
+  it("leaves one-line help exactly as it was: a single paragraph", () => {
+    const { container } = render(<QuizRunner definition={withHelp("Score yourself: a; b; c.")} submitLabel="See my result" />)
+    const help = container.querySelector(".djp-quiz-help")
+    expect(help?.tagName).toBe("P")
+    expect(help?.textContent).toBe("Score yourself: a; b; c.")
+  })
+})

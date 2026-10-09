@@ -1827,6 +1827,51 @@ ${ROOT} .djp-s-quiz .djp-quiz-prompt {
   font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
 ${ROOT} .djp-s-quiz .djp-quiz-help { font-size: 0.9375rem; color: var(--muted-foreground); margin: -0.75rem 0 1.25rem; }
+/* Help text with line breaks: lead lines, then the test's scoring points as a
+   list on the same wash as the answers, in the section's own foreground so
+   each point reads as a thing to check (owner, 2026-10-09). */
+${ROOT} .djp-s-quiz .djp-quiz-help p { margin: 0 0 0.5rem; }
+${ROOT} .djp-s-quiz .djp-quiz-help ol,
+${ROOT} .djp-s-quiz .djp-quiz-help ul {
+  margin: 0 0 0.5rem;
+  padding: 0.75rem 1rem 0.75rem 2.25rem;
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--djp-pair-fg) 4%, transparent);
+}
+/* Set outright: the page's reset strips list markers, and the numbers are the
+   point here. Found by looking at the screenshot, where the list had none. */
+${ROOT} .djp-s-quiz .djp-quiz-help ol { list-style: decimal; }
+${ROOT} .djp-s-quiz .djp-quiz-help ul { list-style: disc; }
+${ROOT} .djp-s-quiz .djp-quiz-help li::marker { font-weight: 700; }
+${ROOT} .djp-s-quiz .djp-quiz-help li { color: var(--djp-pair-fg); font-weight: 500; }
+${ROOT} .djp-s-quiz .djp-quiz-help li + li { margin-top: 0.375rem; }
+${ROOT} .djp-s-quiz .djp-quiz-help > :last-child { margin-bottom: 0; }
+/* The side of a paired test, in capitals. Left is filled and right is an
+   outline, so the change is seen and not only read: both sides share one clip
+   and one set of answers (owner, 2026-10-09). The filled pill is the theme's
+   own primary pair, so its text is legible on every preset (white on the
+   accent tan was not); the outline takes the text colour, so it holds on any
+   band. */
+${ROOT} .djp-s-quiz .djp-quiz-side {
+  display: inline-block;
+  margin: 0 0 0.75rem;
+  padding: 0.375rem 0.875rem;
+  border-radius: 999px;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+${ROOT} .djp-s-quiz .djp-quiz-side[data-side="right"] { background: transparent; color: inherit; box-shadow: inset 0 0 0 2px currentColor; }
+${ROOT} .djp-s-quiz .djp-quiz-switch {
+  margin: 0 0 0.75rem;
+  padding: 0.625rem 0.875rem;
+  border-left: 4px solid var(--accent-on-paper, var(--accent));
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--djp-pair-fg) 4%, transparent);
+  font-weight: 600;
+}
 /* The movement-test demo.
    NO BACKTICKS IN THIS COMMENT: the whole stylesheet is one TS template
    literal, so a backtick here closes the string and every suite that imports
