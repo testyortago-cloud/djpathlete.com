@@ -11,7 +11,8 @@ vi.mock("@/lib/firebase-admin", () => ({
   getAdminStorage: () => getAdminStorageMock(),
 }))
 
-import { resolveMediaUrl } from "@/lib/social/resolve-media-url"
+import sharp from "sharp"
+import { resolveMediaUrl, resolveCoverUrl } from "@/lib/social/resolve-media-url"
 
 describe("resolveMediaUrl", () => {
   beforeEach(() => {
@@ -100,5 +101,93 @@ describe("resolveMediaUrl", () => {
       media_url: "images/whatever.jpg",
     })
     expect(url).toBe("https://signed.example/read")
+  })
+})
+
+describe("resolveCoverUrl", () => {
+  const VIDEO = "videos/u/1-clip.mp4"
+  const CUSTOM = `${VIDEO}.thumb-custom-1700.jpg`
+
+  /** In-memory bucket: path → { bytes, contentType }. */
+  function fakeBucket(files: Record<string, { bytes: Buffer; contentType: string }>) {
+    const saved: Array<{ path: string; bytes: Buffer; contentType?: string }> = []
+    const signed: string[] = []
+    const downloads: string[] = []
+    getAdminStorageMock.mockReturnValue({
+      bucket: () => ({
+        file: (path: string) => ({
+          exists: async () => [path in files],
+          getMetadata: async () => {
+            if (!(path in files)) throw new Error("No such object")
+            return [{ contentType: files[path].contentType, size: String(files[path].bytes.length) }]
+          },
+          download: async () => {
+            downloads.push(path)
+            return [files[path].bytes]
+          },
+          save: async (bytes: Buffer, opts: { contentType?: string }) => {
+            saved.push({ path, bytes, contentType: opts?.contentType })
+          },
+          getSignedUrl: async () => {
+            signed.push(path)
+            return [`https://signed.example/${path}`]
+          },
+        }),
+      }),
+    })
+    return { saved, signed, downloads }
+  }
+
+  beforeEach(() => vi.clearAllMocks())
+
+  it("returns null for a video with only the auto-captured thumbnail", async () => {
+    getVideoUploadByIdMock.mockResolvedValue({ storage_path: VIDEO, thumbnail_path: `${VIDEO}.thumb.jpg` })
+    const { signed } = fakeBucket({})
+    expect(await resolveCoverUrl("v1")).toBeNull()
+    expect(await resolveCoverUrl(null)).toBeNull()
+    expect(signed).toEqual([])
+  })
+
+  it("signs a custom JPEG thumbnail as it is", async () => {
+    getVideoUploadByIdMock.mockResolvedValue({ storage_path: VIDEO, thumbnail_path: CUSTOM })
+    const { signed, saved, downloads } = fakeBucket({
+      [CUSTOM]: { bytes: Buffer.from([0xff, 0xd8, 0xff, 0xe0]), contentType: "image/jpeg" },
+    })
+    expect(await resolveCoverUrl("v1")).toBe(`https://signed.example/${CUSTOM}`)
+    expect(signed).toEqual([CUSTOM])
+    expect(saved).toEqual([])
+    expect(downloads).toEqual([])
+  })
+
+  // Instagram's cover_url takes JPEG only; an uploaded cover may be PNG under a .jpg name.
+  it("converts a PNG custom thumbnail to a JPEG beside it and signs that", async () => {
+    getVideoUploadByIdMock.mockResolvedValue({ storage_path: VIDEO, thumbnail_path: CUSTOM })
+    const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#c00" } }).png().toBuffer()
+    const { signed, saved } = fakeBucket({ [CUSTOM]: { bytes: png, contentType: "image/png" } })
+
+    expect(await resolveCoverUrl("v1")).toBe(`https://signed.example/${CUSTOM}.cover.jpg`)
+    expect(saved).toHaveLength(1)
+    expect(saved[0].path).toBe(`${CUSTOM}.cover.jpg`)
+    expect(saved[0].contentType).toBe("image/jpeg")
+    expect([...saved[0].bytes.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff])
+    expect(signed).toEqual([`${CUSTOM}.cover.jpg`])
+  })
+
+  it("reuses an earlier conversion instead of converting again", async () => {
+    getVideoUploadByIdMock.mockResolvedValue({ storage_path: VIDEO, thumbnail_path: CUSTOM })
+    const { saved, downloads, signed } = fakeBucket({
+      [CUSTOM]: { bytes: Buffer.from("png"), contentType: "image/png" },
+      [`${CUSTOM}.cover.jpg`]: { bytes: Buffer.from([0xff, 0xd8, 0xff]), contentType: "image/jpeg" },
+    })
+    expect(await resolveCoverUrl("v1")).toBe(`https://signed.example/${CUSTOM}.cover.jpg`)
+    expect(saved).toEqual([])
+    expect(downloads).toEqual([])
+    expect(signed).toEqual([`${CUSTOM}.cover.jpg`])
+  })
+
+  it("answers null, not a throw, when the thumbnail blob is gone", async () => {
+    getVideoUploadByIdMock.mockResolvedValue({ storage_path: VIDEO, thumbnail_path: CUSTOM })
+    fakeBucket({})
+    expect(await resolveCoverUrl("v1")).toBeNull()
   })
 })

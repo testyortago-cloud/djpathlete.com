@@ -44,6 +44,8 @@ export interface PublishInput {
    * endpoints on IG and FB. Non-Story plugins can ignore this field.
    */
   postType?: PostType
+  /** Signed JPEG URL of the cover the operator chose for the source video. Instagram Reels only today. */
+  coverUrl?: string | null
   scheduledAt: string | null
   metadata?: Record<string, unknown>
   /** Saved state from an earlier `pending` answer for this post. */

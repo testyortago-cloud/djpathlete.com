@@ -8,7 +8,7 @@ import { listSocialPosts, updateSocialPost, getSocialPostWithMedia } from "@/lib
 import { listPlatformConnections } from "@/lib/db/platform-connections"
 import { pluginRegistry } from "@/lib/social/registry"
 import { bootstrapPlugins } from "@/lib/social/bootstrap"
-import { resolveMediaUrl } from "@/lib/social/resolve-media-url"
+import { resolveMediaUrl, resolveCoverUrl } from "@/lib/social/resolve-media-url"
 import type { PendingPublish, PublishInput } from "@/lib/social/plugins/types"
 import type { SocialPost } from "@/types/database"
 
@@ -145,6 +145,12 @@ export async function buildPluginInput(
       media_url: post.media_url,
     }))
 
+  // Only Instagram Reels take a cover today; skip the storage work for everything else.
+  const coverUrl =
+    post.platform === "instagram" && post.post_type === "video"
+      ? await resolveCoverUrl(post.source_video_id)
+      : undefined
+
   return {
     input: {
       content: post.content,
@@ -152,6 +158,7 @@ export async function buildPluginInput(
       mediaUrls,
       mediaKinds,
       postType: post.post_type,
+      ...(coverUrl !== undefined ? { coverUrl } : {}),
       scheduledAt: null,
       ...(post.link_url && post.link_title
         ? {
@@ -204,7 +211,7 @@ async function publishOnePost(post: SocialPost, now: Date): Promise<"published" 
     if (waited > PENDING_PUBLISH_LIMIT_MS) {
       await updateSocialPost(post.id, {
         approval_status: "failed",
-        rejection_notes: `${plugin.displayName ?? post.platform} is still processing the video after 30 minutes.`,
+        rejection_notes: `${plugin.displayName ?? post.platform} is still processing the media after 30 minutes.`,
         platform_publish_state: null,
       })
       return "failed"

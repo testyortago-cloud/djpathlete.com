@@ -28,7 +28,9 @@ describe("Instagram plugin — carousel", () => {
   }
 
   it("publishes a 3-image carousel by creating children, polling, parent, then publish", async () => {
-    // Sequence: 3 child creates → 3 child status GETs (all FINISHED) → 1 parent create → 1 publish
+    // Sequence: 3 child creates → 3 child status GETs (all FINISHED) → 1 parent create
+    // → 1 parent status GET → 1 publish. The parent is a container too: publishing it
+    // unready answers "Media ID is not available".
     const fetchMock = mockFetchSequence([
       () => jsonResp({ id: "child-1" }),
       () => jsonResp({ id: "child-2" }),
@@ -37,6 +39,7 @@ describe("Instagram plugin — carousel", () => {
       () => jsonResp({ status_code: "FINISHED" }),
       () => jsonResp({ status_code: "FINISHED" }),
       () => jsonResp({ id: "parent-1" }),
+      () => jsonResp({ status_code: "FINISHED" }),
       () => jsonResp({ id: "ig-media-final" }),
     ])
 
@@ -57,7 +60,7 @@ describe("Instagram plugin — carousel", () => {
 
     // Verify ordered fetches — only spot-check critical shapes
     const calls = fetchMock.mock.calls
-    expect(calls).toHaveLength(8)
+    expect(calls).toHaveLength(9)
 
     // Child creates: POST /ig-user-1/media with image_url + is_carousel_item
     const firstChild = calls[0]
@@ -79,8 +82,9 @@ describe("Instagram plugin — carousel", () => {
     expect(parentBody.children).toBe("child-1,child-2,child-3")
     expect(parentBody.caption).toBe("Swipe for 3 ideas")
 
-    // Final publish: creation_id=parent-1
-    const publishCall = calls[7]
+    // Parent poll, then final publish: creation_id=parent-1
+    expect(calls[7][0] as string).toContain("parent-1?fields=status_code")
+    const publishCall = calls[8]
     expect(publishCall[0]).toBe(`${IG}/ig-user-1/media_publish`)
     const publishBody = JSON.parse((publishCall[1] as RequestInit).body as string)
     expect(publishBody.creation_id).toBe("parent-1")

@@ -132,12 +132,7 @@ export function createInstagramPlugin(
     return publishContainer(containerId)
   }
 
-  async function createParent(
-    childIds: string[],
-    caption: string,
-    hasVideo: boolean,
-    startedAt: string,
-  ): Promise<PublishResult> {
+  async function createParent(childIds: string[], caption: string, startedAt: string): Promise<PublishResult> {
     const parent = await fetchJson<{ id?: string; error?: { message: string } }>(
       `${GRAPH_API_BASE}/${ig_user_id}/media`,
       {
@@ -146,7 +141,6 @@ export function createInstagramPlugin(
       },
     )
     if (!parent.ok || !parent.data?.id) return { success: false, error: extractIgError(parent.errorText) }
-    if (!hasVideo) return publishContainer(parent.data.id) // photo-only: unchanged from before
     return finishSingle(parent.data.id, startedAt, waitBriefly)
   }
 
@@ -157,7 +151,7 @@ export function createInstagramPlugin(
     const s = await checkOnce(state.childIds)
     if (s.state === "error") return { success: false, error: s.error }
     if (s.state === "in_progress") return { success: true, pending: saved }
-    return createParent(state.childIds, state.caption, true, saved.startedAt)
+    return createParent(state.childIds, state.caption, saved.startedAt)
   }
 
   async function publishStory(mediaUrl: string, startedAt: string): Promise<PublishResult> {
@@ -183,11 +177,9 @@ export function createInstagramPlugin(
     startedAt: string,
   ): Promise<PublishResult> {
     const childIds: string[] = []
-    let hasVideo = false
     for (let i = 0; i < slideUrls.length; i += 1) {
       const url = slideUrls[i]
       const isVideo = kinds?.[i] === "video"
-      if (isVideo) hasVideo = true
       const body: Record<string, unknown> = isVideo
         ? { media_type: "VIDEO", video_url: url, is_carousel_item: true, access_token }
         : { image_url: url, is_carousel_item: true, access_token }
@@ -204,7 +196,7 @@ export function createInstagramPlugin(
     const s = await waitBriefly(childIds)
     if (s.state === "error") return { success: false, error: s.error }
     if (s.state === "in_progress") return pendingResult({ step: "children", childIds, caption }, startedAt)
-    return createParent(childIds, caption, hasVideo, startedAt)
+    return createParent(childIds, caption, startedAt)
   }
 
   return {
@@ -254,6 +246,7 @@ export function createInstagramPlugin(
       if (isVideoUrl(mediaUrl)) {
         containerBody.video_url = mediaUrl
         containerBody.media_type = "REELS"
+        if (input.coverUrl) containerBody.cover_url = input.coverUrl
       } else {
         containerBody.image_url = mediaUrl
       }
@@ -266,8 +259,8 @@ export function createInstagramPlugin(
         return { success: false, error: extractIgError(container.errorText) }
       }
 
-      if (isVideoUrl(mediaUrl)) return finishSingle(container.data.id, startedAt, waitBriefly)
-      return publishContainer(container.data.id)
+      // Images are processed too: publishing one unready answers "Media ID is not available".
+      return finishSingle(container.data.id, startedAt, waitBriefly)
     },
 
     async fetchAnalytics(platformPostId: string): Promise<AnalyticsResult> {

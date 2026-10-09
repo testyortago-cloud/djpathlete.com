@@ -5,6 +5,7 @@ const listSocialPostsMock = vi.fn()
 const updateSocialPostMock = vi.fn()
 const listPlatformConnectionsMock = vi.fn()
 const resolveMediaUrlMock = vi.fn()
+const resolveCoverUrlMock = vi.fn()
 const registryGetMock = vi.fn()
 const registryResetMock = vi.fn()
 const registryRegisterMock = vi.fn()
@@ -20,6 +21,7 @@ vi.mock("@/lib/db/platform-connections", () => ({
 }))
 vi.mock("@/lib/social/resolve-media-url", () => ({
   resolveMediaUrl: (x: unknown) => resolveMediaUrlMock(x),
+  resolveCoverUrl: (id: unknown) => resolveCoverUrlMock(id),
 }))
 vi.mock("@/lib/social/registry", () => ({
   pluginRegistry: {
@@ -37,6 +39,8 @@ vi.mock("@/lib/social/bootstrap", () => ({
 }))
 
 import { runScheduledPublish } from "@/lib/social/publish-runner"
+
+beforeEach(() => resolveCoverUrlMock.mockResolvedValue(null))
 
 describe("runScheduledPublish", () => {
   beforeEach(() => {
@@ -71,6 +75,7 @@ describe("runScheduledPublish", () => {
     listSocialPostsMock.mockResolvedValue([duePost])
     listPlatformConnectionsMock.mockResolvedValue([])
     resolveMediaUrlMock.mockResolvedValue("https://signed.example.com/v1.mp4")
+    resolveCoverUrlMock.mockResolvedValue("https://signed.example.com/v1-cover.jpg")
     const publishPluginMock = vi.fn().mockResolvedValue({ success: true, platform_post_id: "IG_123" })
     registryGetMock.mockReturnValue({
       publish: publishPluginMock,
@@ -85,6 +90,8 @@ describe("runScheduledPublish", () => {
     }))
     expect(publishPluginMock).toHaveBeenCalledOnce()
     expect(publishPluginMock.mock.calls[0][0].postType).toBe("video")
+    expect(resolveCoverUrlMock).toHaveBeenCalledWith("v1")
+    expect(publishPluginMock.mock.calls[0][0].coverUrl).toBe("https://signed.example.com/v1-cover.jpg")
   })
 
   it("publishes the attached captioned cut (edited), not the original source video", async () => {
@@ -456,7 +463,7 @@ describe("runScheduledPublish — platform still processing", () => {
     expect(result).toEqual({ considered: 1, published: 0, failed: 1 })
     expect(updateSocialPostMock).toHaveBeenCalledWith("p9", {
       approval_status: "failed",
-      rejection_notes: "Instagram is still processing the video after 30 minutes.",
+      rejection_notes: "Instagram is still processing the media after 30 minutes.",
       platform_publish_state: null,
     })
   })

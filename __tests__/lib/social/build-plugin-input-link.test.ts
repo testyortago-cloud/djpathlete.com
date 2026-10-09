@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const getSocialPostWithMediaMock = vi.fn()
 const resolveMediaUrlMock = vi.fn()
+const resolveCoverUrlMock = vi.fn()
 
 vi.mock("@/lib/db/social-posts", () => ({
   listSocialPosts: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock("@/lib/db/platform-connections", () => ({
 }))
 vi.mock("@/lib/social/resolve-media-url", () => ({
   resolveMediaUrl: (x: unknown) => resolveMediaUrlMock(x),
+  resolveCoverUrl: (id: unknown) => resolveCoverUrlMock(id),
 }))
 vi.mock("@/lib/social/registry", () => ({
   pluginRegistry: { get: vi.fn(), reset: vi.fn(), register: vi.fn(), list: () => [], all: () => [] },
@@ -67,5 +69,32 @@ describe("buildPluginInput link card", () => {
   it("sends no link when the url is set but the title is missing (a card needs both)", async () => {
     const built = await buildPluginInput(post({ link_url: "https://www.darrenjpaul.com/x", link_title: null }))
     expect("input" in built && "link" in built.input).toBe(false)
+  })
+})
+
+describe("buildPluginInput cover", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getSocialPostWithMediaMock.mockResolvedValue({ media: [] })
+    resolveMediaUrlMock.mockResolvedValue("https://signed.example/v.mp4")
+    resolveCoverUrlMock.mockResolvedValue("https://signed.example/cover.jpg")
+  })
+
+  // 2026-10-07: Aarav's Reel went out without the thumbnail the operator had set.
+  it("hands an Instagram video post the source video's cover", async () => {
+    const built = await buildPluginInput(post({ platform: "instagram", post_type: "video", source_video_id: "v1" }))
+    expect(resolveCoverUrlMock).toHaveBeenCalledWith("v1")
+    expect("input" in built && built.input.coverUrl).toBe("https://signed.example/cover.jpg")
+  })
+
+  it("resolves no cover for platforms or post types that do not send one", async () => {
+    for (const p of [
+      post({ platform: "facebook", post_type: "video", source_video_id: "v1" }),
+      post({ platform: "instagram", post_type: "story", source_video_id: "v1" }),
+    ]) {
+      const built = await buildPluginInput(p)
+      expect("input" in built && "coverUrl" in built.input).toBe(false)
+    }
+    expect(resolveCoverUrlMock).not.toHaveBeenCalled()
   })
 })
