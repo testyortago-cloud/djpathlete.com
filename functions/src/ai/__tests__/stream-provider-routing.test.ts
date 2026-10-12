@@ -221,7 +221,7 @@ describe("streamWithTools provider routing", () => {
     const args = h.orTools.mock.calls[0][0]
     // The defaults the Anthropic implementation always had.
     expect(args).toMatchObject({
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5-5",
       maxTokens: 16384,
       maxToolRounds: 5,
       system: SYSTEM,
@@ -258,7 +258,7 @@ describe("streamWithTools provider routing", () => {
     expect(seen).toEqual(ANTHROPIC_EVENTS)
     expect(h.orTools).not.toHaveBeenCalled()
     expect(h.anthropicStream.mock.calls[0][0]).toMatchObject({
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5-5",
       max_tokens: 16384,
       tools: TOOLS,
     })
@@ -413,7 +413,7 @@ describe("streamRaw provider routing", () => {
     expect(h.anthropicStream).not.toHaveBeenCalled()
     expect(h.anthropicCtor).not.toHaveBeenCalled()
     expect(h.orText.mock.calls[0][0]).toMatchObject({
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5-5",
       maxTokens: 16384,
       system: opts.system,
       messages: opts.messages,
@@ -429,7 +429,7 @@ describe("streamRaw provider routing", () => {
     expect(error).toBeUndefined()
     expect(seen).toEqual(ANTHROPIC_EVENTS)
     expect(h.orText).not.toHaveBeenCalled()
-    expect(h.anthropicStream.mock.calls[0][0]).toMatchObject({ model: "claude-sonnet-4-6", max_tokens: 32000 })
+    expect(h.anthropicStream.mock.calls[0][0]).toMatchObject({ model: "claude-sonnet-5-5", max_tokens: 32000 })
   })
 
   it("falls back to Anthropic when OpenRouter 503s before emitting anything", async () => {

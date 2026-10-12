@@ -44,7 +44,11 @@ import { MODEL_OPUS_5, MODEL_SONNET } from "@/lib/ai/models"
  */
 export const SECTION_BUILDER_MODEL = MODEL_OPUS_5
 
-/** Proven-in-this-repo fallback: every existing agent runs on this today. */
+/**
+ * NOT a drop-in since 2026-10-12: MODEL_SONNET is now Sonnet 5.5, which 400s
+ * on forced tool choice, and `streamObjectViaOpenRouter` always forces it.
+ * Switching to this needs a `response_format` branch in that stream first.
+ */
 export const SECTION_BUILDER_FALLBACK_MODEL = MODEL_SONNET
 
 /**

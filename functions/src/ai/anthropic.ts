@@ -17,18 +17,14 @@ export { Anthropic }
 
 export const MODEL_OPUS = "claude-opus-4-6"
 export const MODEL_OPUS_4_8 = "claude-opus-4-8"
-export const MODEL_SONNET = "claude-sonnet-4-6"
-export const MODEL_HAIKU = "claude-haiku-4-5-20251001"
+export const MODEL_SONNET = "claude-sonnet-5-5"
+export const MODEL_HAIKU = "claude-haiku-5-5"
 
 /**
- * ADDITIVE ONLY — the values above are frozen (see lib/ai/models.ts for the
- * full reasoning; this file is its functions/ twin). Nothing here repoints an
- * existing agent. Add a constant, then repoint one call site at a time.
- *
- * Sonnet 5 is both NEWER and CHEAPER than Sonnet 4.6 ($2/$10 per MTok against
- * $3/$15), so it is a straight upgrade for the mechanical, short-output steps.
+ * MODEL_SONNET and MODEL_HAIKU were repointed to the 5.5 models on 2026-10-12
+ * at the owner's request; see lib/ai/models.ts (the twin) for what that moved.
+ * To move ONE feature, add a constant and repoint that call site instead.
  */
-export const MODEL_SONNET_5 = "claude-sonnet-5"
 
 /**
  * Anthropic's most capable widely released model. Reserved for long-form work

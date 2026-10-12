@@ -4,7 +4,7 @@
 // because functions/ and lib/ are separate TS projects that can't share
 // imports. Keep the system prompt identical between the two files.
 
-import { MODEL_SONNET_5 } from "@/lib/ai/models"
+import { MODEL_SONNET } from "@/lib/ai/models"
 import { createMessageCompat, assertModelProvider, hasModelProvider } from "@/lib/ai/openrouter-message"
 
 const STOPWORD_PREFIXES = ["the ", "a ", "an ", "how to "]
@@ -47,7 +47,7 @@ export async function proposePrimaryKeyword(input: { title: string; summary?: st
 
   try {
     const response = await createMessageCompat({
-      model: MODEL_SONNET_5,
+      model: MODEL_SONNET,
       max_tokens: 200,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userMessage }],

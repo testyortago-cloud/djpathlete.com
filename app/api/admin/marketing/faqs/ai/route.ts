@@ -11,8 +11,9 @@ import { listFaqsForPage } from "@/lib/db/faqs"
 import { buildFaqAiPrompt } from "@/lib/faq/ai-prompt"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { createMessageCompat, assertModelProvider } from "@/lib/ai/openrouter-message"
+import { MODEL_SONNET } from "@/lib/ai/models"
 
-const MODEL = "claude-sonnet-4-6"
+const MODEL = MODEL_SONNET
 
 const requestSchema = z
   .object({

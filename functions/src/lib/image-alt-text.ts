@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { createMessageCompat, assertModelProvider } from "../ai/openrouter-message.js"
+import { MODEL_SONNET } from "../ai/anthropic.js"
 
-const MODEL = "claude-sonnet-4-6"
+const MODEL = MODEL_SONNET
 const ALT_TEXT_MAX_CHARS = 180
 
 const SYSTEM_PROMPT = `You are writing accessibility alt-text for an image on a fitness/coaching blog. Output ONLY a JSON object with this shape:

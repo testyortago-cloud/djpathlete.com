@@ -114,7 +114,7 @@ describe("handleImageVision", () => {
     // Claude was called once for analysis (not for alt-text anymore)
     expect(anthropicCreateMock).toHaveBeenCalledOnce()
     const call = anthropicCreateMock.mock.calls[0][0]
-    expect(call.model).toBe("claude-sonnet-4-6")
+    expect(call.model).toBe("claude-sonnet-5-5")
     const userContent = call.messages[0].content
     const imageBlock = userContent.find((b: { type: string }) => b.type === "image")
     expect(imageBlock).toBeDefined()

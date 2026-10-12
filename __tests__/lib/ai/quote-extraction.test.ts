@@ -42,7 +42,7 @@ describe("extractQuotesFromTranscript", () => {
     ])
     expect(mockCreate).toHaveBeenCalledOnce()
     const args = mockCreate.mock.calls[0][0]
-    expect(args.model).toBe("claude-sonnet-4-6")
+    expect(args.model).toBe("claude-sonnet-5-5")
     // The prompt should reference the count and transcript
     expect(JSON.stringify(args.messages)).toContain("transcript")
   })

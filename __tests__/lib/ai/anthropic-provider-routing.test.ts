@@ -204,6 +204,29 @@ describe("callAgent fallback (OpenRouter configured)", () => {
 // CONTAINED "500" was a retry. A `.max(500)` Zod failure says "<=500
 // characters", and a jsonrepair failure says "at position 1502" — so the same
 // schema miss cost three paid calls or one depending on the digits in it.
+describe("callAgent structured-output branch (OpenRouter configured)", () => {
+  beforeEach(() => vi.stubEnv("OPENROUTER_API_KEY", "or-test-key"))
+
+  // Sonnet 5.5 answers forced tool choice with a 400 (measured 2026-10-12), so
+  // MODEL_SONNET moving to it would 400 every lib callAgent unless the schema
+  // goes as response_format. Haiku 5.5 is the control: it takes the tool path.
+  it.each([
+    ["claude-sonnet-5-5", true],
+    ["claude-opus-5-5", true],
+    ["claude-fable-5-1", true],
+    ["claude-haiku-5-5", false],
+    ["claude-sonnet-5", false],
+    ["claude-sonnet-4-6", false],
+  ])("%s -> useResponseFormat %s", async (model, expected) => {
+    callAgentViaOpenRouterMock.mockResolvedValueOnce(OPENROUTER_OK)
+
+    await settle(callAgent("system", "user", schema, { model }))
+
+    const options = callAgentViaOpenRouterMock.mock.calls[0][6] as { useResponseFormat?: boolean }
+    expect(options.useResponseFormat).toBe(expected)
+  })
+})
+
 describe("callAgent retry classification (OpenRouter configured)", () => {
   beforeEach(() => vi.stubEnv("OPENROUTER_API_KEY", "or-test-key"))
 

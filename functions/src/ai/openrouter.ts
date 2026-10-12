@@ -64,6 +64,8 @@ export const OPENROUTER_MODEL_MAP: Record<string, string> = {
   "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
   "claude-sonnet-5": "anthropic/claude-sonnet-5",
   "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4.5",
+  // Verified present 2026-10-12.
+  "claude-haiku-5-5": "anthropic/claude-haiku-5.5",
   "claude-fable-5-1": "anthropic/claude-fable-5.1",
   // Non-Anthropic entries are legitimate now that OpenRouter is the provider —
   // the KEY is just the id this codebase passes around, it does not have to be

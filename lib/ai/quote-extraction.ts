@@ -6,8 +6,9 @@
 
 import Anthropic from "@anthropic-ai/sdk"
 import { createMessageCompat, assertModelProvider } from "@/lib/ai/openrouter-message"
+import { MODEL_SONNET } from "@/lib/ai/models"
 
-const MODEL = "claude-sonnet-4-6"
+const MODEL = MODEL_SONNET
 const MAX_QUOTE_LENGTH = 140
 
 const SYSTEM_PROMPT = `You are a social-media editor pulling quotable lines from a video transcript for a fitness/athletic coaching audience. Return ONLY a JSON array of strings — no preamble, no markdown fence, nothing else.

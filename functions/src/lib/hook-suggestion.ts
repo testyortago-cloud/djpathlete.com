@@ -6,8 +6,9 @@
 // so the caller degrades gracefully (the render just omits the hook card).
 import Anthropic from "@anthropic-ai/sdk"
 import { createMessageCompat, assertModelProvider } from "../ai/openrouter-message.js"
+import { MODEL_HAIKU } from "../ai/anthropic.js"
 
-const MODEL = "claude-haiku-4-5-20251001"
+const MODEL = MODEL_HAIKU
 // Mirror the render-worker's hook cap (slice(0, 80)).
 const MAX_HOOK_LENGTH = 80
 

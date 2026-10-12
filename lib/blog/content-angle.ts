@@ -7,7 +7,7 @@
 // Falls back to null on any error — never blocks generation. The handler
 // skips the # CONTENT ANGLE block when input.content_angle is missing.
 
-import { MODEL_SONNET_5 } from "@/lib/ai/models"
+import { MODEL_SONNET } from "@/lib/ai/models"
 import { createMessageCompat, assertModelProvider, hasModelProvider } from "@/lib/ai/openrouter-message"
 
 const SYSTEM_PROMPT = `You are reading a topic summary and producing a contrarian content angle for a strength & conditioning coaching blog.
@@ -54,7 +54,7 @@ export async function extractContentAngle(input: {
 
   try {
     const response = await createMessageCompat({
-      model: MODEL_SONNET_5,
+      model: MODEL_SONNET,
       max_tokens: 400,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userMessage }],

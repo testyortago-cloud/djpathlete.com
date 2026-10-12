@@ -15,9 +15,10 @@ import Anthropic from "@anthropic-ai/sdk"
 import ffmpegPath from "ffmpeg-static"
 import { getSupabase } from "./lib/supabase.js"
 import { createMessageCompat, assertModelProvider, type CompatContent } from "./ai/openrouter-message.js"
+import { MODEL_SONNET } from "./ai/anthropic.js"
 
 const FRAME_COUNT = 8
-const MODEL = "claude-sonnet-4-6"
+const MODEL = MODEL_SONNET
 
 const VISION_SYSTEM_PROMPT = `You are watching a training / coaching video and describing it for a content team who needs to write social-media captions about it. The video has no usable narration — you are the only source of information about what happens.
 

@@ -107,6 +107,14 @@ async function settle<T>(p: Promise<T>): Promise<{ value?: T; error?: unknown }>
   return out
 }
 
+/**
+ * anthropicAnswers() mocks a tool_use answer, the shape of the direct-Anthropic
+ * TOOL path. The default model (MODEL_SONNET, Sonnet 5.5 since 2026-10-12)
+ * rejects forced tool choice and takes the structured-outputs branch instead,
+ * so the tests that let Anthropic answer name a model that takes the tool path.
+ */
+const TOOL_PATH = { model: MODEL_HAIKU }
+
 const orModels = () => h.orAgent.mock.calls.map((c) => c[0] as string)
 
 /** The options callAgentViaOpenRouter received on call `i` (its 7th argument). */
@@ -133,7 +141,7 @@ describe("callAgent: OpenRouter first, on every attempt", () => {
     h.orAgent.mockRejectedValueOnce(httpError(429, "429 Rate limit exceeded"))
     h.anthropicStream.mockImplementation(() => anthropicAnswers())
 
-    const { value, error } = await settle(callAgent("sys", "user", schema))
+    const { value, error } = await settle(callAgent("sys", "user", schema, TOOL_PATH))
 
     expect(error).toBeUndefined()
     expect(value?.content).toEqual({ ok: false })
@@ -157,7 +165,7 @@ describe("callAgent: OpenRouter first, on every attempt", () => {
     }
     h.anthropicStream.mockImplementationOnce(() => offSchema).mockImplementation(() => anthropicAnswers())
 
-    const { value, error } = await settle(callAgent("sys", "user", schema))
+    const { value, error } = await settle(callAgent("sys", "user", schema, TOOL_PATH))
 
     expect(error).toBeUndefined()
     expect(value?.content).toEqual({ ok: false })
@@ -321,7 +329,7 @@ describe("callAgent: OpenRouter first, on every attempt", () => {
     delete process.env.OPENROUTER_API_KEY
     h.anthropicStream.mockImplementation(() => anthropicAnswers())
 
-    const { value, error } = await settle(callAgent("sys", "user", schema))
+    const { value, error } = await settle(callAgent("sys", "user", schema, TOOL_PATH))
 
     expect(error).toBeUndefined()
     expect(value?.content).toEqual({ ok: false })

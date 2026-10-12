@@ -146,9 +146,11 @@ describe("the model ids were MOVED, not repointed", () => {
     // builder's model. The equality test above would still pass (both sides
     // read the same constant); only the literals catch it, and getting this
     // wrong silently changes behaviour for every AI feature in the app.
+    // MODEL_SONNET and MODEL_HAIKU were repointed to the 5.5 models on
+    // purpose on 2026-10-12, at the owner's request.
     expect(models.MODEL_OPUS).toBe("claude-opus-4-6")
-    expect(models.MODEL_SONNET).toBe("claude-sonnet-4-6")
-    expect(models.MODEL_HAIKU).toBe("claude-haiku-4-5-20251001")
+    expect(models.MODEL_SONNET).toBe("claude-sonnet-5-5")
+    expect(models.MODEL_HAIKU).toBe("claude-haiku-5-5")
     expect(models.MODEL_OPUS_5).toBe("claude-opus-5")
   })
 })

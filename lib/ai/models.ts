@@ -22,11 +22,14 @@
 // that needs ONLY an id — config leaves, validators, client components — should
 // import from HERE instead, and stays free of the SDK.
 //
-// *** THE VALUES ARE FROZEN. *** `MODEL_OPUS`, `MODEL_SONNET` and `MODEL_HAIKU`
-// are what the 4-agent program-generation pipeline, the strategy agents and the
-// bookkeeper are all tuned against. This file MOVED them; it did not repoint
-// them. Changing one here changes behaviour for every AI feature in the app —
-// add a new constant instead, exactly as `MODEL_OPUS_5` was added.
+// *** CHANGING A VALUE CHANGES EVERY AI FEATURE. *** `MODEL_OPUS`, `MODEL_SONNET`
+// and `MODEL_HAIKU` are read by the program-generation pipeline, the strategy
+// agents, the bookkeeper and most one-off features. To move ONE feature, add a
+// constant instead, exactly as `MODEL_OPUS_5` was added. `MODEL_SONNET` and
+// `MODEL_HAIKU` were repointed deliberately, at the owner's request, on
+// 2026-10-12 (Sonnet 4.6 -> 5.5, Haiku 4.5 -> 5.5), and functions/src/ai/anthropic.ts
+// was repointed with them. Both 5.5 models think by default, and Sonnet 5.5
+// 400s on forced tool choice — `modelRejectsForcedToolChoice` routes it.
 //
 // NOTHING MAY BE ADDED TO THIS FILE THAT IMPORTS ANYTHING. The moment it grows
 // a dependency it stops being safe for the chain above, silently, with a green
@@ -35,8 +38,8 @@
 // pins that by walking the real import graph.
 
 export const MODEL_OPUS = "claude-opus-4-6"
-export const MODEL_SONNET = "claude-sonnet-4-6"
-export const MODEL_HAIKU = "claude-haiku-4-5-20251001"
+export const MODEL_SONNET = "claude-sonnet-5-5"
+export const MODEL_HAIKU = "claude-haiku-5-5"
 
 /**
  * ADDITIVE ONLY — added for the AI page builder (lib/funnels/sections/*).
@@ -47,20 +50,6 @@ export const MODEL_HAIKU = "claude-haiku-4-5-20251001"
  * fallback is `MODEL_SONNET`, which is proven in this repo today.
  */
 export const MODEL_OPUS_5 = "claude-opus-5"
-
-/**
- * ADDITIVE ONLY, same rule as MODEL_OPUS_5 above.
- *
- * Sonnet 5 is newer AND cheaper than Sonnet 4.6 ($2/$10 per MTok against
- * $3/$15), so for a short, mechanical step it is a straight upgrade rather
- * than a tradeoff. It does NOT repoint MODEL_SONNET — that value is what the
- * program-generation pipeline, the strategy agents and the bookkeeper are all
- * tuned against.
- *
- * Verified working through callAgent's forced-tool-choice path against the
- * live API on 2026-09-12.
- */
-export const MODEL_SONNET_5 = "claude-sonnet-5"
 
 /**
  * Anthropic's most capable widely released model, for long-form output a human

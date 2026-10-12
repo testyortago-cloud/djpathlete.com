@@ -4,8 +4,9 @@ import Anthropic from "@anthropic-ai/sdk"
 import { getSupabase } from "./lib/supabase.js"
 import { generateAltText } from "./lib/image-alt-text.js"
 import { createMessageCompat, assertModelProvider } from "./ai/openrouter-message.js"
+import { MODEL_SONNET } from "./ai/anthropic.js"
 
-const MODEL = "claude-sonnet-4-6"
+const MODEL = MODEL_SONNET
 
 const ANALYSIS_SYSTEM_PROMPT = `You are analyzing a photograph for a fitness/coaching content team. Return ONLY a JSON object:
 {

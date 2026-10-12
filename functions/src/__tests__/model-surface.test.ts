@@ -4,7 +4,6 @@ import {
   stripUnsupportedSchemaKeywords,
   MODEL_FABLE,
   MODEL_SONNET,
-  MODEL_SONNET_5,
   MODEL_OPUS,
   MODEL_HAIKU,
   MODEL_OPUS_5_5,
@@ -16,7 +15,7 @@ describe("modelRejectsForcedToolChoice", () => {
   })
 
   it("is false for every model callAgent's tool path is tuned against", () => {
-    for (const m of [MODEL_SONNET, MODEL_SONNET_5, MODEL_OPUS, MODEL_HAIKU, "claude-opus-5"]) {
+    for (const m of [MODEL_OPUS, MODEL_HAIKU, "claude-sonnet-5", "claude-sonnet-4-6", "claude-opus-5"]) {
       expect(modelRejectsForcedToolChoice(m), m).toBe(false)
     }
   })
@@ -43,6 +42,9 @@ describe("modelRejectsForcedToolChoice", () => {
     // Measured 2026-10-02 (architect call, "Structured output via tool_use" →
     // 400 "Provider returned error"). Sonnet 5 itself still takes the tool path.
     expect(modelRejectsForcedToolChoice("claude-sonnet-5-5")).toBe(true)
+    // MODEL_SONNET has been Sonnet 5.5 since 2026-10-12, so the default model
+    // itself now takes the structured-outputs branch.
+    expect(modelRejectsForcedToolChoice(MODEL_SONNET)).toBe(true)
     expect(modelRejectsForcedToolChoice("claude-sonnet-5")).toBe(false)
     expect(modelRejectsForcedToolChoice("claude-sonnet-5-20260301")).toBe(false)
   })

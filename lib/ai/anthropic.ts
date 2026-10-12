@@ -10,6 +10,7 @@ import pRetry from "p-retry"
 import {
   canFallBackToAnthropic,
   isOpenRouterConfigured,
+  modelRejectsForcedToolChoice,
   ProviderFallbackError,
   shouldFallBackToAnthropic,
 } from "@/lib/ai/openrouter"
@@ -234,6 +235,7 @@ export async function callAgent<T>(
         maxTokens,
         cacheSystemPrompt: options?.cacheSystemPrompt,
         images: options?.images?.map((i) => ({ media_type: i.mediaType, data: i.data })),
+        useResponseFormat: modelRejectsForcedToolChoice(modelId),
       },
     )
     // Shaped like generateObject's result so the accounting below is

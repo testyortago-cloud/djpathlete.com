@@ -8,8 +8,9 @@
 
 import Anthropic from "@anthropic-ai/sdk"
 import { createMessageCompat, assertModelProvider } from "@/lib/ai/openrouter-message"
+import { MODEL_HAIKU } from "@/lib/ai/models"
 
-const MODEL = "claude-haiku-4-5-20251001"
+const MODEL = MODEL_HAIKU
 // Mirror the render-worker's hook cap (functions/render-worker slice(0, 80)).
 const MAX_HOOK_LENGTH = 80
 

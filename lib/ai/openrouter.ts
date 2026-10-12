@@ -61,6 +61,9 @@ export const OPENROUTER_MODEL_MAP: Record<string, string> = {
   "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
   "claude-sonnet-5": "anthropic/claude-sonnet-5",
   "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4.5",
+  // Verified present 2026-10-12.
+  "claude-sonnet-5-5": "anthropic/claude-sonnet-5.5",
+  "claude-haiku-5-5": "anthropic/claude-haiku-5.5",
   "claude-fable-5-1": "anthropic/claude-fable-5.1",
   // Non-Anthropic entries are legitimate now that OpenRouter is the provider —
   // the KEY is just the id this codebase passes around, it does not have to be
@@ -259,6 +262,22 @@ export function shouldFallBackToAnthropic(error: unknown): boolean {
  */
 export function canFallBackToAnthropic(modelId: string): boolean {
   return modelId.startsWith("claude-")
+}
+
+/**
+ * True for models that 400 on `tool_choice: {type: "tool" | "any"}`, which is
+ * how callAgent asks for structured output. Those models get the schema as
+ * `response_format` instead. Twin of the rule in functions/src/ai/anthropic.ts
+ * — change both.
+ *
+ * Measured through OpenRouter: Fable 5.1 (2026-09-21), Opus 5.5 (2026-09-30)
+ * and Sonnet 5.5 (2026-10-12) answer 400 "tool_choice: type "tool" and "any"
+ * are not supported for this model."; Haiku 5.5, Sonnet 5 and plain Opus 5
+ * take the tool path. Matched by family and point release so the next 5.x
+ * release is handled on the day it is first passed in.
+ */
+export function modelRejectsForcedToolChoice(modelId: string): boolean {
+  return /^claude-(fable|mythos)-/.test(modelId) || /^claude-(opus|sonnet)-5-([5-9]|[1-9]\d)(-\d{8})?$/.test(modelId)
 }
 
 function describeProviderError(error: unknown): string {

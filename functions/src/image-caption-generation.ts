@@ -7,8 +7,9 @@ import {
   type CaptionPlatform,
 } from "./lib/image-caption-prompts.js"
 import { createMessageCompat, assertModelProvider } from "./ai/openrouter-message.js"
+import { MODEL_SONNET } from "./ai/anthropic.js"
 
-const MODEL = "claude-sonnet-4-6"
+const MODEL = MODEL_SONNET
 const MAX_TOKENS = 800
 
 const PLATFORM_MAX: Record<CaptionPlatform, number> = {
