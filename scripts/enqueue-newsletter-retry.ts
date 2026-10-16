@@ -35,6 +35,7 @@ import { createClient } from "@supabase/supabase-js"
 import { missedRecipients, unsafeToQueue, type SubscriberAtSend } from "../lib/newsletter/retry-backfill"
 import { isUndeliverableAddress } from "../functions/src/lib/newsletter-recipients"
 import { platformBusinessId } from "../lib/tenancy/platform"
+import { fetchNewsletterEmails } from "../lib/newsletter/resend-log"
 
 const NOT_RETRIED_SEND_DAY = "2026-09-11"
 
@@ -97,32 +98,7 @@ async function main() {
   }
 
   // Resend's log: every email to this subject within a day of the send.
-  const windowStart = sentAt.getTime() - 10 * 60 * 1000
-  const windowEnd = sentAt.getTime() + 24 * 60 * 60 * 1000
-  const reached: string[] = []
-  let oldest = Infinity
-  let after: string | null = null
-  for (let page = 0; page < 200; page++) {
-    const res = await fetch(`https://api.resend.com/emails?limit=100${after ? `&after=${after}` : ""}`, {
-      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` },
-    })
-    if (!res.ok) throw new Error(`Resend GET /emails ${res.status}: ${await res.text()}`)
-    const body = (await res.json()) as {
-      data: { id: string; to: string[]; subject: string; created_at: string }[]
-      has_more?: boolean
-    }
-    for (const e of body.data) {
-      const at = new Date(e.created_at.replace(" ", "T").replace(/\+00$/, "Z")).getTime()
-      oldest = Math.min(oldest, at)
-      if (e.subject === nl.subject && at >= windowStart && at <= windowEnd) reached.push(...e.to)
-    }
-    if (!body.has_more || body.data.length === 0 || oldest < windowStart) break
-    after = body.data[body.data.length - 1].id
-    await new Promise((r) => setTimeout(r, 250)) // stay well under the team's 10 req/s
-  }
-  if (oldest > windowStart) {
-    throw new Error(`Resend's log starts ${new Date(oldest).toISOString()}, after this send; it cannot be rebuilt`)
-  }
+  const reached = (await fetchNewsletterEmails(env.RESEND_API_KEY, nl.subject, sentAt)).flatMap((e) => e.to)
 
   const result = missedRecipients({
     subscribers,

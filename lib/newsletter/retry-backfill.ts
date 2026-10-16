@@ -5,6 +5,38 @@
 // Resend's own log shows it accepted for that newsletter. Pure, so the rule is
 // tested without a database or the Resend API.
 
+import { resendTime } from "@/lib/newsletter/resend-log"
+
+export type ResultStamps = Partial<
+  Record<"delivered_at" | "opened_at" | "clicked_at" | "bounced_at" | "complained_at", string>
+>
+
+/**
+ * What one email's LAST event in Resend's log implies about it, for
+ * scripts/backfill-newsletter-results.ts. A click means it was opened and
+ * delivered; a spam report means it was delivered. The log keeps only the
+ * last event, so the time is the email's own send time: approximate, and the
+ * results only count whether a stamp is there. Suppressed, failed, delayed or
+ * merely sent emails imply nothing.
+ */
+export function stampsFromLastEvent(lastEvent: string, at: string): ResultStamps {
+  const t = resendTime(at).toISOString()
+  switch (lastEvent) {
+    case "clicked":
+      return { delivered_at: t, opened_at: t, clicked_at: t }
+    case "opened":
+      return { delivered_at: t, opened_at: t }
+    case "delivered":
+      return { delivered_at: t }
+    case "complained":
+      return { delivered_at: t, complained_at: t }
+    case "bounced":
+      return { bounced_at: t }
+    default:
+      return {}
+  }
+}
+
 export type SubscriberAtSend = {
   email: string
   subscribed_at: string
