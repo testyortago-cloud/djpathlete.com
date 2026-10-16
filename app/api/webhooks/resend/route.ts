@@ -31,7 +31,13 @@ import { NextResponse } from "next/server"
 import { applyResendEmailEvent, sequenceMessageRecipient } from "@/lib/db/sequences"
 import { recordAudit } from "@/lib/audit/record"
 import { suppress } from "@/lib/db/contact-consents"
-import { markNewsletterDeliveryBounced, markNewsletterDeliveryComplained } from "@/lib/db/newsletter-deliveries"
+import {
+  markNewsletterDeliveryBounced,
+  markNewsletterDeliveryClicked,
+  markNewsletterDeliveryComplained,
+  markNewsletterDeliveryDelivered,
+  markNewsletterDeliveryOpened,
+} from "@/lib/db/newsletter-deliveries"
 import {
   verifySvixSignature,
   SVIX_ID_HEADER,
@@ -157,6 +163,24 @@ export async function POST(request: Request) {
   }
 
   const outcome = await applyResendEmailEvent(emailId, kind, eventInstant(event.created_at))
+
+  // A NEWSLETTER EMAIL'S RESULTS (migration 00292): an id no sequence message
+  // claimed may be a newsletter recipient's row, which keeps the first
+  // delivery, open and click for the newsletter's results. Keyed on Resend's
+  // email id alone; it matches nothing for any other email. Non-blocking, like
+  // the arms below.
+  if (outcome === "unknown_message" && kind !== "bounced") {
+    const stamp = {
+      delivered: markNewsletterDeliveryDelivered,
+      opened: markNewsletterDeliveryOpened,
+      clicked: markNewsletterDeliveryClicked,
+    }[kind]
+    try {
+      await stamp(emailId, eventInstant(event.created_at))
+    } catch (err) {
+      console.error(`[resend-webhook] newsletter ${kind} write failed`, (err as Error).message)
+    }
+  }
 
   // A PERMANENT BOUNCE SUPPRESSES THE ADDRESS — and only a permanent one; see
   // `isPermanentBounce` for why a soft bounce must not. The mailbox does not

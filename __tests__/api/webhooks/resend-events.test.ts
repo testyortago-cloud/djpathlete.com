@@ -21,6 +21,9 @@ const mocks = vi.hoisted(() => ({
   suppress: vi.fn(async (..._a: unknown[]) => undefined),
   markNewsletterDeliveryBounced: vi.fn(async (..._a: unknown[]) => true),
   markNewsletterDeliveryComplained: vi.fn(async (..._a: unknown[]) => true),
+  markNewsletterDeliveryDelivered: vi.fn(async (..._a: unknown[]) => true),
+  markNewsletterDeliveryOpened: vi.fn(async (..._a: unknown[]) => true),
+  markNewsletterDeliveryClicked: vi.fn(async (..._a: unknown[]) => true),
 }))
 
 vi.mock("@/lib/db/sequences", () => ({
@@ -31,6 +34,9 @@ vi.mock("@/lib/db/contact-consents", () => ({ suppress: mocks.suppress }))
 vi.mock("@/lib/db/newsletter-deliveries", () => ({
   markNewsletterDeliveryBounced: mocks.markNewsletterDeliveryBounced,
   markNewsletterDeliveryComplained: mocks.markNewsletterDeliveryComplained,
+  markNewsletterDeliveryDelivered: mocks.markNewsletterDeliveryDelivered,
+  markNewsletterDeliveryOpened: mocks.markNewsletterDeliveryOpened,
+  markNewsletterDeliveryClicked: mocks.markNewsletterDeliveryClicked,
 }))
 
 import { POST } from "@/app/api/webhooks/resend/route"
@@ -340,6 +346,44 @@ describe("POST /api/webhooks/resend — a newsletter retry's hard bounce feeds t
     mocks.applyResendEmailEvent.mockResolvedValue("unknown_message")
     mocks.markNewsletterDeliveryBounced.mockRejectedValueOnce(new Error("relation does not exist"))
     const res = await POST(bounce("Permanent"))
+    expect(res.status).toBe(200)
+  })
+})
+
+// Newsletter results (migration 00292). A newsletter email is never a
+// sequence message, so its events arrive as `unknown_message`.
+describe("POST /api/webhooks/resend — a newsletter email's delivery, open and click feed its results", () => {
+  const event = (type: string) => signedRequest({ ...OPENED, type, created_at: "2026-10-19T16:00:00.000Z" })
+  const at = new Date("2026-10-19T16:00:00.000Z")
+
+  it.each([
+    ["email.delivered", "markNewsletterDeliveryDelivered"],
+    ["email.opened", "markNewsletterDeliveryOpened"],
+    ["email.clicked", "markNewsletterDeliveryClicked"],
+  ] as const)("%s stamps the row by Resend's email id, at the event's own time", async (type, fn) => {
+    mocks.applyResendEmailEvent.mockResolvedValue("unknown_message")
+    const res = await POST(event(type))
+    expect(res.status).toBe(200)
+    expect(mocks[fn]).toHaveBeenCalledWith("re_abc123", at)
+    for (const other of [
+      "markNewsletterDeliveryDelivered",
+      "markNewsletterDeliveryOpened",
+      "markNewsletterDeliveryClicked",
+    ] as const) {
+      if (other !== fn) expect(mocks[other]).not.toHaveBeenCalled()
+    }
+  })
+
+  it("stamps nothing for an id a sequence message owns", async () => {
+    mocks.applyResendEmailEvent.mockResolvedValue("updated")
+    await POST(event("email.opened"))
+    expect(mocks.markNewsletterDeliveryOpened).not.toHaveBeenCalled()
+  })
+
+  it("still answers 200 when the stamp throws", async () => {
+    mocks.applyResendEmailEvent.mockResolvedValue("unknown_message")
+    mocks.markNewsletterDeliveryOpened.mockRejectedValueOnce(new Error("column opened_at does not exist"))
+    const res = await POST(event("email.opened"))
     expect(res.status).toBe(200)
   })
 })
