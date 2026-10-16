@@ -20,7 +20,7 @@ export function retryStatusLine(r: NewsletterRetrySummary | undefined): RetrySta
     const done = r.sent > 0 ? `${n(r.sent)} done, ` : ""
     return {
       tone: "info",
-      text: `Resending to people who missed it: ${done}${n(r.pending)} to go. 100 an hour, weekdays 9am–5pm.`,
+      text: `Resending to people who missed it: ${done}${n(r.pending)} to go. 100 an hour, weekdays 9am to 5pm.`,
     }
   }
   if (r.sent > 0 || r.failed > 0) {

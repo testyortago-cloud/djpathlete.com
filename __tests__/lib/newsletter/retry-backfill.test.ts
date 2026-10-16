@@ -54,10 +54,10 @@ describe("retryStatusLine", () => {
   it("explains the schedule while rows are waiting", () => {
     expect(retryStatusLine({ ...base, pending: 4783 })).toEqual({
       tone: "info",
-      text: "Resending to people who missed it: 4,783 to go. 100 an hour, weekdays 9am–5pm.",
+      text: "Resending to people who missed it: 4,783 to go. 100 an hour, weekdays 9am to 5pm.",
     })
     expect(retryStatusLine({ ...base, pending: 3583, sent: 1200 })?.text).toBe(
-      "Resending to people who missed it: 1,200 done, 3,583 to go. 100 an hour, weekdays 9am–5pm.",
+      "Resending to people who missed it: 1,200 done, 3,583 to go. 100 an hour, weekdays 9am to 5pm.",
     )
   })
 

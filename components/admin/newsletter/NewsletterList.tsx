@@ -206,7 +206,7 @@ export function NewsletterList({ newsletters, retries = {} }: NewsletterListProp
                         {retry && (
                           <p
                             className={cn(
-                              "text-xs line-clamp-2",
+                              "text-xs",
                               retry.tone === "danger" && "text-destructive",
                               retry.tone === "info" && "text-primary",
                               retry.tone === "muted" && "text-muted-foreground",
