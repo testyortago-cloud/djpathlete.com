@@ -144,6 +144,9 @@ export async function settledRetryStats(
       .select("id", { count: "exact", head: true })
       .eq("business_id", businessId)
       .eq("newsletter_id", newsletterId)
+      // The retry judges its OWN sends. The blast's rows (origin 'send',
+      // migration 00292) carry their own bounces and must not move the brake.
+      .eq("origin", "retry")
       .eq("status", "sent")
       .lt("sent_at", settledBefore.toISOString())
   const [sent, bounced, complained] = await Promise.all([
@@ -305,6 +308,66 @@ export async function markNewsletterDeliveryComplained(providerMessageId: string
     .select("id")
   if (error) fail("markNewsletterDeliveryComplained", error)
   return (data ?? []).length > 0
+}
+
+// The results stamps (migration 00292), first time only. Three functions, not
+// one taking a column, for the same reason as the two above.
+export async function markNewsletterDeliveryDelivered(providerMessageId: string, at: Date): Promise<boolean> {
+  const { data, error } = await getClient()
+    .from("newsletter_deliveries")
+    .update({ delivered_at: at.toISOString() })
+    .eq("provider_message_id", providerMessageId)
+    .is("delivered_at", null)
+    .select("id")
+  if (error) fail("markNewsletterDeliveryDelivered", error)
+  return (data ?? []).length > 0
+}
+
+export async function markNewsletterDeliveryOpened(providerMessageId: string, at: Date): Promise<boolean> {
+  const { data, error } = await getClient()
+    .from("newsletter_deliveries")
+    .update({ opened_at: at.toISOString() })
+    .eq("provider_message_id", providerMessageId)
+    .is("opened_at", null)
+    .select("id")
+  if (error) fail("markNewsletterDeliveryOpened", error)
+  return (data ?? []).length > 0
+}
+
+export async function markNewsletterDeliveryClicked(providerMessageId: string, at: Date): Promise<boolean> {
+  const { data, error } = await getClient()
+    .from("newsletter_deliveries")
+    .update({ clicked_at: at.toISOString() })
+    .eq("provider_message_id", providerMessageId)
+    .is("clicked_at", null)
+    .select("id")
+  if (error) fail("markNewsletterDeliveryClicked", error)
+  return (data ?? []).length > 0
+}
+
+/** One newsletter's results, from the newsletter_delivery_results view (migration 00292). */
+export type NewsletterResults = {
+  newsletter_id: string
+  /** Everyone Resend accepted an email for, blast and retry together. */
+  recipients: number
+  delivered: number
+  opened: number
+  clicked: number
+  /** Hard bounces only: the address does not exist. */
+  bounced: number
+  complained: number
+}
+
+/** Results for every newsletter that has any, keyed by newsletter id. */
+export async function getNewsletterResults(businessId: string): Promise<Record<string, NewsletterResults>> {
+  const { data, error } = await getClient()
+    .from("newsletter_delivery_results")
+    .select("newsletter_id, recipients, delivered, opened, clicked, bounced, complained")
+    .eq("business_id", businessId)
+  if (error) fail("getNewsletterResults", error)
+  const out: Record<string, NewsletterResults> = {}
+  for (const row of (data ?? []) as NewsletterResults[]) out[row.newsletter_id] = row
+  return out
 }
 
 /** The /admin/newsletter status line, keyed by newsletter id. */
