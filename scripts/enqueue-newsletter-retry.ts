@@ -131,7 +131,8 @@ async function main() {
     isUndeliverable: isUndeliverableAddress,
   })
   console.log(`On the list at send time:      ${result.listed}`)
-  console.log(`Reached (Resend log):          ${result.reached}`)
+  console.log(`In Resend's log:               ${result.logged}   vs sent_count ${nl.sent_count}`)
+  console.log(`  of them still on the list:   ${result.reached}`)
   console.log(`Missed (rebuilt):              ${result.missed.length}   vs failed_count ${nl.failed_count}`)
   console.log(`  unsubscribed since, dropped: ${result.unsubscribedSince.length}`)
   console.log(`  to queue:                    ${result.toQueue.length}`)

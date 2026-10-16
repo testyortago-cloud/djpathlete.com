@@ -55,16 +55,44 @@ export async function businessesWithRetryWork(): Promise<string[]> {
   return [...new Set((data ?? []).map((r) => (r as { business_id: string }).business_id))]
 }
 
-/** The batch a previous tick claimed and could not confirm, if any. At most one is open per business. */
+/**
+ * The oldest batch a previous tick claimed and could not confirm, if any:
+ * every row under ONE batch key. Never a mix of two claims: resending one
+ * claim's rows under another claim's key would be a fresh send to all of them.
+ */
 export async function listInflightDeliveries(businessId: string): Promise<NewsletterDelivery[]> {
-  const { data, error } = await getClient()
+  const { data: first, error: firstErr } = await getClient()
     .from("newsletter_deliveries")
-    .select(ROW)
+    .select("batch_key")
     .eq("business_id", businessId)
     .eq("status", "sending")
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true })
-    .limit(100)
+    .order("claimed_at", { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (firstErr) fail("listInflightDeliveries(first)", firstErr)
+  if (first === null) return []
+  const key = (first as { batch_key: string | null }).batch_key
+  // A `sending` row without a key was not made by claimDeliveries (a hand
+  // edit). The caller pauses whatever comes back keyless.
+  const { data, error } = key
+    ? await getClient()
+        .from("newsletter_deliveries")
+        .select(ROW)
+        .eq("business_id", businessId)
+        .eq("status", "sending")
+        .eq("batch_key", key)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(100)
+    : await getClient()
+        .from("newsletter_deliveries")
+        .select(ROW)
+        .eq("business_id", businessId)
+        .eq("status", "sending")
+        .is("batch_key", null)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(100)
   if (error) fail("listInflightDeliveries", error)
   return (data ?? []) as NewsletterDelivery[]
 }

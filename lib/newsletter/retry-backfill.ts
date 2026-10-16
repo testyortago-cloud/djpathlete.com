@@ -14,8 +14,10 @@ export type SubscriberAtSend = {
 export type MissedRecipients = {
   /** On the list when the send started (what the send function selected, before its undeliverable filter). */
   listed: number
-  /** Resend's log shows an email for this newsletter to them. */
+  /** On the list, and Resend's log shows an email for this newsletter to them. */
   reached: number
+  /** Distinct addresses in Resend's log for this newsletter, on the list or not (a deleted subscriber still got it). */
+  logged: number
   /** On the list, never reached. What the newsletter's failed_count should equal. */
   missed: string[]
   /** Missed, but unsubscribed since. Not queued: they asked to stop. */
@@ -32,8 +34,8 @@ export type MissedRecipients = {
  * is exactly this: 0 in the current key's log, 1,300 recorded as sent.
  */
 export function unsafeToQueue(result: MissedRecipients, recordedSent: number): string | null {
-  if (result.reached >= recordedSent) return null
-  return `Resend's log shows ${result.reached} sends but the newsletter recorded ${recordedSent}; this key cannot see who got it, so nothing can be queued safely`
+  if (result.logged >= recordedSent) return null
+  return `Resend's log shows ${result.logged} sends but the newsletter recorded ${recordedSent}; this key cannot see who got it, so nothing can be queued safely`
 }
 
 export function missedRecipients(args: {
@@ -55,6 +57,7 @@ export function missedRecipients(args: {
   return {
     listed: onList.length,
     reached: sendable.length - missedRows.length,
+    logged: reached.size,
     missed: missedRows.map((s) => s.email),
     unsubscribedSince: gone.map((s) => s.email),
     toQueue: missedRows.filter((s) => s.unsubscribed_at === null).map((s) => s.email),

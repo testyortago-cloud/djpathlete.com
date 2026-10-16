@@ -231,6 +231,9 @@ describe("runNewsletterRetryTick", () => {
     mocks.claimDeliveries.mockResolvedValue(["r1"])
     const summary = await runNewsletterRetryTick(MON_10AM_NY)
     expect(mocks.batchSend).not.toHaveBeenCalled()
+    // Nothing went out under this key, so its partial claim goes straight back:
+    // left `sending`, it would be a second open batch beside the other tick's.
+    expect(mocks.releaseDeliveries).toHaveBeenCalledWith([rows[0]], expect.any(String), false)
     expect(summary.businesses[0]).toEqual({ businessId: "biz-1", outcome: "busy" })
   })
 
@@ -368,6 +371,23 @@ describe("runNewsletterRetryTick", () => {
     expect(mocks.listPendingDeliveries).not.toHaveBeenCalled()
     expect((mocks.batchSend.mock.calls[0][1] as { idempotencyKey: string }).idempotencyKey).toBe("newsletter-retry/abc")
     expect(mocks.markBatchSent).toHaveBeenCalledWith(inflight, ["re_1", "re_2", "re_3"], MON_10AM_NY)
+  })
+
+  it("pauses an unconfirmed batch, instead of resending it, if someone in it unsubscribed since", async () => {
+    const claimedAt = new Date(MON_10AM_NY.getTime() - 60 * 60 * 1000).toISOString()
+    const inflight = rows.map((r) => ({
+      ...r,
+      status: "sending",
+      batch_key: "newsletter-retry/abc",
+      claimed_at: claimedAt,
+    }))
+    mocks.listInflightDeliveries.mockResolvedValue(inflight)
+    mocks.stillSubscribed.mockResolvedValue(new Set(["a@gmail.com", "c@gmail.com"]))
+    const summary = await runNewsletterRetryTick(MON_10AM_NY)
+
+    expect(mocks.batchSend).not.toHaveBeenCalled()
+    expect(mocks.pauseDeliveries).toHaveBeenCalledWith(["r1", "r2", "r3"], expect.stringContaining("unsubscribed"))
+    expect(summary.businesses[0]).toMatchObject({ outcome: "paused", paused: 3 })
   })
 
   it("pauses an unconfirmed batch once Resend's key may have expired, instead of resending it", async () => {

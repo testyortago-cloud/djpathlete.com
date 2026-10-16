@@ -181,6 +181,19 @@ async function drainBusiness(
       )
       return { businessId, outcome: "paused", newsletterId, paused: inflight.length, reason }
     }
+    // Someone left since the claim. If the first send failed, a resend would
+    // reach them after they unsubscribed; dropping them changes the body under
+    // the same key, which Resend refuses. So a person decides.
+    const subscribedNow = await stillSubscribed(inflight.map((r) => r.email))
+    if (inflight.some((r) => !subscribedNow.has(r.email))) {
+      const reason =
+        "Someone unsubscribed while Resend's answer for their batch was unclear. Check Resend before resuming."
+      await pauseDeliveries(
+        inflight.map((r) => r.id),
+        reason,
+      )
+      return { businessId, outcome: "paused", newsletterId, paused: inflight.length, reason }
+    }
     return send(businessId, newsletterId, inflight, key, from, now, 0)
   }
 
@@ -210,9 +223,18 @@ async function drainBusiness(
     batchKey,
     now,
   )
-  // Another tick got some of these first. Whatever this one claimed stays
-  // `sending` under this key and is settled next hour, before anything new.
-  if (claimed.length !== due.length) return { businessId, outcome: "busy" }
+  // Another tick got some of these first. Nothing was sent under this key,
+  // so whatever this tick did claim goes straight back to pending: left
+  // `sending`, it would sit beside the other tick's claim as a second batch.
+  if (claimed.length !== due.length) {
+    const mine = new Set(claimed)
+    await releaseDeliveries(
+      due.filter((r) => mine.has(r.id)),
+      "another run claimed part of this batch",
+      false,
+    )
+    return { businessId, outcome: "busy" }
+  }
 
   return send(businessId, newsletterId, due, batchKey, from, now, gone.length)
 }

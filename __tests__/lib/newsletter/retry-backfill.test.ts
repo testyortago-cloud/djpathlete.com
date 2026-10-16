@@ -34,6 +34,7 @@ describe("missedRecipients", () => {
 
   it("matches Resend's log case-insensitively, and never counts an undeliverable address as missed", () => {
     expect(result.reached).toBe(1)
+    expect(result.logged).toBe(1)
     expect(result.missed).toEqual(["Missed@Gmail.com", "left-later@gmail.com"])
   })
 
@@ -44,10 +45,30 @@ describe("missedRecipients", () => {
 })
 
 describe("unsafeToQueue", () => {
-  const result = (reached: number) => ({ listed: 10, reached, missed: [], unsubscribedSince: [], toQueue: [] })
+  const result = (logged: number) => ({
+    listed: 10,
+    reached: 0,
+    logged,
+    missed: [],
+    unsubscribedSince: [],
+    toQueue: [],
+  })
 
   it("allows a rebuild whose log saw everyone the send recorded", () => {
     expect(unsafeToQueue(result(1100), 1100)).toBeNull()
+  })
+
+  // Someone who got it and has since been DELETED from the list is still in the log.
+  it("counts the log itself, not just the addresses still on the list", () => {
+    const r = missedRecipients({
+      subscribers: [sub("kept@gmail.com", "2026-06-16T00:00:00Z")],
+      sendStartedAt: SEND,
+      reachedAddresses: ["kept@gmail.com", "deleted-since@gmail.com"],
+      isUndeliverable,
+    })
+    expect(r.reached).toBe(1)
+    expect(r.logged).toBe(2)
+    expect(unsafeToQueue(r, 2)).toBeNull()
   })
 
   // 2026-09-25 went out on the other Resend account: this key's log saw none of the 1,300.
@@ -95,6 +116,18 @@ describe("retryStatusLine", () => {
     expect(retryStatusLine({ ...base, sent: 200, bounced: 11, paused: 4583, pause_reason })).toEqual({
       tone: "danger",
       text: "Resending paused. 11 of 200 resent emails bounced (5.5%, the limit is 4%). 4,583 people still to go.",
+    })
+  })
+
+  // A send with no clear answer files its batch paused while refused batches
+  // keep going: the line must not hide either.
+  it("says both when some are paused and the rest are still going out", () => {
+    const pause_reason = "Resend gave no clear answer for these during the send."
+    expect(retryStatusLine({ ...base, pending: 4683, sent: 0, paused: 100, pause_reason })).toEqual({
+      tone: "danger",
+      text:
+        "Resending to people who missed it: 4,683 to go. 100 an hour, weekdays 9am to 5pm. " +
+        "100 more are paused. Resend gave no clear answer for these during the send.",
     })
   })
 
