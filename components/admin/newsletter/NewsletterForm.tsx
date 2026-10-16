@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Save, Send, Loader2, Sparkles, CalendarClock } from "lucide-react"
@@ -22,9 +22,11 @@ const NEWSLETTER_FIELD_LABELS: Record<string, string> = {
 interface NewsletterFormProps {
   newsletter?: Newsletter
   authorId: string
+  /** Rendered under the "was sent on" banner of a sent newsletter: its results. */
+  results?: ReactNode
 }
 
-export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
+export function NewsletterForm({ newsletter, authorId, results }: NewsletterFormProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
@@ -313,11 +315,12 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
               minute: "2-digit",
             })}
             {" — "}
-            {newsletter.sent_count} delivered
+            {newsletter.sent_count} sent
             {newsletter.failed_count ? `, ${newsletter.failed_count} failed` : ""}
           </p>
         </div>
       )}
+      {isSent && results}
 
       <div className="space-y-4">
         {/* Subject */}

@@ -153,10 +153,13 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     the answer. It is called from the Send button and from the scheduled
  *     runner, and the Send button must not stamp the admin's selected business
  *     either. The function never defaults a missing `businessId`; it leaves
- *     those recipients unqueued and logs why. The newsletter list
- *     (app/(admin)/admin/newsletter/page.tsx) reads that queue's status
- *     under the same business, because the list itself is that one
- *     platform list whichever business the admin has selected.
+ *     those recipients unqueued and logs why. The function also files every
+ *     person an accepted batch reached there (migration 00292), for the
+ *     newsletter's results. The newsletter list
+ *     (app/(admin)/admin/newsletter/page.tsx) and the newsletter's own page
+ *     (app/(admin)/admin/newsletter/[id]/edit/page.tsx) read the queue's
+ *     status and the results under the same business, because the list itself
+ *     is that one platform list whichever business the admin has selected.
  *
  * A NARROWER VARIANT OF THE SAME SEAM -- the caller DOES resolve a real
  * tenant first, and consults this seam only after that, in one of two ways:

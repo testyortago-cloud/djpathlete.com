@@ -2,7 +2,12 @@ import Link from "next/link"
 import { Mail, Send, Clock, CalendarClock, Users } from "lucide-react"
 import { getNewsletters } from "@/lib/db/newsletters"
 import { getActiveSubscribers } from "@/lib/db/newsletter"
-import { getNewsletterRetrySummaries, type NewsletterRetrySummary } from "@/lib/db/newsletter-deliveries"
+import {
+  getNewsletterResults,
+  getNewsletterRetrySummaries,
+  type NewsletterResults,
+  type NewsletterRetrySummary,
+} from "@/lib/db/newsletter-deliveries"
 import { platformBusinessId } from "@/lib/tenancy/platform"
 import { NewsletterList } from "@/components/admin/newsletter/NewsletterList"
 import type { Newsletter } from "@/types/database"
@@ -22,6 +27,13 @@ export default async function NewsletterPage() {
   const retries: Record<string, NewsletterRetrySummary> = await getNewsletterRetrySummaries(platformBusinessId()).catch(
     (err: Error) => {
       console.error("[admin/newsletter] retry status unavailable:", err.message)
+      return {}
+    },
+  )
+  // Same business and the same tolerance as the retry line (before 00292 runs).
+  const results: Record<string, NewsletterResults> = await getNewsletterResults(platformBusinessId()).catch(
+    (err: Error) => {
+      console.error("[admin/newsletter] results unavailable:", err.message)
       return {}
     },
   )
@@ -94,7 +106,7 @@ export default async function NewsletterPage() {
         </Link>
       </div>
 
-      <NewsletterList newsletters={newsletters} retries={retries} />
+      <NewsletterList newsletters={newsletters} retries={retries} results={results} />
     </div>
   )
 }

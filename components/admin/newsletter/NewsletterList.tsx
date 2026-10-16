@@ -18,19 +18,22 @@ import { cn } from "@/lib/utils"
 import type { Newsletter } from "@/types/database"
 import { SchedulePicker } from "@/components/admin/shared/SchedulePicker"
 import { ShareToLinkedInButton } from "@/components/admin/social/ShareToLinkedInButton"
-import type { NewsletterRetrySummary } from "@/lib/db/newsletter-deliveries"
+import type { NewsletterResults, NewsletterRetrySummary } from "@/lib/db/newsletter-deliveries"
 import { retryStatusLine } from "@/lib/newsletter/retry-status"
+import { resultsLine } from "@/lib/newsletter/results"
 
 interface NewsletterListProps {
   newsletters: Newsletter[]
   /** The retry queue for each newsletter that has one, keyed by newsletter id. */
   retries?: Record<string, NewsletterRetrySummary>
+  /** Opens, clicks and bounces for each newsletter that has any, keyed by newsletter id. */
+  results?: Record<string, NewsletterResults>
 }
 
 const statusTabs = ["All", "Draft", "Scheduled", "Sent"] as const
 type StatusTab = (typeof statusTabs)[number]
 
-export function NewsletterList({ newsletters, retries = {} }: NewsletterListProps) {
+export function NewsletterList({ newsletters, retries = {}, results = {} }: NewsletterListProps) {
   const router = useRouter()
   const [tab, setTab] = useState<StatusTab>("All")
   const [search, setSearch] = useState("")
@@ -192,6 +195,7 @@ export function NewsletterList({ newsletters, retries = {} }: NewsletterListProp
               {filtered.map((nl) => {
                 const missed = nl.status === "draft" && Boolean(nl.schedule_failed_reason)
                 const retry = retryStatusLine(retries[nl.id])
+                const outcome = resultsLine(results[nl.id])
                 return (
                   <DataTableRow key={nl.id}>
                     <DataTableCell>
@@ -228,9 +232,15 @@ export function NewsletterList({ newsletters, retries = {} }: NewsletterListProp
                       </div>
                     </DataTableCell>
                     <DataTableCell muted className="text-xs hidden lg:table-cell">
-                      {nl.status === "sent"
-                        ? `${nl.sent_count} delivered${nl.failed_count ? `, ${nl.failed_count} failed` : ""}`
-                        : "—"}
+                      {nl.status === "sent" ? (
+                        <>
+                          {/* sent_count is what Resend ACCEPTED; delivered is in the results. */}
+                          <p>{`${nl.sent_count} sent${nl.failed_count ? `, ${nl.failed_count} failed` : ""}`}</p>
+                          {outcome && <p className="text-foreground">{outcome}</p>}
+                        </>
+                      ) : (
+                        "—"
+                      )}
                     </DataTableCell>
                     <DataTableCell muted className="text-xs hidden lg:table-cell">
                       {nl.status === "scheduled" ? formatDateTime(nl.scheduled_at) : formatDate(nl.sent_at ?? nl.created_at)}
