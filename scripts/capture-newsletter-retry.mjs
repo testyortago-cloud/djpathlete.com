@@ -57,7 +57,7 @@ async function shot(page, name, title, targets) {
 let browser
 try {
   // Start state: everything waiting, counts as the send function left them.
-  await sql(`update newsletter_deliveries set status='pending', sent_at=null, provider_message_id=null, bounced_at=null, attempts=0, last_error=null where newsletter_id='${NL}';
+  await sql(`update newsletter_deliveries set status='pending', sent_at=null, provider_message_id=null, bounced_at=null, complained_at=null, batch_key=null, claimed_at=null, attempts=0, last_error=null where newsletter_id='${NL}';
              update newsletters set sent_count=1100, failed_count=(select count(*) from newsletter_deliveries where newsletter_id='${NL}') where id='${NL}';`)
 
   browser = await chromium.launch({ headless: true })
@@ -93,13 +93,14 @@ try {
     [row().getByText(/2300 delivered/), "Each resent batch adds to delivered and takes off failed."],
   ])
 
-  // The bounce brake: 70 of the 1,200 bounced (5.8%, over the 4% limit), so the rest pause.
+  // The bounce brake: 70 of the 1,200 bounced (5.8%, over the 4% limit), so the rest pause,
+  // with the reason the brake writes (brakeReason in lib/automation/newsletter-retry.ts).
   await sql(`update newsletter_deliveries set bounced_at=now() - interval '90 minutes'
              where id in (select id from newsletter_deliveries where newsletter_id='${NL}' and status='sent' order by id limit 70);
-             update newsletter_deliveries set status='paused', last_error='paused: 70 of 1200 retried emails bounced (5.8%, limit 4%)'
+             update newsletter_deliveries set status='paused', last_error='70 of 1,200 resent emails bounced (5.8%, the limit is 4%).'
              where newsletter_id='${NL}' and status='pending';`)
   await shot(page, "03-paused-by-bounces", "Too many bounced, so the resend stopped itself", [
-    [line(/^Resending paused/), "Shown in red: how many bounced, and how many people are still waiting."],
+    [line(/^Resending paused/), "Shown in red: why it stopped, and how many people are still waiting."],
   ])
 
   checks.ok = checks.pageErrors.length === 0

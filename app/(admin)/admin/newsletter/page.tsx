@@ -3,21 +3,23 @@ import { Mail, Send, Clock, CalendarClock, Users } from "lucide-react"
 import { getNewsletters } from "@/lib/db/newsletters"
 import { getActiveSubscribers } from "@/lib/db/newsletter"
 import { getNewsletterRetrySummaries, type NewsletterRetrySummary } from "@/lib/db/newsletter-deliveries"
-import { resolveAdminTenant } from "@/lib/tenancy/resolve"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import { NewsletterList } from "@/components/admin/newsletter/NewsletterList"
 import type { Newsletter } from "@/types/database"
 
 export const metadata = { title: "Newsletter" }
 
 export default async function NewsletterPage() {
-  const [newsletters, subscribers, { businessId }] = await Promise.all([
+  const [newsletters, subscribers] = await Promise.all([
     getNewsletters() as Promise<Newsletter[]>,
     getActiveSubscribers(),
-    resolveAdminTenant(),
   ])
-  // The status line is extra; the list must still render if the queue cannot
-  // be read (e.g. this code live before migration 00291 has run).
-  const retries: Record<string, NewsletterRetrySummary> = await getNewsletterRetrySummaries(businessId).catch(
+  // Under the PLATFORM's business, the one the queue's writers file rows
+  // under, not the admin's selection: this list is the platform's one list
+  // whichever business is selected, and a paused retry must not vanish from
+  // it because another business is. The status line is extra; the list must
+  // still render if the queue cannot be read (e.g. before migration 00291).
+  const retries: Record<string, NewsletterRetrySummary> = await getNewsletterRetrySummaries(platformBusinessId()).catch(
     (err: Error) => {
       console.error("[admin/newsletter] retry status unavailable:", err.message)
       return {}

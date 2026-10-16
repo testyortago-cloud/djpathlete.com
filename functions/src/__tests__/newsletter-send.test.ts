@@ -36,7 +36,12 @@ vi.mock("../lib/supabase.js", () => {
   return { getSupabase: () => ({ from: () => chain }) }
 })
 
-vi.mock("../lib/newsletter-retry-queue.js", () => ({ enqueueNewsletterRetries: mocks.enqueue }))
+// Only the writer is mocked. `isRefusal` stays real: it decides pending vs
+// paused, and a stub would make that decision for the wrong reason.
+vi.mock("../lib/newsletter-retry-queue.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/newsletter-retry-queue.js")>()),
+  enqueueNewsletterRetries: mocks.enqueue,
+}))
 
 import { handleNewsletterSend } from "../newsletter-send.js"
 
@@ -81,17 +86,26 @@ describe("handleNewsletterSend", () => {
     })
     await handleNewsletterSend("job-2")
 
-    expect(mocks.enqueue).toHaveBeenCalledTimes(1)
-    expect(mocks.enqueue.mock.calls[0].slice(1)).toEqual(["biz-1", "n1", ["a@gmail.com", "b@gmail.com"]])
+    const pending = mocks.enqueue.mock.calls.find((c) => c[4] === undefined)
+    expect(pending?.slice(1, 4)).toEqual(["biz-1", "n1", ["a@gmail.com", "b@gmail.com"]])
     const done = mocks.jobUpdate.mock.calls.find((c) => c[0].status === "completed")?.[0]
     expect(done.result).toEqual({ sent: 0, failed: 2, total: 2, skipped: 0, queued: 2 })
   })
 
-  it("queues a batch that threw, too", async () => {
+  // No clear answer means Resend may have sent it, and this send has no
+  // idempotency key: a queued retry could be a second copy.
+  it.each([
+    ["a 5xx", async () => ({ data: null, error: { name: "internal_server_error", message: "x", statusCode: 500 } })],
+    ["no status", async () => ({ data: null, error: { name: "application_error", message: "x", statusCode: null } })],
+    ["a throw", async () => Promise.reject(new Error("socket hang up"))],
+  ])("queues a batch with %s as PAUSED, never pending", async (_label, answer) => {
     mocks.rows = [{ email: "a@gmail.com" }]
-    mocks.batchSend.mockRejectedValue(new Error("socket hang up"))
+    mocks.batchSend.mockImplementation(answer)
     await handleNewsletterSend("job-3")
-    expect(mocks.enqueue.mock.calls[0][3]).toEqual(["a@gmail.com"])
+    const paused = mocks.enqueue.mock.calls.find((c) => c[4]?.paused)
+    expect(paused?.[3]).toEqual(["a@gmail.com"])
+    const pending = mocks.enqueue.mock.calls.find((c) => c[4] === undefined)
+    expect(pending?.[3]).toEqual([])
   })
 
   // A job written before the queue shipped carries no tenant. Guessing one

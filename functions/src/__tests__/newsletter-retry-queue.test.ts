@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest"
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { enqueueNewsletterRetries } from "../lib/newsletter-retry-queue.js"
+import { enqueueNewsletterRetries, isRefusal } from "../lib/newsletter-retry-queue.js"
 
 function fakeSupabase(answers: Array<{ data: { id: string }[] | null; error: { message: string } | null }>) {
   const upsert = vi.fn()
@@ -43,6 +43,20 @@ describe("enqueueNewsletterRetries", () => {
     expect(upsert.mock.calls.map((c) => (c[0] as unknown[]).length)).toEqual([500, 500, 1])
   })
 
+  it("files rows PAUSED, with the reason, when asked", async () => {
+    const { client, upsert } = fakeSupabase([{ data: [{ id: "r1" }], error: null }])
+    await enqueueNewsletterRetries(client, "biz-1", "nl-1", ["a@gmail.com"], { paused: "check Resend" })
+    expect(upsert.mock.calls[0][0]).toEqual([
+      {
+        business_id: "biz-1",
+        newsletter_id: "nl-1",
+        email: "a@gmail.com",
+        status: "paused",
+        last_error: "check Resend",
+      },
+    ])
+  })
+
   it("keeps going past a chunk that failed, and does not throw", async () => {
     const { client } = fakeSupabase([
       { data: null, error: { message: 'relation "newsletter_deliveries" does not exist' } },
@@ -50,5 +64,21 @@ describe("enqueueNewsletterRetries", () => {
     ])
     const emails = Array.from({ length: 501 }, (_, i) => `p${i}@gmail.com`)
     await expect(enqueueNewsletterRetries(client, "biz-1", "nl-1", emails)).resolves.toBe(1)
+  })
+})
+
+describe("isRefusal", () => {
+  it.each([
+    [400, true],
+    [403, true],
+    [422, true],
+    [429, true],
+    [409, false], // an idempotency conflict: it may have been sent
+    [500, false],
+    [503, false],
+    [null, false],
+    [undefined, false],
+  ])("statusCode %s -> %s", (statusCode, expected) => {
+    expect(isRefusal({ statusCode })).toBe(expected)
   })
 })

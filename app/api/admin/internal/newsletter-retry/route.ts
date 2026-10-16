@@ -13,7 +13,7 @@ import { runNewsletterRetryTick } from "@/lib/automation/newsletter-retry"
 export const runtime = "nodejs"
 export const maxDuration = 60
 
-const PROBLEMS = new Set(["failed", "refused", "send_error"])
+const PROBLEMS = new Set(["failed", "refused", "send_error", "unconfirmed"])
 
 export async function POST(request: NextRequest) {
   const expected = process.env.INTERNAL_CRON_TOKEN

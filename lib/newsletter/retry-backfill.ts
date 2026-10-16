@@ -24,6 +24,18 @@ export type MissedRecipients = {
   toQueue: string[]
 }
 
+/**
+ * Why this rebuild must NOT be queued, whatever flags are passed, or null.
+ * Fewer reached than the send recorded means the log is missing people who
+ * DID get it (another Resend account, or older than the log), and every one
+ * of them would be "missed" and sent a second copy. The 2026-09-25 newsletter
+ * is exactly this: 0 in the current key's log, 1,300 recorded as sent.
+ */
+export function unsafeToQueue(result: MissedRecipients, recordedSent: number): string | null {
+  if (result.reached >= recordedSent) return null
+  return `Resend's log shows ${result.reached} sends but the newsletter recorded ${recordedSent}; this key cannot see who got it, so nothing can be queued safely`
+}
+
 export function missedRecipients(args: {
   subscribers: SubscriberAtSend[]
   sendStartedAt: Date

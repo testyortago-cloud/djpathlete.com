@@ -31,7 +31,7 @@ import { NextResponse } from "next/server"
 import { applyResendEmailEvent, sequenceMessageRecipient } from "@/lib/db/sequences"
 import { recordAudit } from "@/lib/audit/record"
 import { suppress } from "@/lib/db/contact-consents"
-import { markNewsletterDeliveryBounced } from "@/lib/db/newsletter-deliveries"
+import { markNewsletterDeliveryBounced, markNewsletterDeliveryComplained } from "@/lib/db/newsletter-deliveries"
 import {
   verifySvixSignature,
   SVIX_ID_HEADER,
@@ -138,6 +138,20 @@ export async function POST(request: Request) {
 
   const kind = typeof event.type === "string" ? EVENT_KINDS[event.type] : undefined
   const emailId = typeof event.data?.email_id === "string" ? event.data.email_id : null
+
+  // A SPAM COMPLAINT on a newsletter retry feeds that retry's brake
+  // (lib/automation/newsletter-retry.ts). It is recorded here and nowhere
+  // else: `email.complained` stays out of EVENT_KINDS for the reason given
+  // there, so nothing about sequences changes. Keyed on Resend's email id
+  // alone, and it matches nothing for any email that is not a retry.
+  if (event.type === "email.complained" && emailId) {
+    try {
+      await markNewsletterDeliveryComplained(emailId, eventInstant(event.created_at))
+    } catch (err) {
+      console.error("[resend-webhook] newsletter retry complaint write failed", (err as Error).message)
+    }
+  }
+
   if (!kind || !emailId) {
     return NextResponse.json({ ok: true, ignored: typeof event.type === "string" ? event.type : "unknown" })
   }

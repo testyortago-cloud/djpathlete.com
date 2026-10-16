@@ -68,10 +68,7 @@ export const resend = {
     }) as Resend["emails"]["send"],
   },
   batch: {
-    send: (async (
-      args: Parameters<Resend["batch"]["send"]>[0],
-      options?: Parameters<Resend["batch"]["send"]>[1],
-    ) => {
+    send: (async (args: Parameters<Resend["batch"]["send"]>[0], options?: Parameters<Resend["batch"]["send"]>[1]) => {
       if (!process.env.RESEND_API_KEY) {
         const count = Array.isArray(args) ? args.length : 0
         console.warn(`[email] RESEND_API_KEY not set — skipping batch of ${count}`)

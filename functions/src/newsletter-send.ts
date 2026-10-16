@@ -2,7 +2,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore"
 import { Resend } from "resend"
 import { getSupabase } from "./lib/supabase.js"
 import { isUndeliverableAddress } from "./lib/newsletter-recipients.js"
-import { enqueueNewsletterRetries } from "./lib/newsletter-retry-queue.js"
+import { enqueueNewsletterRetries, isRefusal } from "./lib/newsletter-retry-queue.js"
 
 const BATCH_SIZE = 100
 const BATCH_DELAY_MS = 1000
@@ -79,9 +79,14 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
     const fromEmail = process.env.RESEND_FROM_EMAIL ?? "Darren J. Paul <noreply@send.darrenjpaul.com>"
     let sent = 0
     let failed = 0
-    // Every address in a batch Resend refused. They go to the retry queue,
-    // which resends them in working hours (lib/automation/newsletter-retry.ts).
+    // Every address in a batch Resend REFUSED (a 4xx, so nothing was sent).
+    // They go to the retry queue, which resends them in working hours
+    // (lib/automation/newsletter-retry.ts).
     const refused: string[] = []
+    // A batch with no clear answer (a 5xx, no status, a throw). Resend may
+    // have sent it, and this send uses no idempotency key, so a retry could
+    // be a second copy. They are queued PAUSED for a person to check.
+    const unconfirmed: string[] = []
 
     for (let i = 0; i < subscribers.length; i += BATCH_SIZE) {
       const batch = subscribers.slice(i, i + BATCH_SIZE)
@@ -99,14 +104,16 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
         if (error) {
           console.error(`[newsletter-send] Batch ${Math.floor(i / BATCH_SIZE) + 1} error:`, error)
           failed += batch.length
-          refused.push(...batch.map((sub) => sub.email))
+          const emails = batch.map((sub) => sub.email)
+          if (isRefusal(error)) refused.push(...emails)
+          else unconfirmed.push(...emails)
         } else {
           sent += data?.data?.length ?? batch.length
         }
       } catch (err) {
         console.error(`[newsletter-send] Batch ${Math.floor(i / BATCH_SIZE) + 1} exception:`, err)
         failed += batch.length
-        refused.push(...batch.map((sub) => sub.email))
+        unconfirmed.push(...batch.map((sub) => sub.email))
       }
 
       // Update progress periodically (every 5 batches)
@@ -141,12 +148,20 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
     // Never defaulted: a job from before the queue has no tenant to stamp,
     // and guessing one would file rows under the wrong business.
     let queued = 0
-    if (refused.length > 0) {
+    if (refused.length + unconfirmed.length > 0) {
       if (input.businessId) {
         queued = await enqueueNewsletterRetries(supabase, input.businessId, input.newsletterId, refused)
-        console.log(`[newsletter-send] Queued ${queued} failed recipient(s) for a working-hours retry`)
+        queued += await enqueueNewsletterRetries(supabase, input.businessId, input.newsletterId, unconfirmed, {
+          paused:
+            "Resend gave no clear answer for these during the send, so some may already have it. Check Resend before resuming.",
+        })
+        console.log(
+          `[newsletter-send] Queued ${queued} failed recipient(s) (${unconfirmed.length} paused, unconfirmed)`,
+        )
       } else {
-        console.warn(`[newsletter-send] ${refused.length} failed recipient(s) NOT queued: job has no businessId`)
+        console.warn(
+          `[newsletter-send] ${refused.length + unconfirmed.length} failed recipient(s) NOT queued: job has no businessId`,
+        )
       }
     }
 

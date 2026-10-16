@@ -11,16 +11,17 @@ const n = (v: number) => v.toLocaleString("en-US")
 export function retryStatusLine(r: NewsletterRetrySummary | undefined): RetryStatusLine | null {
   if (!r) return null
   if (r.paused > 0) {
-    return {
-      tone: "danger",
-      text: `Resending paused: ${n(r.bounced)} of ${n(r.sent)} resent emails bounced. ${n(r.paused)} people still to go.`,
-    }
+    // The reason is written for the owner where the pause happens
+    // (lib/automation/newsletter-retry.ts, functions/src/newsletter-send.ts).
+    const why = r.pause_reason ? ` ${r.pause_reason}` : ""
+    return { tone: "danger", text: `Resending paused.${why} ${n(r.paused)} people still to go.` }
   }
-  if (r.pending > 0) {
+  const waiting = r.pending + r.sending
+  if (waiting > 0) {
     const done = r.sent > 0 ? `${n(r.sent)} done, ` : ""
     return {
       tone: "info",
-      text: `Resending to people who missed it: ${done}${n(r.pending)} to go. 100 an hour, weekdays 9am to 5pm.`,
+      text: `Resending to people who missed it: ${done}${n(waiting)} to go. 100 an hour, weekdays 9am to 5pm.`,
     }
   }
   if (r.sent > 0 || r.failed > 0) {

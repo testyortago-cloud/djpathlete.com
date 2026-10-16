@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   ),
   suppress: vi.fn(async (..._a: unknown[]) => undefined),
   markNewsletterDeliveryBounced: vi.fn(async (..._a: unknown[]) => true),
+  markNewsletterDeliveryComplained: vi.fn(async (..._a: unknown[]) => true),
 }))
 
 vi.mock("@/lib/db/sequences", () => ({
@@ -29,6 +30,7 @@ vi.mock("@/lib/db/sequences", () => ({
 vi.mock("@/lib/db/contact-consents", () => ({ suppress: mocks.suppress }))
 vi.mock("@/lib/db/newsletter-deliveries", () => ({
   markNewsletterDeliveryBounced: mocks.markNewsletterDeliveryBounced,
+  markNewsletterDeliveryComplained: mocks.markNewsletterDeliveryComplained,
 }))
 
 import { POST } from "@/app/api/webhooks/resend/route"
@@ -314,6 +316,24 @@ describe("POST /api/webhooks/resend — a newsletter retry's hard bounce feeds t
     await POST(bounce("Permanent"))
     expect(mocks.suppress).toHaveBeenCalled()
     expect(mocks.markNewsletterDeliveryBounced).not.toHaveBeenCalled()
+  })
+
+  it("records a spam complaint against the retry row, and changes nothing for sequences", async () => {
+    const res = await POST(
+      signedRequest({ ...OPENED, type: "email.complained", created_at: "2026-10-19T15:00:00.000Z" }),
+    )
+    expect(res.status).toBe(200)
+    expect(mocks.markNewsletterDeliveryComplained).toHaveBeenCalledWith(
+      "re_abc123",
+      new Date("2026-10-19T15:00:00.000Z"),
+    )
+    expect(mocks.applyResendEmailEvent).not.toHaveBeenCalled()
+    expect(mocks.suppress).not.toHaveBeenCalled()
+  })
+
+  it("does not record a complaint for any other event", async () => {
+    await POST(signedRequest(OPENED))
+    expect(mocks.markNewsletterDeliveryComplained).not.toHaveBeenCalled()
   })
 
   it("still answers 200 when the retry row write throws", async () => {

@@ -16,6 +16,9 @@
  * same subject that day. Resend's log reaches back about 30 days; an older
  * send cannot be rebuilt this way, and the script says so instead of guessing.
  *
+ * It refuses outright, whatever the flags, when Resend's log shows fewer sends
+ * than the newsletter recorded: the log cannot see some who got it.
+ *
  * --apply refuses unless the rebuilt "missed" count equals the newsletter's own
  * failed_count, which the send function wrote at the time. A mismatch means
  * the rebuild is wrong somewhere, and a wrong rebuild sends someone a
@@ -29,7 +32,7 @@
  */
 import { readFileSync } from "node:fs"
 import { createClient } from "@supabase/supabase-js"
-import { missedRecipients, type SubscriberAtSend } from "../lib/newsletter/retry-backfill"
+import { missedRecipients, unsafeToQueue, type SubscriberAtSend } from "../lib/newsletter/retry-backfill"
 import { isUndeliverableAddress } from "../functions/src/lib/newsletter-recipients"
 import { platformBusinessId } from "../lib/tenancy/platform"
 
@@ -134,6 +137,9 @@ async function main() {
   console.log(`  to queue:                    ${result.toQueue.length}`)
   console.log(`  e.g. ${result.toQueue.slice(0, 3).map(mask).join(", ")}`)
 
+  // NOT overridable by any flag; see unsafeToQueue.
+  const unsafe = unsafeToQueue(result, nl.sent_count ?? 0)
+  if (unsafe) throw new Error(unsafe)
   const matches = result.missed.length === nl.failed_count
   if (!matches) console.log(`\nMISMATCH: rebuilt ${result.missed.length}, recorded ${nl.failed_count}.`)
   if (!apply) {

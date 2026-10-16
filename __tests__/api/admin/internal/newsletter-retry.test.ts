@@ -62,11 +62,14 @@ describe("POST /api/admin/internal/newsletter-retry", () => {
     expect(mocks.logCronEnd).toHaveBeenCalledWith({}, "run-1", "success", expect.anything())
   })
 
-  it.each(["failed", "refused", "send_error"])("logs a tick with a %s business as failed", async (outcome) => {
-    mocks.runNewsletterRetryTick.mockResolvedValue({ businesses: [{ businessId: "b", outcome }] })
-    await POST(req("cron-secret"))
-    expect(mocks.logCronEnd).toHaveBeenCalledWith({}, "run-1", "failed", expect.anything())
-  })
+  it.each(["failed", "refused", "send_error", "unconfirmed"])(
+    "logs a tick with a %s business as failed",
+    async (outcome) => {
+      mocks.runNewsletterRetryTick.mockResolvedValue({ businesses: [{ businessId: "b", outcome }] })
+      await POST(req("cron-secret"))
+      expect(mocks.logCronEnd).toHaveBeenCalledWith({}, "run-1", "failed", expect.anything())
+    },
+  )
 
   it("500s and logs failed when the tick throws", async () => {
     mocks.runNewsletterRetryTick.mockRejectedValue(new Error("RESEND_FROM_EMAIL is not set"))
