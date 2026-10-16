@@ -144,6 +144,16 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     that coach, whose owners would then be alerted about the platform's
  *     blog. The functions never default a missing `businessId` (a job
  *     enqueued before G35); they skip the alert and log why.
+ *   - the newsletter send's JOB BUSINESS (lib/newsletter/send-newsletter.ts),
+ *     stamped into the `newsletter_send` job for the same reason. The
+ *     function files the recipients a batch failed on under it, in
+ *     `newsletter_deliveries` (migration 00291), for the working-hours retry.
+ *     `newsletters` and `newsletter_subscribers` have no `business_id`: ONE
+ *     list, the platform's own (see getActiveSubscribers), so the platform is
+ *     the answer. It is called from the Send button and from the scheduled
+ *     runner, and the Send button must not stamp the admin's selected business
+ *     either. The function never defaults a missing `businessId`; it leaves
+ *     those recipients unqueued and logs why.
  *
  * A NARROWER VARIANT OF THE SAME SEAM -- the caller DOES resolve a real
  * tenant first, and consults this seam only after that, in one of two ways:

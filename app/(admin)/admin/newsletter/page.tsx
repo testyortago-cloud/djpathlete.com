@@ -2,16 +2,27 @@ import Link from "next/link"
 import { Mail, Send, Clock, CalendarClock, Users } from "lucide-react"
 import { getNewsletters } from "@/lib/db/newsletters"
 import { getActiveSubscribers } from "@/lib/db/newsletter"
+import { getNewsletterRetrySummaries, type NewsletterRetrySummary } from "@/lib/db/newsletter-deliveries"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { NewsletterList } from "@/components/admin/newsletter/NewsletterList"
 import type { Newsletter } from "@/types/database"
 
 export const metadata = { title: "Newsletter" }
 
 export default async function NewsletterPage() {
-  const [newsletters, subscribers] = await Promise.all([
+  const [newsletters, subscribers, { businessId }] = await Promise.all([
     getNewsletters() as Promise<Newsletter[]>,
     getActiveSubscribers(),
+    resolveAdminTenant(),
   ])
+  // The status line is extra; the list must still render if the queue cannot
+  // be read (e.g. this code live before migration 00291 has run).
+  const retries: Record<string, NewsletterRetrySummary> = await getNewsletterRetrySummaries(businessId).catch(
+    (err: Error) => {
+      console.error("[admin/newsletter] retry status unavailable:", err.message)
+      return {}
+    },
+  )
 
   const total = newsletters.length
   const sent = newsletters.filter((n) => n.status === "sent").length
@@ -81,7 +92,7 @@ export default async function NewsletterPage() {
         </Link>
       </div>
 
-      <NewsletterList newsletters={newsletters} />
+      <NewsletterList newsletters={newsletters} retries={retries} />
     </div>
   )
 }

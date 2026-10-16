@@ -18,15 +18,19 @@ import { cn } from "@/lib/utils"
 import type { Newsletter } from "@/types/database"
 import { SchedulePicker } from "@/components/admin/shared/SchedulePicker"
 import { ShareToLinkedInButton } from "@/components/admin/social/ShareToLinkedInButton"
+import type { NewsletterRetrySummary } from "@/lib/db/newsletter-deliveries"
+import { retryStatusLine } from "@/lib/newsletter/retry-status"
 
 interface NewsletterListProps {
   newsletters: Newsletter[]
+  /** The retry queue for each newsletter that has one, keyed by newsletter id. */
+  retries?: Record<string, NewsletterRetrySummary>
 }
 
 const statusTabs = ["All", "Draft", "Scheduled", "Sent"] as const
 type StatusTab = (typeof statusTabs)[number]
 
-export function NewsletterList({ newsletters }: NewsletterListProps) {
+export function NewsletterList({ newsletters, retries = {} }: NewsletterListProps) {
   const router = useRouter()
   const [tab, setTab] = useState<StatusTab>("All")
   const [search, setSearch] = useState("")
@@ -187,6 +191,7 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
             <tbody>
               {filtered.map((nl) => {
                 const missed = nl.status === "draft" && Boolean(nl.schedule_failed_reason)
+                const retry = retryStatusLine(retries[nl.id])
                 return (
                   <DataTableRow key={nl.id}>
                     <DataTableCell>
@@ -197,6 +202,18 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
                         )}
                         {missed && (
                           <p className="text-xs text-destructive line-clamp-1">{nl.schedule_failed_reason}</p>
+                        )}
+                        {retry && (
+                          <p
+                            className={cn(
+                              "text-xs line-clamp-2",
+                              retry.tone === "danger" && "text-destructive",
+                              retry.tone === "info" && "text-primary",
+                              retry.tone === "muted" && "text-muted-foreground",
+                            )}
+                          >
+                            {retry.text}
+                          </p>
                         )}
                       </div>
                     </DataTableCell>

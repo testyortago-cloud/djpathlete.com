@@ -31,6 +31,7 @@ import { NextResponse } from "next/server"
 import { applyResendEmailEvent, sequenceMessageRecipient } from "@/lib/db/sequences"
 import { recordAudit } from "@/lib/audit/record"
 import { suppress } from "@/lib/db/contact-consents"
+import { markNewsletterDeliveryBounced } from "@/lib/db/newsletter-deliveries"
 import {
   verifySvixSignature,
   SVIX_ID_HEADER,
@@ -186,6 +187,20 @@ export async function POST(request: Request) {
       }
     } catch (err) {
       console.error("[resend-webhook] bounce suppression failed", (err as Error).message)
+    }
+  }
+
+  // A NEWSLETTER RETRY'S PERMANENT BOUNCE feeds that retry's bounce brake
+  // (lib/automation/newsletter-retry.ts), which pauses the retry before the
+  // only sending domain goes over Resend's bounce limit. Only for an id no
+  // sequence message claimed: a Resend id is one or the other. The write is
+  // keyed on that id alone and never reads an address or a tenant from the
+  // payload. Non-blocking, for the same reason as the arm above.
+  if (kind === "bounced" && isPermanentBounce(event.data?.bounce) && outcome === "unknown_message") {
+    try {
+      await markNewsletterDeliveryBounced(emailId, eventInstant(event.created_at))
+    } catch (err) {
+      console.error("[resend-webhook] newsletter retry bounce write failed", (err as Error).message)
     }
   }
 

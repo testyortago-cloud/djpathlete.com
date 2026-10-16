@@ -69,6 +69,23 @@ export async function getActiveSubscribers(): Promise<{ email: string }[]> {
   )
 }
 
+/**
+ * Which of `emails` are still subscribed. The newsletter retry asks this just
+ * before each batch, because a queued row can wait days for its turn.
+ * UNTENANTED BY SCHEMA, like getActiveSubscribers above. Callers pass at most
+ * one batch (100), well under the 1,000-row cap.
+ */
+export async function stillSubscribed(emails: string[]): Promise<Set<string>> {
+  if (emails.length === 0) return new Set()
+  const { data, error } = await getClient()
+    .from("newsletter_subscribers")
+    .select("email")
+    .in("email", emails)
+    .is("unsubscribed_at", null)
+  if (error) throw new Error(`[newsletter] stillSubscribed: ${error.message}`)
+  return new Set((data ?? []).map((r) => (r as { email: string }).email))
+}
+
 export interface Subscriber {
   id: string
   email: string

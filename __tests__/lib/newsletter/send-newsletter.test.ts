@@ -68,4 +68,12 @@ describe("sendNewsletterNow", () => {
     expect(doc.input).toMatchObject({ newsletterId: "n1", subject: "August round-up", html: "<html/>" })
     expect(doc.userId).toBe("cron-actor")
   })
+
+  // The function files failed recipients for the retry queue under this.
+  // The platform's own business, never the admin's selected one (see the JOB
+  // BUSINESS entry in lib/tenancy/platform.ts).
+  it("stamps the platform's business on the job", async () => {
+    await sendNewsletterNow({ id: "n1", actorId: "cron-actor" })
+    expect(firestoreSetMock.mock.calls[0][0].input.businessId).toBe("00000000-0000-0000-0000-000000000001")
+  })
 })

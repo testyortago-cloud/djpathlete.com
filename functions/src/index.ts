@@ -1783,6 +1783,44 @@ export const sequenceTickCron = onSchedule(
   },
 )
 
+// ─── Newsletter retry (hourly) ──────────────────────────────────────────────
+// Resends a newsletter's failed recipients in batches of 100, only in the
+// business's working hours (Mon-Fri 09:00-17:00 in business_settings.timezone).
+// It runs every hour of every day because the ROUTE decides what "working
+// hours" means per tenant; outside them it answers without sending. Gated by
+// cron_newsletter_retry_enabled (default true; the queue is empty unless a
+// send failed). See lib/automation/newsletter-retry.ts for the bounce brake.
+
+export const newsletterRetryCron = onSchedule(
+  {
+    schedule: "0 * * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[newsletterRetryCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/newsletter-retry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[newsletterRetryCron]", res.status, JSON.stringify(body))
+    } catch (err) {
+      console.error("[newsletterRetryCron] failed:", err)
+    }
+  },
+)
+
 // ─── Lead Engine pipeline reconciler (hourly, UTC) ──────────────────────────
 // Stage 1c: a hook that throws AFTER its booking/payment row is already
 // written loses a board card permanently — this catches it up. Ships OFF by

@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
       ({ businessId: "biz-1", toIdentifier: "row@example.com" }) as { businessId: string; toIdentifier: string } | null,
   ),
   suppress: vi.fn(async (..._a: unknown[]) => undefined),
+  markNewsletterDeliveryBounced: vi.fn(async (..._a: unknown[]) => true),
 }))
 
 vi.mock("@/lib/db/sequences", () => ({
@@ -26,6 +27,9 @@ vi.mock("@/lib/db/sequences", () => ({
   sequenceMessageRecipient: mocks.sequenceMessageRecipient,
 }))
 vi.mock("@/lib/db/contact-consents", () => ({ suppress: mocks.suppress }))
+vi.mock("@/lib/db/newsletter-deliveries", () => ({
+  markNewsletterDeliveryBounced: mocks.markNewsletterDeliveryBounced,
+}))
 
 import { POST } from "@/app/api/webhooks/resend/route"
 
@@ -59,6 +63,7 @@ beforeEach(() => {
   mocks.applyResendEmailEvent.mockResolvedValue("updated")
   mocks.sequenceMessageRecipient.mockResolvedValue({ businessId: "biz-1", toIdentifier: "row@example.com" })
   mocks.suppress.mockResolvedValue(undefined)
+  mocks.markNewsletterDeliveryBounced.mockResolvedValue(true)
 })
 
 describe("POST /api/webhooks/resend — the signature is the authorisation", () => {
@@ -275,6 +280,46 @@ describe("POST /api/webhooks/resend — a hard bounce suppresses the address", (
         data: { ...OPENED.data, bounce: { type: "Permanent", subType: "General" } },
       }),
     )
+    expect(res.status).toBe(200)
+  })
+})
+
+// The newsletter retry's bounce brake (lib/automation/newsletter-retry.ts)
+// counts these. A retry email is never a sequence message, so its bounce
+// arrives as `unknown_message`.
+describe("POST /api/webhooks/resend — a newsletter retry's hard bounce feeds the brake", () => {
+  const bounce = (type: string) =>
+    signedRequest({
+      ...OPENED,
+      type: "email.bounced",
+      created_at: "2026-10-19T14:05:00.000Z",
+      data: { ...OPENED.data, bounce: { type, subType: "General" } },
+    })
+
+  it("records a PERMANENT bounce against the retry row by Resend's email id, at the event's own time", async () => {
+    mocks.applyResendEmailEvent.mockResolvedValue("unknown_message")
+    const res = await POST(bounce("Permanent"))
+    expect(res.status).toBe(200)
+    expect(mocks.markNewsletterDeliveryBounced).toHaveBeenCalledWith("re_abc123", new Date("2026-10-19T14:05:00.000Z"))
+  })
+
+  it("does not record a TRANSIENT bounce", async () => {
+    mocks.applyResendEmailEvent.mockResolvedValue("unknown_message")
+    await POST(bounce("Transient"))
+    expect(mocks.markNewsletterDeliveryBounced).not.toHaveBeenCalled()
+  })
+
+  it("does not look for a retry row when a sequence message owns the id", async () => {
+    mocks.applyResendEmailEvent.mockResolvedValue("updated")
+    await POST(bounce("Permanent"))
+    expect(mocks.suppress).toHaveBeenCalled()
+    expect(mocks.markNewsletterDeliveryBounced).not.toHaveBeenCalled()
+  })
+
+  it("still answers 200 when the retry row write throws", async () => {
+    mocks.applyResendEmailEvent.mockResolvedValue("unknown_message")
+    mocks.markNewsletterDeliveryBounced.mockRejectedValueOnce(new Error("relation does not exist"))
+    const res = await POST(bounce("Permanent"))
     expect(res.status).toBe(200)
   })
 })

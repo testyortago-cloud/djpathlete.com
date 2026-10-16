@@ -2,6 +2,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore"
 import { Resend } from "resend"
 import { getSupabase } from "./lib/supabase.js"
 import { isUndeliverableAddress } from "./lib/newsletter-recipients.js"
+import { enqueueNewsletterRetries } from "./lib/newsletter-retry-queue.js"
 
 const BATCH_SIZE = 100
 const BATCH_DELAY_MS = 1000
@@ -26,6 +27,8 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
     newsletterId: string
     subject: string
     html: string
+    /** Stamped by lib/newsletter/send-newsletter.ts. Absent on a job enqueued before the retry queue shipped. */
+    businessId?: string
   }
 
   const resend = new Resend(process.env.RESEND_API_KEY)
@@ -76,6 +79,9 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
     const fromEmail = process.env.RESEND_FROM_EMAIL ?? "Darren J. Paul <noreply@send.darrenjpaul.com>"
     let sent = 0
     let failed = 0
+    // Every address in a batch Resend refused. They go to the retry queue,
+    // which resends them in working hours (lib/automation/newsletter-retry.ts).
+    const refused: string[] = []
 
     for (let i = 0; i < subscribers.length; i += BATCH_SIZE) {
       const batch = subscribers.slice(i, i + BATCH_SIZE)
@@ -93,12 +99,14 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
         if (error) {
           console.error(`[newsletter-send] Batch ${Math.floor(i / BATCH_SIZE) + 1} error:`, error)
           failed += batch.length
+          refused.push(...batch.map((sub) => sub.email))
         } else {
           sent += data?.data?.length ?? batch.length
         }
       } catch (err) {
         console.error(`[newsletter-send] Batch ${Math.floor(i / BATCH_SIZE) + 1} exception:`, err)
         failed += batch.length
+        refused.push(...batch.map((sub) => sub.email))
       }
 
       // Update progress periodically (every 5 batches)
@@ -130,9 +138,21 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
 
     console.log(`[newsletter-send] Done: ${sent}/${subscribers.length} sent, ${failed} failed`)
 
+    // Never defaulted: a job from before the queue has no tenant to stamp,
+    // and guessing one would file rows under the wrong business.
+    let queued = 0
+    if (refused.length > 0) {
+      if (input.businessId) {
+        queued = await enqueueNewsletterRetries(supabase, input.businessId, input.newsletterId, refused)
+        console.log(`[newsletter-send] Queued ${queued} failed recipient(s) for a working-hours retry`)
+      } else {
+        console.warn(`[newsletter-send] ${refused.length} failed recipient(s) NOT queued: job has no businessId`)
+      }
+    }
+
     await jobRef.update({
       status: "completed",
-      result: { sent, failed, total: subscribers.length, skipped },
+      result: { sent, failed, total: subscribers.length, skipped, queued },
       updatedAt: FieldValue.serverTimestamp(),
     })
   } catch (error) {

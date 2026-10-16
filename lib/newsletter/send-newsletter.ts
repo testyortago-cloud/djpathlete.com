@@ -6,6 +6,7 @@ import { getNewsletterById, updateNewsletter } from "@/lib/db/newsletters"
 import { getAdminFirestore } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { buildNewsletterHtml } from "@/lib/email"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export class NewsletterNotSendableError extends Error {
   readonly code: "already_sent" | "too_short"
@@ -55,7 +56,10 @@ export async function sendNewsletterNow(args: {
   await db.collection("ai_jobs").doc().set({
     type: "newsletter_send",
     status: "pending",
-    input: { newsletterId: args.id, subject: newsletter.subject, html },
+    // The tenant the function files failed recipients under for the retry
+    // queue. The platform's, never the admin's selection: see the JOB BUSINESS
+    // entry in lib/tenancy/platform.ts.
+    input: { newsletterId: args.id, subject: newsletter.subject, html, businessId: platformBusinessId() },
     result: null,
     error: null,
     userId: args.actorId,
