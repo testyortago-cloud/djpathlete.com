@@ -9,6 +9,7 @@ import { newsletterFormSchema } from "@/lib/validators/newsletter"
 import { BlogEditor } from "../blog/BlogEditor"
 import { NewsletterGenerateDialog } from "./NewsletterGenerateDialog"
 import type { Newsletter } from "@/types/database"
+import { sentCountsText } from "@/lib/newsletter/retry-status"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 import { humanizeFieldError, summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 import { SchedulePicker } from "@/components/admin/shared/SchedulePicker"
@@ -24,9 +25,11 @@ interface NewsletterFormProps {
   authorId: string
   /** Rendered under the "was sent on" banner of a sent newsletter: its results. */
   results?: ReactNode
+  /** People the working-hours resend has not reached yet; named "waiting", not "failed". */
+  stillResending?: number
 }
 
-export function NewsletterForm({ newsletter, authorId, results }: NewsletterFormProps) {
+export function NewsletterForm({ newsletter, authorId, results, stillResending = 0 }: NewsletterFormProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
@@ -315,8 +318,7 @@ export function NewsletterForm({ newsletter, authorId, results }: NewsletterForm
               minute: "2-digit",
             })}
             {" — "}
-            {newsletter.sent_count} sent
-            {newsletter.failed_count ? `, ${newsletter.failed_count} failed` : ""}
+            {sentCountsText(newsletter.sent_count ?? 0, newsletter.failed_count ?? 0, stillResending)}
           </p>
         </div>
       )}

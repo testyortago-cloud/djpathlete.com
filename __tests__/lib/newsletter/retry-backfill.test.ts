@@ -1,7 +1,24 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest"
 import { missedRecipients, planResultsBackfill, unsafeToQueue } from "@/lib/newsletter/retry-backfill"
-import { retryStatusLine } from "@/lib/newsletter/retry-status"
+import { retryStatusLine, sentCountsText } from "@/lib/newsletter/retry-status"
+
+describe("sentCountsText", () => {
+  // The send records refused people as "failed". Once they are queued for the
+  // resend they are not failures, and the owner read "4583 failed" as final.
+  it("calls the people still queued for the resend 'waiting', not 'failed'", () => {
+    expect(sentCountsText(1300, 4583, 4583)).toBe("1,300 sent, 4,583 waiting to be resent")
+  })
+
+  it("names whatever is left over as not sent", () => {
+    expect(sentCountsText(1300, 4583, 4483)).toBe("1,300 sent, 4,483 waiting to be resent, 100 not sent")
+  })
+
+  it("keeps 'failed' when nothing is queued", () => {
+    expect(sentCountsText(1100, 4783, 0)).toBe("1,100 sent, 4,783 failed")
+    expect(sentCountsText(5883, 0, 0)).toBe("5,883 sent")
+  })
+})
 
 const SEND = new Date("2026-10-09T13:00:27Z")
 const sub = (email: string, subscribed_at: string, unsubscribed_at: string | null = null) => ({

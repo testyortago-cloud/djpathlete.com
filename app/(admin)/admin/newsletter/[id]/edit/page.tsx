@@ -58,6 +58,7 @@ export default async function EditNewsletterPage({ params }: Props) {
       <NewsletterForm
         newsletter={newsletter}
         authorId={newsletter.author_id}
+        stillResending={stillResending}
         results={
           newsletter.status === "sent" ? (
             <NewsletterResultsPanel results={results} stillResending={stillResending} />

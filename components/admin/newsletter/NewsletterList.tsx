@@ -19,7 +19,7 @@ import type { Newsletter } from "@/types/database"
 import { SchedulePicker } from "@/components/admin/shared/SchedulePicker"
 import { ShareToLinkedInButton } from "@/components/admin/social/ShareToLinkedInButton"
 import type { NewsletterResults, NewsletterRetrySummary } from "@/lib/db/newsletter-deliveries"
-import { retryStatusLine } from "@/lib/newsletter/retry-status"
+import { retryStatusLine, sentCountsText } from "@/lib/newsletter/retry-status"
 import { resultsLine } from "@/lib/newsletter/results"
 
 interface NewsletterListProps {
@@ -196,6 +196,7 @@ export function NewsletterList({ newsletters, retries = {}, results = {} }: News
                 const missed = nl.status === "draft" && Boolean(nl.schedule_failed_reason)
                 const retry = retryStatusLine(retries[nl.id])
                 const outcome = resultsLine(results[nl.id])
+                const queued = retries[nl.id]
                 return (
                   <DataTableRow key={nl.id}>
                     <DataTableCell>
@@ -235,7 +236,13 @@ export function NewsletterList({ newsletters, retries = {}, results = {} }: News
                       {nl.status === "sent" ? (
                         <>
                           {/* sent_count is what Resend ACCEPTED; delivered is in the results. */}
-                          <p>{`${nl.sent_count} sent${nl.failed_count ? `, ${nl.failed_count} failed` : ""}`}</p>
+                          <p>
+                            {sentCountsText(
+                              nl.sent_count ?? 0,
+                              nl.failed_count ?? 0,
+                              queued ? queued.pending + queued.sending : 0,
+                            )}
+                          </p>
                           {outcome && <p className="text-foreground">{outcome}</p>}
                         </>
                       ) : (

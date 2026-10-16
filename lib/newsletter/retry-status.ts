@@ -8,6 +8,20 @@ export type RetryStatusLine = { tone: "info" | "danger" | "muted"; text: string 
 
 const n = (v: number) => v.toLocaleString("en-US")
 
+/**
+ * The "sent / failed" counts on the list and the "was sent on" banner. The
+ * send records everyone Resend refused as failed; once they are queued for
+ * the working-hours resend they are waiting, not failed, so they are named
+ * that way. `waiting` is the queue's pending + sending rows.
+ */
+export function sentCountsText(sent: number, failed: number, waiting: number): string {
+  const parts = [`${n(sent)} sent`]
+  if (waiting > 0) parts.push(`${n(waiting)} waiting to be resent`)
+  const rest = failed - waiting
+  if (rest > 0) parts.push(waiting > 0 ? `${n(rest)} not sent` : `${n(rest)} failed`)
+  return parts.join(", ")
+}
+
 export function retryStatusLine(r: NewsletterRetrySummary | undefined): RetryStatusLine | null {
   if (!r) return null
   // The reason is written for the owner where the pause happens
