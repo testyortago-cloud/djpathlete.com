@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   batchSend: vi.fn(),
   jobUpdate: vi.fn(),
   enqueue: vi.fn(),
+  record: vi.fn(),
   rows: [] as { email: string }[],
   input: {} as Record<string, unknown>,
 }))
@@ -41,6 +42,7 @@ vi.mock("../lib/supabase.js", () => {
 vi.mock("../lib/newsletter-retry-queue.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/newsletter-retry-queue.js")>()),
   enqueueNewsletterRetries: mocks.enqueue,
+  recordNewsletterSends: mocks.record,
 }))
 
 import { handleNewsletterSend } from "../newsletter-send.js"
@@ -62,6 +64,7 @@ describe("handleNewsletterSend", () => {
     vi.clearAllMocks()
     mocks.batchSend.mockResolvedValue({ data: { data: [{ id: "1" }, { id: "2" }] }, error: null })
     mocks.enqueue.mockImplementation(async (_s: unknown, _b: string, _n: string, emails: string[]) => emails.length)
+    mocks.record.mockImplementation(async (_s: unknown, _b: string, _n: string, sent: unknown[]) => sent.length)
     mocks.input = { newsletterId: "n1", subject: "S", html: "<p>h</p>", businessId: "biz-1" }
   })
 
@@ -118,5 +121,64 @@ describe("handleNewsletterSend", () => {
     expect(mocks.enqueue).not.toHaveBeenCalled()
     const done = mocks.jobUpdate.mock.calls.find((c) => c[0].status === "completed")?.[0]
     expect(done.result.queued).toBe(0)
+  })
+})
+
+describe("handleNewsletterSend records who each accepted batch reached", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.enqueue.mockImplementation(async (_s: unknown, _b: string, _n: string, emails: string[]) => emails.length)
+    mocks.record.mockImplementation(async (_s: unknown, _b: string, _n: string, sent: unknown[]) => sent.length)
+    mocks.input = { newsletterId: "n1", subject: "S", html: "<p>h</p>", businessId: "biz-1" }
+  })
+
+  it("records each address with ITS OWN Resend id, in payload order", async () => {
+    mocks.rows = [{ email: "a@gmail.com" }, { email: "b@gmail.com" }]
+    mocks.batchSend.mockResolvedValue({ data: { data: [{ id: "re_a" }, { id: "re_b" }] }, error: null })
+    await handleNewsletterSend("job-r1")
+
+    expect(mocks.record).toHaveBeenCalledTimes(1)
+    const [, biz, nl, sent, at] = mocks.record.mock.calls[0]
+    expect([biz, nl]).toEqual(["biz-1", "n1"])
+    expect(sent).toEqual([
+      { email: "a@gmail.com", providerMessageId: "re_a" },
+      { email: "b@gmail.com", providerMessageId: "re_b" },
+    ])
+    expect(at).toBeInstanceOf(Date)
+  })
+
+  it("records trailing addresses with a null id when Resend answers with fewer ids than it was sent", async () => {
+    mocks.rows = [{ email: "a@gmail.com" }, { email: "b@gmail.com" }]
+    mocks.batchSend.mockResolvedValue({ data: { data: [{ id: "re_a" }] }, error: null })
+    await handleNewsletterSend("job-r2")
+    expect(mocks.record.mock.calls[0][3]).toEqual([
+      { email: "a@gmail.com", providerMessageId: "re_a" },
+      { email: "b@gmail.com", providerMessageId: null },
+    ])
+  })
+
+  // Recording is bookkeeping. It must never change the send it describes.
+  it("leaves the job's result exactly as before when recording fails", async () => {
+    mocks.rows = [{ email: "a@gmail.com" }, { email: "b@gmail.com" }]
+    mocks.batchSend.mockResolvedValue({ data: { data: [{ id: "re_a" }, { id: "re_b" }] }, error: null })
+    mocks.record.mockRejectedValue(new Error("boom"))
+    await handleNewsletterSend("job-r3")
+    const done = mocks.jobUpdate.mock.calls.find((c) => c[0].status === "completed")?.[0]
+    expect(done.result).toEqual({ sent: 2, failed: 0, total: 2, skipped: 0, queued: 0 })
+  })
+
+  it("records nothing for a job with no businessId", async () => {
+    mocks.rows = [{ email: "a@gmail.com" }]
+    mocks.input = { newsletterId: "n1", subject: "S", html: "<p>h</p>" }
+    mocks.batchSend.mockResolvedValue({ data: { data: [{ id: "re_a" }] }, error: null })
+    await handleNewsletterSend("job-r4")
+    expect(mocks.record).not.toHaveBeenCalled()
+  })
+
+  it("records nothing for a refused batch", async () => {
+    mocks.rows = [{ email: "a@gmail.com" }]
+    mocks.batchSend.mockResolvedValue({ data: null, error: { name: "daily_quota_exceeded", message: "q", statusCode: 429 } })
+    await handleNewsletterSend("job-r5")
+    expect(mocks.record).not.toHaveBeenCalled()
   })
 })

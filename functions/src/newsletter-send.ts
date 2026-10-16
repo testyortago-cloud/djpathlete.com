@@ -2,7 +2,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore"
 import { Resend } from "resend"
 import { getSupabase } from "./lib/supabase.js"
 import { isUndeliverableAddress } from "./lib/newsletter-recipients.js"
-import { enqueueNewsletterRetries, isRefusal } from "./lib/newsletter-retry-queue.js"
+import { enqueueNewsletterRetries, isRefusal, recordNewsletterSends } from "./lib/newsletter-retry-queue.js"
 
 const BATCH_SIZE = 100
 const BATCH_DELAY_MS = 1000
@@ -90,6 +90,7 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
 
     for (let i = 0; i < subscribers.length; i += BATCH_SIZE) {
       const batch = subscribers.slice(i, i + BATCH_SIZE)
+      let accepted: { email: string; providerMessageId: string | null }[] | null = null
 
       try {
         const { data, error } = await resend.batch.send(
@@ -109,11 +110,23 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
           else unconfirmed.push(...emails)
         } else {
           sent += data?.data?.length ?? batch.length
+          // Strict batch validation (the SDK default): data[i] is payload[i].
+          accepted = batch.map((sub, j) => ({ email: sub.email, providerMessageId: data?.data?.[j]?.id ?? null }))
         }
       } catch (err) {
         console.error(`[newsletter-send] Batch ${Math.floor(i / BATCH_SIZE) + 1} exception:`, err)
         failed += batch.length
         unconfirmed.push(...batch.map((sub) => sub.email))
+      }
+
+      // Who this batch reached, for the newsletter's results. Outside the try
+      // above and caught on its own: a failed write must never be counted as a
+      // failed batch. A job with no businessId (enqueued before the queue
+      // shipped) has no tenant to file under, so it records nothing.
+      if (accepted && input.businessId) {
+        await recordNewsletterSends(supabase, input.businessId, input.newsletterId, accepted, new Date()).catch((err) =>
+          console.error("[newsletter-send] could not record a sent batch:", err),
+        )
       }
 
       // Update progress periodically (every 5 batches)

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest"
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { enqueueNewsletterRetries, isRefusal } from "../lib/newsletter-retry-queue.js"
+import { enqueueNewsletterRetries, isRefusal, recordNewsletterSends } from "../lib/newsletter-retry-queue.js"
 
 function fakeSupabase(answers: Array<{ data: { id: string }[] | null; error: { message: string } | null }>) {
   const upsert = vi.fn()
@@ -80,5 +80,60 @@ describe("isRefusal", () => {
     [undefined, false],
   ])("statusCode %s -> %s", (statusCode, expected) => {
     expect(isRefusal({ statusCode })).toBe(expected)
+  })
+})
+
+describe("recordNewsletterSends", () => {
+  const at = new Date("2026-10-19T13:00:00Z")
+
+  it("writes one 'send' row per person, each with ITS OWN Resend id, never overwriting an existing row", async () => {
+    const { client, upsert } = fakeSupabase([{ data: [{ id: "r1" }, { id: "r2" }], error: null }])
+    const n = await recordNewsletterSends(
+      client,
+      "biz-1",
+      "nl-1",
+      [
+        { email: "a@gmail.com", providerMessageId: "re_a" },
+        { email: "b@gmail.com", providerMessageId: null },
+      ],
+      at,
+    )
+    expect(n).toBe(2)
+    expect(upsert).toHaveBeenCalledWith(
+      [
+        {
+          business_id: "biz-1",
+          newsletter_id: "nl-1",
+          email: "a@gmail.com",
+          origin: "send",
+          status: "sent",
+          provider_message_id: "re_a",
+          sent_at: "2026-10-19T13:00:00.000Z",
+        },
+        {
+          business_id: "biz-1",
+          newsletter_id: "nl-1",
+          email: "b@gmail.com",
+          origin: "send",
+          status: "sent",
+          provider_message_id: null,
+          sent_at: "2026-10-19T13:00:00.000Z",
+        },
+      ],
+      { onConflict: "newsletter_id,email", ignoreDuplicates: true },
+    )
+  })
+
+  it("returns 0 and does not throw when the write fails", async () => {
+    const { client } = fakeSupabase([{ data: null, error: { message: "column origin does not exist" } }])
+    await expect(
+      recordNewsletterSends(client, "biz-1", "nl-1", [{ email: "a@gmail.com", providerMessageId: "re_a" }], at),
+    ).resolves.toBe(0)
+  })
+
+  it("writes nothing for an empty batch", async () => {
+    const { client, upsert } = fakeSupabase([])
+    expect(await recordNewsletterSends(client, "biz-1", "nl-1", [], at)).toBe(0)
+    expect(upsert).not.toHaveBeenCalled()
   })
 })

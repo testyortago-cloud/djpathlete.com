@@ -54,3 +54,38 @@ export async function enqueueNewsletterRetries(
   }
   return queued
 }
+
+/**
+ * Records who one ACCEPTED batch reached, one `origin='send'` row per person
+ * with that person's Resend id, so the webhook can stamp delivered / opened /
+ * clicked on it and the newsletter's results survive Resend's ~30-day log
+ * (migration 00292). Never throws and never retries: this is bookkeeping, and
+ * the send it describes has already happened. Returns how many rows were new.
+ */
+export async function recordNewsletterSends(
+  supabase: SupabaseClient,
+  businessId: string,
+  newsletterId: string,
+  sent: { email: string; providerMessageId: string | null }[],
+  at: Date,
+): Promise<number> {
+  if (sent.length === 0) return 0
+  const rows = sent.map((s) => ({
+    business_id: businessId,
+    newsletter_id: newsletterId,
+    email: s.email,
+    origin: "send",
+    status: "sent",
+    provider_message_id: s.providerMessageId,
+    sent_at: at.toISOString(),
+  }))
+  const { data, error } = await supabase
+    .from("newsletter_deliveries")
+    .upsert(rows, { onConflict: "newsletter_id,email", ignoreDuplicates: true })
+    .select("id")
+  if (error) {
+    console.error(`[newsletter-retry-queue] could not record ${rows.length} sent recipient(s): ${error.message}`)
+    return 0
+  }
+  return (data ?? []).length
+}
