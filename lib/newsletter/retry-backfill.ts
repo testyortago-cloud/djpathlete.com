@@ -5,7 +5,7 @@
 // Resend's own log shows it accepted for that newsletter. Pure, so the rule is
 // tested without a database or the Resend API.
 
-import { resendTime } from "@/lib/newsletter/resend-log"
+import { resendTime, type LoggedEmail } from "@/lib/newsletter/resend-log"
 
 export type ResultStamps = Partial<
   Record<"delivered_at" | "opened_at" | "clicked_at" | "bounced_at" | "complained_at", string>
@@ -35,6 +35,73 @@ export function stampsFromLastEvent(lastEvent: string, at: string): ResultStamps
     default:
       return {}
   }
+}
+
+const STAMPS = ["delivered_at", "opened_at", "clicked_at", "bounced_at", "complained_at"] as const
+/**
+ * The only stamps the backfill may ADD to a row it did not create. A retry
+ * row's bounce and spam stamps come from the webhook, which records permanent
+ * bounces only, and the retry's brake counts them; `last_event: "bounced"`
+ * cannot tell a soft bounce from a hard one, so writing it there could pause
+ * a live retry for a reason that is not true.
+ */
+const SAFE_ON_EXISTING = ["delivered_at", "opened_at", "clicked_at"] as const
+
+export type BackfillRow = { id: string; email: string; provider_message_id: string | null } & Record<
+  (typeof STAMPS)[number],
+  string | null
+>
+
+export type ResultsBackfillPlan = {
+  inserts: Record<string, string | null>[]
+  updates: { id: string; stamps: ResultStamps }[]
+  conflicts: number
+}
+
+/**
+ * What scripts/backfill-newsletter-results.ts writes. A row already holding
+ * an email's Resend id gets the safe stamps it lacks; an address with no row
+ * gets an origin='send' row carrying EVERY stamp key (a bulk insert sends
+ * NULL, not the column default, for a key only some rows have); an address
+ * whose row has a different id is left alone and counted.
+ */
+export function planResultsBackfill(args: {
+  businessId: string
+  newsletterId: string
+  emails: LoggedEmail[]
+  rows: BackfillRow[]
+}): ResultsBackfillPlan {
+  const byProviderId = new Map(args.rows.filter((r) => r.provider_message_id).map((r) => [r.provider_message_id!, r]))
+  const seen = new Set(args.rows.map((r) => r.email.trim().toLowerCase()))
+  const plan: ResultsBackfillPlan = { inserts: [], updates: [], conflicts: 0 }
+  for (const e of args.emails) {
+    const stamps = stampsFromLastEvent(e.last_event, e.created_at)
+    const known = byProviderId.get(e.id)
+    if (known) {
+      const missing: ResultStamps = {}
+      for (const k of SAFE_ON_EXISTING) if (stamps[k] && !known[k]) missing[k] = stamps[k]
+      if (Object.keys(missing).length > 0) plan.updates.push({ id: known.id, stamps: missing })
+      continue
+    }
+    const email = e.to[0]
+    if (!email) continue
+    if (seen.has(email.trim().toLowerCase())) {
+      plan.conflicts++
+      continue
+    }
+    seen.add(email.trim().toLowerCase())
+    plan.inserts.push({
+      business_id: args.businessId,
+      newsletter_id: args.newsletterId,
+      email,
+      origin: "send",
+      status: "sent",
+      provider_message_id: e.id,
+      sent_at: resendTime(e.created_at).toISOString(),
+      ...Object.fromEntries(STAMPS.map((k) => [k, stamps[k] ?? null])),
+    })
+  }
+  return plan
 }
 
 export type SubscriberAtSend = {

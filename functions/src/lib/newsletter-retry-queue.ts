@@ -7,6 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 const CHUNK = 500
+const RECORD_TIMEOUT_MS = 10_000
 
 /**
  * Did Resend REFUSE the batch? A 4xx means it sent nothing, so a retry is a
@@ -79,10 +80,14 @@ export async function recordNewsletterSends(
     provider_message_id: s.providerMessageId,
     sent_at: at.toISOString(),
   }))
+  // The send awaits this between batches inside a function with a hard 540 s
+  // limit. A stalled write is given up after RECORD_TIMEOUT_MS (an abort comes
+  // back as `error`, below) rather than allowed to cut the blast short.
   const { data, error } = await supabase
     .from("newsletter_deliveries")
     .upsert(rows, { onConflict: "newsletter_id,email", ignoreDuplicates: true })
     .select("id")
+    .abortSignal(AbortSignal.timeout(RECORD_TIMEOUT_MS))
   if (error) {
     console.error(`[newsletter-retry-queue] could not record ${rows.length} sent recipient(s): ${error.message}`)
     return 0

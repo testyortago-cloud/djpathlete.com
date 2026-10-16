@@ -11,8 +11,10 @@
  *
  * For each of the newsletter's emails in Resend's log (from the send until
  * now, so the retry's later sends are included):
- *   - a row already holding that Resend id (a retry send) gets the stamps its
- *     last event implies, where the row has none yet;
+ *   - a row already holding that Resend id (a retry send) gets the delivered,
+ *     opened and clicked stamps its last event implies, where it has none yet.
+ *     Never a bounce or a spam stamp: those feed the live retry's brake and
+ *     come from the webhook (see planResultsBackfill);
  *   - an address with no row yet (the blast) gets an origin='send' row with
  *     those stamps.
  * The stamps' times are the email's send time: approximate, and the results
@@ -27,16 +29,11 @@
  */
 import { readFileSync } from "node:fs"
 import { createClient } from "@supabase/supabase-js"
-import { fetchNewsletterEmails, resendTime } from "../lib/newsletter/resend-log"
-import { stampsFromLastEvent, type ResultStamps } from "../lib/newsletter/retry-backfill"
+import { fetchNewsletterEmails } from "../lib/newsletter/resend-log"
+import { planResultsBackfill, type BackfillRow } from "../lib/newsletter/retry-backfill"
 import { platformBusinessId } from "../lib/tenancy/platform"
 
 const STAMPS = ["delivered_at", "opened_at", "clicked_at", "bounced_at", "complained_at"] as const
-
-type Row = { id: string; email: string; provider_message_id: string | null } & Record<
-  (typeof STAMPS)[number],
-  string | null
->
 
 function arg(name: string): string | null {
   const i = process.argv.indexOf(name)
@@ -78,7 +75,7 @@ async function main() {
   }
 
   // Every row this newsletter has, past PostgREST's 1,000-row cap.
-  const rows: Row[] = []
+  const rows: BackfillRow[] = []
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from("newsletter_deliveries")
@@ -87,46 +84,15 @@ async function main() {
       .order("id", { ascending: true })
       .range(from, from + 999)
     if (error) throw new Error(`newsletter_deliveries: ${error.message}`)
-    rows.push(...((data ?? []) as Row[]))
+    rows.push(...((data ?? []) as BackfillRow[]))
     if ((data ?? []).length < 1000) break
   }
-  const byProviderId = new Map(rows.filter((r) => r.provider_message_id).map((r) => [r.provider_message_id!, r]))
-  const byEmail = new Map(rows.map((r) => [r.email.trim().toLowerCase(), r]))
-
-  const updates: { id: string; stamps: ResultStamps }[] = []
-  const inserts: Record<string, string | null>[] = []
-  let conflicts = 0
-  for (const e of emails) {
-    const stamps = stampsFromLastEvent(e.last_event, e.created_at)
-    const known = byProviderId.get(e.id)
-    if (known) {
-      const missing: ResultStamps = {}
-      for (const k of STAMPS) if (stamps[k] && !known[k]) missing[k] = stamps[k]
-      if (Object.keys(missing).length > 0) updates.push({ id: known.id, stamps: missing })
-      continue
-    }
-    const email = e.to[0]
-    if (!email) continue
-    // Someone with a row but not this email's id: a queued person, or a
-    // second email to them. Never overwrite a row this script did not make.
-    if (byEmail.has(email.trim().toLowerCase())) {
-      conflicts++
-      continue
-    }
-    byEmail.set(email.trim().toLowerCase(), { id: "", email, provider_message_id: e.id } as Row)
-    // Every row carries every key: a bulk insert sends NULL, not the column
-    // default, for a key only some rows have.
-    inserts.push({
-      business_id: platformBusinessId(),
-      newsletter_id: nl.id,
-      email,
-      origin: "send",
-      status: "sent",
-      provider_message_id: e.id,
-      sent_at: resendTime(e.created_at).toISOString(),
-      ...Object.fromEntries(STAMPS.map((k) => [k, stamps[k] ?? null])),
-    })
-  }
+  const { inserts, updates, conflicts } = planResultsBackfill({
+    businessId: platformBusinessId(),
+    newsletterId: nl.id,
+    emails,
+    rows,
+  })
 
   const count = (k: (typeof STAMPS)[number]) =>
     inserts.filter((r) => r[k]).length + updates.filter((u) => u.stamps[k]).length

@@ -4,16 +4,28 @@ import { enqueueNewsletterRetries, isRefusal, recordNewsletterSends } from "../l
 
 function fakeSupabase(answers: Array<{ data: { id: string }[] | null; error: { message: string } | null }>) {
   const upsert = vi.fn()
+  const signals: AbortSignal[] = []
   let call = 0
   const client = {
     from: vi.fn(() => ({
       upsert: (rows: unknown, opts: unknown) => {
         upsert(rows, opts)
-        return { select: async () => answers[call++] }
+        return {
+          // Thenable like PostgREST's builder, with its abortSignal().
+          select: () => {
+            const answer = Promise.resolve(answers[call++])
+            return Object.assign(answer, {
+              abortSignal: (signal: AbortSignal) => {
+                signals.push(signal)
+                return answer
+              },
+            })
+          },
+        }
       },
     })),
   }
-  return { client: client as unknown as SupabaseClient, upsert }
+  return { client: client as unknown as SupabaseClient, upsert, signals }
 }
 
 describe("enqueueNewsletterRetries", () => {
@@ -129,6 +141,15 @@ describe("recordNewsletterSends", () => {
     await expect(
       recordNewsletterSends(client, "biz-1", "nl-1", [{ email: "a@gmail.com", providerMessageId: "re_a" }], at),
     ).resolves.toBe(0)
+  })
+
+  // The send awaits this write between batches, inside a function with a hard
+  // 540 s limit. A stalled database must not be able to hold the send there.
+  it("gives the write a timeout", async () => {
+    const { client, signals } = fakeSupabase([{ data: [{ id: "r1" }], error: null }])
+    await recordNewsletterSends(client, "biz-1", "nl-1", [{ email: "a@gmail.com", providerMessageId: "re_a" }], at)
+    expect(signals).toHaveLength(1)
+    expect(signals[0]).toBeInstanceOf(AbortSignal)
   })
 
   it("writes nothing for an empty batch", async () => {

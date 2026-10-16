@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest"
-import { missedRecipients, unsafeToQueue } from "@/lib/newsletter/retry-backfill"
+import { missedRecipients, planResultsBackfill, unsafeToQueue } from "@/lib/newsletter/retry-backfill"
 import { retryStatusLine } from "@/lib/newsletter/retry-status"
 
 const SEND = new Date("2026-10-09T13:00:27Z")
@@ -140,5 +140,78 @@ describe("retryStatusLine", () => {
       tone: "muted",
       text: "Resent to 4,700 people who missed it. 3 could not be sent.",
     })
+  })
+})
+
+describe("planResultsBackfill", () => {
+  const NONE = { delivered_at: null, opened_at: null, clicked_at: null, bounced_at: null, complained_at: null }
+  const AT = "2026-10-16 17:00:01.1+00"
+  const ISO = "2026-10-16T17:00:01.100Z"
+
+  // A retry row's bounces and complaints come from the webhook, which records
+  // PERMANENT bounces only, and the retry's brake counts them. Resend's
+  // last_event cannot tell a soft bounce from a hard one, so the backfill must
+  // never add either stamp to a row it did not create.
+  it("fills only delivered, opened and clicked on a row it already knows, never a bounce or a spam report", () => {
+    const plan = planResultsBackfill({
+      businessId: "biz-1",
+      newsletterId: "nl-1",
+      emails: [
+        { id: "re_bounced", to: ["a@gmail.com"], last_event: "bounced", created_at: AT },
+        { id: "re_spam", to: ["b@gmail.com"], last_event: "complained", created_at: AT },
+        { id: "re_clicked", to: ["c@gmail.com"], last_event: "clicked", created_at: AT },
+      ],
+      rows: [
+        { id: "row-a", email: "a@gmail.com", provider_message_id: "re_bounced", ...NONE },
+        { id: "row-b", email: "b@gmail.com", provider_message_id: "re_spam", ...NONE },
+        {
+          id: "row-c",
+          email: "c@gmail.com",
+          provider_message_id: "re_clicked",
+          ...NONE,
+          delivered_at: "2026-10-16T17:00:05Z",
+        },
+      ],
+    })
+    expect(plan.updates).toEqual([
+      { id: "row-b", stamps: { delivered_at: ISO } },
+      { id: "row-c", stamps: { opened_at: ISO, clicked_at: ISO } },
+    ])
+    expect(plan.inserts).toEqual([])
+  })
+
+  it("adds a 'send' row with every stamp key for an address it has never seen", () => {
+    const plan = planResultsBackfill({
+      businessId: "biz-1",
+      newsletterId: "nl-1",
+      emails: [{ id: "re_blast", to: ["new@gmail.com"], last_event: "bounced", created_at: AT }],
+      rows: [],
+    })
+    expect(plan.inserts).toEqual([
+      {
+        business_id: "biz-1",
+        newsletter_id: "nl-1",
+        email: "new@gmail.com",
+        origin: "send",
+        status: "sent",
+        provider_message_id: "re_blast",
+        sent_at: ISO,
+        delivered_at: null,
+        opened_at: null,
+        clicked_at: null,
+        bounced_at: ISO,
+        complained_at: null,
+      },
+    ])
+  })
+
+  it("never touches a row for the same address under a different Resend id", () => {
+    const plan = planResultsBackfill({
+      businessId: "biz-1",
+      newsletterId: "nl-1",
+      emails: [{ id: "re_other", to: ["Queued@Gmail.com"], last_event: "opened", created_at: AT }],
+      rows: [{ id: "row-q", email: "queued@gmail.com", provider_message_id: null, ...NONE }],
+    })
+    expect(plan).toEqual({ inserts: [], updates: [], conflicts: 1 })
   })
 })
