@@ -291,10 +291,12 @@ function ExerciseCard({
   const weightPlaceholder = displayedRec != null ? String(displayedRec) : "0"
   const numSets = pe.sets ?? 3
 
-  // Multi-set state — rehydrate from the client's most recent logged sets so the
-  // "saved then gone" complaint is fixed (they see exactly what they entered).
+  // Multi-set state — rehydrate from TODAY's log only, so the "saved then gone"
+  // complaint stays fixed (they see exactly what they entered). An older log is
+  // another session's prescription: prefilling it showed the athlete last week's
+  // sets and reps instead of the ones the coach wrote for this one.
   const [setRows, setSetRows] = useState<SetRow[]>(() =>
-    savedSetDetails && savedSetDetails.length > 0
+    initialLogged && savedSetDetails && savedSetDetails.length > 0
       ? savedSetDetails.map((s) => ({
           weight: s.weight_kg != null ? String(displayWeight(s.weight_kg) ?? "") : "",
           reps: s.reps != null ? String(s.reps) : "",
