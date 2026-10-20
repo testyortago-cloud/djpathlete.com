@@ -145,7 +145,7 @@ function computeTrend(history: ExerciseProgress[]): Trend {
 export function getWeightRecommendation(
   history: ExerciseProgress[],
   exercise: Pick<Exercise, "is_bodyweight" | "training_intent" | "movement_pattern" | "name" | "category">,
-  prescription?: Pick<ProgramExercise, "sets" | "reps" | "intensity_pct" | "rpe_target"> | null,
+  prescription?: Pick<ProgramExercise, "sets" | "reps" | "intensity_pct" | "rpe_target" | "suggested_weight_kg"> | null,
   client?: ClientContext | null,
 ): WeightRecommendation {
   // Non-weight categories (cardio, flexibility, plyometric, recovery) — skip weight recommendation
@@ -171,6 +171,20 @@ export function getWeightRecommendation(
       last_weight_kg: null,
       last_rpe: null,
       trend: "stable",
+    }
+  }
+
+  // The coach typed a weight — it wins over every estimate below. Showing the
+  // engine's guess here is how a coach's 30 lbs reached the athlete as 104.72 lbs.
+  if (prescription?.suggested_weight_kg != null) {
+    return {
+      recommended_kg: prescription.suggested_weight_kg,
+      reasoning: "Weight set by your coach",
+      confidence: "high",
+      estimated_1rm: null,
+      last_weight_kg: history[0]?.weight_kg ?? null,
+      last_rpe: history[0]?.rpe ?? null,
+      trend: computeTrend(history),
     }
   }
 
