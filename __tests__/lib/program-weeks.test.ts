@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { effectiveTotalWeeks, sourceWeekForDisplay } from "@/lib/program-weeks"
+import { effectiveTotalWeeks, savedSetsForSlot, slotKey, sourceWeekForDisplay } from "@/lib/program-weeks"
 
 describe("effectiveTotalWeeks", () => {
   it("uses the live program duration when the snapshot is stale (the Luke bug)", () => {
@@ -79,5 +79,42 @@ describe("sourceWeekForDisplay", () => {
         expect(sourceWeekForDisplay(w, defined)).toBe(legacy(w, defined))
       }
     }
+  })
+})
+
+/**
+ * The set table refills from the log the athlete saved for THIS week and day.
+ * Refilling from the newest log of the exercise (any week) showed last week's
+ * sets and reps instead of the coach's; refilling only "today" in the athlete's
+ * current_week (stuck at 1 on 17 of 20 assignments) blanked the form they saved.
+ */
+describe("savedSetsForSlot", () => {
+  const wk10 = [{ set_number: 1, weight_kg: 20, reps: 8, rpe: null }]
+  const wk9 = [1, 2, 3].map((n) => ({ set_number: n, weight_kg: 20, reps: 12, rpe: null }))
+  const slots = new Map([
+    ["s-wk9", slotKey("a-1", 9, 2)],
+    ["s-wk10", slotKey("a-1", 10, 3)],
+  ])
+
+  it("returns this slot's log even when a newer log from another week exists", () => {
+    const history = [
+      { session_id: "s-wk9", set_details: wk9 },
+      { session_id: "s-wk10", set_details: wk10 },
+    ]
+    expect(savedSetsForSlot(history, slots, slotKey("a-1", 10, 3))).toBe(wk10)
+  })
+
+  it("returns null when the only logs belong to other weeks", () => {
+    const history = [{ session_id: "s-wk9", set_details: wk9 }]
+    expect(savedSetsForSlot(history, slots, slotKey("a-1", 10, 3))).toBeNull()
+  })
+
+  it("returns null for a log with no session", () => {
+    expect(savedSetsForSlot([{ session_id: null, set_details: wk9 }], slots, slotKey("a-1", 9, 2))).toBeNull()
+  })
+
+  it("keeps assignments apart", () => {
+    const history = [{ session_id: "s-wk9", set_details: wk9 }]
+    expect(savedSetsForSlot(history, slots, slotKey("a-2", 9, 2))).toBeNull()
   })
 })

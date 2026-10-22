@@ -291,12 +291,12 @@ function ExerciseCard({
   const weightPlaceholder = displayedRec != null ? String(displayedRec) : "0"
   const numSets = pe.sets ?? 3
 
-  // Multi-set state — rehydrate from TODAY's log only, so the "saved then gone"
-  // complaint stays fixed (they see exactly what they entered). An older log is
-  // another session's prescription: prefilling it showed the athlete last week's
-  // sets and reps instead of the ones the coach wrote for this one.
+  // Multi-set state — rehydrate from what the athlete saved for THIS week and day,
+  // so the "saved then gone" complaint stays fixed. The page passes only that slot's
+  // log (savedSetsForSlot); never gate this on `loggedToday`, which is only true
+  // inside the assignment's current_week and blanked every other week's saved form.
   const [setRows, setSetRows] = useState<SetRow[]>(() =>
-    initialLogged && savedSetDetails && savedSetDetails.length > 0
+    savedSetDetails && savedSetDetails.length > 0
       ? savedSetDetails.map((s) => ({
           weight: s.weight_kg != null ? String(displayWeight(s.weight_kg) ?? "") : "",
           reps: s.reps != null ? String(s.reps) : "",

@@ -40,3 +40,24 @@ export function sourceWeekForDisplay(week: number, definedWeeks: number[]): numb
   }
   return source
 }
+
+/** The key a workout session and a program slot share: one assignment, one week, one day. */
+export function slotKey(assignmentId: string, week: number, day: number): string {
+  return `${assignmentId}:${week}:${day}`
+}
+
+/**
+ * The sets an athlete logged for THIS slot, so a form they saved comes back as they
+ * entered it. Never another week's or day's log of the same exercise: that is a
+ * different prescription, and refilling from it showed the athlete last week's sets
+ * and reps instead of the coach's.
+ *
+ * `sessionSlots` maps a workout session id to its `slotKey`.
+ */
+export function savedSetsForSlot<T>(
+  history: { session_id: string | null; set_details: T | null }[],
+  sessionSlots: Map<string, string>,
+  slot: string,
+): T | null {
+  return history.find((h) => h.session_id != null && sessionSlots.get(h.session_id) === slot)?.set_details ?? null
+}

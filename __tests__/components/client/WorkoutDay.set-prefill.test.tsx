@@ -9,12 +9,12 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
 
 /**
- * The bug these pin: the set table was prefilled from the athlete's most recent
- * log of the EXERCISE, from any week. Coach wrote 2 x 6 for Box Deceleration
- * jumps in week 9; the athlete's table opened at 3 x 5, last session's numbers.
- * In prod 828 of 3531 prefilled slots (30 of 32 athletes) disagreed with the coach.
+ * The set table starts from the coach's prescription, and refills only from the
+ * sets the page hands it: the log saved for THIS week and day (savedSetsForSlot,
+ * pinned in program-weeks.test.ts). Coach wrote 2 x 6 for Box Deceleration
+ * jumps in week 9; the athlete's table used to open at 3 x 5, last session's.
  */
-function boxJumps(opts: { loggedToday: boolean }): ExerciseWithRecommendation {
+function boxJumps(opts: { loggedToday: boolean; saved: boolean }): ExerciseWithRecommendation {
   return {
     programExercise: {
       id: "pe-1",
@@ -46,8 +46,8 @@ function boxJumps(opts: { loggedToday: boolean }): ExerciseWithRecommendation {
     },
     recommendation: { recommended_kg: 20, trend: "stable", reasoning: "", confidence: "high" },
     loggedToday: opts.loggedToday,
-    // Last session: 3 sets of 5.
-    savedSetDetails: [1, 2, 3].map((n) => ({ set_number: n, weight_kg: 20, reps: 5, rpe: null })),
+    // What the athlete saved for this slot: 3 sets of 5.
+    savedSetDetails: opts.saved ? [1, 2, 3].map((n) => ({ set_number: n, weight_kg: 20, reps: 5, rpe: null })) : null,
     videoSubmission: null,
     isFavorited: false,
   } as unknown as ExerciseWithRecommendation
@@ -65,15 +65,16 @@ function openCard(item: ExerciseWithRecommendation) {
 }
 
 describe("WorkoutDay — the set table starts from the coach's prescription", () => {
-  it("not logged today: one row per prescribed set, no reps copied from last session", () => {
-    const reps = openCard(boxJumps({ loggedToday: false }))
+  it("nothing saved for this slot: one row per prescribed set, no reps filled in", () => {
+    const reps = openCard(boxJumps({ loggedToday: false, saved: false }))
     expect(reps.map((i) => i.value)).toEqual(["", ""])
   })
 
-  // Presence control: the "saved then gone" fix (79578fe2) still brings back what
-  // the athlete entered today, so the test above is not passing on an empty table.
-  it("logged today: brings back exactly what the athlete saved", () => {
-    const reps = openCard(boxJumps({ loggedToday: true }))
+  // The regression e0b3c055 shipped: it refilled only when `loggedToday`, which the
+  // page sets only inside the assignment's current_week. An athlete training week 9
+  // with current_week stuck at 1 reopened the exercise to a blank form.
+  it("saved for this slot, outside the current week: brings back exactly what the athlete saved", () => {
+    const reps = openCard(boxJumps({ loggedToday: false, saved: true }))
     expect(reps.map((i) => i.value)).toEqual(["5", "5", "5"])
   })
 })

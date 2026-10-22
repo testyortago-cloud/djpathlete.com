@@ -16,7 +16,8 @@ import { WorkoutViewToggle } from "@/components/client/WorkoutViewToggle"
 import type { WorkoutCalendarDay } from "@/components/client/WorkoutCalendar"
 import { Dumbbell } from "lucide-react"
 import { isAssignmentExpired } from "@/lib/utils"
-import { effectiveTotalWeeks, sourceWeekForDisplay } from "@/lib/program-weeks"
+import { effectiveTotalWeeks, savedSetsForSlot, slotKey, sourceWeekForDisplay } from "@/lib/program-weeks"
+import { listSessionSlots } from "@/lib/db/workout-sessions"
 import { WaiverGate } from "@/components/client/WaiverGate"
 import { PendingPaymentCard } from "@/components/client/PendingPaymentCard"
 import { buildWeekGate, formatUnlockDate } from "@/lib/programs/week-visibility"
@@ -147,14 +148,21 @@ export default async function ClientWorkoutsPage() {
   // Batch-fetch progress history and client profile in parallel
   let progressByExercise: Record<string, import("@/types/database").ExerciseProgress[]> = {}
   let clientCtx: ClientContext | null = null
+  // A failed read means no form is refilled: the athlete sees the coach's prescription.
+  let sessionSlots = new Map<string, string>()
   try {
-    const [progressResult, profile] = await Promise.all([
+    const [progressResult, profile, slots] = await Promise.all([
       allExerciseIds.length > 0
         ? getLatestProgressByExercises(userId, allExerciseIds, 5)
         : Promise.resolve({} as Record<string, import("@/types/database").ExerciseProgress[]>),
       getProfileByUserId(userId).catch(() => null),
+      listSessionSlots(
+        userId,
+        activeAssignments.map((a) => a.id),
+      ).catch(() => new Map<string, string>()),
     ])
     progressByExercise = progressResult
+    sessionSlots = slots
     if (profile) {
       clientCtx = {
         weight_kg: profile.weight_kg,
@@ -225,7 +233,7 @@ export default async function ClientWorkoutsPage() {
             day,
             dayLabel: labels[day] ?? `Day ${day}`,
             assignmentId: assignment.id,
-            exercises: buildExerciseData(dayMap.get(day)!, isCurrentWeek, w),
+            exercises: buildExerciseData(dayMap.get(day)!, isCurrentWeek, w, assignment.id),
           }))
         }
       }
@@ -252,7 +260,12 @@ export default async function ClientWorkoutsPage() {
       }
     })
 
-  function buildExerciseData(dayExercises: ProgramExerciseWithExercise[], isCurrentWeek: boolean, weekNumber: number) {
+  function buildExerciseData(
+    dayExercises: ProgramExerciseWithExercise[],
+    isCurrentWeek: boolean,
+    weekNumber: number,
+    assignmentId: string,
+  ) {
     return dayExercises
       .filter((pe) => pe.exercises)
       .map((pe) => {
@@ -264,8 +277,11 @@ export default async function ClientWorkoutsPage() {
           exercise,
           recommendation,
           loggedToday: isCurrentWeek && wasLoggedToday(exercise.id),
-          // Most recent logged sets → rehydrate the form so data isn't "lost" on return.
-          savedSetDetails: history[0]?.set_details ?? null,
+          // The sets saved for THIS week and day → rehydrate the form so data isn't "lost"
+          // on return. Never the newest log of the exercise: that is another week's prescription.
+          // ponytail: `history` holds the 5 newest logs of the exercise, so a slot logged before
+          // 5 later ones refills nothing (the coach's prescription shows); fetch per slot if that bites.
+          savedSetDetails: savedSetsForSlot(history, sessionSlots, slotKey(assignmentId, weekNumber, pe.day_of_week)),
           videoSubmission: formReviewStatusByPe.get(`${pe.id}:${weekNumber}`) ?? null,
           isFavorited: favoriteExerciseIds.has(exercise.id),
         }

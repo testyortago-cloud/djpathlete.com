@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { WorkoutSession } from "@/types/database"
+import { slotKey } from "@/lib/program-weeks"
 
 /** Service-role client bypasses RLS — these functions are only called from server-side routes. */
 function getClient() {
@@ -108,6 +109,27 @@ export async function listCompletedSessionDates(userId: string): Promise<string[
     .order("completed_at", { ascending: false })
   if (error || !data) return []
   return data.map((r) => r.session_date as string)
+}
+
+/**
+ * Session id → `slotKey(assignment, week, day)` for a client's assignments, so a
+ * logged exercise can be matched back to the week and day it was logged in.
+ */
+export async function listSessionSlots(userId: string, assignmentIds: string[]): Promise<Map<string, string>> {
+  if (assignmentIds.length === 0) return new Map()
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("workout_sessions")
+    .select("id, assignment_id, week_number, day_of_week")
+    .eq("user_id", userId)
+    .in("assignment_id", assignmentIds)
+  if (error) throw error
+  return new Map(
+    (data as { id: string; assignment_id: string; week_number: number; day_of_week: number }[]).map((r) => [
+      r.id,
+      slotKey(r.assignment_id, r.week_number, r.day_of_week),
+    ]),
+  )
 }
 
 /** `"week-day"` keys of completed sessions for one assignment (program progress). */
