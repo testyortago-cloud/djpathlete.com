@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Newsletter import check</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 1200px; padding: 24px 16px; color: #0f2a33; background: #fff; }
+  h1 { font-size: 1.4rem; } h2 { font-size: 1.05rem; margin-top: 2rem; }
+  p { line-height: 1.5; max-width: 70ch; } img { width: 100%; height: auto; border: 1px solid #ddd; }
+</style>
+</head>
+<body>
+<h1>Newsletter import check</h1>
+<p>When a CSV is picked, the dialog checks every address against the subscriber list before anything is
+imported. New people are added. People already on the list are left alone. People who unsubscribed,
+bounced or marked a newsletter as spam are never added back. The same rule applies to "Sync GHL".
+Captured on the real page against the development clone with example.com addresses; nothing was imported.</p>
+<h2>1. A mixed list</h2>
+<img src="01-mixed-list.png" alt="Import dialog: 2 new, 2 already subscribed, 2 unsubscribed or bounced before">
+<h2>2. Nothing new: Import is switched off</h2>
+<img src="02-nothing-new.png" alt="Import dialog: 0 new, Import button disabled">
+</body>
+</html>

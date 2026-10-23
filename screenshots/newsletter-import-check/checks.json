@@ -1,0 +1,17 @@
+{
+  "pageErrors": [],
+  "blockedWrites": [
+    "POST https://www.google-analytics.com/g/collect",
+    "POST https://www.google.com/g/collect",
+    "POST https://www.google-analytics.com/g/collect",
+    "POST https://www.google.com/g/collect",
+    "POST https://www.google.com/rmkt/collect/18133890533/",
+    "POST https://www.google.com/ccm/collect"
+  ],
+  "dryRuns": 2,
+  "screenshots": [
+    "01-mixed-list",
+    "02-nothing-new"
+  ],
+  "darkMode": "Admin is light-only"
+}
