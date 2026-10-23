@@ -38,6 +38,7 @@ import {
   markNewsletterDeliveryDelivered,
   markNewsletterDeliveryOpened,
 } from "@/lib/db/newsletter-deliveries"
+import { removeSubscriber } from "@/lib/db/newsletter"
 import {
   verifySvixSignature,
   SVIX_ID_HEADER,
@@ -149,10 +150,13 @@ export async function POST(request: Request) {
   // (lib/automation/newsletter-retry.ts). It is recorded here and nowhere
   // else: `email.complained` stays out of EVENT_KINDS for the reason given
   // there, so nothing about sequences changes. Keyed on Resend's email id
-  // alone, and it matches nothing for any email that is not a retry.
+  // alone, and it matches nothing for any email that is not a newsletter.
+  // A spam report is an opt-out, so the person also leaves the list; the
+  // address comes from our own delivery row, never from the payload.
   if (event.type === "email.complained" && emailId) {
     try {
-      await markNewsletterDeliveryComplained(emailId, eventInstant(event.created_at))
+      const email = await markNewsletterDeliveryComplained(emailId, eventInstant(event.created_at))
+      if (email) await removeSubscriber(email)
     } catch (err) {
       console.error("[resend-webhook] newsletter retry complaint write failed", (err as Error).message)
     }
@@ -233,10 +237,13 @@ export async function POST(request: Request) {
   // only sending domain goes over Resend's bounce limit. Only for an id no
   // sequence message claimed: a Resend id is one or the other. The write is
   // keyed on that id alone and never reads an address or a tenant from the
-  // payload. Non-blocking, for the same reason as the arm above.
+  // payload. Non-blocking, for the same reason as the arm above. A dead
+  // mailbox also leaves the newsletter list, so the next issue skips it; the
+  // address comes from the delivery row the id matched.
   if (kind === "bounced" && isPermanentBounce(event.data?.bounce) && outcome === "unknown_message") {
     try {
-      await markNewsletterDeliveryBounced(emailId, eventInstant(event.created_at))
+      const email = await markNewsletterDeliveryBounced(emailId, eventInstant(event.created_at))
+      if (email) await removeSubscriber(email)
     } catch (err) {
       console.error("[resend-webhook] newsletter retry bounce write failed", (err as Error).message)
     }

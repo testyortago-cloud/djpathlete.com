@@ -25,7 +25,9 @@ export async function POST() {
       return NextResponse.json({
         success: true,
         added: 0,
-        skipped: 0,
+        alreadySubscribed: 0,
+        optedOut: 0,
+        rejected: 0,
         total: 0,
         message: "No contacts found in GoHighLevel",
       })
@@ -33,15 +35,10 @@ export async function POST() {
 
     const emails = contacts.map((c) => c.email)
 
-    // Import into Supabase (upserts — won't duplicate existing)
+    // Adds new addresses only; never resubscribes someone who opted out or bounced.
     const result = await importSubscribers(emails, "ghl_sync")
 
-    return NextResponse.json({
-      success: true,
-      added: result.added,
-      skipped: result.skipped,
-      total: contacts.length,
-    })
+    return NextResponse.json({ success: true, ...result, total: contacts.length })
   } catch (error) {
     console.error("[GHL Sync] Error:", error)
     return NextResponse.json({ error: "Failed to sync from GoHighLevel" }, { status: 500 })

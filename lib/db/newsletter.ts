@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import { getUnclaimedAttribution, claimAttribution } from "@/lib/db/marketing-attribution"
 import { setMarketingConsent } from "@/lib/db/marketing-consent"
+import { isDisposableDomain, isValidEmailFormat } from "@/lib/newsletter/audit"
 
 function getClient() {
   return createServiceRoleClient()
@@ -115,34 +116,78 @@ export async function getAllSubscribers(): Promise<Subscriber[]> {
   )
 }
 
+/** What an import did, or (dryRun) would do. Every address lands in exactly one bucket. */
+export interface ImportCheck {
+  /** New to the list: added (or, on a dry run, would be). */
+  added: number
+  /** Already subscribed: left as they are. */
+  alreadySubscribed: number
+  /** Unsubscribed, bounced or marked a newsletter as spam before: NOT re-added. */
+  optedOut: number
+  /** Not an email address, or a throwaway domain. */
+  rejected: number
+}
+
+/**
+ * Adds the NEW addresses in `emails` and never touches a row that already
+ * exists. That is the point: someone who unsubscribed, bounced (the Resend
+ * webhook opts them out) or marked a newsletter as spam stays off the list
+ * however often an old CSV or GoHighLevel is imported again. Until 2026-10-23
+ * this upserted `unsubscribed_at: null`, which would have put the 596 people
+ * opted out that day straight back on the list.
+ * `dryRun` answers the same counts and writes nothing: the import dialog's check.
+ */
 export async function importSubscribers(
   emails: string[],
   source = "csv_import",
-): Promise<{ added: number; skipped: number }> {
+  { dryRun = false }: { dryRun?: boolean } = {},
+): Promise<ImportCheck> {
   const supabase = getClient()
-  let added = 0
-  let skipped = 0
+  const result: ImportCheck = { added: 0, alreadySubscribed: 0, optedOut: 0, rejected: 0 }
 
-  // Batch upsert — onConflict re-activates unsubscribed emails
-  const rows = emails.map((email) => ({
-    email: email.toLowerCase().trim(),
-    source,
-    unsubscribed_at: null,
-  }))
-
-  // Upsert in batches of 100
-  for (let i = 0; i < rows.length; i += 100) {
-    const batch = rows.slice(i, i + 100)
-    const { data, error } = await supabase
-      .from("newsletter_subscribers")
-      .upsert(batch, { onConflict: "email", count: "exact" })
-      .select("id")
-    if (error) throw error
-    added += data?.length ?? 0
+  // The dialog audits a CSV in the browser; GHL sync does not, so check here too.
+  const unique = new Set<string>()
+  for (const raw of emails) {
+    const email = raw.toLowerCase().trim()
+    if (isValidEmailFormat(email) && !isDisposableDomain(email)) unique.add(email)
+    else result.rejected++
   }
 
-  skipped = emails.length - added
-  return { added, skipped }
+  const all = [...unique]
+  for (let i = 0; i < all.length; i += 100) {
+    const batch = all.slice(i, i + 100)
+    const { data: existing, error } = await supabase
+      .from("newsletter_subscribers")
+      .select("email, unsubscribed_at")
+      .in("email", batch)
+    if (error) throw error
+    const rows = (existing ?? []) as { email: string; unsubscribed_at: string | null }[]
+    const known = new Map(rows.map((r) => [r.email, r.unsubscribed_at]))
+    for (const unsubscribedAt of known.values()) {
+      if (unsubscribedAt) result.optedOut++
+      else result.alreadySubscribed++
+    }
+
+    const fresh = batch.filter((email) => !known.has(email))
+    if (fresh.length === 0) continue
+    if (dryRun) {
+      result.added += fresh.length
+      continue
+    }
+    // ON CONFLICT DO NOTHING: a row that appeared since the check above is
+    // still never overwritten.
+    const { data, error: insertError } = await supabase
+      .from("newsletter_subscribers")
+      .upsert(
+        fresh.map((email) => ({ email, source })),
+        { onConflict: "email", ignoreDuplicates: true },
+      )
+      .select("id")
+    if (insertError) throw insertError
+    result.added += data?.length ?? 0
+  }
+
+  return result
 }
 
 export interface AddSubscriberWithAttributionInput {

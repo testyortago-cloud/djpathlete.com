@@ -284,30 +284,32 @@ export async function noteDeliveryError(ids: string[], message: string): Promise
 /**
  * The Resend webhook's arms. Keyed on Resend's email id, which is unique
  * across the account, so they cannot touch another tenant's row; they match
- * nothing for every email that is not a newsletter retry. Two functions, not
+ * nothing for every email that is not a newsletter. Two functions, not
  * one taking a column name: the live select contract
  * (npm run test:integration:selects) can only probe a filter column it can read.
+ * Each returns the recipient's address the FIRST time it stamps the row (null
+ * otherwise), so the webhook can take that person off the list.
  */
-export async function markNewsletterDeliveryBounced(providerMessageId: string, at: Date): Promise<boolean> {
+export async function markNewsletterDeliveryBounced(providerMessageId: string, at: Date): Promise<string | null> {
   const { data, error } = await getClient()
     .from("newsletter_deliveries")
     .update({ bounced_at: at.toISOString() })
     .eq("provider_message_id", providerMessageId)
     .is("bounced_at", null)
-    .select("id")
+    .select("email")
   if (error) fail("markNewsletterDeliveryBounced", error)
-  return (data ?? []).length > 0
+  return (data as { email: string }[] | null)?.[0]?.email ?? null
 }
 
-export async function markNewsletterDeliveryComplained(providerMessageId: string, at: Date): Promise<boolean> {
+export async function markNewsletterDeliveryComplained(providerMessageId: string, at: Date): Promise<string | null> {
   const { data, error } = await getClient()
     .from("newsletter_deliveries")
     .update({ complained_at: at.toISOString() })
     .eq("provider_message_id", providerMessageId)
     .is("complained_at", null)
-    .select("id")
+    .select("email")
   if (error) fail("markNewsletterDeliveryComplained", error)
-  return (data ?? []).length > 0
+  return (data as { email: string }[] | null)?.[0]?.email ?? null
 }
 
 // The results stamps (migration 00292), first time only. Three functions, not

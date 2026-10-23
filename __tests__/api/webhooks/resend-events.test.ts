@@ -19,8 +19,9 @@ const mocks = vi.hoisted(() => ({
       ({ businessId: "biz-1", toIdentifier: "row@example.com" }) as { businessId: string; toIdentifier: string } | null,
   ),
   suppress: vi.fn(async (..._a: unknown[]) => undefined),
-  markNewsletterDeliveryBounced: vi.fn(async (..._a: unknown[]) => true),
-  markNewsletterDeliveryComplained: vi.fn(async (..._a: unknown[]) => true),
+  markNewsletterDeliveryBounced: vi.fn(async (..._a: unknown[]) => "reader@example.com" as string | null),
+  markNewsletterDeliveryComplained: vi.fn(async (..._a: unknown[]) => "reader@example.com" as string | null),
+  removeSubscriber: vi.fn(async (..._a: unknown[]) => undefined),
   markNewsletterDeliveryDelivered: vi.fn(async (..._a: unknown[]) => true),
   markNewsletterDeliveryOpened: vi.fn(async (..._a: unknown[]) => true),
   markNewsletterDeliveryClicked: vi.fn(async (..._a: unknown[]) => true),
@@ -38,6 +39,7 @@ vi.mock("@/lib/db/newsletter-deliveries", () => ({
   markNewsletterDeliveryOpened: mocks.markNewsletterDeliveryOpened,
   markNewsletterDeliveryClicked: mocks.markNewsletterDeliveryClicked,
 }))
+vi.mock("@/lib/db/newsletter", () => ({ removeSubscriber: mocks.removeSubscriber }))
 
 import { POST } from "@/app/api/webhooks/resend/route"
 
@@ -71,7 +73,8 @@ beforeEach(() => {
   mocks.applyResendEmailEvent.mockResolvedValue("updated")
   mocks.sequenceMessageRecipient.mockResolvedValue({ businessId: "biz-1", toIdentifier: "row@example.com" })
   mocks.suppress.mockResolvedValue(undefined)
-  mocks.markNewsletterDeliveryBounced.mockResolvedValue(true)
+  mocks.markNewsletterDeliveryBounced.mockResolvedValue("reader@example.com")
+  mocks.markNewsletterDeliveryComplained.mockResolvedValue("reader@example.com")
 })
 
 describe("POST /api/webhooks/resend — the signature is the authorisation", () => {
@@ -340,6 +343,36 @@ describe("POST /api/webhooks/resend — a newsletter retry's hard bounce feeds t
   it("does not record a complaint for any other event", async () => {
     await POST(signedRequest(OPENED))
     expect(mocks.markNewsletterDeliveryComplained).not.toHaveBeenCalled()
+  })
+
+  // The opt-out. The address is the delivery row's, never the payload's `to`
+  // (lead@example.com here), so a forged `to` cannot unsubscribe anyone.
+  it("takes a hard-bounced newsletter reader off the list, by the delivery row's address", async () => {
+    mocks.applyResendEmailEvent.mockResolvedValue("unknown_message")
+    await POST(bounce("Permanent"))
+    expect(mocks.removeSubscriber).toHaveBeenCalledWith("reader@example.com")
+    expect(mocks.removeSubscriber).toHaveBeenCalledTimes(1)
+  })
+
+  it("takes a reader who marked the newsletter as spam off the list", async () => {
+    await POST(signedRequest({ ...OPENED, type: "email.complained" }))
+    expect(mocks.removeSubscriber).toHaveBeenCalledWith("reader@example.com")
+  })
+
+  it("unsubscribes nobody when no newsletter row was stamped", async () => {
+    mocks.applyResendEmailEvent.mockResolvedValue("unknown_message")
+    mocks.markNewsletterDeliveryBounced.mockResolvedValue(null)
+    mocks.markNewsletterDeliveryComplained.mockResolvedValue(null)
+    await POST(bounce("Permanent"))
+    await POST(signedRequest({ ...OPENED, type: "email.complained" }))
+    expect(mocks.markNewsletterDeliveryBounced).toHaveBeenCalled()
+    expect(mocks.removeSubscriber).not.toHaveBeenCalled()
+  })
+
+  it("unsubscribes nobody on a TRANSIENT bounce", async () => {
+    mocks.applyResendEmailEvent.mockResolvedValue("unknown_message")
+    await POST(bounce("Transient"))
+    expect(mocks.removeSubscriber).not.toHaveBeenCalled()
   })
 
   it("still answers 200 when the retry row write throws", async () => {

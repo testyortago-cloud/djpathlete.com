@@ -26,7 +26,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import type { Subscriber } from "@/lib/db/newsletter"
+import type { ImportCheck, Subscriber } from "@/lib/db/newsletter"
 import { auditCsvLines } from "@/lib/newsletter/audit"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 
@@ -48,11 +48,16 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null)
   const [importResult, setImportResult] = useState<{
     imported: number
+    alreadySubscribed: number
+    optedOut: number
     invalid: number
     disposable: number
     duplicates: number
     total: number
   } | null>(null)
+  // The check against the existing list, run as soon as a CSV is picked.
+  const [check, setCheck] = useState<ImportCheck | null>(null)
+  const [checking, setChecking] = useState(false)
   const [parsedEmails, setParsedEmails] = useState<string[]>([])
   const [invalidLines, setInvalidLines] = useState<string[]>([])
   const [disposableEmails, setDisposableEmails] = useState<string[]>([])
@@ -146,7 +151,46 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
     setDuplicateCount(audit.duplicates)
     setImportResult(null)
     setImportProgress(null)
+    setCheck(null)
     setImportOpen(true)
+    if (audit.valid.length > 0) void runCheck(audit.valid)
+  }
+
+  // Posts `emails` to the import route in chunks (so any list size fits the
+  // request body limit) and adds up its counts. `onChunk` gets the running total.
+  async function sendInChunks(emails: string[], dryRun: boolean, onChunk?: (done: number, sum: ImportCheck) => void) {
+    const sum: ImportCheck = { added: 0, alreadySubscribed: 0, optedOut: 0, rejected: 0 }
+    for (let i = 0; i < emails.length; i += IMPORT_CHUNK_SIZE) {
+      const chunk = emails.slice(i, i + IMPORT_CHUNK_SIZE)
+      const res = await fetch("/api/admin/newsletter/subscribers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: chunk, dryRun }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? "Import failed")
+      }
+      const result = (await res.json()) as ImportCheck
+      sum.added += result.added
+      sum.alreadySubscribed += result.alreadySubscribed
+      sum.optedOut += result.optedOut
+      sum.rejected += result.rejected
+      onChunk?.(Math.min(i + chunk.length, emails.length), sum)
+    }
+    return sum
+  }
+
+  async function runCheck(emails: string[]) {
+    setChecking(true)
+    try {
+      setCheck(await sendInChunks(emails, true))
+    } catch (err) {
+      // The import itself still refuses to re-add anyone, so this only costs the preview.
+      toast.error(`Could not check against your list: ${err instanceof Error ? err.message : "unknown error"}`)
+    } finally {
+      setChecking(false)
+    }
   }
 
   async function handleImport() {
@@ -156,25 +200,15 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
     setImportProgress({ done: 0, total: parsedEmails.length })
     let imported = 0
     try {
-      // Chunk so any list size imports without hitting request body limits.
-      for (let i = 0; i < parsedEmails.length; i += IMPORT_CHUNK_SIZE) {
-        const chunk = parsedEmails.slice(i, i + IMPORT_CHUNK_SIZE)
-        const res = await fetch("/api/admin/newsletter/subscribers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ emails: chunk }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? "Import failed")
-        }
-        const result = await res.json()
-        imported += result.added ?? chunk.length
-        setImportProgress({ done: Math.min(i + chunk.length, parsedEmails.length), total: parsedEmails.length })
-      }
+      const result = await sendInChunks(parsedEmails, false, (done, sum) => {
+        imported = sum.added
+        setImportProgress({ done, total: parsedEmails.length })
+      })
 
       setImportResult({
         imported,
+        alreadySubscribed: result.alreadySubscribed,
+        optedOut: result.optedOut,
         invalid: invalidLines.length,
         disposable: disposableEmails.length,
         duplicates: duplicateCount,
@@ -203,6 +237,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
     setInvalidLines([])
     setDisposableEmails([])
     setDuplicateCount(0)
+    setCheck(null)
   }
 
   function handleDownloadTemplate() {
@@ -245,7 +280,10 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
       if (data.total === 0) {
         toast.info("No contacts found in GoHighLevel")
       } else {
-        toast.success(`Synced from GHL: ${data.added} new, ${data.skipped} already existed (${data.total} total)`)
+        toast.success(
+          `Synced from GHL: ${data.added} new, ${data.alreadySubscribed} already subscribed, ` +
+            `${data.optedOut} unsubscribed or bounced before (not added back)`,
+        )
       }
       router.refresh()
     } catch (err) {
@@ -448,6 +486,9 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
                   <p className="font-medium text-foreground">Import complete</p>
                   <p className="text-muted-foreground mt-1">
                     {importResult.imported} subscriber(s) imported
+                    {importResult.alreadySubscribed > 0 && `, ${importResult.alreadySubscribed} already subscribed`}
+                    {importResult.optedOut > 0 &&
+                      `, ${importResult.optedOut} unsubscribed or bounced before (not added back)`}
                     {importResult.duplicates > 0 && `, ${importResult.duplicates} duplicate(s) removed`}
                     {importResult.disposable > 0 && `, ${importResult.disposable} disposable excluded`}
                     {importResult.invalid > 0 && `, ${importResult.invalid} invalid row(s) skipped`}
@@ -481,6 +522,24 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
                 )}
                 {invalidLines.length > 0 && (
                   <p className="text-xs text-warning">{invalidLines.length} invalid row(s) will be skipped</p>
+                )}
+                {checking && (
+                  <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+                    <Loader2 className="size-3 animate-spin" />
+                    Checking against your subscriber list...
+                  </p>
+                )}
+                {check && (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      {check.added} new, {check.alreadySubscribed} already subscribed
+                    </p>
+                    {check.optedOut > 0 && (
+                      <p className="text-xs text-warning">
+                        {check.optedOut} unsubscribed or bounced before. They will not be added back.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -540,7 +599,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
                 </button>
                 <button
                   onClick={handleImport}
-                  disabled={parsedEmails.length === 0 || importing}
+                  disabled={parsedEmails.length === 0 || importing || checking || check?.added === 0}
                   className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
                 >
                   {importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
@@ -548,7 +607,9 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
                     ? importProgress
                       ? `Importing ${importProgress.done}/${importProgress.total}...`
                       : "Importing..."
-                    : `Import ${parsedEmails.length} Email(s)`}
+                    : check
+                      ? `Import ${check.added} New Email(s)`
+                      : `Import ${parsedEmails.length} Email(s)`}
                 </button>
               </div>
             </div>

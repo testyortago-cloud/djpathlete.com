@@ -8,6 +8,8 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 // list of any size imports across multiple calls without hitting body-size limits.
 const importSchema = z.object({
   emails: z.array(z.string().email()).min(1, "At least 1 email required").max(10000, "Maximum 10000 emails per request"),
+  /** The import dialog's check: same counts, nothing written. */
+  dryRun: z.boolean().optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -32,18 +34,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const result = await importSubscribers(parsed.data.emails)
+    const result = await importSubscribers(parsed.data.emails, "csv_import", { dryRun: parsed.data.dryRun })
 
     // NOTE: GHL sync is intentionally NOT done inline here — pushing one contact
     // per email would fan out thousands of concurrent calls on a bulk import.
     // The admin "Sync GHL" action handles that safely in its own batched flow.
 
-    return NextResponse.json({
-      success: true,
-      added: result.added,
-      skipped: result.skipped,
-      total: parsed.data.emails.length,
-    })
+    return NextResponse.json({ success: true, ...result, total: parsed.data.emails.length })
   } catch (error) {
     console.error("[Subscribers Import] Error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
