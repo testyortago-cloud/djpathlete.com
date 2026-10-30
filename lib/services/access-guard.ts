@@ -1,6 +1,7 @@
 import type { ProgramAssignment, ProgramWeekAccess } from "@/types/database"
 import { getAssignmentById } from "@/lib/db/assignments"
 import { getWeekAccess } from "@/lib/db/week-access"
+import { getProgramById } from "@/lib/db/programs"
 import { weekState } from "@/lib/programs/week-visibility"
 
 /** Pure: may this client train against this assignment (and optionally this week)? */
@@ -29,8 +30,12 @@ export async function assertAssignmentPayable(
   const assignment = await getAssignmentById(assignmentId)
   if (assignment.payment_status === "pending") return { ok: false, reason: "payment" }
   const weekAccess = weekNumber != null ? await getWeekAccess(assignmentId, weekNumber) : null
-  if (weekNumber != null && weekState(weekNumber, assignment, weekAccess?.visibility, now) !== "visible") {
-    return { ok: false, reason: "not_released" }
+  if (weekNumber != null) {
+    const program = await getProgramById(assignment.program_id)
+    const hiddenOnProgram = (program.hidden_weeks ?? []).includes(weekNumber)
+    if (weekState(weekNumber, assignment, weekAccess?.visibility, now, hiddenOnProgram) !== "visible") {
+      return { ok: false, reason: "not_released" }
+    }
   }
   return isAccessAllowed(assignment, weekAccess) ? { ok: true } : { ok: false, reason: "payment" }
 }

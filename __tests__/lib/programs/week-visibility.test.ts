@@ -6,6 +6,8 @@ import {
   buildWeekGate,
   formatUnlockDate,
   releaseAnchorFor,
+  setWeekHidden,
+  hiddenWeeksAfterRemoving,
 } from "@/lib/programs/week-visibility"
 
 const DAY = 24 * 60 * 60 * 1000
@@ -53,19 +55,19 @@ describe("releasedThroughWeek", () => {
 
 describe("weekState", () => {
   it("hidden always wins, even for a released week and with no schedule", () => {
-    expect(weekState(1, sched, "hidden", at(30))).toBe("hidden")
-    expect(weekState(1, noSched, "hidden", at(0))).toBe("hidden")
+    expect(weekState(1, sched, "hidden", at(30), false)).toBe("hidden")
+    expect(weekState(1, noSched, "hidden", at(0), false)).toBe("hidden")
   })
   it("shown opens a week the schedule has not reached", () => {
-    expect(weekState(5, sched, "shown", at(0))).toBe("visible")
+    expect(weekState(5, sched, "shown", at(0), false)).toBe("visible")
   })
   it("auto (or missing) follows the schedule", () => {
-    expect(weekState(1, sched, "auto", at(0))).toBe("visible")
-    expect(weekState(2, sched, "auto", at(0))).toBe("scheduled")
-    expect(weekState(2, sched, undefined, at(7))).toBe("visible")
+    expect(weekState(1, sched, "auto", at(0), false)).toBe("visible")
+    expect(weekState(2, sched, "auto", at(0), false)).toBe("scheduled")
+    expect(weekState(2, sched, undefined, at(7), false)).toBe("visible")
   })
   it("auto with no schedule is visible (today's behaviour)", () => {
-    expect(weekState(12, noSched, "auto", at(0))).toBe("visible")
+    expect(weekState(12, noSched, "auto", at(0), false)).toBe("visible")
   })
 })
 
@@ -86,7 +88,7 @@ describe("unlockDate", () => {
 
 describe("buildWeekGate", () => {
   it("opens released weeks, dates scheduled ones, and gives a hidden one no date", () => {
-    const gate = buildWeekGate(sched, [row(1), row(2), row(3, { visibility: "hidden" })], 4, at(0))
+    const gate = buildWeekGate(sched, [row(1), row(2), row(3, { visibility: "hidden" })], 4, at(0), [])
     expect([...gate.open]).toEqual([1])
     expect(gate.unavailable[2]).toEqual({ unlocksOn: at(7).toISOString() })
     expect(gate.unavailable[3]).toEqual({ unlocksOn: null })
@@ -99,6 +101,7 @@ describe("buildWeekGate", () => {
       [row(1), row(2, { access_type: "paid", payment_status: "pending", price_cents: 4000 })],
       2,
       at(0),
+      [],
     )
     expect([...gate.open]).toEqual([1])
     expect(gate.locked).toEqual({ 2: { priceCents: 4000 } })
@@ -109,16 +112,70 @@ describe("buildWeekGate", () => {
       [row(2, { access_type: "paid", payment_status: "pending", price_cents: 4000 })],
       2,
       at(0),
+      [],
     )
     expect(gate.locked).toEqual({})
     expect(gate.unavailable[2]).toEqual({ unlocksOn: at(7).toISOString() })
   })
   it("a paused schedule gives scheduled weeks no date", () => {
-    const gate = buildWeekGate({ release_base_week: 1, release_anchor_at: null }, [], 2, at(0))
+    const gate = buildWeekGate({ release_base_week: 1, release_anchor_at: null }, [], 2, at(0), [])
     expect(gate.unavailable[2]).toEqual({ unlocksOn: null })
   })
   it("treats a week with no access row as included and auto", () => {
-    expect([...buildWeekGate(noSched, [], 3, at(0)).open]).toEqual([1, 2, 3])
+    expect([...buildWeekGate(noSched, [], 3, at(0), []).open]).toEqual([1, 2, 3])
+  })
+  it("a week hidden on the program is unavailable with no date, even with no access row", () => {
+    const gate = buildWeekGate(noSched, [], 3, at(0), [2])
+    expect([...gate.open]).toEqual([1, 3])
+    expect(gate.unavailable).toEqual({ 2: { unlocksOn: null } })
+  })
+  it("a paid week hidden on the program shows no price", () => {
+    const gate = buildWeekGate(
+      noSched,
+      [row(2, { access_type: "paid", payment_status: "pending", price_cents: 4000 })],
+      2,
+      at(0),
+      [2],
+    )
+    expect(gate.locked).toEqual({})
+    expect(gate.unavailable[2]).toEqual({ unlocksOn: null })
+  })
+  it("this client's Show now still opens a week hidden on the program", () => {
+    expect([...buildWeekGate(noSched, [row(2, { visibility: "shown" })], 2, at(0), [2]).open]).toEqual([1, 2])
+  })
+})
+
+describe("weekState with a week hidden on the program", () => {
+  it("is hidden for a client on auto, with or without a schedule", () => {
+    expect(weekState(1, noSched, "auto", at(0), true)).toBe("hidden")
+    expect(weekState(1, sched, undefined, at(30), true)).toBe("hidden")
+  })
+  it("is visible when the coach opened it for this client (shown beats the program)", () => {
+    expect(weekState(3, noSched, "shown", at(0), true)).toBe("visible")
+  })
+  it("stays hidden when this client's own setting is hidden too", () => {
+    expect(weekState(3, noSched, "hidden", at(0), true)).toBe("hidden")
+  })
+})
+
+describe("setWeekHidden", () => {
+  it("adds a week, sorted, without duplicates", () => {
+    expect(setWeekHidden([5, 2], 3, true)).toEqual([2, 3, 5])
+    expect(setWeekHidden([2, 3], 3, true)).toEqual([2, 3])
+  })
+  it("removes a week, and removing an absent week changes nothing", () => {
+    expect(setWeekHidden([2, 3, 5], 3, false)).toEqual([2, 5])
+    expect(setWeekHidden([2], 4, false)).toEqual([2])
+  })
+})
+
+describe("hiddenWeeksAfterRemoving", () => {
+  it("drops the removed week and moves later hidden weeks down by one, as Remove Week renumbers them", () => {
+    expect(hiddenWeeksAfterRemoving([2, 4, 6], 4)).toEqual([2, 5])
+    expect(hiddenWeeksAfterRemoving([2, 6], 3)).toEqual([2, 5])
+  })
+  it("leaves earlier hidden weeks alone", () => {
+    expect(hiddenWeeksAfterRemoving([1, 2], 5)).toEqual([1, 2])
   })
 })
 

@@ -112,6 +112,7 @@ export default async function ProgramBuilderPage({ params }: { params: Promise<{
         programExercises={programExercises}
         exercises={exercises}
         assignmentInfo={assignmentInfo}
+        hiddenWeeks={program.hidden_weeks ?? []}
       />
 
       {activeAssignments.length > 0 && (
@@ -119,6 +120,7 @@ export default async function ProgramBuilderPage({ params }: { params: Promise<{
           programId={program.id}
           totalWeeks={program.duration_weeks}
           clientNames={Object.fromEntries(clients.map((c) => [c.id, `${c.first_name} ${c.last_name}`.trim()]))}
+          hiddenWeeks={program.hidden_weeks ?? []}
         />
       )}
 

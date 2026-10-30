@@ -26,7 +26,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Layers, DollarSign, Info, Copy, Ban } from "lucide-react"
+import { Layers, DollarSign, Info, Copy, Ban, EyeOff } from "lucide-react"
 import { sourceWeekForDisplay } from "@/lib/program-weeks"
 import { WeekSelector } from "@/components/admin/WeekSelector"
 import { DayColumn } from "@/components/admin/DayColumn"
@@ -58,6 +58,8 @@ interface ProgramBuilderProps {
   programExercises: ProgramExerciseWithExercise[]
   exercises: Exercise[]
   assignmentInfo?: AssignmentInfo | null
+  /** Weeks hidden from every client on this program (programs.hidden_weeks). */
+  hiddenWeeks?: number[]
 }
 
 export function ProgramBuilder({
@@ -67,10 +69,13 @@ export function ProgramBuilder({
   programExercises,
   exercises,
   assignmentInfo,
+  hiddenWeeks = [],
 }: ProgramBuilderProps) {
   const router = useRouter()
   const [selectedWeek, setSelectedWeek] = useState(1)
   const [localTotalWeeks, setLocalTotalWeeks] = useState(totalWeeks)
+  const [localHiddenWeeks, setLocalHiddenWeeks] = useState(hiddenWeeks)
+  const [isTogglingHidden, setIsTogglingHidden] = useState(false)
 
   // Optimistic local state — mirrors server props but updates instantly on drag
   const [localExercises, setLocalExercises] = useState(programExercises)
@@ -169,6 +174,29 @@ export function ProgramBuilder({
     }
   }
 
+  async function handleToggleHidden() {
+    if (isTogglingHidden) return
+    const week = selectedWeek
+    const hide = !localHiddenWeeks.includes(week)
+    setIsTogglingHidden(true)
+    try {
+      const response = await fetch(`/api/admin/programs/${programId}/hidden-weeks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weekNumber: week, hidden: hide }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Couldn't change this week")
+      setLocalHiddenWeeks(data.hidden_weeks as number[])
+      toast.success(hide ? `Week ${week} is hidden from every client` : `Week ${week} is visible to clients again`)
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't change this week")
+    } finally {
+      setIsTogglingHidden(false)
+    }
+  }
+
   async function handleDeleteWeek() {
     if (isDeletingWeek) return
     setIsDeletingWeek(true)
@@ -185,6 +213,7 @@ export function ProgramBuilder({
       const data = await response.json()
       const newTotal = data.new_total_weeks as number
       setLocalTotalWeeks(newTotal)
+      setLocalHiddenWeeks(data.hidden_weeks as number[])
       // Move to the previous week if we deleted the last one
       if (selectedWeek > newTotal) {
         setSelectedWeek(newTotal)
@@ -835,6 +864,9 @@ export function ProgramBuilder({
             isAddingWeek={isAddingWeek}
             onDeleteWeek={() => setDeleteWeekOpen(true)}
             isDeletingWeek={isDeletingWeek}
+            hiddenWeeks={localHiddenWeeks}
+            onToggleHidden={handleToggleHidden}
+            isTogglingHidden={isTogglingHidden}
             onGenerateWeek={() => setGenerateWeekOpen(true)}
             canGenerateWeek={true}
             blankWeeks={blankWeeks}
@@ -877,6 +909,21 @@ export function ProgramBuilder({
           Blocked
         </Button>
       </div>
+
+      {localHiddenWeeks.includes(selectedWeek) && (
+        <div className="flex items-start gap-3 rounded-lg border border-border bg-surface/50 px-4 py-3">
+          <EyeOff className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1 text-sm">
+            <p className="font-medium text-foreground">
+              Week {selectedWeek} is hidden. Clients on this program do not see it, including clients you add later.
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Click Show Week to open it for everyone. To open it for one client only, use Client week access further
+              down this page.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Blank-week notice — make the client-side "repeating template" visible to the coach */}
       {selectedWeekIsBlank && (

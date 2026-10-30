@@ -31,15 +31,22 @@ export function releasedThroughWeek(a: ReleaseFields, now: Date): number | null 
 
 export type WeekState = "visible" | "scheduled" | "hidden"
 
+/**
+ * `hiddenOnProgram`: the coach hid this week on the program itself (programs.hidden_weeks),
+ * for every client on it. This client's own setting still wins: "shown" opens it for them.
+ * Required, not defaulted, so a caller that forgets the program cannot open the week.
+ */
 export function weekState(
   week: number,
   a: ReleaseFields,
   visibility: WeekVisibility | undefined,
   now: Date,
+  hiddenOnProgram: boolean,
 ): WeekState {
   const v = visibility ?? "auto"
   if (v === "hidden") return "hidden"
   if (v === "shown") return "visible"
+  if (hiddenOnProgram) return "hidden"
   const released = releasedThroughWeek(a, now)
   return released == null || week <= released ? "visible" : "scheduled"
 }
@@ -59,12 +66,18 @@ export interface WeekGate {
   unavailable: Record<number, { unlocksOn: string | null }>
 }
 
-export function buildWeekGate(a: ReleaseFields, rows: WeekAccessFields[], totalWeeks: number, now: Date): WeekGate {
+export function buildWeekGate(
+  a: ReleaseFields,
+  rows: WeekAccessFields[],
+  totalWeeks: number,
+  now: Date,
+  hiddenWeeks: readonly number[],
+): WeekGate {
   const byWeek = new Map(rows.map((r) => [r.week_number, r]))
   const gate: WeekGate = { open: new Set(), locked: {}, unavailable: {} }
   for (let w = 1; w <= totalWeeks; w++) {
     const row = byWeek.get(w)
-    const state = weekState(w, a, row?.visibility, now)
+    const state = weekState(w, a, row?.visibility, now, hiddenWeeks.includes(w))
     if (state !== "visible") {
       gate.unavailable[w] = {
         unlocksOn: state === "scheduled" ? (unlockDate(w, a)?.toISOString() ?? null) : null,
@@ -76,6 +89,19 @@ export function buildWeekGate(a: ReleaseFields, rows: WeekAccessFields[], totalW
     }
   }
   return gate
+}
+
+/** The program's hidden weeks with `week` added or removed, sorted and without duplicates. */
+export function setWeekHidden(hidden: readonly number[], week: number, hide: boolean): number[] {
+  const set = new Set(hidden)
+  if (hide) set.add(week)
+  else set.delete(week)
+  return [...set].sort((x, y) => x - y)
+}
+
+/** Remove Week renumbers every later week down by one; the hidden weeks move with them. */
+export function hiddenWeeksAfterRemoving(hidden: readonly number[], removed: number): number[] {
+  return hidden.filter((w) => w !== removed).map((w) => (w > removed ? w - 1 : w))
 }
 
 /** "Monday, October 19". UTC, so a server render and the browser print the same day. */

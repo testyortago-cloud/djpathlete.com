@@ -5,6 +5,7 @@ import { getActiveAssignmentsForProgram, updateAssignment } from "@/lib/db/assig
 import { deleteWeekExercises } from "@/lib/db/program-exercises"
 import { deleteWeekAccessForWeek, shiftWeekAccessDown } from "@/lib/db/week-access"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { hiddenWeeksAfterRemoving } from "@/lib/programs/week-visibility"
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -30,9 +31,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // Delete exercises and renumber subsequent weeks
     await deleteWeekExercises(id, weekNumber)
 
-    // Decrement duration_weeks
+    // Decrement duration_weeks. Later weeks were renumbered down, so the hidden ones move with them.
+    // (Skipped while hidden_weeks is absent: the column arrives with 00293 in the same deploy.)
     const newDuration = currentWeeks - 1
-    await updateProgram(id, { duration_weeks: newDuration })
+    const hidden_weeks = program.hidden_weeks ? hiddenWeeksAfterRemoving(program.hidden_weeks, weekNumber) : undefined
+    await updateProgram(id, { duration_weeks: newDuration, ...(hidden_weeks ? { hidden_weeks } : {}) })
 
     // Update all active assignments + clean up week access records
     const activeAssignments = await getActiveAssignmentsForProgram(id)
@@ -44,7 +47,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }),
     )
 
-    return NextResponse.json({ new_total_weeks: newDuration }, { status: 200 })
+    return NextResponse.json({ new_total_weeks: newDuration, hidden_weeks: hidden_weeks ?? [] }, { status: 200 })
   } catch {
     return NextResponse.json({ error: "Failed to delete week. Please try again." }, { status: 500 })
   }

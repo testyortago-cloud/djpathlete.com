@@ -40,7 +40,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Week access record not found." }, { status: 404 })
     }
 
-    if (weekState(weekNumber, assignment, weekAccess.visibility, new Date()) !== "visible") {
+    const program = await getProgramById(assignment.program_id)
+    const hiddenOnProgram = (program.hidden_weeks ?? []).includes(weekNumber)
+    if (weekState(weekNumber, assignment, weekAccess.visibility, new Date(), hiddenOnProgram) !== "visible") {
       return NextResponse.json({ error: "This week isn't available yet." }, { status: 403 })
     }
 
@@ -51,8 +53,6 @@ export async function POST(request: Request) {
     if (!weekAccess.price_cents || weekAccess.price_cents <= 0) {
       return NextResponse.json({ error: "No price set for this week. Contact your coach." }, { status: 400 })
     }
-
-    const program = await getProgramById(assignment.program_id)
 
     // Resolve visitor tracking params from djp_attr cookie
     const sessionId = parseAttrCookie(request.headers.get("cookie"))

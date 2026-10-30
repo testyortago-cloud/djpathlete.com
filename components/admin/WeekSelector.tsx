@@ -1,6 +1,6 @@
 "use client"
 
-import { Copy, ClipboardCopy, Plus, Sparkles, Trash2, RefreshCw } from "lucide-react"
+import { Copy, ClipboardCopy, Plus, Sparkles, Trash2, RefreshCw, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface WeekSelectorProps {
@@ -19,6 +19,10 @@ interface WeekSelectorProps {
   blankWeeks?: Set<number>
   /** For each blank week, the week whose workout the client actually sees there (the "repeats" source). */
   repeatSourceByWeek?: Record<number, number>
+  /** Weeks hidden from every client on this program. */
+  hiddenWeeks?: number[]
+  onToggleHidden?: () => void
+  isTogglingHidden?: boolean
 }
 
 export function WeekSelector({
@@ -35,12 +39,17 @@ export function WeekSelector({
   canGenerateWeek = false,
   blankWeeks = new Set(),
   repeatSourceByWeek = {},
+  hiddenWeeks = [],
+  onToggleHidden,
+  isTogglingHidden = false,
 }: WeekSelectorProps) {
   const selectedIsBlank = blankWeeks.has(selectedWeek)
+  const selectedIsHidden = hiddenWeeks.includes(selectedWeek)
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((week) => {
         const isBlank = blankWeeks.has(week)
+        const isHidden = hiddenWeeks.includes(week)
         const repeatSrc = repeatSourceByWeek[week]
         return (
           <Button
@@ -49,16 +58,25 @@ export function WeekSelector({
             size="sm"
             onClick={() => onSelectWeek(week)}
             className={
-              isBlank && week !== selectedWeek ? "border-dashed border-muted-foreground/40 text-muted-foreground" : ""
+              week === selectedWeek
+                ? ""
+                : isBlank
+                  ? "border-dashed border-muted-foreground/40 text-muted-foreground"
+                  : isHidden
+                    ? "text-muted-foreground"
+                    : ""
             }
             title={
-              isBlank
-                ? repeatSrc
-                  ? `Week ${week} is empty — client sees Week ${repeatSrc} repeated here`
-                  : `Week ${week} (blank)`
-                : `Week ${week}`
+              isHidden
+                ? `Week ${week} is hidden from clients`
+                : isBlank
+                  ? repeatSrc
+                    ? `Week ${week} is empty — client sees Week ${repeatSrc} repeated here`
+                    : `Week ${week} (blank)`
+                  : `Week ${week}`
             }
           >
+            {isHidden && <EyeOff className="size-3.5" aria-label="hidden from clients" />}
             Week {week}
             {isBlank &&
               (repeatSrc ? (
@@ -88,6 +106,22 @@ export function WeekSelector({
         <ClipboardCopy className="size-3.5" />
         Copy from…
       </Button>
+      {onToggleHidden && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onToggleHidden}
+          disabled={isTogglingHidden}
+          title={
+            selectedIsHidden
+              ? `Let clients on this program see Week ${selectedWeek} again`
+              : `Hide Week ${selectedWeek} from every client on this program`
+          }
+        >
+          {selectedIsHidden ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+          {isTogglingHidden ? "Saving..." : selectedIsHidden ? "Show Week" : "Hide Week"}
+        </Button>
+      )}
       {totalWeeks > 1 && (
         <Button
           variant="outline"

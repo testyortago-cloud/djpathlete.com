@@ -4,11 +4,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const getAssignmentById = vi.fn()
 const getWeekAccess = vi.fn()
 const createWeekCheckoutSession = vi.fn()
+const getProgramById = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn().mockResolvedValue({ user: { id: "u1" } }) }))
 vi.mock("@/lib/db/assignments", () => ({ getAssignmentById: (...a: unknown[]) => getAssignmentById(...a) }))
 vi.mock("@/lib/db/week-access", () => ({ getWeekAccess: (...a: unknown[]) => getWeekAccess(...a) }))
-vi.mock("@/lib/db/programs", () => ({ getProgramById: vi.fn().mockResolvedValue({ name: "Prog" }) }))
+vi.mock("@/lib/db/programs", () => ({ getProgramById: (...a: unknown[]) => getProgramById(...a) }))
 vi.mock("@/lib/stripe", () => ({
   createWeekCheckoutSession: (...a: unknown[]) => createWeekCheckoutSession(...a),
 }))
@@ -33,6 +34,7 @@ beforeEach(() => {
     .mockResolvedValue({ user_id: "u1", program_id: "p1", release_base_week: null, release_anchor_at: null })
   getWeekAccess.mockReset()
   createWeekCheckoutSession.mockReset().mockResolvedValue({ url: "https://stripe/x" })
+  getProgramById.mockReset().mockResolvedValue({ name: "Prog", hidden_weeks: [] })
 })
 
 describe("week-checkout visibility", () => {
@@ -50,6 +52,13 @@ describe("week-checkout visibility", () => {
       release_anchor_at: new Date().toISOString(),
     })
     getWeekAccess.mockResolvedValue(access("auto"))
+    expect((await call()).status).toBe(403)
+    expect(createWeekCheckoutSession).not.toHaveBeenCalled()
+  })
+
+  it("403s a week hidden on the program and creates no Stripe session", async () => {
+    getWeekAccess.mockResolvedValue(access("auto"))
+    getProgramById.mockResolvedValue({ name: "Prog", hidden_weeks: [3] })
     expect((await call()).status).toBe(403)
     expect(createWeekCheckoutSession).not.toHaveBeenCalled()
   })

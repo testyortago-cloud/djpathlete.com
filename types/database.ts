@@ -433,6 +433,11 @@ export interface Program {
   is_template?: boolean
   /** The library folder. Set exactly when is_template (DB check programs_template_has_folder). */
   folder_id?: string | null
+  /**
+   * Weeks hidden from every client on this program (migration 00293). A client's own
+   * week_access "shown" still opens one. DB default '{}'; optional so inserts may omit it.
+   */
+  hidden_weeks?: number[]
   created_at: string
   updated_at: string
 }

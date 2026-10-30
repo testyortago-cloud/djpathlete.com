@@ -195,7 +195,13 @@ export default async function ClientWorkoutsPage() {
       const currentWeek = assignment.current_week ?? getCurrentWeekFromDate(assignment.start_date, totalWeeks)
       // What this client may see. Hidden and not-yet-released weeks get no workouts at all, and a
       // paid week awaiting payment gets only its price (the Unlock card) — never its exercises.
-      const gate = buildWeekGate(assignment, weekAccessByAssignment[assignment.id] ?? [], totalWeeks, now)
+      const gate = buildWeekGate(
+        assignment,
+        weekAccessByAssignment[assignment.id] ?? [],
+        totalWeeks,
+        now,
+        program.hidden_weeks ?? [],
+      )
 
       // Group exercises by week_number, then by day_of_week
       const weekMap = new Map<number, Map<number, ProgramExerciseWithExercise[]>>()
@@ -295,7 +301,13 @@ export default async function ClientWorkoutsPage() {
     const program = assignment.programs
     const maxContentWeek = exercises.reduce((m, e) => Math.max(m, e.week_number), 0)
     const totalWeeks = effectiveTotalWeeks(assignment.total_weeks, program.duration_weeks, maxContentWeek)
-    const gate = buildWeekGate(assignment, weekAccessByAssignment[assignment.id] ?? [], totalWeeks, now)
+    const gate = buildWeekGate(
+      assignment,
+      weekAccessByAssignment[assignment.id] ?? [],
+      totalWeeks,
+      now,
+      program.hidden_weeks ?? [],
+    )
 
     // Collect unique (week, day) combos with counts
     const dayMap = new Map<

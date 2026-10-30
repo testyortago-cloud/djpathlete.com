@@ -46,9 +46,11 @@ interface WeekAccessPanelProps {
   programId: string
   totalWeeks: number
   clientNames: Record<string, string>
+  /** Weeks hidden on the program for every client (programs.hidden_weeks). */
+  hiddenWeeks: number[]
 }
 
-export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAccessPanelProps) {
+export function WeekAccessPanel({ programId, totalWeeks, clientNames, hiddenWeeks }: WeekAccessPanelProps) {
   const [expanded, setExpanded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [assignments, setAssignments] = useState<AssignmentInfo[]>([])
@@ -178,7 +180,7 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
     if (a.release_base_week == null) return "This client can see every week."
     if (!a.release_anchor_at) return "New weeks are paused until this client's payment is active again."
     for (let w = 1; w <= totalWeeks; w++) {
-      if (weekState(w, a, getAccessForWeek(a.id, w)?.visibility, now) === "scheduled") {
+      if (weekState(w, a, getAccessForWeek(a.id, w)?.visibility, now, hiddenWeeks.includes(w)) === "scheduled") {
         const d = unlockDate(w, a)
         if (d) return `A new week opens every 7 days. Next: week ${w} on ${formatUnlockDate(d.toISOString())}.`
       }
@@ -193,8 +195,7 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
   const modalAccess = selectedWeek?.access
   const isIncluded = !modalAccess || modalAccess.access_type === "included"
   const isPending = !isIncluded && modalAccess?.payment_status === "pending"
-  const isGranted =
-    !isIncluded && modalAccess?.access_type === "paid" && modalAccess?.payment_status === "not_required"
+  const isGranted = !isIncluded && modalAccess?.access_type === "paid" && modalAccess?.payment_status === "not_required"
   const isPaid = !isIncluded && modalAccess?.payment_status === "paid" && !isGranted
 
   if (assignments.length === 0 && !loading && expanded) {
@@ -276,15 +277,12 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                     <div className="flex flex-wrap gap-1.5">
                       {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((week) => {
                         const access = getAccessForWeek(assignment.id, week)
-                        const state = weekState(week, assignment, access?.visibility, now)
+                        const state = weekState(week, assignment, access?.visibility, now, hiddenWeeks.includes(week))
                         const weekIsIncluded = !access || access.access_type === "included"
                         const weekIsPending = !weekIsIncluded && access?.payment_status === "pending"
                         const weekIsGranted =
-                          !weekIsIncluded &&
-                          access?.access_type === "paid" &&
-                          access?.payment_status === "not_required"
-                        const weekIsPaid =
-                          !weekIsIncluded && access?.payment_status === "paid" && !weekIsGranted
+                          !weekIsIncluded && access?.access_type === "paid" && access?.payment_status === "not_required"
+                        const weekIsPaid = !weekIsIncluded && access?.payment_status === "paid" && !weekIsGranted
 
                         return (
                           <button
@@ -397,11 +395,14 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
             {selectedWeek &&
               (() => {
                 const vis = modalAccess?.visibility ?? "auto"
-                const state = weekState(selectedWeek.weekNumber, selectedWeek.assignment, vis, new Date())
+                const onProgram = hiddenWeeks.includes(selectedWeek.weekNumber)
+                const state = weekState(selectedWeek.weekNumber, selectedWeek.assignment, vis, new Date(), onProgram)
                 const date = unlockDate(selectedWeek.weekNumber, selectedWeek.assignment)
                 const label =
                   state === "hidden"
-                    ? "No, you hid this week"
+                    ? vis === "auto" && onProgram
+                      ? "No, this week is hidden for everyone on this program"
+                      : "No, you hid this week"
                     : state === "scheduled"
                       ? date
                         ? `Not yet. It opens on ${formatUnlockDate(date.toISOString())}`
@@ -437,7 +438,12 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                         </Button>
                       )}
                       {vis !== "auto" && (
-                        <Button size="sm" variant="ghost" onClick={() => setVisibility("auto")} disabled={actionLoading}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setVisibility("auto")}
+                          disabled={actionLoading}
+                        >
                           Back to the weekly schedule
                         </Button>
                       )}
