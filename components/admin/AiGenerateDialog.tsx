@@ -27,6 +27,8 @@ import {
   ClipboardList,
   Info,
   UserPlus,
+  Layers,
+  Ban,
 } from "lucide-react"
 import {
   Dialog,
@@ -70,7 +72,9 @@ import { AssignProgramDialog } from "@/components/admin/AssignProgramDialog"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
 import { NotifyWhenDoneToggle } from "@/components/admin/NotifyWhenDoneToggle"
 import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
-import type { User, ClientProfile } from "@/types/database"
+import type { User, ClientProfile, Exercise } from "@/types/database"
+import { ExercisePool } from "@/components/admin/ExercisePool"
+import { BlockedExercisePanel } from "@/components/admin/BlockedExercisePanel"
 import { summarizeApiError } from "@/lib/errors/humanize"
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -115,6 +119,9 @@ const GENERATION_STEPS = [
 
 const selectClass =
   "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+
+/** aiGenerationRequestSchema caps pool_exercise_ids at 200. */
+const MAX_POOL = 200
 
 const STEPS = [
   { label: "Client", number: 1 },
@@ -210,6 +217,21 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   const [priceDollars, setPriceDollars] = useState("")
   const [notifyWhenDone, setNotifyWhenDone] = useState(true)
   const { addJob } = useAiJobsDock()
+
+  // Exercise pool and blocked list — the same panels as the program builder. Blocks are
+  // stored server-side and the generator already honours them; the pool goes in the request.
+  const [sidePanel, setSidePanel] = useState<"pool" | "blocked" | null>(null)
+  const [allExercises, setAllExercises] = useState<Exercise[]>([])
+  const [poolExercises, setPoolExercises] = useState<Exercise[]>([])
+  const [strictPool, setStrictPool] = useState(false)
+
+  useEffect(() => {
+    if (!sidePanel || allExercises.length > 0) return
+    fetch("/api/admin/exercises")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: Exercise[]) => setAllExercises(data))
+      .catch(() => toast.error("Couldn't load the exercise library"))
+  }, [sidePanel, allExercises.length])
 
   // Profile state
   const [profileSummary, setProfileSummary] = useState<ProfileSummary | null>(null)
@@ -391,6 +413,9 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     setSplitType("")
     setPeriodization("")
     setAdditionalInstructions("")
+    setSidePanel(null)
+    setPoolExercises([])
+    setStrictPool(false)
     setIgnoreProfile(false)
     setSelectedTier("generalize")
     setAudience("private")
@@ -509,6 +534,10 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
       toast.error("Please select at least one goal")
       return
     }
+    if (poolExercises.length > MAX_POOL) {
+      toast.error(`The exercise pool can hold up to ${MAX_POOL} exercises. Remove some and try again.`)
+      return
+    }
 
     setIsGenerating(true)
     setError(null)
@@ -536,6 +565,10 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
         body.additional_instructions = additionalInstructions.trim()
       }
       if (ignoreProfile) body.ignore_profile = true
+      if (poolExercises.length > 0) {
+        body.pool_exercise_ids = poolExercises.map((e) => e.id)
+        body.pool_mode = strictPool ? "strict" : "preferred"
+      }
       if (profileSummary && profileSummary.availableEquipment.length > 0 && !ignoreProfile) {
         body.equipment_override = profileSummary.availableEquipment
       }
@@ -908,7 +941,11 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         ref={dialogRef}
-        className={cn("sm:max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden", tour.isActive && "pb-48")}
+        className={cn(
+          "max-h-[90vh] overflow-y-auto overflow-x-hidden",
+          step === 2 && sidePanel ? "sm:max-w-4xl" : "sm:max-w-lg",
+          tour.isActive && "pb-48",
+        )}
       >
         {/* Header */}
         <div className="space-y-3">
@@ -955,84 +992,156 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
           </div>
         </div>
 
-        {/* Step content */}
-        <div className="min-h-[360px]">
-          <AnimatePresence mode="wait" custom={direction}>
-            <motion.div
-              key={step}
-              custom={direction}
-              variants={stepVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-            >
-              {step === 0 && (
-                <Step1Client
-                  clients={clients}
-                  loadingClients={loadingClients}
-                  clientId={clientId}
-                  setClientId={setClientId}
-                  profileStatus={profileStatus}
-                  profileSummary={profileSummary}
-                  summaryExpanded={summaryExpanded}
-                  setSummaryExpanded={setSummaryExpanded}
-                  ignoreProfile={ignoreProfile}
-                  onIgnoreProfileChange={(v) => {
-                    setIgnoreProfile(v)
-                    if (v) {
-                      // Reset auto-filled values when ignoring profile
-                      setGoals([])
-                      setSessionsPerWeek(3)
-                      setSessionMinutes(60)
-                      setSummaryExpanded(false)
-                    } else if (profileSummary) {
-                      // Re-apply profile values when toggling back
-                      if (profileSummary.goals.length > 0) setGoals(profileSummary.goals)
-                      if (profileSummary.preferredTrainingDays !== null)
-                        setSessionsPerWeek(profileSummary.preferredTrainingDays)
-                      if (profileSummary.preferredSessionMinutes !== null)
-                        setSessionMinutes(profileSummary.preferredSessionMinutes)
-                      setSummaryExpanded(true)
-                    }
-                  }}
-                />
-              )}
-              {step === 1 && (
-                <Step2GoalsSchedule
-                  goals={goals}
-                  toggleGoal={toggleGoal}
-                  profileStatus={profileStatus}
-                  profileSummary={profileSummary}
-                  durationWeeks={durationWeeks}
-                  setDurationWeeks={setDurationWeeks}
-                  sessionsPerWeek={sessionsPerWeek}
-                  setSessionsPerWeek={setSessionsPerWeek}
-                  sessionMinutes={sessionMinutes}
-                  setSessionMinutes={setSessionMinutes}
-                />
-              )}
-              {step === 2 && (
-                <Step3Settings
-                  splitType={splitType}
-                  setSplitType={setSplitType}
-                  periodization={periodization}
-                  setPeriodization={setPeriodization}
-                  selectedTier={selectedTier}
-                  setSelectedTier={setSelectedTier}
-                  audience={audience}
-                  setAudience={setAudience}
-                  priceDollars={priceDollars}
-                  setPriceDollars={setPriceDollars}
-                  additionalInstructions={additionalInstructions}
-                  setAdditionalInstructions={setAdditionalInstructions}
-                  ignoreProfile={ignoreProfile}
-                  hasClient={!!clientId}
-                  error={error}
-                />
-              )}
-            </motion.div>
-          </AnimatePresence>
+        {/* Step content (and, on the last step, the pool or blocked panel beside it) */}
+        <div className="flex min-h-[360px] items-start gap-4">
+          <div className="min-w-0 flex-1">
+            <AnimatePresence mode="wait" custom={direction}>
+              <motion.div
+                key={step}
+                custom={direction}
+                variants={stepVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.2, ease: "easeInOut" }}
+              >
+                {step === 0 && (
+                  <Step1Client
+                    clients={clients}
+                    loadingClients={loadingClients}
+                    clientId={clientId}
+                    setClientId={setClientId}
+                    profileStatus={profileStatus}
+                    profileSummary={profileSummary}
+                    summaryExpanded={summaryExpanded}
+                    setSummaryExpanded={setSummaryExpanded}
+                    ignoreProfile={ignoreProfile}
+                    onIgnoreProfileChange={(v) => {
+                      setIgnoreProfile(v)
+                      if (v) {
+                        // Reset auto-filled values when ignoring profile
+                        setGoals([])
+                        setSessionsPerWeek(3)
+                        setSessionMinutes(60)
+                        setSummaryExpanded(false)
+                      } else if (profileSummary) {
+                        // Re-apply profile values when toggling back
+                        if (profileSummary.goals.length > 0) setGoals(profileSummary.goals)
+                        if (profileSummary.preferredTrainingDays !== null)
+                          setSessionsPerWeek(profileSummary.preferredTrainingDays)
+                        if (profileSummary.preferredSessionMinutes !== null)
+                          setSessionMinutes(profileSummary.preferredSessionMinutes)
+                        setSummaryExpanded(true)
+                      }
+                    }}
+                  />
+                )}
+                {step === 1 && (
+                  <Step2GoalsSchedule
+                    goals={goals}
+                    toggleGoal={toggleGoal}
+                    profileStatus={profileStatus}
+                    profileSummary={profileSummary}
+                    durationWeeks={durationWeeks}
+                    setDurationWeeks={setDurationWeeks}
+                    sessionsPerWeek={sessionsPerWeek}
+                    setSessionsPerWeek={setSessionsPerWeek}
+                    sessionMinutes={sessionMinutes}
+                    setSessionMinutes={setSessionMinutes}
+                  />
+                )}
+                {step === 2 && (
+                  <Step3Settings
+                    splitType={splitType}
+                    setSplitType={setSplitType}
+                    periodization={periodization}
+                    setPeriodization={setPeriodization}
+                    selectedTier={selectedTier}
+                    setSelectedTier={setSelectedTier}
+                    audience={audience}
+                    setAudience={setAudience}
+                    priceDollars={priceDollars}
+                    setPriceDollars={setPriceDollars}
+                    additionalInstructions={additionalInstructions}
+                    setAdditionalInstructions={setAdditionalInstructions}
+                    ignoreProfile={ignoreProfile}
+                    hasClient={!!clientId}
+                    error={error}
+                  />
+                )}
+                {step === 2 && (
+                  <div className="mt-4 space-y-2">
+                    <Label>Exercises</Label>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={sidePanel === "pool" ? "default" : "outline"}
+                        className="gap-1.5"
+                        onClick={() => setSidePanel((p) => (p === "pool" ? null : "pool"))}
+                      >
+                        <Layers className="size-3.5" />
+                        Exercise Pool
+                        {poolExercises.length > 0 && (
+                          <span className="rounded-full bg-primary/10 px-1.5 text-[10px] font-medium">
+                            {poolExercises.length}
+                          </span>
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={sidePanel === "blocked" ? "default" : "outline"}
+                        className="gap-1.5"
+                        onClick={() => setSidePanel((p) => (p === "blocked" ? null : "blocked"))}
+                      >
+                        <Ban className="size-3.5" />
+                        Blocked
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Blocked exercises are never used{clientId ? " for this client" : ""}. Exercises in the pool are
+                      picked first.
+                    </p>
+                    {poolExercises.length > 0 && (
+                      <div className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="ai-strict-pool" className="cursor-pointer text-sm font-medium">
+                            Only use the pool
+                          </Label>
+                          <p className="text-[11px] text-muted-foreground">
+                            {strictPool
+                              ? `The AI uses only these ${poolExercises.length} exercises.`
+                              : "Off: the AI fills any gaps from the full library."}
+                          </p>
+                        </div>
+                        <Switch id="ai-strict-pool" checked={strictPool} onCheckedChange={setStrictPool} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+          {step === 2 && sidePanel === "pool" && (
+            <ExercisePool
+              allExercises={allExercises}
+              poolExercises={poolExercises}
+              onPoolChange={setPoolExercises}
+              onClose={() => setSidePanel(null)}
+            />
+          )}
+          {step === 2 && sidePanel === "blocked" && (
+            <BlockedExercisePanel
+              allExercises={allExercises}
+              clientId={clientId || undefined}
+              clientName={(() => {
+                const c = clients.find((x) => x.id === clientId)
+                return c ? `${c.first_name} ${c.last_name}`.trim() : undefined
+              })()}
+              onClose={() => setSidePanel(null)}
+            />
+          )}
         </div>
 
         {/* Field guide tour */}
@@ -1042,11 +1151,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
             sees it right before kicking off a multi-minute generation. */}
         {step === 2 && !isGenerating ? (
           <div className="px-1">
-            <NotifyWhenDoneToggle
-              checked={notifyWhenDone}
-              onChange={setNotifyWhenDone}
-              disabled={isGenerating}
-            />
+            <NotifyWhenDoneToggle checked={notifyWhenDone} onChange={setNotifyWhenDone} disabled={isGenerating} />
           </div>
         ) : null}
 
