@@ -74,6 +74,18 @@ export interface StandardRow {
   elite_value: number
 }
 
+/** Only the numbers of a coach's rows, never their ids or business id: what a page may send to the browser. */
+export function standardNumbers(rows: readonly StandardRow[]): StandardRow[] {
+  return rows.map(({ test_type, age_min, age_max, floor_value, trained_value, elite_value }) => ({
+    test_type,
+    age_min,
+    age_max,
+    floor_value,
+    trained_value,
+    elite_value,
+  }))
+}
+
 /** The built-in standard: the worse end of the reference range, its middle, and its better end. */
 export function defaultStandard(testType: TestType): Standard | null {
   const r = REFERENCE_RANGES[testType]

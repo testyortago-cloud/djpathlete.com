@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import {
   MAX_SCAN_SEARCHES,
+  briefMondayISO,
   nextMondayISO,
   scanQueriesFrom,
   searchCountProblem,
@@ -96,6 +97,12 @@ describe("nextMondayISO", () => {
     expect(nextMondayISO(new Date("2026-11-02T06:00:00Z"))).toBe("2026-11-09") // the scan's own Monday run
     expect(nextMondayISO(new Date("2026-11-03T12:00:00Z"))).toBe("2026-11-09")
     expect(nextMondayISO(new Date("2026-11-08T23:00:00Z"))).toBe("2026-11-09")
+  })
+
+  it("before Monday's 06:00 UTC scan, a card still joins the brief on screen (dated this Monday)", () => {
+    expect(briefMondayISO(new Date("2026-11-09T03:00:00Z"))).toBe("2026-11-09")
+    expect(briefMondayISO(new Date("2026-11-09T07:00:00Z"))).toBe("2026-11-16")
+    expect(briefMondayISO(new Date("2026-11-03T12:00:00Z"))).toBe("2026-11-09")
   })
 
   it("matches its twin in the Firebase scan", () => {

@@ -29,6 +29,7 @@ import { signAthleteProfileToken } from "@/lib/profile-share/token"
 import { computeAge } from "@/lib/profile-share/data"
 import { listStandards } from "@/lib/db/performance-standards"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
+import { standardNumbers } from "@/lib/coach-intel/test-normalization"
 
 function addDays(iso: string, days: number): string {
   const d = new Date(iso + "T00:00:00Z")
@@ -162,7 +163,7 @@ export default async function AdminPerformanceHubPage({
         sessions: trainingSessions,
         goals,
         badges,
-        standards,
+        standards: standardNumbers(standards),
         age: computeAge(clientProfile?.date_of_birth ?? null),
       }}
     />

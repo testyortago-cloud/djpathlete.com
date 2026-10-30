@@ -7,7 +7,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { createResearchedTopicSuggestions } from "@/lib/db/content-calendar"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
-import { nextMondayISO } from "@/lib/blog/scan-topics"
+import { briefMondayISO } from "@/lib/blog/scan-topics"
 import { addScanTopic } from "@/lib/blog/scan-topics-store"
 
 const schema = z.object({
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   }
 
   // Dated like the weekly scan's cards, so they sit in the same week's brief rather than in the archive.
-  const entries = await createResearchedTopicSuggestions(parsed.data.topics, nextMondayISO(new Date()))
+  const entries = await createResearchedTopicSuggestions(parsed.data.topics, briefMondayISO(new Date()))
   // The subject also becomes a weekly scan topic. A failure there must not undo the cards just added.
   const scanTopic = parsed.data.subject
     ? await addScanTopic(parsed.data.subject, "research", session.user.id).catch((err) => {

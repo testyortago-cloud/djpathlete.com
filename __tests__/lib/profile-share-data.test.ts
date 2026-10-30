@@ -104,7 +104,7 @@ function armHappyPath() {
   mocks.getExerciseNamesByIds.mockResolvedValue({ e1: "Back Squat" })
   // Stored current_week is 1 (it rarely advances); the client is really on week 6.
   mocks.getClientWeeks.mockImplementation(async (as: { id: string }[]) =>
-    new Map(as.filter((a) => a.id === "pa1").map((a) => [a.id, { week: 6, totalWeeks: 12 }])),
+    new Map(as.filter((a) => a.id === "pa1").map((a) => [a.id, { week: 6, totalWeeks: 14 }])),
   )
   mocks.listCompletedSessionSummaries.mockResolvedValue([
     { session_date: "2026-06-10", volume_load_kg: 3000 },
@@ -150,8 +150,8 @@ describe("getAthleteProfileData", () => {
     expect(d!.gymRecords).toEqual([{ exercise: "Back Squat", valueKg: 140, date: "2026-05-01T00:00:00Z" }])
     // field records: custom tests labeled by custom_name
     expect(d!.fieldRecords.map((r) => r.label)).toEqual(expect.arrayContaining(["Med Ball Throw"]))
-    // program shows the week the client is on (getClientWeeks), not the stored current_week of 1
-    expect(d!.program).toMatchObject({ name: "Off-Season Power Block", currentWeek: 6, totalWeeks: 12 })
+    // program shows the week the client is on and its total (getClientWeeks), not the stored current_week of 1
+    expect(d!.program).toMatchObject({ name: "Off-Season Power Block", currentWeek: 6, totalWeeks: 14 })
     expect(d!.career).toEqual([{ name: "Pre-Season Speed", completedAt: "2026-04-15T00:00:00Z" }])
     // milestones exclude PR-type achievements
     expect(d!.milestones.map((m) => m.title)).toEqual(["100 Workouts"])

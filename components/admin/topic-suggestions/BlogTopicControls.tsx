@@ -78,9 +78,7 @@ export function BlogTopicControls({ initialTopics }: { initialTopics: ScanTopic[
         </div>
       </div>
 
-      {/* The key remounts the editor when the server sends a new list (a topic added by research or by
-          "Suggest your own topic"), so it never shows a stale one. */}
-      <ScanTopicsEditor key={JSON.stringify(initialTopics)} initialTopics={initialTopics} />
+      <ScanTopicsEditor initialTopics={initialTopics} />
     </div>
   )
 }

@@ -95,9 +95,20 @@ export function scanTopicNote(result: AddResult | null | undefined): string {
   return "It could not be added to your weekly scan topics."
 }
 
+/** The weekly scan runs Mondays at 06:00 UTC (tavilyTrendingCron in functions/src/index.ts, "0 6 * * 1"). */
+const SCAN_HOUR_UTC = 6
+
+/**
+ * The Monday of the brief a card added at `now` belongs to. Until Monday's scan has run, the brief on screen is
+ * still last week's (dated this Monday), so a card added then is dated this Monday too, not a week later.
+ */
+export function briefMondayISO(now: Date): string {
+  return nextMondayISO(new Date(now.getTime() - SCAN_HOUR_UTC * 60 * 60 * 1000))
+}
+
 /**
  * The Monday the weekly scan dates its cards with: the next Monday after `from` (a Monday gives the one a
- * week later). Researched and suggested cards use it too, so they sit in the same week's brief.
+ * week later). Researched and suggested cards use it through briefMondayISO, so they sit in the same brief.
  * TWIN: nextMondayISO in functions/src/tavily-trending-scan.ts (functions/ cannot import lib/).
  */
 export function nextMondayISO(from: Date): string {

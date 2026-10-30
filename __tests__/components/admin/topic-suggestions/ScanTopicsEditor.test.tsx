@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
-vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }))
+const toastMock = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }))
+vi.mock("sonner", () => ({ toast: toastMock }))
 
 import { ScanTopicsEditor } from "@/components/admin/topic-suggestions/ScanTopicsEditor"
 
@@ -15,6 +16,7 @@ const topics = [
 const fetchMock = vi.fn()
 
 beforeEach(() => {
+  vi.clearAllMocks()
   fetchMock.mockReset()
   global.fetch = fetchMock as unknown as typeof fetch
 })
@@ -46,6 +48,29 @@ describe("ScanTopicsEditor", () => {
       "aria-checked",
       "true",
     )
+  })
+
+  it("Undo puts back only the removed topic, into the list as it is now", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) })
+    render(<ScanTopicsEditor initialTopics={topics} />)
+    fireEvent.click(screen.getByRole("button", { name: 'Remove "Agility"' }))
+    await waitFor(() => expect(toastMock).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole("switch", { name: 'Search "Energy system conditioning" in the weekly scan' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByRole("switch")).not.toBeDisabled())
+
+    const undo = toastMock.mock.calls[0][1].action.onClick
+    undo()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).topics).toEqual([topics[0], { ...topics[1], active: false }])
+  })
+
+  it("refuses a second topic with the same name", async () => {
+    render(<ScanTopicsEditor initialTopics={topics} />)
+    fireEvent.change(screen.getByRole("textbox", { name: "New topic" }), { target: { value: " agility " } })
+    fireEvent.click(screen.getByRole("button", { name: "Add topic" }))
+    expect(toastMock.error).toHaveBeenCalledWith("There is already a topic with that name")
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it("adds a topic with keywords", async () => {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Check, Loader2, Pencil, Plus, Search, Sparkles, X } from "lucide-react"
@@ -8,7 +8,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
-import { MAX_SCAN_SEARCHES, scanQueriesFrom, searchesFor, type ScanTopic } from "@/lib/blog/scan-topics"
+import {
+  MAX_SCAN_SEARCHES,
+  MAX_SCAN_TOPICS,
+  scanQueriesFrom,
+  searchesFor,
+  type ScanTopic,
+} from "@/lib/blog/scan-topics"
 
 const ORIGIN_LABEL = { research: "From research", manual: "Your topic" } as const
 
@@ -24,9 +30,11 @@ function parseKeywords(text: string): string[] {
   ]
 }
 
-/** Why a topic as typed cannot be kept, or null. Mirrors scanTopicSchema's limits. */
-function topicProblem(name: string, keywords: string[]): string | null {
+/** Why a topic as typed cannot be kept, or null. Mirrors scanTopicSchema's limits; `others` are the rest. */
+function topicProblem(name: string, keywords: string[], others: ScanTopic[]): string | null {
   if (name.trim().length < 3) return "Give the topic a name of at least 3 letters"
+  if (others.some((t) => t.name.trim().toLowerCase() === name.trim().toLowerCase()))
+    return "There is already a topic with that name"
   if (keywords.length > 8) return "At most 8 keywords per topic"
   if (keywords.some((k) => k.length < 2 || k.length > 80)) return "Each keyword needs 2 to 80 letters"
   return null
@@ -39,6 +47,18 @@ function topicProblem(name: string, keywords: string[]): string | null {
 export function ScanTopicsEditor({ initialTopics }: { initialTopics: ScanTopic[] }) {
   const router = useRouter()
   const [topics, setTopics] = useState(initialTopics)
+  // A list from the server (after a save, a researched or suggested topic, or Back) replaces what is shown.
+  const [fromServer, setFromServer] = useState(initialTopics)
+  if (initialTopics !== fromServer) {
+    setFromServer(initialTopics)
+    setTopics(initialTopics)
+  }
+  // The list as it is now, for Undo (clicked later, from an older render) and for the one-save-at-a-time guard.
+  const latest = useRef(topics)
+  useEffect(() => {
+    latest.current = topics
+  }, [topics])
+  const busy = useRef(false)
   const [saving, setSaving] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [editing, setEditing] = useState<{ id: string; name: string; keywords: string } | null>(null)
@@ -48,10 +68,13 @@ export function ScanTopicsEditor({ initialTopics }: { initialTopics: ScanTopic[]
   const searches = scanQueriesFrom(topics).length
   const onCount = topics.filter((t) => t.active).length
 
-  /** Shows `next` at once and saves it; puts the list back if the save is refused. */
+  /** Shows `next` at once and saves it; puts the list back if the save is refused. One save at a time. */
   async function save(next: ScanTopic[], done?: string): Promise<boolean> {
-    const before = topics
+    if (busy.current) return false
+    busy.current = true
+    const before = latest.current
     setTopics(next)
+    latest.current = next
     setSaving(true)
     try {
       const res = await fetch("/api/admin/topic-suggestions/topics", {
@@ -62,12 +85,15 @@ export function ScanTopicsEditor({ initialTopics }: { initialTopics: ScanTopic[]
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? "Could not save the topics")
       if (done) toast.success(done)
+      router.refresh()
       return true
     } catch (e) {
       setTopics(before)
+      latest.current = before
       toast.error(e instanceof Error ? e.message : "Could not save the topics")
       return false
     } finally {
+      busy.current = false
       setSaving(false)
     }
   }
@@ -77,16 +103,25 @@ export function ScanTopicsEditor({ initialTopics }: { initialTopics: ScanTopic[]
   }
 
   function remove(topic: ScanTopic) {
-    const before = topics
+    const at = topics.findIndex((t) => t.id === topic.id)
+    // Undo puts back only this topic, into the list as it is when Undo is clicked.
+    const undo = () => {
+      const now = latest.current
+      if (!now.some((t) => t.id === topic.id)) void save([...now.slice(0, at), topic, ...now.slice(at)])
+    }
     void save(topics.filter((t) => t.id !== topic.id)).then((ok) => {
-      if (ok) toast(`Removed "${topic.name}"`, { action: { label: "Undo", onClick: () => void save(before) } })
+      if (ok) toast(`Removed "${topic.name}"`, { action: { label: "Undo", onClick: undo } })
     })
   }
 
   async function saveEdit() {
     if (!editing) return
     const keywords = parseKeywords(editing.keywords)
-    const problem = topicProblem(editing.name, keywords)
+    const problem = topicProblem(
+      editing.name,
+      keywords,
+      topics.filter((t) => t.id !== editing.id),
+    )
     if (problem) return toast.error(problem)
     const next = topics.map((t) => (t.id === editing.id ? { ...t, name: editing.name.trim(), keywords } : t))
     if (await save(next)) setEditing(null)
@@ -94,7 +129,8 @@ export function ScanTopicsEditor({ initialTopics }: { initialTopics: ScanTopic[]
 
   async function add() {
     const keywords = parseKeywords(newKeywords)
-    const problem = topicProblem(newName, keywords)
+    if (topics.length >= MAX_SCAN_TOPICS) return toast.error(`At most ${MAX_SCAN_TOPICS} topics. Remove one first.`)
+    const problem = topicProblem(newName, keywords, topics)
     if (problem) return toast.error(problem)
     const topic: ScanTopic = { id: crypto.randomUUID(), name: newName.trim(), keywords, active: true }
     if (await save([...topics, topic], "Added. The next weekly scan will search it.")) {

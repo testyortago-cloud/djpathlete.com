@@ -10,6 +10,7 @@ import { listStandards } from "@/lib/db/performance-standards"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { computeAge } from "@/lib/profile-share/data"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
+import { standardNumbers } from "@/lib/coach-intel/test-normalization"
 import { AthleteRadarCard } from "@/components/client/profile/athlete-radar-card"
 import { TrainingStreakHeatmap } from "@/components/client/profile/training-streak-heatmap"
 import { BadgeShelfCard } from "@/components/client/profile/badge-shelf-card"
@@ -61,15 +62,7 @@ export default async function ClientSnapshotPage() {
       <div className="grid gap-6 md:grid-cols-2">
         <AthleteRadarCard
           tests={tests}
-          // Only the numbers reach the browser, never the row ids or business id.
-          standards={standards.map(({ test_type, age_min, age_max, floor_value, trained_value, elite_value }) => ({
-            test_type,
-            age_min,
-            age_max,
-            floor_value,
-            trained_value,
-            elite_value,
-          }))}
+          standards={standardNumbers(standards)}
           age={computeAge(profile?.date_of_birth ?? null)}
         />
         <TrainingStreakHeatmap sessions={sessions} />
