@@ -22,7 +22,9 @@ import { weekOverWeek } from "@/lib/coach-intel/week-over-week"
 import { ACUTE_WINDOW_DAYS, CHRONIC_WINDOW_DAYS } from "@/lib/coach-intel/thresholds"
 import { computeBadges } from "@/lib/badges"
 import { AthletePerformanceHub } from "@/components/admin/performance/athlete-performance-hub"
+import QRCode from "qrcode"
 import { getUserById } from "@/lib/db/users"
+import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { signAthleteProfileToken } from "@/lib/profile-share/token"
 
 function addDays(iso: string, days: number): string {
@@ -54,6 +56,12 @@ export default async function AdminPerformanceHubPage({
   const clientName = reportClient
     ? `${reportClient.first_name ?? ""} ${reportClient.last_name ?? ""}`.trim() || reportClient.email
     : ""
+  // The report's share dialog (QR, link, cover photo) lives here, next to the results. A QR
+  // failure only drops the dialog.
+  const [reportQr, clientProfile] = await Promise.all([
+    reportUrl ? QRCode.toDataURL(reportUrl, { width: 320, margin: 1 }).catch(() => null) : Promise.resolve(null),
+    getProfileByUserId(id).catch(() => null),
+  ])
 
   const today = new Date().toISOString().slice(0, 10)
   const from = addDays(today, -(CHRONIC_WINDOW_DAYS + 7))
@@ -110,6 +118,16 @@ export default async function AdminPerformanceHubPage({
       tab={tab}
       reportUrl={reportUrl}
       clientName={clientName}
+      share={
+        reportUrl && reportQr
+          ? {
+              qrDataUrl: reportQr,
+              profileUrl: reportUrl,
+              reportPhotoUrl: clientProfile?.report_photo_url ?? null,
+              testCount: fullTests.length,
+            }
+          : null
+      }
       latestReadiness={latestReadiness}
       readinessTrend={trend}
       activeInjuries={activeInjuries}

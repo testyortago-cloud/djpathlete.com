@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PerformanceActionButtons } from "./performance-action-buttons"
+import { AthleteProfileBar, type ReportShare } from "./athlete-profile-bar"
 import type {
   DailyReadiness,
   Injury,
@@ -84,12 +85,15 @@ export function AthletePerformanceHub({
   profile,
   reportUrl,
   clientName,
+  share = null,
 }: {
   clientUserId: string
   tab: string
   /** Public test-report URL, or null when the client isn't eligible for one. */
   reportUrl: string | null
   clientName: string
+  /** The test report's share link and QR (AthleteProfileBar); null when there is none. */
+  share?: ReportShare | null
   latestReadiness: DailyReadiness | null
   readinessTrend: { date: string; readiness_score: number }[]
   activeInjuries: Injury[]
@@ -131,6 +135,8 @@ export function AthletePerformanceHub({
         </div>
         <PerformanceActionButtons clientUserId={clientUserId} reportUrl={reportUrl} />
       </div>
+
+      <AthleteProfileBar clientUserId={clientUserId} clientName={clientName} share={share} />
 
       <Tabs defaultValue={tab}>
         <TabsList

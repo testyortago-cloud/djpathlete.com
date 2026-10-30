@@ -10,6 +10,7 @@ import {
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import {
+  Activity,
   ArrowLeft,
   User,
   Mail,
@@ -31,7 +32,6 @@ import {
   Briefcase,
   Zap,
   Ticket,
-  LayoutDashboard,
 } from "lucide-react"
 import { requirePermission } from "@/lib/permissions/guard"
 import { canViewClient } from "@/lib/permissions/client-scope"
@@ -79,9 +79,6 @@ import {
   sessionMembershipsEnabled,
 } from "@/lib/packs/flags"
 import { PersonalCheckinLinkDialog } from "@/components/admin/packs/PersonalCheckinLinkDialog"
-import { signAthleteProfileToken } from "@/lib/profile-share/token"
-import { listByUser as listPerformanceTests } from "@/lib/db/performance-tests"
-import { AthleteProfileLinkDialog } from "@/components/admin/profile-share/AthleteProfileLinkDialog"
 import { listRecurringForClient } from "@/lib/db/recurring-sessions"
 import { getDefaultPaymentMethod } from "@/lib/db/payment-methods"
 import { getActiveMembershipForUser } from "@/lib/db/client-memberships"
@@ -716,25 +713,6 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     }
   }
 
-  // Public test-report share link + QR (permanent HMAC). Mirrors the public
-  // page's only gate — an active client; no client_profiles row required.
-  let athleteProfileUrl: string | null = null
-  let athleteProfileQr: string | null = null
-  if (user.role === "client" && user.status === "active") {
-    try {
-      const base = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "https://www.darrenjpaul.com"
-      athleteProfileUrl = `${base}/athlete/${signAthleteProfileToken(id)}`
-      athleteProfileQr = await QRCode.toDataURL(athleteProfileUrl, { width: 320, margin: 1 })
-    } catch (err) {
-      console.error("Athlete profile link generation failed:", err)
-      athleteProfileUrl = null
-      athleteProfileQr = null
-    }
-  }
-
-  // Drives the share dialog's "this report will look thin" warning.
-  const performanceTestCount = (await listPerformanceTests(id).catch(() => [])).length
-
   const showStandingSlots = await recurringSessionsEnabled()
   let standingSlots: RecurringSession[] = []
   if (showStandingSlots) {
@@ -893,22 +871,13 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             clientName={`${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email}
           />
         )}
-        {athleteProfileQr && athleteProfileUrl && (
-          <AthleteProfileLinkDialog
-            qrDataUrl={athleteProfileQr}
-            profileUrl={athleteProfileUrl}
-            clientName={`${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email}
-            testCount={performanceTestCount}
-            clientUserId={id}
-            reportPhotoUrl={profile?.report_photo_url ?? null}
-          />
-        )}
+        {/* The Arena card, the test report's share link and the standards live on Performance, with the results. */}
         <Link
-          href={`/admin/clients/${id}/arena`}
+          href={`/admin/clients/${id}/performance`}
           className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface/50 transition-colors"
         >
-          <LayoutDashboard className="size-4 text-primary" strokeWidth={1.5} />
-          Arena card
+          <Activity className="size-4 text-primary" strokeWidth={1.5} />
+          Performance
         </Link>
         <Link
           href={`/admin/clients/${id}/assessments`}
