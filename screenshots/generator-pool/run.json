@@ -1,0 +1,20 @@
+{
+  "app": "http://localhost:3051",
+  "results": [
+    {
+      "name": "Generate Program sent a request (caught and aborted)",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "it carries the 3 pool exercise ids",
+      "ok": true,
+      "evidence": "[\"96987f90-dbae-4995-bb9a-a127e392e5e1\",\"f6136968-fc56-4e0e-9b60-9f33ed62c6e5\",\"9783ab67-13b3-472b-a807-209c52f3f991\"]"
+    },
+    {
+      "name": "pool_mode is \"strict\" (Only use the pool on)",
+      "ok": true,
+      "evidence": "strict"
+    }
+  ]
+}
