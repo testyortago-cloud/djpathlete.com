@@ -1,0 +1,105 @@
+{
+  "startedAt": "2026-10-30T12:22:17.581Z",
+  "app": "http://localhost:3051",
+  "assertions": [
+    {
+      "name": "admin session is signed in on the program page",
+      "ok": true,
+      "evidence": "http://localhost:3051/admin/programs/d9802cb7-fba3-4bb8-80c8-669bc1b73ee5"
+    },
+    {
+      "name": "no client is on the program: the Client week access panel is absent",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "programs.hidden_weeks is [2]",
+      "ok": true,
+      "evidence": "[2]"
+    },
+    {
+      "name": "client session is signed in on /client/workouts",
+      "ok": true,
+      "evidence": "http://localhost:3051/client/workouts"
+    },
+    {
+      "name": "client HTML does NOT contain the week-2-only exercise \"Split squat banded\"",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "control: client HTML DOES contain the week-1 exercise \"Banded rotating core explosive\"",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "client stepping to week 2 sees \"Week 2 isn't available yet\"",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "direct POST /api/client/workouts/session week 2 returns 403",
+      "ok": true,
+      "evidence": "status 403"
+    },
+    {
+      "name": "control: direct POST week 1 returns 200",
+      "ok": true,
+      "evidence": "status 200"
+    },
+    {
+      "name": "after Show now, client HTML DOES contain the week-2 exercise \"Split squat banded\"",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "after Show now, POST week 2 returns 200",
+      "ok": true,
+      "evidence": "status 200"
+    },
+    {
+      "name": "Show Week empties programs.hidden_weeks",
+      "ok": true,
+      "evidence": "[]"
+    },
+    {
+      "name": "no uncaught page errors",
+      "ok": true,
+      "evidence": ""
+    }
+  ],
+  "beats": [
+    "[+   3.0s] program \"4-Week Muscle Gain & Flexibility & Endurance & Sport Specific Program\"; week-1 name \"Banded rotating core explosive\"; week-2-only name \"Split squat banded\"",
+    "[+  12.8s] PASS admin session is signed in on the program page -- http://localhost:3051/admin/programs/d9802cb7-fba3-4bb8-80c8-669bc1b73ee5",
+    "[+  12.9s] PASS no client is on the program: the Client week access panel is absent",
+    "[+  14.9s] coach clicked Hide Week on week 2 through the UI",
+    "[+  15.6s] PASS programs.hidden_weeks is [2] -- [2]",
+    "[+  16.6s] shot 01-hide-week-no-client",
+    "[+  17.0s] seeded assignment 6d95ff24-16f7-445d-bd3a-053c4e46c33f (client added to the program by insert)",
+    "[+  27.0s] PASS client session is signed in on /client/workouts -- http://localhost:3051/client/workouts",
+    "[+  34.4s] client accepted the liability waiver through the UI (removed again in cleanup)",
+    "[+  39.7s] PASS client HTML does NOT contain the week-2-only exercise \"Split squat banded\"",
+    "[+  39.7s] PASS control: client HTML DOES contain the week-1 exercise \"Banded rotating core explosive\"",
+    "[+  40.1s] PASS client stepping to week 2 sees \"Week 2 isn't available yet\"",
+    "[+  40.7s] shot 02-client-hidden-week",
+    "[+  43.0s] PASS direct POST /api/client/workouts/session week 2 returns 403 -- status 403",
+    "[+  45.3s] PASS control: direct POST week 1 returns 200 -- status 200",
+    "[+  54.9s] shot 03-open-for-one-client",
+    "[+  58.0s] coach clicked Show now for the client through the UI",
+    "[+  63.9s] PASS after Show now, client HTML DOES contain the week-2 exercise \"Split squat banded\"",
+    "[+  68.1s] PASS after Show now, POST week 2 returns 200 -- status 200",
+    "[+  76.1s] PASS Show Week empties programs.hidden_weeks -- []",
+    "[+  76.1s] PASS no uncaught page errors",
+    "[+  76.6s] cleanup workout_sessions: ok",
+    "[+  77.3s] cleanup program_week_access: ok",
+    "[+  77.7s] cleanup program_assignments: ok",
+    "[+  78.1s] cleanup user_consents: ok",
+    "[+  78.5s] cleanup programs.hidden_weeks restore: ok",
+    "[+  79.2s] cleanup verified: hidden_weeks [], assignments left 0"
+  ],
+  "shots": [
+    "01-hide-week-no-client",
+    "02-client-hidden-week",
+    "03-open-for-one-client"
+  ]
+}
