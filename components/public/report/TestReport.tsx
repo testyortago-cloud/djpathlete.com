@@ -1,5 +1,6 @@
 import type { TestReportData } from "@/lib/test-report/data"
 import { buildReportScores } from "@/lib/test-report/scoring"
+import { pickStandard } from "@/lib/coach-intel/test-normalization"
 import { ReportPageOne } from "./ReportPageOne"
 import { ReportPageTwo } from "./ReportPageTwo"
 import { ReportShell, type ReportTheme } from "./ReportShell"
@@ -18,7 +19,7 @@ export type { ReportTheme }
  * sheet — a blank page reads as broken, not premium.
  */
 export function TestReport({ data, theme = "light" }: { data: TestReportData; theme?: ReportTheme }) {
-  const scores = buildReportScores(data.tests)
+  const scores = buildReportScores(data.tests, (t) => pickStandard(data.standards, t, data.age))
   const hasTests = data.tests.length > 0
 
   return (

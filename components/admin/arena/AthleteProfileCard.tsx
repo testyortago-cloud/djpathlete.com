@@ -1,4 +1,5 @@
 import type { AthleteProfileData } from "@/lib/profile-share/data"
+import type { StandardRow } from "@/lib/coach-intel/test-normalization"
 import { buildProgressions } from "@/lib/profile-share/progression"
 import { AthleteHero } from "./AthleteHero"
 import { StatTiles } from "./StatTiles"
@@ -24,7 +25,14 @@ import { ArenaTabs, type ArenaTab } from "./ArenaTabs"
  * this athlete are omitted; one populated tab renders without a tab bar; the
  * PDF prints every tab stacked (see the arena print rules in globals.css).
  */
-export function AthleteProfileCard({ data }: { data: AthleteProfileData }) {
+export function AthleteProfileCard({
+  data,
+  standards = [],
+}: {
+  data: AthleteProfileData
+  /** The coach's own Trained / Elite standards (performance_standards); built-in ones fill the gaps. */
+  standards?: StandardRow[]
+}) {
   const progressions = buildProgressions(data.radarTests)
   const hasRecords = data.gymRecords.length > 0 || data.fieldRecords.length > 0
   const hasProgram = data.program !== null || data.career.length > 0
@@ -40,7 +48,7 @@ export function AthleteProfileCard({ data }: { data: AthleteProfileData }) {
         <>
           <ProgressionSection progressions={progressions} />
           <TrainingLoadChart data={data.monthlyTraining} />
-          <AthleteRadarSection tests={data.radarTests} />
+          <AthleteRadarSection tests={data.radarTests} standards={standards} age={data.age} />
         </>
       ),
     })
@@ -52,7 +60,13 @@ export function AthleteProfileCard({ data }: { data: AthleteProfileData }) {
       content: (
         <>
           {hasRecords && (
-            <RecordsSection gym={data.gymRecords} field={data.fieldRecords} weightUnit={data.weightUnit} />
+            <RecordsSection
+              gym={data.gymRecords}
+              field={data.fieldRecords}
+              weightUnit={data.weightUnit}
+              standards={standards}
+              age={data.age}
+            />
           )}
           <TestTrendCharts progressions={progressions} />
           <AssessmentsSection assessments={data.assessments} />

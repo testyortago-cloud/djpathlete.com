@@ -15,6 +15,7 @@ import {
   ChevronRight,
   SlidersHorizontal,
   Building2,
+  Gauge,
 } from "lucide-react"
 import Link from "next/link"
 import { auth } from "@/lib/auth"
@@ -131,6 +132,7 @@ export default async function SettingsPage() {
           {[
             { label: "Business Settings", href: "/admin/businesses", icon: Building2 },
             { label: "AI Policy", href: "/admin/settings/ai-policy", icon: Sparkles },
+            { label: "Trained & Elite Standards", href: "/admin/settings/performance-standards", icon: Gauge },
             { label: "Platform Connections", href: "/admin/platform-connections", icon: Link2 },
             { label: "Automation Rules", href: "/admin/automation", icon: PlayCircle },
             { label: "Legal Documents", href: "/admin/legal", icon: Scale },

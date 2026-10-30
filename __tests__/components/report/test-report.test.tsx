@@ -15,6 +15,7 @@ const base: TestReportData = {
   testCount: 4,
   prCount: 2,
   monthsTracked: 6,
+  standards: [],
   tests: [
     { testType: "cmj", resultValue: 40, resultUnit: "cm", customName: null, bodyWeightKg: 84, testDate: "2026-01-01", isPr: false },
     { testType: "cmj", resultValue: 50, resultUnit: "cm", customName: null, bodyWeightKg: 84, testDate: "2026-07-01", isPr: true },

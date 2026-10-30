@@ -15,6 +15,7 @@ const base: TestReportData = {
   testCount: 2,
   prCount: 0,
   monthsTracked: 6,
+  standards: [],
   tests: [],
   assessments: [],
 }

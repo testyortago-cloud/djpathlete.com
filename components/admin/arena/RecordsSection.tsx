@@ -4,6 +4,27 @@ import { SectionHeading } from "./SectionHeading"
 import type { GymRecord, FieldRecord } from "@/lib/profile-share/data"
 import type { WeightUnit } from "@/types/database"
 import { displayWeight } from "@/lib/weight-utils"
+import { normalize, pickStandard, referenceTargets, type StandardRow } from "@/lib/coach-intel/test-normalization"
+import { bandFor, type Band } from "@/lib/test-report/scoring"
+import { BandPill } from "@/components/public/report/panels/BandPill"
+
+/** A record against the Trained / Elite standard it is judged by. */
+interface Judged {
+  trained: string
+  elite: string
+  band: Band
+}
+
+const fmt = (n: number) => (Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2))))
+
+/** null for a test with no standard (custom tests), or a 1RM logged without a body weight. */
+function judge(r: FieldRecord, standards: StandardRow[], age: number | null): Judged | null {
+  const standard = pickStandard(standards, r.testType, age)
+  const targets = referenceTargets(r.testType, r.bodyWeightKg, standard)
+  const score = normalize(r.testType, r.value, r.bodyWeightKg, standard)
+  if (!targets || score === null) return null
+  return { trained: `${fmt(targets.trained)} ${r.unit}`, elite: `${fmt(targets.elite)} ${r.unit}`, band: bandFor(score) }
+}
 
 const DAY_MS = 86_400_000
 const MONTH_YEAR = new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric", timeZone: "UTC" })
@@ -26,12 +47,14 @@ function RecordRow({
   value,
   date,
   pct,
+  judged = null,
 }: {
   rank: number
   label: string
   value: string
   date: string
   pct: number | null
+  judged?: Judged | null
 }) {
   return (
     <li className="border-b border-border/60 py-3 last:border-b-0">
@@ -51,6 +74,16 @@ function RecordRow({
           {MONTH_YEAR.format(new Date(date))}
         </span>
       </div>
+      {judged && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 pl-7">
+          <p className="whitespace-nowrap font-mono text-[10px] tracking-wide text-muted-foreground">
+            Trained {judged.trained} · Elite {judged.elite}
+          </p>
+          <span className="ml-auto">
+            <BandPill band={judged.band} />
+          </span>
+        </div>
+      )}
       {pct !== null && (
         <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-border/60">
           <div
@@ -76,10 +109,15 @@ export function RecordsSection({
   gym,
   field,
   weightUnit,
+  standards = [],
+  age = null,
 }: {
   gym: GymRecord[]
   field: FieldRecord[]
   weightUnit: WeightUnit
+  /** The coach's Trained / Elite standards; field records are judged against them. */
+  standards?: StandardRow[]
+  age?: number | null
 }) {
   const both = gym.length > 0 && field.length > 0
   // Whole numbers by design on this showcase page, but the conversion itself
@@ -120,6 +158,7 @@ export function RecordsSection({
                     value={`${r.value} ${r.unit}`}
                     date={r.date}
                     pct={null}
+                    judged={judge(r, standards, age)}
                   />
                 ))}
               </ul>

@@ -3,6 +3,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 vi.mock("@/lib/db/users", () => ({ getUserById: vi.fn() }))
 vi.mock("@/lib/db/client-profiles", () => ({ getProfileByUserId: vi.fn() }))
 vi.mock("@/lib/db/performance-tests", () => ({ listByUser: vi.fn() }))
+vi.mock("@/lib/db/performance-standards", () => ({
+  listStandards: vi.fn(async () => [
+    {
+      id: "std-row-1",
+      business_id: "biz-A",
+      test_type: "cmj",
+      age_min: 12,
+      age_max: 15,
+      floor_value: 20,
+      trained_value: 35,
+      elite_value: 50,
+    },
+  ]),
+}))
 vi.mock("@/lib/profile-share/data", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/profile-share/data")>()
   return { ...actual, loadPublicAssessments: vi.fn() }
@@ -13,6 +27,7 @@ import { getUserById } from "@/lib/db/users"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { listByUser } from "@/lib/db/performance-tests"
 import { loadPublicAssessments } from "@/lib/profile-share/data"
+import { listStandards } from "@/lib/db/performance-standards"
 
 const activeClient = {
   id: "u1",
@@ -58,7 +73,7 @@ beforeEach(() => {
 
 describe("getTestReportData", () => {
   it("assembles identity, tests and derived counts", async () => {
-    const d = await getTestReportData("u1")
+    const d = await getTestReportData("u1", "biz-A")
     expect(d).not.toBeNull()
     expect(d!.name).toEqual({ first: "Marcus", last: "Johnson" })
     expect(d!.sport).toBe("Basketball")
@@ -70,8 +85,19 @@ describe("getTestReportData", () => {
     expect(d!.asOf).toBe("2026-06-01")
   })
 
+  it("carries the business's own standards, as numbers only (no row or business ids)", async () => {
+    const d = await getTestReportData("u1", "biz-A")
+    expect(listStandards).toHaveBeenCalledWith("biz-A")
+    expect(d!.standards).toEqual([
+      { test_type: "cmj", age_min: 12, age_max: 15, floor_value: 20, trained_value: 35, elite_value: 50 },
+    ])
+    const serialized = JSON.stringify(d)
+    expect(serialized).not.toContain("std-row-1")
+    expect(serialized).not.toContain("biz-A")
+  })
+
   it("NEVER leaks coach-private fields into the public payload", async () => {
-    const d = await getTestReportData("u1")
+    const d = await getTestReportData("u1", "biz-A")
     const serialized = JSON.stringify(d)
     expect(serialized).not.toContain("INTERNAL")
     expect(serialized).not.toContain("private-form-check")
@@ -85,22 +111,22 @@ describe("getTestReportData", () => {
 
   it("returns null for a non-client, an inactive client, or a missing user", async () => {
     vi.mocked(getUserById).mockResolvedValue({ ...activeClient, role: "admin" } as never)
-    expect(await getTestReportData("u1")).toBeNull()
+    expect(await getTestReportData("u1", "biz-A")).toBeNull()
 
     vi.mocked(getUserById).mockResolvedValue({ ...activeClient, status: "inactive" } as never)
-    expect(await getTestReportData("u1")).toBeNull()
+    expect(await getTestReportData("u1", "biz-A")).toBeNull()
 
     vi.mocked(getUserById).mockResolvedValue(null as never)
-    expect(await getTestReportData("u1")).toBeNull()
+    expect(await getTestReportData("u1", "biz-A")).toBeNull()
 
     vi.mocked(getUserById).mockRejectedValue(new Error("db down"))
-    expect(await getTestReportData("u1")).toBeNull()
+    expect(await getTestReportData("u1", "biz-A")).toBeNull()
   })
 
   it("degrades to empty sections when a data source throws", async () => {
     vi.mocked(listByUser).mockRejectedValue(new Error("timeout"))
     vi.mocked(loadPublicAssessments).mockRejectedValue(new Error("timeout"))
-    const d = await getTestReportData("u1")
+    const d = await getTestReportData("u1", "biz-A")
     expect(d).not.toBeNull()
     expect(d!.tests).toEqual([])
     expect(d!.assessments).toEqual([])
@@ -109,7 +135,7 @@ describe("getTestReportData", () => {
 
   it("renders without a client_profiles row", async () => {
     vi.mocked(getProfileByUserId).mockResolvedValue(null as never)
-    const d = await getTestReportData("u1")
+    const d = await getTestReportData("u1", "biz-A")
     expect(d!.sport).toBeNull()
     expect(d!.age).toBeNull()
   })
@@ -118,19 +144,19 @@ describe("getTestReportData", () => {
     vi.mocked(getUserById).mockResolvedValue({ ...activeClient, avatar_url: "https://cdn/avatar.jpg" } as never)
 
     vi.mocked(getProfileByUserId).mockResolvedValue({ report_photo_url: "https://cdn/report.jpg" } as never)
-    expect((await getTestReportData("u1"))!.avatarUrl).toBe("https://cdn/report.jpg")
+    expect((await getTestReportData("u1", "biz-A"))!.avatarUrl).toBe("https://cdn/report.jpg")
 
     // No report photo → the avatar carries the cover.
     vi.mocked(getProfileByUserId).mockResolvedValue({ report_photo_url: null } as never)
-    expect((await getTestReportData("u1"))!.avatarUrl).toBe("https://cdn/avatar.jpg")
+    expect((await getTestReportData("u1", "biz-A"))!.avatarUrl).toBe("https://cdn/avatar.jpg")
 
     // An empty string is "no photo", not a valid src that would render broken.
     vi.mocked(getProfileByUserId).mockResolvedValue({ report_photo_url: "" } as never)
-    expect((await getTestReportData("u1"))!.avatarUrl).toBe("https://cdn/avatar.jpg")
+    expect((await getTestReportData("u1", "biz-A"))!.avatarUrl).toBe("https://cdn/avatar.jpg")
 
     // Neither → null, so the cover uses the branded gradient.
     vi.mocked(getUserById).mockResolvedValue({ ...activeClient, avatar_url: null } as never)
-    expect((await getTestReportData("u1"))!.avatarUrl).toBeNull()
+    expect((await getTestReportData("u1", "biz-A"))!.avatarUrl).toBeNull()
   })
 
   it("counts months tracked between the first and last test", async () => {
@@ -138,7 +164,7 @@ describe("getTestReportData", () => {
       { ...rawTest, id: "t0", test_date: "2026-01-15", is_pr: false },
       { ...rawTest, id: "t1", test_date: "2026-07-01" },
     ] as never)
-    const d = await getTestReportData("u1")
+    const d = await getTestReportData("u1", "biz-A")
     expect(d!.monthsTracked).toBe(6)
     expect(d!.asOf).toBe("2026-07-01")
     expect(d!.testCount).toBe(2)

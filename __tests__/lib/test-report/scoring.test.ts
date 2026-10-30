@@ -42,13 +42,14 @@ describe("buildReportScores", () => {
   })
 
   it("scores a jump against its reference range", () => {
-    // cmj range is 25-65 cm, higher is better. 45 sits exactly halfway → 50.
+    // cmj range is 25-65 cm, higher is better. 45 is the built-in Trained standard
+    // (halfway), which scores TRAINED_SCORE = 65 since 2026-10-30 (was 50): at Trained is green.
     const s = buildReportScores([pt({ testType: "cmj", resultValue: 45, testDate: "2026-06-01" })])
-    expect(s.tests[0].score).toBe(50)
+    expect(s.tests[0].score).toBe(65)
     expect(s.categories).toHaveLength(1)
     expect(s.categories[0].category).toBe("Power")
-    expect(s.categories[0].score).toBe(50)
-    expect(s.athleteScore).toBe(50)
+    expect(s.categories[0].score).toBe(65)
+    expect(s.athleteScore).toBe(65)
   })
 
   it("treats a FASTER sprint as an improvement even though the number went down", () => {
@@ -119,8 +120,8 @@ describe("buildReportScores", () => {
     const withBw = buildReportScores([
       pt({ testType: "back_squat_1rm", resultValue: 150, resultUnit: "kg", bodyWeightKg: 100, testDate: "2026-06-01" }),
     ])
-    // back_squat_1rm range is 0.5-2.5 x bodyweight. 1.5x sits halfway → 50.
-    expect(withBw.tests[0].score).toBe(50)
+    // back_squat_1rm range is 0.5-2.5 x bodyweight. 1.5x is the built-in Trained standard → 65.
+    expect(withBw.tests[0].score).toBe(65)
 
     const withoutBw = buildReportScores([
       pt({ testType: "back_squat_1rm", resultValue: 150, resultUnit: "kg", testDate: "2026-06-01" }),
@@ -214,14 +215,15 @@ describe("buildReportScores", () => {
   it("blames the lowest-scoring test in the category, not just any member", () => {
     const s = buildReportScores([
       pt({ testType: "cmj", resultValue: 65, testDate: "2026-06-01" }), // Power 100
-      // Strength: pull_up_max 20 of 0-25 = 80; push_up_max 15 of 10-80 = 7.
+      // Strength: pull_up_max 20 (Trained 12.5, Elite 25) = 86; push_up_max 15 is 5/35 of the way
+      // from 10 to Trained 45, x 65 = 9.
       pt({ testType: "pull_up_max", resultValue: 20, resultUnit: "reps", testDate: "2026-06-01" }),
       pt({ testType: "push_up_max", resultValue: 15, resultUnit: "reps", testDate: "2026-06-01" }),
     ])
     const strength = s.focalPoints.find((f) => f.category === "Strength")
     expect(strength).toBeDefined()
     expect(strength!.culprit.label).toBe("Push-up Max")
-    expect(strength!.culprit.score).toBe(7)
+    expect(strength!.culprit.score).toBe(9)
   })
 
   it("returns no focal points for no tests", () => {

@@ -8,7 +8,7 @@ import {
   RadarChart,
   ResponsiveContainer,
 } from "recharts"
-import { RADAR_CATEGORIES, normalize } from "@/lib/coach-intel/test-normalization"
+import { RADAR_CATEGORIES, normalize, pickStandard, type StandardRow } from "@/lib/coach-intel/test-normalization"
 import { SectionHeading } from "./SectionHeading"
 import type { TestType } from "@/types/database"
 import type { RadarTestPoint } from "@/lib/profile-share/data"
@@ -18,7 +18,15 @@ import type { RadarTestPoint } from "@/lib/profile-share/data"
  * dashboard's athlete-radar-card). Self-hides when no category has a score.
  * Colors come from the `.athlete-arena` variable scope.
  */
-export function AthleteRadarSection({ tests }: { tests: RadarTestPoint[] }) {
+export function AthleteRadarSection({
+  tests,
+  standards = [],
+  age = null,
+}: {
+  tests: RadarTestPoint[]
+  standards?: StandardRow[]
+  age?: number | null
+}) {
   const data = Object.entries(RADAR_CATEGORIES).map(([category, types]) => {
     let best: number | null = null
     for (const t of types as TestType[]) {
@@ -26,7 +34,7 @@ export function AthleteRadarSection({ tests }: { tests: RadarTestPoint[] }) {
         .filter((x) => x.testType === t)
         .sort((a, b) => b.testDate.localeCompare(a.testDate))
       if (candidates.length === 0) continue
-      const score = normalize(t, candidates[0].resultValue, candidates[0].bodyWeightKg)
+      const score = normalize(t, candidates[0].resultValue, candidates[0].bodyWeightKg, pickStandard(standards, t, age))
       if (score !== null && (best === null || score > best)) best = score
     }
     return { category, score: best ?? 0 }

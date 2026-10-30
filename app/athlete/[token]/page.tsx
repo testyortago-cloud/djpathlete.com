@@ -4,6 +4,7 @@ import type { Metadata } from "next"
 import { verifyAthleteProfileToken } from "@/lib/profile-share/token"
 import { getTestReportData, type TestReportData } from "@/lib/test-report/data"
 import { TestReport } from "@/components/public/report/TestReport"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 export const dynamic = "force-dynamic"
 
@@ -11,7 +12,8 @@ export const dynamic = "force-dynamic"
 const resolveData = cache(async (token: string): Promise<TestReportData | null> => {
   const v = verifyAthleteProfileToken(token)
   if (!v.valid) return null
-  return getTestReportData(v.clientUserId)
+  // The coach's standards belong to the business this host serves.
+  return getTestReportData(v.clientUserId, await resolvePublicTenant())
 })
 
 export async function generateMetadata({

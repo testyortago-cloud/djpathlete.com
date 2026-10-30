@@ -3,6 +3,8 @@ import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { listByUser } from "@/lib/db/performance-tests"
 import { loadPublicAssessments, computeAge, type PublicAssessment } from "@/lib/profile-share/data"
 import type { ReportTestPoint } from "./scoring"
+import { listStandards } from "@/lib/db/performance-standards"
+import type { StandardRow } from "@/lib/coach-intel/test-normalization"
 import type { PerformanceTest } from "@/types/database"
 
 export interface TestReportData {
@@ -23,6 +25,8 @@ export interface TestReportData {
   monthsTracked: number
   tests: ReportTestPoint[]
   assessments: PublicAssessment[]
+  /** The coach's own Trained / Elite standards; empty = the built-in ones. */
+  standards: StandardRow[]
 }
 
 function settle<T>(r: PromiseSettledResult<T>, fallback: T): T {
@@ -47,7 +51,7 @@ function monthsBetween(firstIso: string, lastIso: string): number {
  * serialization would embed both in the public HTML payload, so they are never
  * copied across. Same rule as lib/profile-share/data.ts.
  */
-export async function getTestReportData(clientUserId: string): Promise<TestReportData | null> {
+export async function getTestReportData(clientUserId: string, businessId: string): Promise<TestReportData | null> {
   let user
   try {
     user = await getUserById(clientUserId)
@@ -60,9 +64,10 @@ export async function getTestReportData(clientUserId: string): Promise<TestRepor
   // an empty sport/position/age line under the athlete's name.
   const profile = await getProfileByUserId(clientUserId).catch(() => null)
 
-  const [testsR, assessmentsR] = await Promise.allSettled([
+  const [testsR, assessmentsR, standardsR] = await Promise.allSettled([
     listByUser(clientUserId),
     loadPublicAssessments(clientUserId),
+    listStandards(businessId),
   ])
 
   const raw = settle(testsR, [] as PerformanceTest[])
@@ -93,5 +98,14 @@ export async function getTestReportData(clientUserId: string): Promise<TestRepor
     monthsTracked: dates.length > 1 ? monthsBetween(dates[0], dates[dates.length - 1]) : 0,
     tests,
     assessments: settle(assessmentsR, [] as PublicAssessment[]),
+    // Only the numbers: never the row ids or business id, on a public page.
+    standards: settle(standardsR, [] as StandardRow[]).map((s) => ({
+      test_type: s.test_type,
+      age_min: s.age_min,
+      age_max: s.age_max,
+      floor_value: s.floor_value,
+      trained_value: s.trained_value,
+      elite_value: s.elite_value,
+    })),
   }
 }

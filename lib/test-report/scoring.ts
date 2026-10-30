@@ -1,10 +1,13 @@
 import {
+  defaultStandard,
   normalize,
   referenceTargets,
   testDirection,
   RADAR_CATEGORIES,
+  TRAINED_SCORE,
   type RadarCategory,
   type ReferenceTargets,
+  type Standard,
 } from "@/lib/coach-intel/test-normalization"
 import { TEST_TYPE_LABELS } from "@/lib/validators/performance-test"
 import type { TestType } from "@/types/database"
@@ -31,7 +34,8 @@ export type Band = "strength" | "developing" | "priority"
  * thresholds, so these are DJP's own and deliberately easy to retune — they are
  * the only place a judgment of "good" is encoded.
  */
-export const BAND_STRENGTH_MIN = 65
+/** A result at the Trained standard scores exactly this (normalize), so it reads as green. */
+export const BAND_STRENGTH_MIN = TRAINED_SCORE
 export const BAND_DEVELOPING_MIN = 40
 
 export const BAND_LABELS: Record<Band, string> = {
@@ -168,9 +172,13 @@ function lowestScoring(members: ScoredTest[]): ScoredTest {
 /**
  * Everything the report judges, derived from the athlete's own logged tests.
  * Pure: no I/O, no clock. Unscorable tests stay in `tests` (a test the athlete
- * did must appear) but are excluded from every score.
+ * did must appear) but are excluded from every score. `standardFor` is the coach's
+ * standard for this athlete (pickStandard); the built-in one when omitted.
  */
-export function buildReportScores(points: ReportTestPoint[]): ReportScores {
+export function buildReportScores(
+  points: ReportTestPoint[],
+  standardFor: (testType: TestType) => Standard | null = defaultStandard,
+): ReportScores {
   const byKey = new Map<string, ReportTestPoint[]>()
   for (const p of points) {
     const k = groupKey(p)
@@ -191,11 +199,17 @@ export function buildReportScores(points: ReportTestPoint[]): ReportScores {
       unit: latest.resultUnit,
       latestDate: latest.testDate,
       isPr: latest.isPr,
-      score: latest.testType === "custom" ? null : normalize(latest.testType, latest.resultValue, latest.bodyWeightKg),
+      score:
+        latest.testType === "custom"
+          ? null
+          : normalize(latest.testType, latest.resultValue, latest.bodyWeightKg, standardFor(latest.testType)),
       deltaPct: deltaFor(sorted),
       previous: sorted.length > 1 ? sorted[sorted.length - 2].resultValue : null,
       previousDate: sorted.length > 1 ? sorted[sorted.length - 2].testDate : null,
-      targets: latest.testType === "custom" ? null : referenceTargets(latest.testType, latest.bodyWeightKg),
+      targets:
+        latest.testType === "custom"
+          ? null
+          : referenceTargets(latest.testType, latest.bodyWeightKg, standardFor(latest.testType)),
       points: sorted.map((t) => t.resultValue),
     })
   }

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 vi.mock("@/lib/test-report/data", () => ({ getTestReportData: vi.fn() }))
+// The coach's standards are read for the business this host serves.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: vi.fn(async () => "biz-host") }))
 vi.mock("next/navigation", () => ({
   notFound: vi.fn(() => {
     throw new Error("NEXT_NOT_FOUND")
@@ -23,6 +25,7 @@ const data = {
   monthsTracked: 6,
   tests: [],
   assessments: [],
+  standards: [],
 }
 
 beforeEach(() => {
@@ -35,7 +38,7 @@ describe("/athlete/[token]", () => {
     const token = signAthleteProfileToken("u1")
     const el = await AthleteProfilePage({ params: Promise.resolve({ token }), searchParams: Promise.resolve({}) })
     expect(el).toBeTruthy()
-    expect(getTestReportData).toHaveBeenCalledWith("u1")
+    expect(getTestReportData).toHaveBeenCalledWith("u1", "biz-host")
   })
 
   it("defaults to the light theme and honours ?theme=dark", async () => {

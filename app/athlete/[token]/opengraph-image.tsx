@@ -2,6 +2,8 @@ import { ImageResponse } from "next/og"
 import { verifyAthleteProfileToken } from "@/lib/profile-share/token"
 import { getTestReportData } from "@/lib/test-report/data"
 import { buildReportScores } from "@/lib/test-report/scoring"
+import { pickStandard } from "@/lib/coach-intel/test-normalization"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 export const dynamic = "force-dynamic"
 
@@ -21,11 +23,11 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
   let data = null
   try {
     const v = verifyAthleteProfileToken(token)
-    if (v.valid) data = await getTestReportData(v.clientUserId)
+    if (v.valid) data = await getTestReportData(v.clientUserId, await resolvePublicTenant())
   } catch {
     data = null
   }
-  const scores = data ? buildReportScores(data.tests) : null
+  const scores = data ? buildReportScores(data.tests, (t) => pickStandard(data.standards, t, data.age)) : null
 
   // `|| fallback` also covers a client whose name fields are blank/whitespace.
   const name = (data ? `${data.name.first} ${data.name.last}`.trim().toUpperCase() : "") || "DJP ATHLETE"

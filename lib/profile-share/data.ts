@@ -27,6 +27,10 @@ export interface FieldRecord {
   value: number
   unit: string
   date: string
+  /** For judging the record against the coach's Trained / Elite standards. */
+  testType: TestType
+  /** Body weight logged with that test: the 1RM standards are multiples of it. */
+  bodyWeightKg: number | null
 }
 
 /**
@@ -212,6 +216,8 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
     .sort((a, b) => b.valueKg - a.valueKg)
     .slice(0, MAX_RECORDS)
 
+  // The PR view carries no body weight; the test row it points at does.
+  const bodyWeightByTest = new Map(tests.map((t) => [t.id, t.body_weight_kg ?? null]))
   const fieldRecords: FieldRecord[] = [...fieldPRs]
     .sort((a, b) => b.test_date.localeCompare(a.test_date))
     .slice(0, MAX_RECORDS)
@@ -220,6 +226,8 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
       value: p.result_value,
       unit: p.result_unit,
       date: p.test_date,
+      testType: p.test_type as TestType,
+      bodyWeightKg: bodyWeightByTest.get(p.test_id) ?? null,
     }))
 
   const badges = computeBadges({

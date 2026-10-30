@@ -31,7 +31,7 @@ const base: AthleteProfileData = {
   memberSince: "2024-03-10T00:00:00Z",
   stats: { workouts: 247, streakDays: 18, totalVolumeKg: 412300, prCount: 31 },
   gymRecords: [{ exercise: "Back Squat", valueKg: 140, date: "2026-05-01T00:00:00Z" }],
-  fieldRecords: [{ label: "CMJ", value: 48, unit: "cm", date: "2026-06-01" }],
+  fieldRecords: [{ label: "CMJ", value: 48, unit: "cm", date: "2026-06-01", testType: "cmj", bodyWeightKg: null }],
   radarTests: [],
   program: {
     name: "Off-Season Power Block",
@@ -110,6 +110,20 @@ describe("AthleteProfileCard", () => {
     expect(screen.getByText(/Training Load/)).toBeInTheDocument()
     expect(screen.getByText(/Off-Season Power Block/)).toBeInTheDocument()
     expect(screen.getByText(/Iron Streak/)).toBeInTheDocument()
+  })
+
+  it("judges a field record against the built-in Trained / Elite standard", () => {
+    render(<AthleteProfileCard data={base} />)
+    // CMJ 48 cm: built-in Trained 45, Elite 65. At or above Trained is green ("Strength").
+    expect(screen.getByText("Trained 45 cm · Elite 65 cm")).toBeInTheDocument()
+    expect(screen.getByText("Strength")).toBeInTheDocument()
+  })
+
+  it("uses the coach's standard for the client's age group instead", () => {
+    const standards = [{ test_type: "cmj", age_min: 20, age_max: 29, floor_value: 30, trained_value: 50, elite_value: 70 }]
+    render(<AthleteProfileCard data={base} standards={standards} />) // base.age is 24
+    expect(screen.getByText("Trained 50 cm · Elite 70 cm")).toBeInTheDocument()
+    expect(screen.getByText("Developing")).toBeInTheDocument() // 48 is below the coach's Trained 50
   })
 
   it("omits physical pills that are null", () => {
