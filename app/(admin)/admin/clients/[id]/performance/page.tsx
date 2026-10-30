@@ -26,6 +26,9 @@ import QRCode from "qrcode"
 import { getUserById } from "@/lib/db/users"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { signAthleteProfileToken } from "@/lib/profile-share/token"
+import { computeAge } from "@/lib/profile-share/data"
+import { listStandards } from "@/lib/db/performance-standards"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 
 function addDays(iso: string, days: number): string {
   const d = new Date(iso + "T00:00:00Z")
@@ -58,9 +61,16 @@ export default async function AdminPerformanceHubPage({
     : ""
   // The report's share dialog (QR, link, cover photo) lives here, next to the results. A QR
   // failure only drops the dialog.
-  const [reportQr, clientProfile] = await Promise.all([
+  const [reportQr, clientProfile, standards] = await Promise.all([
     reportUrl ? QRCode.toDataURL(reportUrl, { width: 320, margin: 1 }).catch(() => null) : Promise.resolve(null),
     getProfileByUserId(id).catch(() => null),
+    // The coach's own Trained / Elite standards for the radar. A failed read falls back to the built-in ones.
+    resolveAdminTenant()
+      .then((t) => listStandards(t.businessId))
+      .catch((err) => {
+        console.error("[performance] performance standards read failed:", err)
+        return []
+      }),
   ])
 
   const today = new Date().toISOString().slice(0, 10)
@@ -152,6 +162,8 @@ export default async function AdminPerformanceHubPage({
         sessions: trainingSessions,
         goals,
         badges,
+        standards,
+        age: computeAge(clientProfile?.date_of_birth ?? null),
       }}
     />
   )

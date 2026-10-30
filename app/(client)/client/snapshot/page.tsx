@@ -6,6 +6,10 @@ import { listByUser as listReadiness } from "@/lib/db/daily-readiness"
 import { getActive as activeGoals } from "@/lib/db/athlete-goals"
 import { dailyLoads } from "@/lib/coach-intel/load"
 import { computeBadges } from "@/lib/badges"
+import { listStandards } from "@/lib/db/performance-standards"
+import { getProfileByUserId } from "@/lib/db/client-profiles"
+import { computeAge } from "@/lib/profile-share/data"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 import { AthleteRadarCard } from "@/components/client/profile/athlete-radar-card"
 import { TrainingStreakHeatmap } from "@/components/client/profile/training-streak-heatmap"
 import { BadgeShelfCard } from "@/components/client/profile/badge-shelf-card"
@@ -27,11 +31,19 @@ export default async function ClientSnapshotPage() {
   const today = new Date().toISOString().slice(0, 10)
   const from = addDays(today, -90)
 
-  const [tests, sessions, readiness, goals] = await Promise.all([
+  const [tests, sessions, readiness, goals, standards, profile] = await Promise.all([
     listTests(uid),
     listSessions(uid, { from, to: today }),
     listReadiness(uid, { from, to: today }),
     activeGoals(uid),
+    // The coach's Trained / Elite standards, as on the test report. A failed read falls back to the built-in ones.
+    resolvePublicTenant()
+      .then(listStandards)
+      .catch((err) => {
+        console.error("[snapshot] performance standards read failed:", err)
+        return []
+      }),
+    getProfileByUserId(uid).catch(() => null),
   ])
 
   const daily = dailyLoads(sessions, from, today)
@@ -47,7 +59,19 @@ export default async function ClientSnapshotPage() {
     <div className="container max-w-5xl space-y-6 py-8">
       <h1 className="font-heading text-3xl font-bold">Athlete snapshot</h1>
       <div className="grid gap-6 md:grid-cols-2">
-        <AthleteRadarCard tests={tests} />
+        <AthleteRadarCard
+          tests={tests}
+          // Only the numbers reach the browser, never the row ids or business id.
+          standards={standards.map(({ test_type, age_min, age_max, floor_value, trained_value, elite_value }) => ({
+            test_type,
+            age_min,
+            age_max,
+            floor_value,
+            trained_value,
+            elite_value,
+          }))}
+          age={computeAge(profile?.date_of_birth ?? null)}
+        />
         <TrainingStreakHeatmap sessions={sessions} />
         <BadgeShelfCard badges={badges} />
         <OpenGoalsCard goals={goals} goalsHref="/client/goals" />

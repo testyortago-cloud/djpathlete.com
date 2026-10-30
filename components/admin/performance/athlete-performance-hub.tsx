@@ -41,6 +41,7 @@ import { OpenGoalsCard } from "@/components/client/profile/open-goals-card"
 import { CoachGoalsManager } from "./coach-goals-manager"
 import { ReportPreview } from "./ReportPreview"
 import { latestTestValueByType, type GoalMetricContext } from "@/lib/goals/progress"
+import type { StandardRow } from "@/lib/coach-intel/test-normalization"
 import type {
   AthleteGoal,
   Badge as BadgeType,
@@ -52,6 +53,9 @@ export interface ProfileSummary {
   sessions: TrainingSession[]
   goals: AthleteGoal[]
   badges: BadgeType[]
+  /** The coach's Trained / Elite standards for the radar (empty = built-in), and the age that picks a group. */
+  standards: StandardRow[]
+  age: number | null
 }
 
 export interface CoachIntelSummary {
@@ -279,7 +283,7 @@ export function AthletePerformanceHub({
         </TabsContent>
 
         <TabsContent value="profile" className="mt-6 grid gap-6 md:grid-cols-2">
-          <AthleteRadarCard tests={profile.tests} />
+          <AthleteRadarCard tests={profile.tests} standards={profile.standards} age={profile.age} />
           <TrainingStreakHeatmap sessions={profile.sessions} />
           <BadgeShelfCard badges={profile.badges} />
           <OpenGoalsCard

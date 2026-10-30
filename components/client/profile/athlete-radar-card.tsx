@@ -2,16 +2,30 @@
 
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { normalize, RADAR_CATEGORIES } from "@/lib/coach-intel/test-normalization"
+import { normalize, pickStandard, RADAR_CATEGORIES, type StandardRow } from "@/lib/coach-intel/test-normalization"
 import type { PerformanceTest, TestType } from "@/types/database"
 
-export function AthleteRadarCard({ tests }: { tests: PerformanceTest[] }) {
+/** `standards`: the coach's Trained / Elite rows (empty = built-in); `age` picks an age group. */
+export function AthleteRadarCard({
+  tests,
+  standards = [],
+  age = null,
+}: {
+  tests: PerformanceTest[]
+  standards?: StandardRow[]
+  age?: number | null
+}) {
   const data = Object.entries(RADAR_CATEGORIES).map(([category, types]) => {
     let best: number | null = null
     for (const t of types as TestType[]) {
       const candidates = tests.filter((x) => x.test_type === t).sort((a, b) => b.test_date.localeCompare(a.test_date))
       if (candidates.length === 0) continue
-      const score = normalize(t, candidates[0].result_value, candidates[0].body_weight_kg)
+      const score = normalize(
+        t,
+        candidates[0].result_value,
+        candidates[0].body_weight_kg,
+        pickStandard(standards, t, age),
+      )
       if (score !== null && (best === null || score > best)) best = score
     }
     return { category, score: best ?? 0 }

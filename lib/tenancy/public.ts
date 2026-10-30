@@ -144,6 +144,16 @@ import { recordAudit } from "@/lib/audit/record"
  *       default card on a wrong-tenant slug, same as an unknown one; never
  *       404s, per its own header.
  *     components/marketing/blog/LeadMagnetBlock.tsx
+ *
+ *   The coach's Trained / Elite standards (performance_standards, migration
+ *   00294) are read under the Host wherever an athlete sees a score: the
+ *   public test report and its share image, and the signed-in client's own
+ *   snapshot radar. The client portal has no session tenant of its own, so the
+ *   Host decides here exactly as it does for the report. Each passes the rows
+ *   on as numbers only, never their ids or business_id:
+ *     app/athlete/[token]/page.tsx
+ *     app/athlete/[token]/opengraph-image.tsx
+ *     app/(client)/client/snapshot/page.tsx
  */
 
 /**

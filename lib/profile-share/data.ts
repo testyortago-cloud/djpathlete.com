@@ -11,6 +11,7 @@ import { listByUser as listReadiness } from "@/lib/db/daily-readiness"
 import { getActiveAssignmentWithProgram, getCompletedAssignments } from "@/lib/db/assignments"
 import { getExerciseNamesByIds } from "@/lib/db/exercises"
 import { effectiveTotalWeeks } from "@/lib/program-weeks"
+import { getClientWeeks } from "@/lib/programs/client-weeks"
 import { dailyLoads } from "@/lib/coach-intel/load"
 import { computeBadges, type Badge } from "@/lib/badges"
 import { TEST_TYPE_LABELS } from "@/lib/validators/performance-test"
@@ -201,6 +202,13 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
   const assignment = settle(assignmentR, null)
   const completed = settle(completedR, [])
   const allAchievements = settle(allAchievementsR, [] as Achievement[])
+  // The week the client is on, as on the Clients list. Stored current_week sits at 1 for most
+  // athletes, so it is only the fallback when this read fails.
+  const clientWeek = assignment?.programs
+    ? await getClientWeeks([assignment])
+        .then((weeks) => weeks.get(assignment.id) ?? null)
+        .catch(() => null)
+    : null
 
   // Best weight PR per exercise (titles are generic; the exercise lives behind exercise_id).
   const bestByExercise = new Map<string, Achievement>()
@@ -276,8 +284,10 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
       assignment && assignment.programs
         ? {
             name: assignment.programs.name,
-            currentWeek: assignment.current_week,
-            totalWeeks: effectiveTotalWeeks(assignment.total_weeks, assignment.programs.duration_weeks),
+            currentWeek: clientWeek?.week ?? assignment.current_week,
+            totalWeeks:
+              clientWeek?.totalWeeks ??
+              effectiveTotalWeeks(assignment.total_weeks, assignment.programs.duration_weeks),
             difficulty: assignment.programs.difficulty ?? null,
             categories: assignment.programs.category ?? [],
             splitType: assignment.programs.split_type ?? null,
