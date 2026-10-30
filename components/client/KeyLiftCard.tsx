@@ -2,7 +2,7 @@
 
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts"
 import { Badge } from "@/components/ui/badge"
-import { Trophy, TrendingUp, TrendingDown, Minus, Dumbbell } from "lucide-react"
+import { Trophy, TrendingUp, TrendingDown, Minus, Dumbbell, Repeat } from "lucide-react"
 import { useWeightUnit } from "@/hooks/use-weight-unit"
 
 interface KeyLiftCardProps {
@@ -13,6 +13,8 @@ interface KeyLiftCardProps {
   estimated1RM: number | null
   totalSessions: number
   recentData: Array<{ date: string; weight_kg: number }>
+  /** One of the program's staple exercises: the coach brings it back on a schedule. */
+  staple?: boolean
   onClick?: () => void
 }
 
@@ -23,6 +25,7 @@ export function KeyLiftCard({
   estimated1RM,
   totalSessions,
   recentData,
+  staple,
   onClick,
 }: KeyLiftCardProps) {
   const { formatWeight, displayWeight, unitLabel } = useWeightUnit()
@@ -58,6 +61,12 @@ export function KeyLiftCard({
             <Dumbbell className="size-4 text-primary" strokeWidth={1.5} />
           </div>
           <h3 className="text-sm font-semibold text-foreground truncate">{exerciseName}</h3>
+          {staple && (
+            <Badge variant="outline" className="shrink-0 gap-1 text-[10px] border-primary/20 bg-primary/5 text-primary">
+              <Repeat className="size-3" />
+              Program staple
+            </Badge>
+          )}
         </div>
         {isPR && (
           <Badge variant="outline" className="shrink-0 gap-1 text-[10px] border-amber-300 bg-amber-50 text-amber-700">

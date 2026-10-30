@@ -3,8 +3,9 @@ import { redirect } from "next/navigation"
 import { getProgress, getWorkoutStreak } from "@/lib/db/progress"
 import { getTrackedExercisesForUser } from "@/lib/db/tracked-exercises"
 import { getAchievementsByType } from "@/lib/db/achievements"
-import { getActiveAssignment } from "@/lib/db/assignments"
+import { getActiveAssignmentWithProgram } from "@/lib/db/assignments"
 import { getProgramExercises } from "@/lib/db/program-exercises"
+import { keyLiftExercises, staplesFromParams, type Staple } from "@/lib/programs/staples"
 import { estimate1RM } from "@/lib/weight-recommendation"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -28,6 +29,7 @@ interface KeyLiftData {
   estimated1RM: number | null
   totalSessions: number
   recentData: Array<{ date: string; weight_kg: number }>
+  staple?: boolean
 }
 
 function computeKeyLiftStats(
@@ -127,8 +129,10 @@ export default async function ClientProgressPage() {
       getWorkoutStreak(userId),
       getAchievementsByType(userId, "pr"),
       getTrackedExercisesForUser(userId),
-      getActiveAssignment(userId),
+      getActiveAssignmentWithProgram(userId),
     ])
+    let staples: Staple[] = []
+    const programNames = new Map<string, string>()
 
     progress = allProgress
     currentStreak = streak
@@ -147,6 +151,8 @@ export default async function ClientProgressPage() {
       const programEx = (await getProgramExercises(assignment.program_id)) as (ProgramExercise & {
         exercises: Exercise | null
       })[]
+      staples = staplesFromParams(assignment.programs?.ai_generation_params)
+      for (const e of programEx) if (e.exercises) programNames.set(e.exercise_id, e.exercises.name)
 
       // Find workout days for the current week (fall back to closest earlier defined week)
       const definedWeeks = [...new Set(programEx.map((e) => e.week_number))].sort((a, b) => a - b)
@@ -193,11 +199,16 @@ export default async function ClientProgressPage() {
       }
     }
 
-    if (trackedExercises && trackedExercises.length > 0) {
-      keyLifts = trackedExercises.map((te: { exercise_id: string; exercises: Exercise | null }) =>
-        computeKeyLiftStats(te.exercise_id, (te.exercises as Exercise | null)?.name ?? "Unknown Exercise", progress),
-      )
+    const tracked = (trackedExercises ?? []).map((te: { exercise_id: string; exercises: Exercise | null }) => ({
+      exerciseId: te.exercise_id,
+      exerciseName: te.exercises?.name ?? "Unknown Exercise",
+    }))
+    keyLifts = keyLiftExercises(staples, programNames, tracked).map((l) => ({
+      ...computeKeyLiftStats(l.exerciseId, l.exerciseName, progress),
+      staple: l.staple,
+    }))
 
+    if (trackedExercises && trackedExercises.length > 0) {
       trackedForComponent = trackedExercises.map(
         (te: { id: string; exercise_id: string; exercises: Exercise | null }) => ({
           id: te.id,
