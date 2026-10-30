@@ -136,7 +136,8 @@ export async function updateAssignment(id: string, updates: Partial<Omit<Program
 }
 
 /** Advance assignment to next week. If past total_weeks, mark as completed. */
-export async function advanceWeek(assignmentId: string) {
+/** Completes `fromWeek` (never behind the stored current_week) and moves to the week after it. */
+export async function advanceWeek(assignmentId: string, fromWeek?: number) {
   const supabase = getClient()
 
   // Fetch current assignment
@@ -156,13 +157,14 @@ export async function advanceWeek(assignmentId: string) {
     .maybeSingle()
   const totalWeeks = effectiveTotalWeeks(assignment.total_weeks, program?.duration_weeks)
 
-  const nextWeek = (assignment.current_week ?? 1) + 1
+  const completing = Math.max(assignment.current_week ?? 1, fromWeek ?? 1)
+  const nextWeek = completing + 1
 
   if (nextWeek > totalWeeks) {
     // Program complete
     const { data, error } = await supabase
       .from("program_assignments")
-      .update({ status: "completed" as const, current_week: assignment.current_week })
+      .update({ status: "completed" as const, current_week: completing })
       .eq("id", assignmentId)
       .select()
       .single()

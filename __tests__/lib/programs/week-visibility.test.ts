@@ -8,6 +8,7 @@ import {
   releaseAnchorFor,
   setWeekHidden,
   hiddenWeeksAfterRemoving,
+  closeRepeatsOfClosedWeeks,
 } from "@/lib/programs/week-visibility"
 
 const DAY = 24 * 60 * 60 * 1000
@@ -191,5 +192,37 @@ describe("releaseAnchorFor", () => {
   })
   it("is now when the start date has passed", () => {
     expect(releaseAnchorFor("2026-10-01", at(0))).toBe(at(0).toISOString())
+  })
+})
+
+describe("closeRepeatsOfClosedWeeks", () => {
+  // Only week 1 is built; weeks 2-4 are blank and repeat it.
+  const sourceOf = (w: number) => (w >= 1 ? 1 : null)
+
+  it("closes the blank weeks that repeat a hidden week, so its workout is not shown under another number", () => {
+    const gate = closeRepeatsOfClosedWeeks(buildWeekGate(noSched, [], 4, at(0), [1]), sourceOf)
+    expect([...gate.open]).toEqual([])
+    expect(gate.unavailable).toEqual({
+      1: { unlocksOn: null },
+      2: { unlocksOn: null },
+      3: { unlocksOn: null },
+      4: { unlocksOn: null },
+    })
+  })
+  it("leaves repeats of an open week open (presence control)", () => {
+    const gate = closeRepeatsOfClosedWeeks(buildWeekGate(noSched, [], 4, at(0), [3]), sourceOf)
+    expect([...gate.open]).toEqual([1, 2, 4])
+  })
+  it("closes a repeat of a paid week that is not paid yet, so the workout is not shown free", () => {
+    const rows = [row(1, { access_type: "paid", payment_status: "pending", price_cents: 4000 })]
+    const gate = closeRepeatsOfClosedWeeks(buildWeekGate(noSched, rows, 2, at(0), []), sourceOf)
+    expect(gate.locked).toEqual({ 1: { priceCents: 4000 } })
+    expect([...gate.open]).toEqual([])
+    expect(gate.unavailable[2]).toEqual({ unlocksOn: null })
+  })
+  it("never touches a built week (its source is itself)", () => {
+    const self = (w: number) => w
+    const gate = closeRepeatsOfClosedWeeks(buildWeekGate(noSched, [], 3, at(0), [2]), self)
+    expect([...gate.open]).toEqual([1, 3])
   })
 })

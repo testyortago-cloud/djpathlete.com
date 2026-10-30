@@ -331,6 +331,10 @@ export function ProgramBuilder({
     if (src != null) repeatSourceByWeek[w] = src
   }
   const selectedRepeatSource: number | null = repeatSourceByWeek[selectedWeek] ?? null
+  // Blank weeks showing the selected week's workout: hiding this week hides them too (closeRepeatsOfClosedWeeks).
+  const repeatsOfSelected = Object.entries(repeatSourceByWeek)
+    .filter(([, src]) => src === selectedWeek)
+    .map(([w]) => Number(w))
 
   async function handleFillFromRepeat() {
     if (selectedRepeatSource == null || isFillingFromRepeat) return
@@ -917,6 +921,13 @@ export function ProgramBuilder({
             <p className="font-medium text-foreground">
               Week {selectedWeek} is hidden. Clients on this program do not see it, including clients you add later.
             </p>
+            {repeatsOfSelected.length > 0 && (
+              <p className="mt-0.5 text-xs text-foreground">
+                {repeatsOfSelected.length === 1 ? "Week" : "Weeks"} {repeatsOfSelected.join(", ")}{" "}
+                {repeatsOfSelected.length === 1 ? "is" : "are"} empty and repeat this week&apos;s workout, so{" "}
+                {repeatsOfSelected.length === 1 ? "it is" : "they are"} hidden too.
+              </p>
+            )}
             <p className="mt-0.5 text-xs text-muted-foreground">
               Click Show Week to open it for everyone. To open it for one client only, use Client week access further
               down this page.

@@ -39,8 +39,9 @@ export const POST = withAudit(
         return NextResponse.json({ error: `This program has ${program.duration_weeks} weeks.` }, { status: 400 })
       }
 
-      // ponytail: read-modify-write. Two coaches toggling different weeks in the same instant can lose
-      // one toggle; move to an array_append/array_remove RPC if that ever happens.
+      // ponytail: read-modify-write, and delete-week rewrites the same array. Two coaches acting in the
+      // same instant (two toggles, or a toggle and Remove Week) can lose one change. Move both writes into
+      // one SQL function (array_append/array_remove and the shift) if that ever happens.
       const updated = await updateProgram(id, {
         hidden_weeks: setWeekHidden(program.hidden_weeks ?? [], weekNumber, hidden),
       })

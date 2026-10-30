@@ -35,7 +35,7 @@ export function CompleteWeekButton({
       const res = await fetch("/api/client/workouts/complete-week", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assignmentId }),
+        body: JSON.stringify({ assignmentId, weekNumber: currentWeek }),
       })
 
       const data = await res.json()

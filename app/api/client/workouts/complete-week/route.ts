@@ -10,6 +10,8 @@ import { z } from "zod"
 
 const completeWeekSchema = z.object({
   assignmentId: z.string().uuid(),
+  /** The week the client was shown. Older pages send none. */
+  weekNumber: z.number().int().min(1).optional(),
 })
 
 export async function POST(request: Request) {
@@ -26,7 +28,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const { assignmentId } = parsed.data
+    const { assignmentId, weekNumber } = parsed.data
 
     // Verify ownership — the assignment must belong to the current user
     const assignment = await getAssignmentById(assignmentId)
@@ -38,15 +40,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Assignment is not active" }, { status: 400 })
     }
 
+    // The week being completed: the one Workouts showed (it opens on the week after the last one the
+    // client trained, which can be ahead of current_week), never behind current_week.
+    const week = Math.max(assignment.current_week ?? 1, weekNumber ?? 1)
+
     // Access guard — block pending payment or an unreleased week before any mutation
-    const access = await assertAssignmentPayable(assignmentId, assignment.current_week)
+    const access = await assertAssignmentPayable(assignmentId, week)
     if (!access.ok) {
       return access.reason === "not_released"
         ? NextResponse.json({ error: "This week isn't available yet." }, { status: 403 })
         : NextResponse.json({ error: "Payment required to advance this program." }, { status: 402 })
     }
 
-    const result = await advanceWeek(assignmentId)
+    const result = await advanceWeek(assignmentId, week)
 
     // Notify coach and client when the program is fully completed
     if (result.program_completed) {

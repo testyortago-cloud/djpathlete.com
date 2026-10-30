@@ -91,6 +91,22 @@ export function buildWeekGate(
   return gate
 }
 
+/**
+ * A blank week shows the workout of the week it repeats (`sourceOf`, i.e. sourceWeekForDisplay).
+ * It stays open only while that week is open too: otherwise hiding a week, or pricing it, would
+ * still hand its workout to the client under the numbers of every blank week after it.
+ */
+export function closeRepeatsOfClosedWeeks(gate: WeekGate, sourceOf: (week: number) => number | null): WeekGate {
+  const open = new Set<number>()
+  const unavailable = { ...gate.unavailable }
+  for (const w of gate.open) {
+    const source = sourceOf(w)
+    if (source == null || source === w || gate.open.has(source)) open.add(w)
+    else unavailable[w] = { unlocksOn: null }
+  }
+  return { open, locked: gate.locked, unavailable }
+}
+
 /** The program's hidden weeks with `week` added or removed, sorted and without duplicates. */
 export function setWeekHidden(hidden: readonly number[], week: number, hide: boolean): number[] {
   const set = new Set(hidden)

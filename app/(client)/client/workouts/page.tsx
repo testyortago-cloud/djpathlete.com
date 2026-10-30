@@ -20,7 +20,7 @@ import { effectiveTotalWeeks, resumeWeek, savedSetsForSlot, slotKey, sourceWeekF
 import { listSessionSlots } from "@/lib/db/workout-sessions"
 import { WaiverGate } from "@/components/client/WaiverGate"
 import { PendingPaymentCard } from "@/components/client/PendingPaymentCard"
-import { buildWeekGate, formatUnlockDate } from "@/lib/programs/week-visibility"
+import { buildWeekGate, closeRepeatsOfClosedWeeks, formatUnlockDate } from "@/lib/programs/week-visibility"
 import type { Program, ProgramAssignment, Exercise, ProgramExercise, ProgramWeekAccess } from "@/types/database"
 
 export const dynamic = "force-dynamic"
@@ -195,7 +195,7 @@ export default async function ClientWorkoutsPage() {
       const totalWeeks = effectiveTotalWeeks(assignment.total_weeks, program.duration_weeks, maxContentWeek)
       // What this client may see. Hidden and not-yet-released weeks get no workouts at all, and a
       // paid week awaiting payment gets only its price (the Unlock card) — never its exercises.
-      const gate = buildWeekGate(
+      const rawGate = buildWeekGate(
         assignment,
         weekAccessByAssignment[assignment.id] ?? [],
         totalWeeks,
@@ -219,6 +219,8 @@ export default async function ClientWorkoutsPage() {
       // If a week has no exercises defined, fall back to the closest
       // earlier week (repeating weekly template pattern).
       const definedWeeks = [...weekMap.keys()].sort((a, b) => a - b)
+      // A blank week repeats an earlier week's workout; it is open only while that week is.
+      const gate = closeRepeatsOfClosedWeeks(rawGate, (w) => sourceWeekForDisplay(w, definedWeeks))
 
       // Open on the week the client is on: after the last week they trained every day of.
       // A failed session read leaves trainedSlots empty, so this falls back to current_week.
@@ -317,7 +319,7 @@ export default async function ClientWorkoutsPage() {
     const program = assignment.programs
     const maxContentWeek = exercises.reduce((m, e) => Math.max(m, e.week_number), 0)
     const totalWeeks = effectiveTotalWeeks(assignment.total_weeks, program.duration_weeks, maxContentWeek)
-    const gate = buildWeekGate(
+    const rawGate = buildWeekGate(
       assignment,
       weekAccessByAssignment[assignment.id] ?? [],
       totalWeeks,
@@ -364,6 +366,7 @@ export default async function ClientWorkoutsPage() {
     // Expand across all weeks (template repetition like tabPrograms does)
     const definedWeeks = [...dayMap.keys()].map((k) => Number(k.split("-")[0]))
     const uniqueDefinedWeeks = [...new Set(definedWeeks)].sort((a, b) => a - b)
+    const gate = closeRepeatsOfClosedWeeks(rawGate, (w) => sourceWeekForDisplay(w, uniqueDefinedWeeks))
 
     for (let w = 1; w <= totalWeeks; w++) {
       if (!gate.open.has(w)) continue
