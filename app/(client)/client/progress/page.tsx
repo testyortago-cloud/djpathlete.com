@@ -6,6 +6,7 @@ import { getAchievementsByType } from "@/lib/db/achievements"
 import { getActiveAssignmentWithProgram } from "@/lib/db/assignments"
 import { getProgramExercises } from "@/lib/db/program-exercises"
 import { keyLiftExercises, staplesFromParams, type Staple } from "@/lib/programs/staples"
+import { getClientWeeks } from "@/lib/programs/client-weeks"
 import { estimate1RM } from "@/lib/weight-recommendation"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -144,8 +145,13 @@ export default async function ClientProgressPage() {
 
     // Program-based stats
     if (assignment) {
-      const totalWeeks = assignment.total_weeks ?? 1
-      const currentWeekNum = assignment.current_week ?? 1
+      // The week the client is on, as their Workouts page and the coach's screens show it. Stored
+      // current_week sits at 1 for most athletes, so it is only the fallback when this read fails.
+      const onWeek = await getClientWeeks([assignment])
+        .then((weeks) => weeks.get(assignment.id) ?? null)
+        .catch(() => null)
+      const totalWeeks = onWeek?.totalWeeks ?? assignment.total_weeks ?? 1
+      const currentWeekNum = onWeek?.week ?? assignment.current_week ?? 1
       programWeek = `${currentWeekNum}/${totalWeeks}`
 
       const programEx = (await getProgramExercises(assignment.program_id)) as (ProgramExercise & {

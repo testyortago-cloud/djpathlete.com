@@ -60,13 +60,15 @@ export function KeyLiftCard({
           <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
             <Dumbbell className="size-4 text-primary" strokeWidth={1.5} />
           </div>
-          <h3 className="text-sm font-semibold text-foreground truncate">{exerciseName}</h3>
-          {staple && (
-            <Badge variant="outline" className="shrink-0 gap-1 text-[10px] border-primary/20 bg-primary/5 text-primary">
-              <Repeat className="size-3" />
-              Program staple
-            </Badge>
-          )}
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground truncate">{exerciseName}</h3>
+            {staple && (
+              <Badge variant="outline" className="mt-0.5 gap-1 text-[10px] border-primary/20 bg-primary/5 text-primary">
+                <Repeat className="size-3" />
+                Program staple
+              </Badge>
+            )}
+          </div>
         </div>
         {isPR && (
           <Badge variant="outline" className="shrink-0 gap-1 text-[10px] border-amber-300 bg-amber-50 text-amber-700">
