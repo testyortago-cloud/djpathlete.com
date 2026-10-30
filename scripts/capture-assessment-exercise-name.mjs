@@ -17,7 +17,7 @@ if (new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname !== "anjvztjiokcgiyhobknq.sup
 const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
 
 const APP = process.env.APP_URL ?? "http://localhost:3051"
-const OUT = "screenshots/performance/assessment-names"
+const OUT = "screenshots/performance"
 const W = 1440
 const H = 900
 mkdirSync(`${OUT}/raw`, { recursive: true })
@@ -79,8 +79,8 @@ try {
   check("both exercise cards fit in the shot", !!box2 && box2.y + box2.height < H - 20, JSON.stringify(box2))
   await page.mouse.move(3, 3)
   await page.waitForTimeout(400)
-  await page.screenshot({ path: `${OUT}/raw/01-exercise-names.png` })
-  await annotate(`${OUT}/raw/01-exercise-names.png`, `${OUT}/01-exercise-names.png`, {
+  await page.screenshot({ path: `${OUT}/raw/assessment-names-01-exercise-names.png` })
+  await annotate(`${OUT}/raw/assessment-names-01-exercise-names.png`, `${OUT}/07-assessment-exercise-names.png`, {
     title: "One box for the exercise name",
     subtitle: "Assessments > New assessment > Exercises",
     markers: [
@@ -89,18 +89,7 @@ try {
       await marker(second, "Start typing: your library shows as suggestions. You can still change it.", "above"),
     ],
   })
-  writeFileSync(
-    `${OUT}/index.html`,
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Assessment exercise names</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{font:16px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:1100px;margin:32px auto;padding:0 16px;color:#223b44}
-h1{color:#0E3F50}img{width:100%;border:1px solid #ddd;border-radius:8px}</style></head><body>
-<h1>New assessment: one box for the exercise name</h1>
-<p>Real app, development clone, light mode. The form was filled but not submitted.</p>
-<figure><img src="01-exercise-names.png" alt="Exercise names"><figcaption>A custom name, and a library exercise picked by typing its name.</figcaption></figure>
-</body></html>\n`,
-  )
 } finally {
-  writeFileSync(`${OUT}/run.json`, JSON.stringify({ app: APP, results }, null, 2))
+  writeFileSync(`${OUT}/run-assessment-names.json`, JSON.stringify({ app: APP, results }, null, 2))
   await browser.close()
 }

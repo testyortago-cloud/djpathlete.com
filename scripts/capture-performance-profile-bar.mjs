@@ -16,7 +16,7 @@ if (new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname !== "anjvztjiokcgiyhobknq.sup
 const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
 
 const APP = process.env.APP_URL ?? "http://localhost:3051"
-const OUT = "screenshots/performance/profile-bar"
+const OUT = "screenshots/performance"
 const W = 1440
 const H = 900
 mkdirSync(`${OUT}/raw`, { recursive: true })
@@ -82,8 +82,8 @@ try {
   )
   await page.mouse.move(3, 3)
   await page.waitForTimeout(400)
-  await page.screenshot({ path: `${OUT}/raw/01-performance.png` })
-  await annotate(`${OUT}/raw/01-performance.png`, `${OUT}/01-performance.png`, {
+  await page.screenshot({ path: `${OUT}/raw/profile-bar-01-performance.png` })
+  await annotate(`${OUT}/raw/profile-bar-01-performance.png`, `${OUT}/04-performance-profile-bar.png`, {
     title: "Arena card and test report, next to the results",
     subtitle: `Clients > ${name} > Performance`,
     markers: [
@@ -111,8 +111,8 @@ try {
   await perf.scrollIntoViewIfNeeded()
   await page.mouse.move(3, 3)
   await page.waitForTimeout(400)
-  await page.screenshot({ path: `${OUT}/raw/02-client-page.png` })
-  await annotate(`${OUT}/raw/02-client-page.png`, `${OUT}/02-client-page.png`, {
+  await page.screenshot({ path: `${OUT}/raw/profile-bar-02-client-page.png` })
+  await annotate(`${OUT}/raw/profile-bar-02-client-page.png`, `${OUT}/05-client-page-performance-button.png`, {
     title: "The client page sends you to Performance",
     subtitle: `Clients > ${name}`,
     markers: [await marker(perf, "Performance: results, Arena card and the test report.", "above")],
@@ -130,27 +130,14 @@ try {
   await edit.scrollIntoViewIfNeeded()
   await page.mouse.move(3, 3)
   await page.waitForTimeout(400)
-  await page.screenshot({ path: `${OUT}/raw/03-tests-tab.png` })
-  await annotate(`${OUT}/raw/03-tests-tab.png`, `${OUT}/03-tests-tab.png`, {
+  await page.screenshot({ path: `${OUT}/raw/profile-bar-03-tests-tab.png` })
+  await annotate(`${OUT}/raw/profile-bar-03-tests-tab.png`, `${OUT}/06-performance-tests-tab.png`, {
     title: "Change the standards from the results",
     subtitle: `Clients > ${name} > Performance > Tests`,
     markers: [await marker(edit, "Opens Trained & Elite Standards.", "above")],
   })
 
-  writeFileSync(
-    `${OUT}/index.html`,
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Arena card on Performance</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{font:16px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:1100px;margin:32px auto;padding:0 16px;color:#223b44}
-h1{color:#0E3F50}figure{margin:32px 0}img{width:100%;border:1px solid #ddd;border-radius:8px}</style></head><body>
-<h1>Arena card, test report and standards on Performance</h1>
-<p>Real app, development clone, light mode. Nothing was changed; the pages were only opened.</p>
-<figure><img src="01-performance.png" alt="Performance page"><figcaption><strong>01.</strong> The athlete profile bar on Performance.</figcaption></figure>
-<figure><img src="02-client-page.png" alt="Client page"><figcaption><strong>02.</strong> The client page's Performance button.</figcaption></figure>
-<figure><img src="03-tests-tab.png" alt="Tests tab"><figcaption><strong>03.</strong> The Tests tab links to the standards.</figcaption></figure>
-</body></html>\n`,
-  )
 } finally {
-  writeFileSync(`${OUT}/run.json`, JSON.stringify({ app: APP, results }, null, 2))
+  writeFileSync(`${OUT}/run-profile-bar.json`, JSON.stringify({ app: APP, results }, null, 2))
   await browser.close()
 }

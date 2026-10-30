@@ -22,7 +22,7 @@ if (new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname !== "anjvztjiokcgiyhobknq.sup
 const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
 
 const APP = process.env.APP_URL ?? "http://localhost:3051"
-const OUT = "screenshots/performance/standards"
+const OUT = "screenshots/performance"
 const W = 1440
 const H = 900
 mkdirSync(`${OUT}/raw`, { recursive: true })
@@ -119,8 +119,8 @@ try {
   await page.evaluate(() => window.scrollBy(0, -120))
   await page.mouse.move(3, 3)
   await page.waitForTimeout(400)
-  await page.screenshot({ path: `${OUT}/raw/01-settings.png` })
-  await annotate(`${OUT}/raw/01-settings.png`, `${OUT}/01-settings.png`, {
+  await page.screenshot({ path: `${OUT}/raw/standards-01-settings.png` })
+  await annotate(`${OUT}/raw/standards-01-settings.png`, `${OUT}/01-standards-settings.png`, {
     title: "Set your own Trained and Elite numbers",
     subtitle: "Settings > Trained & Elite Standards",
     markers: [
@@ -145,8 +145,8 @@ try {
   await page.evaluate(() => window.scrollBy(0, 120))
   await page.mouse.move(3, 3)
   await page.waitForTimeout(400)
-  await page.screenshot({ path: `${OUT}/raw/02-arena.png` })
-  await annotate(`${OUT}/raw/02-arena.png`, `${OUT}/02-arena.png`, {
+  await page.screenshot({ path: `${OUT}/raw/standards-02-arena.png` })
+  await annotate(`${OUT}/raw/standards-02-arena.png`, `${OUT}/02-standards-arena.png`, {
     title: "The Arena card compares each result with your numbers",
     subtitle: `Clients > ${pick.user.first_name} ${pick.user.last_name} > Arena > Performance`,
     markers: [
@@ -162,27 +162,14 @@ try {
   await page.waitForTimeout(400)
   const editLink = page.getByRole("link", { name: /Trained & Elite standards/ })
   check("the Arena links to the standards", await editLink.isVisible())
-  await page.screenshot({ path: `${OUT}/raw/03-arena-link.png` })
-  await annotate(`${OUT}/raw/03-arena-link.png`, `${OUT}/03-arena-link.png`, {
+  await page.screenshot({ path: `${OUT}/raw/standards-03-arena-link.png` })
+  await annotate(`${OUT}/raw/standards-03-arena-link.png`, `${OUT}/03-standards-arena-link.png`, {
     title: "Change the numbers from the Arena",
     subtitle: `Clients > ${pick.user.first_name} ${pick.user.last_name} > Arena`,
     markers: [await marker(editLink, "Opens Settings > Trained & Elite Standards.", "before")],
   })
   beat("shot 03-arena-link")
 
-  writeFileSync(
-    `${OUT}/index.html`,
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Trained and Elite standards</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{font:16px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:1100px;margin:32px auto;padding:0 16px;color:#223b44}
-h1{color:#0E3F50}figure{margin:32px 0}img{width:100%;border:1px solid #ddd;border-radius:8px}</style></head><body>
-<h1>Trained and Elite standards on the Arena</h1>
-<p>Real app, development clone, light mode for admin. The age group was added through the Settings screen and deleted again afterwards.</p>
-<figure><img src="01-settings.png" alt="Settings"><figcaption><strong>01.</strong> Set your own numbers, and add an age group.</figcaption></figure>
-<figure><img src="02-arena.png" alt="Arena"><figcaption><strong>02.</strong> The client's record judged against your numbers for their age.</figcaption></figure>
-<figure><img src="03-arena-link.png" alt="Arena link"><figcaption><strong>03.</strong> The link to change them, at the top of the Arena.</figcaption></figure>
-</body></html>\n`,
-  )
 } finally {
   try {
     if (browser) await browser.close()
@@ -191,5 +178,5 @@ h1{color:#0E3F50}figure{margin:32px 0}img{width:100%;border:1px solid #ddd;borde
   for (const r of mine ?? []) await db.from("performance_standards").delete().eq("id", r.id)
   const { count } = await db.from("performance_standards").select("id", { count: "exact", head: true }).gte("created_at", startedAt)
   beat(`cleanup: removed ${mine?.length ?? 0} standard row(s); left from this run: ${count}`)
-  writeFileSync(`${OUT}/run.json`, JSON.stringify({ startedAt, app: APP, assertions, beats }, null, 2))
+  writeFileSync(`${OUT}/run-standards.json`, JSON.stringify({ startedAt, app: APP, assertions, beats }, null, 2))
 }
