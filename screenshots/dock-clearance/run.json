@@ -1,0 +1,17 @@
+{
+  "app": "http://localhost:3051",
+  "hit": "Next page",
+  "ok": true,
+  "next": {
+    "x": 1371,
+    "y": 773.40625,
+    "width": 28,
+    "height": 28
+  },
+  "dock": {
+    "x": 1296.890625,
+    "y": 840,
+    "width": 127.109375,
+    "height": 44
+  }
+}
