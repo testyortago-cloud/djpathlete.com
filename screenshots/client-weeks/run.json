@@ -1,0 +1,73 @@
+{
+  "startedAt": "2026-10-30T14:32:28.893Z",
+  "app": "http://localhost:3051",
+  "assertions": [
+    {
+      "name": "Clients list: Ulises Ramos shows Week 2 of 4",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "Clients list: Tessa Lindqvist shows Week 3 of 4",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "Clients list: Silas Monroe shows Week 1 of 4",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the clients table fits at 1440px wide (no sideways scroll)",
+      "ok": true,
+      "evidence": "1134 <= 1134"
+    },
+    {
+      "name": "Program page: Ulises Ramos chip reads Week 2",
+      "ok": true,
+      "evidence": "Ulises Ramos\nWeek 2"
+    },
+    {
+      "name": "Program page: Tessa Lindqvist chip reads Week 3",
+      "ok": true,
+      "evidence": "Tessa Lindqvist\nWeek 3"
+    },
+    {
+      "name": "Program page: Silas Monroe chip reads Week 1",
+      "ok": true,
+      "evidence": "Silas Monroe\nWeek 1"
+    },
+    {
+      "name": "Client page: Ulises Ramos reads On Week 2",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "no uncaught page errors",
+      "ok": true,
+      "evidence": ""
+    }
+  ],
+  "beats": [
+    "[+   3.3s] week 1 days 1,2,4,6; week 2 days 1,2,4,6",
+    "[+   4.1s] seeded Ulises Ramos: trained weeks [1] -> expect Week 2",
+    "[+   4.9s] seeded Tessa Lindqvist: trained weeks [1,2] -> expect Week 3",
+    "[+   5.2s] seeded Silas Monroe: trained weeks [] -> expect Week 1",
+    "[+  13.4s] PASS Clients list: Ulises Ramos shows Week 2 of 4",
+    "[+  13.4s] PASS Clients list: Tessa Lindqvist shows Week 3 of 4",
+    "[+  13.4s] PASS Clients list: Silas Monroe shows Week 1 of 4",
+    "[+  13.4s] PASS the clients table fits at 1440px wide (no sideways scroll) -- 1134 <= 1134",
+    "[+  14.1s] shot 01-clients-list",
+    "[+  22.8s] PASS Program page: Ulises Ramos chip reads Week 2 -- Ulises Ramos\nWeek 2",
+    "[+  22.8s] PASS Program page: Tessa Lindqvist chip reads Week 3 -- Tessa Lindqvist\nWeek 3",
+    "[+  22.8s] PASS Program page: Silas Monroe chip reads Week 1 -- Silas Monroe\nWeek 1",
+    "[+  23.4s] shot 02-program-group",
+    "[+  32.2s] PASS Client page: Ulises Ramos reads On Week 2",
+    "[+  33.0s] shot 03-client-page",
+    "[+  33.0s] PASS no uncaught page errors",
+    "[+  52.7s] cleanup 96ca4b40-196d-4c41-b307-952671890949: sessions ok, assignment ok",
+    "[+  53.6s] cleanup 239480cb-f899-4b82-9fbb-288a35864899: sessions ok, assignment ok",
+    "[+  54.4s] cleanup f0cf21c4-3d38-40ce-9705-d7ef780d1a34: sessions ok, assignment ok",
+    "[+  54.8s] cleanup verified: assignments left on the program 0"
+  ]
+}
