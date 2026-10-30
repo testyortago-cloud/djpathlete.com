@@ -301,6 +301,20 @@ export function AthletePerformanceHub({
         </TabsContent>
 
         <TabsContent value="tests" className="mt-6 space-y-6">
+          {/* The standards these results are coloured against, one click away from the results. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-white px-4 py-3 shadow-sm">
+            <p className="text-sm text-muted-foreground">
+              Results on the Arena card and the test report are compared with your Trained &amp; Elite standards,
+              by age group.
+            </p>
+            <Link
+              href="/admin/settings/performance-standards"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+            >
+              <Gauge className="size-4" />
+              Edit Trained &amp; Elite standards
+            </Link>
+          </div>
           {reportUrl && <ReportPreview reportUrl={reportUrl} clientName={clientName} />}
           <div className="grid gap-4 md:grid-cols-2">
             {Object.entries(grouped).map(([key, list]) => (
