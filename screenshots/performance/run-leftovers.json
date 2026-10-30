@@ -1,0 +1,82 @@
+{
+  "startedAt": "2026-10-30T17:12:07.879Z",
+  "app": "http://localhost:3051",
+  "assertions": [
+    {
+      "name": "the calibration holds: Speed reads its built-in 69",
+      "ok": true,
+      "evidence": "{\"Speed\":69,\"Power\":49,\"Strength\":0,\"Endurance\":0,\"Mobility\":26}"
+    },
+    {
+      "name": "before any standard, Power uses the built-in Countermovement Jump numbers (40 cm = 49)",
+      "ok": true,
+      "evidence": "{\"Speed\":69,\"Power\":49,\"Strength\":0,\"Endurance\":0,\"Mobility\":26}"
+    },
+    {
+      "name": "with the coach's age group, Power reads 65: 40 cm is exactly Trained for 17-19",
+      "ok": true,
+      "evidence": "{\"Speed\":69,\"Power\":65,\"Strength\":0,\"Endurance\":0,\"Mobility\":26}"
+    },
+    {
+      "name": "the Arena shows week 2 of 4 while the stored current_week is still 1",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the client's own Snapshot radar reads the same Power 65",
+      "ok": true,
+      "evidence": "{\"Speed\":69,\"Power\":65,\"Strength\":0,\"Endurance\":0,\"Mobility\":26}"
+    },
+    {
+      "name": "both staples show as Key lifts with the Program staple label",
+      "ok": true,
+      "evidence": "2"
+    },
+    {
+      "name": "the Progress page's Program Week is the week she is on, 2 of 4",
+      "ok": true,
+      "evidence": "Program Week\n\n2/4"
+    },
+    {
+      "name": "\"Long reverse lunge_Quadricep\" is a key lift",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "\"Single leg squats_Quadricep\" is a key lift",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "no other uncaught page errors",
+      "ok": true,
+      "evidence": ""
+    }
+  ],
+  "beats": [
+    "[+   0.8s] client Yara Haddad, born 2008-10-27",
+    "[+   1.5s] seeded assignment 90ce6966-da74-4702-9693-78929205bcb7, 4 week-1 sessions, 6 staple logs, 4 tests",
+    "[+ 135.1s] PASS the calibration holds: Speed reads its built-in 69 -- {\"Speed\":69,\"Power\":49,\"Strength\":0,\"Endurance\":0,\"Mobility\":26}",
+    "[+ 135.1s] PASS before any standard, Power uses the built-in Countermovement Jump numbers (40 cm = 49) -- {\"Speed\":69,\"Power\":49,\"Strength\":0,\"Endurance\":0,\"Mobility\":26}",
+    "[+ 139.7s] PASS with the coach's age group, Power reads 65: 40 cm is exactly Trained for 17-19 -- {\"Speed\":69,\"Power\":65,\"Strength\":0,\"Endurance\":0,\"Mobility\":26}",
+    "[+ 141.1s] shot 08",
+    "[+ 185.9s] PASS the Arena shows week 2 of 4 while the stored current_week is still 1",
+    "[+ 186.9s] shot 09",
+    "[+ 196.1s] PASS the client's own Snapshot radar reads the same Power 65 -- {\"Speed\":69,\"Power\":65,\"Strength\":0,\"Endurance\":0,\"Mobility\":26}",
+    "[+ 197.1s] shot 10",
+    "[+ 272.7s] PASS both staples show as Key lifts with the Program staple label -- 2",
+    "[+ 272.8s] PASS the Progress page's Program Week is the week she is on, 2 of 4 -- Program Week\n\n2/4",
+    "[+ 272.8s] PASS \"Long reverse lunge_Quadricep\" is a key lift",
+    "[+ 272.8s] PASS \"Single leg squats_Quadricep\" is a key lift",
+    "[+ 272.8s] NOTE 2 known heatmap hydration error(s), not from this change",
+    "[+ 272.8s] PASS no other uncaught page errors",
+    "[+ 274.3s] shot 11",
+    "[+ 275.3s] cleanup performance_standards: ok",
+    "[+ 275.5s] cleanup performance_tests: ok",
+    "[+ 275.6s] cleanup exercise_progress: ok",
+    "[+ 275.7s] cleanup workout_sessions: ok",
+    "[+ 275.8s] cleanup program_assignments: ok",
+    "[+ 275.9s] cleanup programs.ai_generation_params: ok",
+    "[+ 276.1s] cleanup verified: assignments on the program 0; staples left on it: none"
+  ]
+}

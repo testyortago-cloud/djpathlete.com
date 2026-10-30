@@ -1,0 +1,99 @@
+{
+  "startedAt": "2026-10-30T17:02:23.409Z",
+  "app": "http://localhost:3051",
+  "assertions": [
+    {
+      "name": "the old one-line-per-search list shows as one box per line, all on",
+      "ok": true,
+      "evidence": "9 boxes"
+    },
+    {
+      "name": "switching off saves (200)",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the topic is kept, switched off",
+      "ok": true,
+      "evidence": "{\"id\":\"q5\",\"name\":\"energy system conditioning aerobic capacity team-sport athlete research\",\"active\":false,\"keywords\":[]}"
+    },
+    {
+      "name": "and the scan no longer searches it",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "it is crossed out on screen",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "adding the topic saves (200)",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the scan searches each keyword",
+      "ok": true,
+      "evidence": "[\"Agility and change of direction deceleration research\",\"Agility and change of direction cutting mechanics research\",\"Agility and change of direction reactive agility research\"]"
+    },
+    {
+      "name": "the card is added (201)",
+      "ok": true,
+      "evidence": "201"
+    },
+    {
+      "name": "and the title is now a scan topic, switched on",
+      "ok": true,
+      "evidence": "on"
+    },
+    {
+      "name": "the card is dated with the newest brief, so it shows as this week's",
+      "ok": true,
+      "evidence": "2026-11-02"
+    },
+    {
+      "name": "its box carries the label Your topic",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the card says where it came from",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "no uncaught page errors",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the card sits under this week's brief heading",
+      "ok": true,
+      "evidence": ""
+    }
+  ],
+  "beats": [
+    "[+   0.5s] clone scan list: 9 lines",
+    "[+  19.1s] PASS the old one-line-per-search list shows as one box per line, all on -- 9 boxes",
+    "[+  19.5s] PASS switching off saves (200)",
+    "[+  19.7s] PASS the topic is kept, switched off -- {\"id\":\"q5\",\"name\":\"energy system conditioning aerobic capacity team-sport athlete research\",\"active\":false,\"keywords\":[]}",
+    "[+  19.7s] PASS and the scan no longer searches it",
+    "[+  19.7s] PASS it is crossed out on screen",
+    "[+  21.7s] PASS adding the topic saves (200)",
+    "[+  21.8s] PASS the scan searches each keyword -- [\"Agility and change of direction deceleration research\",\"Agility and change of direction cutting mechanics research\",\"Agility and change of direction reactive agility research\"]",
+    "[+  26.0s] shot 01",
+    "[+  26.0s] suggest box value \"Deceleration training for youth soccer players\", Add buttons 1, disabled false",
+    "[+  33.3s] PASS the card is added (201) -- 201",
+    "[+  33.3s] PASS and the title is now a scan topic, switched on -- on",
+    "[+  33.6s] PASS the card is dated with the newest brief, so it shows as this week's -- 2026-11-02",
+    "[+  54.6s] PASS its box carries the label Your topic",
+    "[+  54.7s] PASS the card says where it came from",
+    "[+  54.7s] PASS no uncaught page errors",
+    "[+  55.6s] shot 02",
+    "[+  56.7s] PASS the card sits under this week's brief heading",
+    "[+  56.7s] shot 03",
+    "[+  57.4s] cleanup card: ok",
+    "[+  57.8s] cleanup verified: settings restored true; cards titled \"Deceleration training for youth soccer players\" left: 0"
+  ]
+}
