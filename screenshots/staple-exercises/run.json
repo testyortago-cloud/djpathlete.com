@@ -1,0 +1,30 @@
+{
+  "app": "http://localhost:3051",
+  "results": [
+    {
+      "name": "the whole staples list is on screen",
+      "ok": true,
+      "evidence": "{\"x\":966.46875,\"y\":646.578125,\"width\":121,\"height\":32}"
+    },
+    {
+      "name": "Generate Program sent a request (caught and aborted)",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "it carries 2 staples",
+      "ok": true,
+      "evidence": "[{\"exercise_id\":\"bc4290d9-bd2b-4990-8f64-c9082f6bfe69\",\"every_weeks\":3},{\"exercise_id\":\"96987f90-dbae-4995-bb9a-a127e392e5e1\",\"every_weeks\":1}]"
+    },
+    {
+      "name": "one every 3 weeks, one every week",
+      "ok": true,
+      "evidence": "[{\"exercise_id\":\"bc4290d9-bd2b-4990-8f64-c9082f6bfe69\",\"every_weeks\":3},{\"exercise_id\":\"96987f90-dbae-4995-bb9a-a127e392e5e1\",\"every_weeks\":1}]"
+    },
+    {
+      "name": "each staple is in the pool",
+      "ok": true,
+      "evidence": ""
+    }
+  ]
+}
