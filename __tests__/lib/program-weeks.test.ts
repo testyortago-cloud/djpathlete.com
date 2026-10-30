@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { effectiveTotalWeeks, savedSetsForSlot, slotKey, sourceWeekForDisplay } from "@/lib/program-weeks"
+import { effectiveTotalWeeks, resumeWeek, savedSetsForSlot, slotKey, sourceWeekForDisplay } from "@/lib/program-weeks"
 
 describe("effectiveTotalWeeks", () => {
   it("uses the live program duration when the snapshot is stale (the Luke bug)", () => {
@@ -116,5 +116,54 @@ describe("savedSetsForSlot", () => {
   it("keeps assignments apart", () => {
     const history = [{ session_id: "s-wk9", set_details: wk9 }]
     expect(savedSetsForSlot(history, slots, slotKey("a-2", 9, 2))).toBeNull()
+  })
+})
+
+describe("resumeWeek", () => {
+  // 4 weeks, training on days 1 and 3 every week
+  const days = new Map([1, 2, 3, 4].map((w) => [w, [1, 3]]))
+  const allOpen = new Set([1, 2, 3, 4])
+  const trained = (...slots: [number, number][]) => new Set(slots.map(([w, d]) => slotKey("a-1", w, d)))
+  const base = { assignmentId: "a-1", currentWeek: 1, totalWeeks: 4, trainingDays: days, openWeeks: allOpen }
+
+  it("starts on week 1 when nothing is trained yet", () => {
+    expect(resumeWeek({ ...base, trainedSlots: trained() })).toBe(1)
+  })
+  it("moves to week 2 once every training day of week 1 has a session", () => {
+    expect(resumeWeek({ ...base, trainedSlots: trained([1, 1], [1, 3]) })).toBe(2)
+  })
+  it("stays on week 1 while one of its days is untrained", () => {
+    expect(resumeWeek({ ...base, trainedSlots: trained([1, 1]) })).toBe(1)
+  })
+  it("goes past the latest finished week, even with an earlier day missed", () => {
+    expect(resumeWeek({ ...base, trainedSlots: trained([1, 1], [2, 1], [2, 3]) })).toBe(3)
+  })
+  it("ignores another assignment's sessions", () => {
+    const other = new Set([slotKey("a-2", 1, 1), slotKey("a-2", 1, 3)])
+    expect(resumeWeek({ ...base, trainedSlots: other })).toBe(1)
+  })
+  it("never goes behind current_week (moved by Complete week or a check-in)", () => {
+    expect(resumeWeek({ ...base, currentWeek: 3, trainedSlots: trained() })).toBe(3)
+  })
+  it("skips forward past a week the client cannot open to the next one they can", () => {
+    const open = new Set([1, 3, 4])
+    expect(resumeWeek({ ...base, openWeeks: open, trainedSlots: trained([1, 1], [1, 3]) })).toBe(3)
+  })
+  it("stays on the next week when no later week is open yet (it shows when it unlocks)", () => {
+    const open = new Set([1])
+    expect(resumeWeek({ ...base, openWeeks: open, trainedSlots: trained([1, 1], [1, 3]) })).toBe(2)
+  })
+  it("stays on the last week once every week is finished", () => {
+    const all = trained(...[1, 2, 3, 4].flatMap((w) => [[w, 1] as [number, number], [w, 3] as [number, number]]))
+    expect(resumeWeek({ ...base, trainedSlots: all })).toBe(4)
+  })
+  it("a week with no training days never counts as finished", () => {
+    const sparse = new Map([
+      [1, [1]],
+      [2, []],
+      [3, [1]],
+      [4, [1]],
+    ])
+    expect(resumeWeek({ ...base, trainingDays: sparse, trainedSlots: trained([1, 1]) })).toBe(2)
   })
 })

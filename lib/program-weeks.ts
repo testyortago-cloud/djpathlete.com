@@ -47,6 +47,39 @@ export function slotKey(assignmentId: string, week: number, day: number): string
 }
 
 /**
+ * The week a client is on, so the workouts page opens there: the week after the latest
+ * week they trained every day of, never behind `current_week`, moved forward past weeks
+ * they cannot open to the next one they can (or left there, to show when it unlocks).
+ *
+ * "Trained a day" = a workout session exists for that slot, not status 'completed':
+ * on prod (60 days to 2026-10-30) 120 sessions stayed in_progress (115 with logged sets)
+ * against 88 completed, so most athletes never press finish. `current_week` itself
+ * only moves on "Complete week" and check-ins, and sits at 1 for most of them.
+ */
+export function resumeWeek(args: {
+  assignmentId: string
+  currentWeek: number
+  totalWeeks: number
+  /** Days with exercises, per week (a blank week's are its repeat source's). */
+  trainingDays: Map<number, number[]>
+  /** slotKey of every workout session the client has. */
+  trainedSlots: Set<string>
+  /** Weeks the client can open (workouts or a price to unlock). */
+  openWeeks: Set<number>
+}): number {
+  const { assignmentId, currentWeek, totalWeeks, trainingDays, trainedSlots, openWeeks } = args
+  let lastFinished = 0
+  for (const [week, days] of trainingDays) {
+    if (days.length > 0 && days.every((d) => trainedSlots.has(slotKey(assignmentId, week, d)))) {
+      lastFinished = Math.max(lastFinished, week)
+    }
+  }
+  const candidate = Math.min(Math.max(currentWeek, lastFinished + 1), totalWeeks)
+  for (let w = candidate; w <= totalWeeks; w++) if (openWeeks.has(w)) return w
+  return candidate
+}
+
+/**
  * The sets an athlete logged for THIS slot, so a form they saved comes back as they
  * entered it. Never another week's or day's log of the same exercise: that is a
  * different prescription, and refilling from it showed the athlete last week's sets

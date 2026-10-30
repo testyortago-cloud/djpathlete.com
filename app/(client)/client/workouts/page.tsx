@@ -16,7 +16,7 @@ import { WorkoutViewToggle } from "@/components/client/WorkoutViewToggle"
 import type { WorkoutCalendarDay } from "@/components/client/WorkoutCalendar"
 import { Dumbbell } from "lucide-react"
 import { isAssignmentExpired } from "@/lib/utils"
-import { effectiveTotalWeeks, savedSetsForSlot, slotKey, sourceWeekForDisplay } from "@/lib/program-weeks"
+import { effectiveTotalWeeks, resumeWeek, savedSetsForSlot, slotKey, sourceWeekForDisplay } from "@/lib/program-weeks"
 import { listSessionSlots } from "@/lib/db/workout-sessions"
 import { WaiverGate } from "@/components/client/WaiverGate"
 import { PendingPaymentCard } from "@/components/client/PendingPaymentCard"
@@ -182,6 +182,8 @@ export default async function ClientWorkoutsPage() {
     return history[0].completed_at.slice(0, 10) === todayStr
   }
 
+  const trainedSlots = new Set(sessionSlots.values())
+
   // Build structured data — grouped by week then by day
   const tabPrograms = programExercises
     .filter(({ assignment }) => assignment.programs)
@@ -191,8 +193,6 @@ export default async function ClientWorkoutsPage() {
       // never let it hide weeks the program now declares or has content for.
       const maxContentWeek = exercises.reduce((m, e) => Math.max(m, e.week_number), 0)
       const totalWeeks = effectiveTotalWeeks(assignment.total_weeks, program.duration_weeks, maxContentWeek)
-      // Use DB-tracked current_week; fall back to date-based calculation
-      const currentWeek = assignment.current_week ?? getCurrentWeekFromDate(assignment.start_date, totalWeeks)
       // What this client may see. Hidden and not-yet-released weeks get no workouts at all, and a
       // paid week awaiting payment gets only its price (the Unlock card) — never its exercises.
       const gate = buildWeekGate(
@@ -219,6 +219,22 @@ export default async function ClientWorkoutsPage() {
       // If a week has no exercises defined, fall back to the closest
       // earlier week (repeating weekly template pattern).
       const definedWeeks = [...weekMap.keys()].sort((a, b) => a - b)
+
+      // Open on the week the client is on: after the last week they trained every day of.
+      // A failed session read leaves trainedSlots empty, so this falls back to current_week.
+      const trainingDays = new Map<number, number[]>()
+      for (let w = 1; w <= totalWeeks; w++) {
+        const source = sourceWeekForDisplay(w, definedWeeks)
+        trainingDays.set(w, source == null ? [] : [...(weekMap.get(source)?.keys() ?? [])])
+      }
+      const currentWeek = resumeWeek({
+        assignmentId: assignment.id,
+        currentWeek: assignment.current_week ?? getCurrentWeekFromDate(assignment.start_date, totalWeeks),
+        totalWeeks,
+        trainingDays,
+        trainedSlots,
+        openWeeks: new Set([...gate.open, ...Object.keys(gate.locked).map(Number)]),
+      })
 
       const weeks: Record<
         number,
