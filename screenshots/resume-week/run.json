@@ -1,0 +1,39 @@
+{
+  "startedAt": "2026-10-30T12:30:58.405Z",
+  "app": "http://localhost:3051",
+  "assertions": [
+    {
+      "name": "the page opens on week 2",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "no \"This isn't your current week\" banner",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "progress reads \"1/4 weeks\"",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "no uncaught page errors",
+      "ok": true,
+      "evidence": ""
+    }
+  ],
+  "beats": [
+    "[+   2.6s] week 1 training days: 1, 2, 4, 6",
+    "[+   4.1s] seeded assignment 9dc5d3b2-9f9f-4158-85be-d57b903a9a39 with 4 week-1 sessions; current_week = 1",
+    "[+  12.6s] PASS the page opens on week 2",
+    "[+  12.6s] PASS no \"This isn't your current week\" banner",
+    "[+  12.6s] PASS progress reads \"1/4 weeks\"",
+    "[+  12.6s] PASS no uncaught page errors",
+    "[+  13.4s] shot 01-opens-on-week-2",
+    "[+  14.3s] cleanup workout_sessions: ok",
+    "[+  15.0s] cleanup program_assignments: ok",
+    "[+  15.3s] cleanup user_consents: ok",
+    "[+  15.7s] cleanup verified: assignments left 0"
+  ]
+}
