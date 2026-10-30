@@ -46,7 +46,6 @@ export function CreatePerformanceAssessmentForm({ clients, exercises }: CreatePe
     { key: crypto.randomUUID(), exercise_id: null, custom_name: "", youtube_url: "", admin_notes: "", result_unit: "" },
   ])
   const [submitting, setSubmitting] = useState(false)
-  const [exerciseSearch, setExerciseSearch] = useState<Record<string, string>>({})
 
   function addRow() {
     setRows((prev) => [
@@ -70,10 +69,14 @@ export function CreatePerformanceAssessmentForm({ clients, exercises }: CreatePe
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...updates } : r)))
   }
 
-  function getFilteredExercises(searchKey: string) {
-    const search = (exerciseSearch[searchKey] ?? "").toLowerCase()
-    if (!search) return exercises.slice(0, 20)
-    return exercises.filter((e) => e.name.toLowerCase().includes(search)).slice(0, 20)
+  // One name box per exercise. Assessments mostly use the coach's own names (2026-10-30), so any
+  // text is a custom name; text that matches a library exercise exactly links that exercise.
+  const nameOf = (row: ExerciseRow) =>
+    row.exercise_id ? (exercises.find((e) => e.id === row.exercise_id)?.name ?? "") : row.custom_name
+
+  function setName(key: string, value: string) {
+    const match = exercises.find((e) => e.name.toLowerCase() === value.trim().toLowerCase())
+    updateRow(key, match ? { exercise_id: match.id, custom_name: "" } : { exercise_id: null, custom_name: value })
   }
 
   const selectedClient = clients.find((c) => c.id === clientId)
@@ -233,6 +236,12 @@ export function CreatePerformanceAssessmentForm({ clients, exercises }: CreatePe
         </div>
 
         <div className="space-y-4">
+          {/* The browser's own suggestion list: it filters as you type and scrolls the whole library. */}
+          <datalist id="assessment-exercise-library">
+            {exercises.map((e) => (
+              <option key={e.id} value={e.name} />
+            ))}
+          </datalist>
           {rows.map((row, index) => (
             <div key={row.key} className="bg-white rounded-xl border border-border overflow-hidden">
               {/* Exercise header */}
@@ -261,56 +270,24 @@ export function CreatePerformanceAssessmentForm({ clients, exercises }: CreatePe
               </div>
 
               <div className="p-5 space-y-4">
-                {/* Exercise selection */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Select from Library</Label>
-                    <Select
-                      value={row.exercise_id ?? ""}
-                      onValueChange={(val) =>
-                        updateRow(row.key, {
-                          exercise_id: val || null,
-                          custom_name: val ? "" : row.custom_name,
-                        })
-                      }
-                    >
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Search and select exercise..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <div className="px-2 pb-2">
-                          <Input
-                            placeholder="Type to search..."
-                            value={exerciseSearch[row.key] ?? ""}
-                            onChange={(e) => setExerciseSearch((prev) => ({ ...prev, [row.key]: e.target.value }))}
-                            className="h-8 text-sm"
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </div>
-                        {getFilteredExercises(row.key).map((ex) => (
-                          <SelectItem key={ex.id} value={ex.id}>
-                            {ex.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Or Enter Custom Name</Label>
-                    <Input
-                      value={row.custom_name}
-                      onChange={(e) =>
-                        updateRow(row.key, {
-                          custom_name: e.target.value,
-                          exercise_id: e.target.value ? null : row.exercise_id,
-                        })
-                      }
-                      placeholder="e.g. Single Leg RDL"
-                      maxLength={200}
-                      disabled={!!row.exercise_id}
-                      className="h-10"
-                    />
-                  </div>
+                {/* Exercise name: any name, with the library as suggestions */}
+                <div className="space-y-2">
+                  <Label htmlFor={`exercise-name-${row.key}`} className="text-xs font-medium">
+                    Exercise name
+                  </Label>
+                  <Input
+                    id={`exercise-name-${row.key}`}
+                    list="assessment-exercise-library"
+                    value={nameOf(row)}
+                    onChange={(e) => setName(row.key, e.target.value)}
+                    placeholder="e.g. Single Leg RDL"
+                    maxLength={200}
+                    autoComplete="off"
+                    className="h-10"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Type any name. Exercises from your library show as you type; pick one to link it to your library.
+                  </p>
                 </div>
 
                 {/* YouTube, Notes & Unit row */}
