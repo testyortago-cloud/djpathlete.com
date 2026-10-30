@@ -68,6 +68,7 @@ export async function getActiveAssignmentsForProgram(programId: string): Promise
     expires_at: string | null
     status: string
     current_week: number
+    total_weeks: number | null
     release_base_week: number | null
     release_anchor_at: string | null
   }[]
@@ -76,7 +77,7 @@ export async function getActiveAssignmentsForProgram(programId: string): Promise
   const { data, error } = await supabase
     .from("program_assignments")
     .select(
-      "id, user_id, start_date, notes, payment_status, expires_at, status, current_week, release_base_week, release_anchor_at",
+      "id, user_id, start_date, notes, payment_status, expires_at, status, current_week, total_weeks, release_base_week, release_anchor_at",
     )
     .eq("program_id", programId)
     .eq("status", "active")

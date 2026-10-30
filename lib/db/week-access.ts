@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { ProgramWeekAccess } from "@/types/database"
+import { readAllRows } from "@/lib/db/read-all"
 
 function getClient() {
   return createServiceRoleClient()
@@ -17,17 +18,19 @@ export async function getWeekAccessByAssignment(assignmentId: string) {
   return (data ?? []) as ProgramWeekAccess[]
 }
 
-/** Get all week access records for multiple assignments (batch) */
+/** Get all week access records for multiple assignments (batch). Every page: prod had 509 rows for its active assignments on 2026-10-30. */
 export async function getWeekAccessByAssignments(assignmentIds: string[]) {
   if (assignmentIds.length === 0) return []
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("program_week_access")
-    .select("*")
-    .in("assignment_id", assignmentIds)
-    .order("week_number", { ascending: true })
-  if (error) throw error
-  return (data ?? []) as ProgramWeekAccess[]
+  return readAllRows<ProgramWeekAccess>((from, to) =>
+    supabase
+      .from("program_week_access")
+      .select("*", { count: "exact" })
+      .in("assignment_id", assignmentIds)
+      .order("week_number", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to),
+  )
 }
 
 /** Get a specific week access record */

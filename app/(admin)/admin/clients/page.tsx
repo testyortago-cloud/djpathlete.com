@@ -6,9 +6,10 @@ import { getUsers } from "@/lib/db/users"
 import { getAssignments } from "@/lib/db/assignments"
 import { getAllProfiles } from "@/lib/db/client-profiles"
 import { signCheckinToken } from "@/lib/qr/checkin-token"
-import { ClientList } from "@/components/admin/ClientList"
+import { getClientWeeks } from "@/lib/programs/client-weeks"
+import { ClientList, type ClientProgramWeek } from "@/components/admin/ClientList"
 import { ClientsPageHeader } from "./ClientsPageHeader"
-import type { User, ProgramAssignment } from "@/types/database"
+import type { User, Program, ProgramAssignment } from "@/types/database"
 
 export const metadata = { title: "Clients" }
 
@@ -49,9 +50,7 @@ export default async function ClientsPage() {
   // Scope first, then compute every stat from the scoped set — a staff member
   // must not learn the size of the roster they cannot see.
   const visibleIds = new Set(scope.mode === "assigned" ? scope.clientIds : [])
-  const clients = (users as User[]).filter(
-    (u) => u.role === "client" && (scope.mode === "all" || visibleIds.has(u.id)),
-  )
+  const clients = (users as User[]).filter((u) => u.role === "client" && (scope.mode === "all" || visibleIds.has(u.id)))
   const totalClients = clients.length
 
   // New this month
@@ -68,6 +67,28 @@ export default async function ClientsPage() {
       .map((a) => a.user_id),
   )
   const activeOnProgram = activeUserIds.size
+
+  // Which program, and which week of it, each client is on. A failed read only drops the week.
+  const activeAssignments = (assignments as (ProgramAssignment & { programs: Program | null })[]).filter(
+    (a) => a.status === "active" && clientIds.has(a.user_id),
+  )
+  const weeks = await getClientWeeks(activeAssignments).catch((err) => {
+    console.error("[clients] client weeks failed:", err)
+    return new Map<string, { week: number; totalWeeks: number }>()
+  })
+  const programsByClient: Record<string, ClientProgramWeek[]> = {}
+  for (const a of activeAssignments) {
+    programsByClient[a.user_id] = [
+      ...(programsByClient[a.user_id] ?? []),
+      {
+        assignmentId: a.id,
+        programId: a.program_id,
+        name: a.programs?.name ?? "Program",
+        week: weeks.get(a.id)?.week ?? null,
+        totalWeeks: weeks.get(a.id)?.totalWeeks ?? null,
+      },
+    ]
+  }
 
   // Profile completion
   const profilesWithGoals = profiles.filter((p) => p.goals && clientIds.has(p.user_id))
@@ -120,7 +141,7 @@ export default async function ClientsPage() {
         </div>
       </div>
 
-      <ClientList users={clients} />
+      <ClientList users={clients} programsByClient={programsByClient} />
     </div>
   )
 }

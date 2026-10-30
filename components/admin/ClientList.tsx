@@ -26,7 +26,22 @@ function getStatusClasses(status: UserStatus): string {
   }
 }
 
-export function ClientList({ users }: { users: User[] }) {
+/** An active program a client is on, and the week of it their Workouts page opens on (null if that read failed). */
+export interface ClientProgramWeek {
+  assignmentId: string
+  programId: string
+  name: string
+  week: number | null
+  totalWeeks: number | null
+}
+
+export function ClientList({
+  users,
+  programsByClient = {},
+}: {
+  users: User[]
+  programsByClient?: Record<string, ClientProgramWeek[]>
+}) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -105,8 +120,8 @@ export function ClientList({ users }: { users: User[] }) {
           <thead>
             <tr className="border-b border-border bg-surface/50">
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Program</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Email</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Role</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Joined</th>
               <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
@@ -123,12 +138,31 @@ export function ClientList({ users }: { users: User[] }) {
                     {client.first_name} {client.last_name}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">{client.email}</td>
                 <td className="px-4 py-3">
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary capitalize">
-                    {client.role}
-                  </span>
+                  {programsByClient[client.id]?.length ? (
+                    <div className="flex flex-col gap-1">
+                      {programsByClient[client.id].map((p) => (
+                        <div key={p.assignmentId} className="flex items-center gap-1.5">
+                          <Link
+                            href={`/admin/programs/${p.programId}`}
+                            className="max-w-[12rem] truncate text-foreground hover:underline"
+                            title={p.name}
+                          >
+                            {p.name}
+                          </Link>
+                          {p.week != null && (
+                            <span className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary whitespace-nowrap">
+                              Week {p.week} of {p.totalWeeks}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </td>
+                <td className="px-4 py-3 text-muted-foreground">{client.email}</td>
                 <td className="px-4 py-3">
                   <span
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getStatusClasses(client.status)}`}

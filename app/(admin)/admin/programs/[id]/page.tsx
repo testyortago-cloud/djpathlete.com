@@ -13,6 +13,7 @@ import { ProgramHeader } from "@/components/admin/ProgramHeader"
 import { ProgramBuilder } from "@/components/admin/ProgramBuilder"
 import { ProgramFeedbackForm } from "@/components/admin/ProgramFeedbackForm"
 import { WeekAccessPanel } from "@/components/admin/WeekAccessPanel"
+import { getClientWeeks } from "@/lib/programs/client-weeks"
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   try {
@@ -41,6 +42,14 @@ export default async function ProgramBuilderPage({ params }: { params: Promise<{
     getActiveAssignmentsForProgram(id),
     getFirstActiveAssignmentForProgram(id),
   ])
+
+  // The week each client on this program is on (what their Workouts page opens on).
+  const clientWeeks = await getClientWeeks(
+    activeAssignments.map((a) => ({ ...a, program_id: program.id, programs: program })),
+  ).catch((err) => {
+    console.error("[program] client weeks failed:", err)
+    return new Map<string, { week: number; totalWeeks: number }>()
+  })
 
   const assignedUserIds = activeAssignments.map((a) => a.user_id)
   const assignmentMap = Object.fromEntries(activeAssignments.map((a) => [a.user_id, a.id]))
@@ -121,6 +130,9 @@ export default async function ProgramBuilderPage({ params }: { params: Promise<{
           totalWeeks={program.duration_weeks}
           clientNames={Object.fromEntries(clients.map((c) => [c.id, `${c.first_name} ${c.last_name}`.trim()]))}
           hiddenWeeks={program.hidden_weeks ?? []}
+          clientWeeks={activeAssignments
+            .filter((a) => clientWeeks.has(a.id))
+            .map((a) => ({ assignmentId: a.id, userId: a.user_id, week: clientWeeks.get(a.id)!.week }))}
         />
       )}
 

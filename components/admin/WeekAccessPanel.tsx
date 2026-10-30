@@ -48,9 +48,18 @@ interface WeekAccessPanelProps {
   clientNames: Record<string, string>
   /** Weeks hidden on the program for every client (programs.hidden_weeks). */
   hiddenWeeks: number[]
+  /** The week each client is on: what their Workouts page opens on. Shown even while collapsed. */
+  clientWeeks?: { assignmentId: string; userId: string; week: number }[]
 }
 
-export function WeekAccessPanel({ programId, totalWeeks, clientNames, hiddenWeeks }: WeekAccessPanelProps) {
+export function WeekAccessPanel({
+  programId,
+  totalWeeks,
+  clientNames,
+  hiddenWeeks,
+  clientWeeks = [],
+}: WeekAccessPanelProps) {
+  const weekOf = new Map(clientWeeks.map((c) => [c.assignmentId, c.week]))
   const [expanded, setExpanded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [assignments, setAssignments] = useState<AssignmentInfo[]>([])
@@ -232,6 +241,20 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames, hiddenWeek
         {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
       </button>
 
+      {!expanded && clientWeeks.length > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Week each client is on">
+          {clientWeeks.map((c) => (
+            <li
+              key={c.assignmentId}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/50 px-2.5 py-1 text-xs"
+            >
+              <span className="font-medium text-foreground">{clientNames[c.userId] ?? "Client"}</span>
+              <span className="font-medium text-primary">Week {c.week}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
       {expanded && (
         <div className="mt-4 space-y-4">
           <div className="flex items-center justify-between">
@@ -258,6 +281,11 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames, hiddenWeek
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{clientName}</span>
+                        {weekOf.has(assignment.id) && (
+                          <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                            On Week {weekOf.get(assignment.id)}
+                          </span>
+                        )}
                         <Badge variant="outline" className="text-[10px]">
                           {assignment.payment_status}
                         </Badge>

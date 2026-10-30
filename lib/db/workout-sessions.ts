@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { WorkoutSession } from "@/types/database"
 import { slotKey } from "@/lib/program-weeks"
+import { readAllRows } from "@/lib/db/read-all"
 
 /** Service-role client bypasses RLS — these functions are only called from server-side routes. */
 function getClient() {
@@ -130,6 +131,21 @@ export async function listSessionSlots(userId: string, assignmentIds: string[]):
       slotKey(r.assignment_id, r.week_number, r.day_of_week),
     ]),
   )
+}
+
+/** slotKey of every workout session on these assignments, whoever's they are (the coach's view). */
+export async function listTrainedSlots(assignmentIds: string[]): Promise<Set<string>> {
+  if (assignmentIds.length === 0) return new Set()
+  const supabase = getClient()
+  const rows = await readAllRows<{ assignment_id: string; week_number: number; day_of_week: number }>((from, to) =>
+    supabase
+      .from("workout_sessions")
+      .select("assignment_id, week_number, day_of_week", { count: "exact" })
+      .in("assignment_id", assignmentIds)
+      .order("id", { ascending: true })
+      .range(from, to),
+  )
+  return new Set(rows.map((r) => slotKey(r.assignment_id, r.week_number, r.day_of_week)))
 }
 
 /** `"week-day"` keys of completed sessions for one assignment (program progress). */

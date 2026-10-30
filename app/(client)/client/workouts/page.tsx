@@ -16,7 +16,7 @@ import { WorkoutViewToggle } from "@/components/client/WorkoutViewToggle"
 import type { WorkoutCalendarDay } from "@/components/client/WorkoutCalendar"
 import { Dumbbell } from "lucide-react"
 import { isAssignmentExpired } from "@/lib/utils"
-import { effectiveTotalWeeks, resumeWeek, savedSetsForSlot, slotKey, sourceWeekForDisplay } from "@/lib/program-weeks"
+import { clientWeek, effectiveTotalWeeks, savedSetsForSlot, slotKey, sourceWeekForDisplay } from "@/lib/program-weeks"
 import { listSessionSlots } from "@/lib/db/workout-sessions"
 import { WaiverGate } from "@/components/client/WaiverGate"
 import { PendingPaymentCard } from "@/components/client/PendingPaymentCard"
@@ -223,19 +223,16 @@ export default async function ClientWorkoutsPage() {
       const gate = closeRepeatsOfClosedWeeks(rawGate, (w) => sourceWeekForDisplay(w, definedWeeks))
 
       // Open on the week the client is on: after the last week they trained every day of.
-      // A failed session read leaves trainedSlots empty, so this falls back to current_week.
-      const trainingDays = new Map<number, number[]>()
-      for (let w = 1; w <= totalWeeks; w++) {
-        const source = sourceWeekForDisplay(w, definedWeeks)
-        trainingDays.set(w, source == null ? [] : [...(weekMap.get(source)?.keys() ?? [])])
-      }
-      const currentWeek = resumeWeek({
-        assignmentId: assignment.id,
+      // The coach's screens show the same week (clientWeek). A failed session read leaves
+      // trainedSlots empty, so this falls back to current_week.
+      const { week: currentWeek } = clientWeek({
+        assignment,
         currentWeek: assignment.current_week ?? getCurrentWeekFromDate(assignment.start_date, totalWeeks),
-        totalWeeks,
-        trainingDays,
+        program,
+        slots: exercises,
+        weekAccess: weekAccessByAssignment[assignment.id] ?? [],
         trainedSlots,
-        openWeeks: new Set([...gate.open, ...Object.keys(gate.locked).map(Number)]),
+        now,
       })
 
       const weeks: Record<

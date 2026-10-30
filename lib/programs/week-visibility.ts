@@ -8,7 +8,7 @@ import type { ProgramAssignment, ProgramWeekAccess, WeekVisibility } from "@/typ
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
 export type ReleaseFields = Pick<ProgramAssignment, "release_base_week" | "release_anchor_at">
-type WeekAccessFields = Pick<
+export type WeekAccessFields = Pick<
   ProgramWeekAccess,
   "week_number" | "access_type" | "payment_status" | "price_cents" | "visibility"
 >

@@ -1,3 +1,10 @@
+import {
+  buildWeekGate,
+  closeRepeatsOfClosedWeeks,
+  type ReleaseFields,
+  type WeekAccessFields,
+} from "@/lib/programs/week-visibility"
+
 /**
  * `program_assignments.total_weeks` is a snapshot taken at assign time. When a
  * coach later expands a program (adds weeks / raises duration_weeks) through any
@@ -77,6 +84,55 @@ export function resumeWeek(args: {
   const candidate = Math.min(Math.max(currentWeek, lastFinished + 1), totalWeeks)
   for (let w = candidate; w <= totalWeeks; w++) if (openWeeks.has(w)) return w
   return candidate
+}
+
+/**
+ * The week a client is on, and how many weeks their program has: what their Workouts page
+ * opens on (resumeWeek, behind the same week gate). The client's page and the coach's
+ * screens both call this, so the coach sees the week the client sees.
+ *
+ * `slots` is the (week, day) of every exercise in the program; repeats are fine.
+ */
+export function clientWeek(args: {
+  assignment: ReleaseFields & { id: string; total_weeks: number | null }
+  currentWeek: number
+  program: { duration_weeks: number | null; hidden_weeks?: readonly number[] | null }
+  slots: readonly { week_number: number; day_of_week: number }[]
+  weekAccess: WeekAccessFields[]
+  trainedSlots: Set<string>
+  now: Date
+}): { week: number; totalWeeks: number } {
+  const { assignment, program } = args
+  const daysByWeek = new Map<number, Set<number>>()
+  for (const s of args.slots) {
+    if (!daysByWeek.has(s.week_number)) daysByWeek.set(s.week_number, new Set())
+    daysByWeek.get(s.week_number)!.add(s.day_of_week)
+  }
+  const definedWeeks = [...daysByWeek.keys()].sort((a, b) => a - b)
+  const totalWeeks = effectiveTotalWeeks(
+    assignment.total_weeks,
+    program.duration_weeks,
+    definedWeeks[definedWeeks.length - 1],
+  )
+  // A blank week repeats an earlier week's workout; it is open only while that week is.
+  const gate = closeRepeatsOfClosedWeeks(
+    buildWeekGate(assignment, args.weekAccess, totalWeeks, args.now, program.hidden_weeks ?? []),
+    (w) => sourceWeekForDisplay(w, definedWeeks),
+  )
+  const trainingDays = new Map<number, number[]>()
+  for (let w = 1; w <= totalWeeks; w++) {
+    const source = sourceWeekForDisplay(w, definedWeeks)
+    trainingDays.set(w, source == null ? [] : [...(daysByWeek.get(source) ?? [])])
+  }
+  const week = resumeWeek({
+    assignmentId: assignment.id,
+    currentWeek: args.currentWeek,
+    totalWeeks,
+    trainingDays,
+    trainedSlots: args.trainedSlots,
+    openWeeks: new Set([...gate.open, ...Object.keys(gate.locked).map(Number)]),
+  })
+  return { week, totalWeeks }
 }
 
 /**

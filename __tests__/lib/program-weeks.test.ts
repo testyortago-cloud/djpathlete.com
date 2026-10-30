@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest"
-import { effectiveTotalWeeks, resumeWeek, savedSetsForSlot, slotKey, sourceWeekForDisplay } from "@/lib/program-weeks"
+import {
+  clientWeek,
+  effectiveTotalWeeks,
+  resumeWeek,
+  savedSetsForSlot,
+  slotKey,
+  sourceWeekForDisplay,
+} from "@/lib/program-weeks"
 
 describe("effectiveTotalWeeks", () => {
   it("uses the live program duration when the snapshot is stale (the Luke bug)", () => {
@@ -165,5 +172,60 @@ describe("resumeWeek", () => {
       [4, [1]],
     ])
     expect(resumeWeek({ ...base, trainingDays: sparse, trainedSlots: trained([1, 1]) })).toBe(2)
+  })
+})
+
+describe("clientWeek (the week the coach sees and the client opens on)", () => {
+  const now = new Date("2026-10-30T12:00:00Z")
+  const trained = (...slots: [number, number][]) => new Set(slots.map(([w, d]) => slotKey("a-1", w, d)))
+  // Only week 1 is built (days 1 and 3, two exercises on day 1); weeks 2-4 repeat it.
+  const week1Only = [
+    { week_number: 1, day_of_week: 1 },
+    { week_number: 1, day_of_week: 1 },
+    { week_number: 1, day_of_week: 3 },
+  ]
+  const base = {
+    assignment: { id: "a-1", total_weeks: 4, release_base_week: null, release_anchor_at: null },
+    currentWeek: 1,
+    program: { duration_weeks: 4, hidden_weeks: [] as number[] },
+    slots: week1Only,
+    weekAccess: [],
+    now,
+  }
+  const shown = (week: number) => ({
+    week_number: week,
+    access_type: "included" as const,
+    payment_status: "not_required" as const,
+    price_cents: null,
+    visibility: "shown" as const,
+  })
+
+  it("is week 2 once both days of week 1 were trained, even though week 2 only repeats week 1", () => {
+    expect(clientWeek({ ...base, trainedSlots: trained([1, 1], [1, 3]) })).toEqual({ week: 2, totalWeeks: 4 })
+  })
+  it("is still week 1 while a day of it is untrained (duplicate exercise rows are one day)", () => {
+    expect(clientWeek({ ...base, trainedSlots: trained([1, 1]) }).week).toBe(1)
+  })
+  it("skips a week the program hides", () => {
+    const program = { duration_weeks: 4, hidden_weeks: [2] }
+    expect(clientWeek({ ...base, program, trainedSlots: trained([1, 1], [1, 3]) }).week).toBe(3)
+  })
+  it("does not skip it for a client whose own access shows it", () => {
+    const program = { duration_weeks: 4, hidden_weeks: [2] }
+    expect(clientWeek({ ...base, program, weekAccess: [shown(2)], trainedSlots: trained([1, 1], [1, 3]) }).week).toBe(2)
+  })
+  it("skips a blank week that repeats a hidden week", () => {
+    // Weeks 1 and 3 built, week 2 blank (repeats 1), week 1 hidden: only week 3 can be opened.
+    const slots = [
+      { week_number: 1, day_of_week: 1 },
+      { week_number: 3, day_of_week: 1 },
+    ]
+    const program = { duration_weeks: 3, hidden_weeks: [1] }
+    const assignment = { ...base.assignment, total_weeks: 3 }
+    expect(clientWeek({ ...base, assignment, program, slots, trainedSlots: trained() }).week).toBe(3)
+  })
+  it("counts the program's weeks, not a stale snapshot", () => {
+    const program = { duration_weeks: 12, hidden_weeks: [] }
+    expect(clientWeek({ ...base, program, trainedSlots: trained() }).totalWeeks).toBe(12)
   })
 })

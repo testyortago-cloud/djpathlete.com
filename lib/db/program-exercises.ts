@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { ProgramExercise } from "@/types/database"
+import { readAllRows } from "@/lib/db/read-all"
 
 /** Service-role client bypasses RLS — these functions are only called from server-side routes. */
 function getClient() {
@@ -25,6 +26,28 @@ export async function getProgramDaySlots(programId: string): Promise<{ week_numb
     slots.push({ week_number: r.week_number, day_of_week: r.day_of_week })
   }
   return slots
+}
+
+/** The (week_number, day_of_week) of every exercise in these programs, by program id. Repeats are kept. */
+export async function getDaySlotsByProgram(
+  programIds: string[],
+): Promise<Map<string, { week_number: number; day_of_week: number }[]>> {
+  const byProgram = new Map<string, { week_number: number; day_of_week: number }[]>()
+  if (programIds.length === 0) return byProgram
+  const supabase = getClient()
+  const rows = await readAllRows<{ program_id: string; week_number: number; day_of_week: number }>((from, to) =>
+    supabase
+      .from("program_exercises")
+      .select("program_id, week_number, day_of_week", { count: "exact" })
+      .in("program_id", programIds)
+      .order("id", { ascending: true })
+      .range(from, to),
+  )
+  for (const r of rows) {
+    if (!byProgram.has(r.program_id)) byProgram.set(r.program_id, [])
+    byProgram.get(r.program_id)!.push(r)
+  }
+  return byProgram
 }
 
 export async function getProgramExercises(programId: string) {
@@ -278,10 +301,7 @@ export async function copyExercisesFromProgram(args: CopyFromProgramArgs) {
       }
     })
 
-  const { data, error } = await supabase
-    .from("program_exercises")
-    .insert(toInsert)
-    .select("*, exercises(*)")
+  const { data, error } = await supabase.from("program_exercises").insert(toInsert).select("*, exercises(*)")
   if (error) throw error
   return data as (ProgramExercise & { exercises: unknown })[]
 }

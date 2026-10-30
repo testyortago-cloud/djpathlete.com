@@ -39,6 +39,7 @@ import { getUserById, getUsers } from "@/lib/db/users"
 import { getBillingPayer } from "@/lib/db/client-billing-payers"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getAssignments } from "@/lib/db/assignments"
+import { getClientWeeks } from "@/lib/programs/client-weeks"
 import { getPayments } from "@/lib/db/payments"
 import { getProgress, getWorkoutStreak } from "@/lib/db/progress"
 import { getAchievements } from "@/lib/db/achievements"
@@ -254,10 +255,13 @@ function ProgramsSection({
   assignments,
   clientName,
   packByAssignment,
+  weekByAssignment,
 }: {
   assignments: AssignmentWithProgram[]
   clientName: string
   packByAssignment: Map<string, { remaining: number; total: number }>
+  /** The week the client is on, for active programs (getClientWeeks). */
+  weekByAssignment: Map<string, { week: number; totalWeeks: number }>
 }) {
   return (
     <div className="bg-white rounded-xl border border-border p-6">
@@ -280,6 +284,12 @@ function ProgramsSection({
                   <DataTableCell className="font-medium text-foreground">
                     <div className="flex flex-col">
                       <span>{assignment.programs?.name ?? "Unknown Program"}</span>
+                      {assignment.status === "active" && weekByAssignment.get(assignment.id) && (
+                        <span className="mt-0.5 text-xs font-medium text-primary">
+                          On Week {weekByAssignment.get(assignment.id)!.week} of{" "}
+                          {weekByAssignment.get(assignment.id)!.totalWeeks}
+                        </span>
+                      )}
                       {assignment.status === "active" && packByAssignment.get(assignment.id) && (
                         <span className="mt-0.5 flex items-center gap-1 text-xs font-normal text-accent">
                           <Ticket className="size-3" strokeWidth={1.5} />
@@ -677,13 +687,19 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
   const packSummary = summarizeClientPacks(packs, new Date())
 
+  // The week of each active program the client is on. A failed read only hides it.
+  const weekByAssignment = await getClientWeeks(
+    (assignments as AssignmentWithProgram[]).filter((a) => a.status === "active"),
+  ).catch((err) => {
+    console.error("[client detail] client weeks failed:", err)
+    return new Map<string, { week: number; totalWeeks: number }>()
+  })
+
   // The arrangement's own ledger, and this calendar month's count — the number
   // the coach checks against the facility's invoice.
   const arrangementCheckins = arrangement ? await listCheckinsForArrangement(arrangement.id).catch(() => []) : []
   const thisMonth = monthOf(new Date())
-  const sessionsThisMonth = arrangementCheckins.filter(
-    (c) => !c.voided && monthOf(c.session_date) === thisMonth,
-  ).length
+  const sessionsThisMonth = arrangementCheckins.filter((c) => !c.voided && monthOf(c.session_date) === thisMonth).length
 
   // Personal (stable) check-in link + QR for this client — no daily QR to print.
   let personalCheckinUrl: string | null = null
@@ -958,6 +974,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           assignments={assignments as AssignmentWithProgram[]}
           clientName={`${user.first_name} ${user.last_name}`}
           packByAssignment={packSummary.byAssignment}
+          weekByAssignment={weekByAssignment}
         />
         <ClientFavoriteExercisesPanel clientId={id} initialFavorites={favorites} exerciseOptions={exerciseOptions} />
         <ClientProgressView
