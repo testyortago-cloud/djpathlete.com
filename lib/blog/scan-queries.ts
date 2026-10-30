@@ -1,10 +1,12 @@
-// Admin-editable weekly blog topic-scan queries.
+// Weekly blog topic-scan queries. Since 2026-10-31 the admin edits topics, not these lines:
+// lib/blog/scan-topics.ts saves the topics and writes this key from them.
 // Stored in system_settings under BLOG_SCAN_QUERIES_KEY as a string[]. The
 // Firebase weekly scanner (functions/src/tavily-trending-scan.ts) reads the same
 // key and falls back to its own twin copy of these defaults when unset.
 // IMPORTANT: keep this list identical to TRENDING_QUERIES in
 // functions/src/tavily-trending-scan.ts — the two are manually kept in sync.
-// __tests__/lib/blog/scan-queries-twin.test.ts fails if they drift.//
+// __tests__/lib/blog/scan-topics.test.ts fails if they drift.
+//
 // THE SET IS DELIBERATELY BROAD AND DELIBERATELY UNWEIGHTED. Every query here
 // buys one theme's worth of candidates; the per-theme cap in the scanner
 // (MAX_CANDIDATES_PER_THEME) is what stops any of them dominating. Narrowing

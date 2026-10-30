@@ -4,12 +4,14 @@ import { NextRequest } from "next/server"
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   createResearchedTopicSuggestions: vi.fn(),
+  addScanTopic: vi.fn(),
 }))
 
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }))
 vi.mock("@/lib/db/content-calendar", () => ({
   createResearchedTopicSuggestions: mocks.createResearchedTopicSuggestions,
 }))
+vi.mock("@/lib/blog/scan-topics-store", () => ({ addScanTopic: mocks.addScanTopic }))
 
 import { POST } from "@/app/api/admin/topic-suggestions/research/commit/route"
 
@@ -32,6 +34,7 @@ describe("POST /api/admin/topic-suggestions/research/commit", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.createResearchedTopicSuggestions.mockResolvedValue([{ id: "entry-1", ...sampleTopic }])
+    mocks.addScanTopic.mockResolvedValue("on")
   })
 
   it("returns 401 when unauthenticated", async () => {
@@ -63,5 +66,38 @@ describe("POST /api/admin/topic-suggestions/research/commit", () => {
       [sampleTopic],
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     )
+  })
+
+  it("dates the cards like the weekly scan's, so they land in that week's brief", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-11-03T12:00:00Z")) // a Tuesday
+    try {
+      mocks.auth.mockResolvedValueOnce({ user: { id: "u1", role: "admin" } })
+      await POST(jsonRequest({ topics: [sampleTopic] }))
+      expect(mocks.createResearchedTopicSuggestions).toHaveBeenCalledWith([sampleTopic], "2026-11-09")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("adds the researched subject to the weekly scan topics", async () => {
+    mocks.auth.mockResolvedValueOnce({ user: { id: "u1", role: "admin" } })
+    const res = await POST(jsonRequest({ topics: [sampleTopic], subject: "blood flow restriction rehab" }))
+    expect(mocks.addScanTopic).toHaveBeenCalledWith("blood flow restriction rehab", "research", "u1")
+    expect((await res.json()).scan_topic).toBe("on")
+  })
+
+  it("still adds the cards when the scan topic cannot be saved", async () => {
+    mocks.auth.mockResolvedValueOnce({ user: { id: "u1", role: "admin" } })
+    mocks.addScanTopic.mockRejectedValueOnce(new Error("settings write failed"))
+    const res = await POST(jsonRequest({ topics: [sampleTopic], subject: "blood flow restriction rehab" }))
+    expect(res.status).toBe(201)
+    expect((await res.json()).scan_topic).toBeNull()
+  })
+
+  it("adds no scan topic when no subject is sent", async () => {
+    mocks.auth.mockResolvedValueOnce({ user: { id: "u1", role: "admin" } })
+    await POST(jsonRequest({ topics: [sampleTopic] }))
+    expect(mocks.addScanTopic).not.toHaveBeenCalled()
   })
 })

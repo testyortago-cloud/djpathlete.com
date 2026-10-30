@@ -37,6 +37,18 @@ export async function setSetting(key: string, value: unknown, updatedBy: string 
   return data as SystemSetting
 }
 
+/** Several keys in one upsert, so they are written together or not at all. */
+export async function setSettings(values: Record<string, unknown>, updatedBy: string | null = null): Promise<void> {
+  const updated_at = new Date().toISOString()
+  const { error } = await getClient()
+    .from("system_settings")
+    .upsert(
+      Object.entries(values).map(([key, value]) => ({ key, value, updated_by: updatedBy, updated_at })),
+      { onConflict: "key" },
+    )
+  if (error) throw error
+}
+
 export async function isAutomationPaused(): Promise<boolean> {
   return getSetting<boolean>("automation_paused", false)
 }

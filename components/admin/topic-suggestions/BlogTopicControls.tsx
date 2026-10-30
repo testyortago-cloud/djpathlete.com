@@ -3,31 +3,19 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Plus, Loader2, Search, Save, Sparkles } from "lucide-react"
+import { Plus, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
 import { TopicResearchForm } from "@/components/admin/topic-suggestions/TopicResearchForm"
+import { ScanTopicsEditor } from "@/components/admin/topic-suggestions/ScanTopicsEditor"
+import { scanTopicNote, type ScanTopic } from "@/lib/blog/scan-topics"
 
-export function BlogTopicControls({ initialQueries }: { initialQueries: string[] }) {
+export function BlogTopicControls({ initialTopics }: { initialTopics: ScanTopic[] }) {
   const router = useRouter()
 
   // Custom topic
   const [topic, setTopic] = useState("")
   const [adding, setAdding] = useState(false)
-
-  // Scan queries
-  const [queriesText, setQueriesText] = useState(initialQueries.join("\n"))
-  const [savingQueries, setSavingQueries] = useState(false)
-  const [scanning, setScanning] = useState(false)
-
-  function parsedQueries(): string[] {
-    return queriesText
-      .split(/\r?\n/)
-      .map((q) => q.trim())
-      .filter(Boolean)
-  }
 
   async function addTopic() {
     const title = topic.trim()
@@ -46,71 +34,14 @@ export function BlogTopicControls({ initialQueries }: { initialQueries: string[]
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error ?? "Failed to add topic")
       }
-      toast.success("Topic added — find it below and click “Draft blog”.")
+      const data = await res.json().catch(() => ({}))
+      toast.success(`Added to this week's brief below. ${scanTopicNote(data.scan_topic)}`)
       setTopic("")
       router.refresh()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add topic")
     } finally {
       setAdding(false)
-    }
-  }
-
-  async function saveQueries() {
-    const queries = parsedQueries()
-    if (queries.length === 0) {
-      toast.error("Add at least one search topic")
-      return
-    }
-    setSavingQueries(true)
-    try {
-      const res = await fetch("/api/admin/topic-suggestions/queries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ queries }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Failed to save")
-      setQueriesText((data.queries as string[]).join("\n"))
-      toast.success("Saved. The next weekly scan will use these topics.")
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to save topics")
-    } finally {
-      setSavingQueries(false)
-    }
-  }
-
-  // Override the weekly schedule: save the current topics, then run the scan now.
-  async function runScanNow() {
-    const queries = parsedQueries()
-    if (queries.length === 0) {
-      toast.error("Add at least one search topic first")
-      return
-    }
-    setScanning(true)
-    try {
-      // Save current topics first so the scan uses exactly what's shown.
-      const saveRes = await fetch("/api/admin/topic-suggestions/queries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ queries }),
-      })
-      if (!saveRes.ok) {
-        const d = await saveRes.json().catch(() => ({}))
-        throw new Error(d.error ?? "Failed to save topics")
-      }
-      const scanRes = await fetch("/api/admin/topic-suggestions/scan", { method: "POST" })
-      if (!scanRes.ok) {
-        const d = await scanRes.json().catch(() => ({}))
-        throw new Error(d.error ?? "Failed to start scan")
-      }
-      toast.success("Scan started — fresh topics will appear here in a minute or two.")
-      // Surface the results without a manual reload once the job has had time to finish.
-      window.setTimeout(() => router.refresh(), 75000)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to start scan")
-    } finally {
-      setScanning(false)
     }
   }
 
@@ -125,7 +56,8 @@ export function BlogTopicControls({ initialQueries }: { initialQueries: string[]
           <h2 className="text-sm font-semibold text-primary">Suggest your own topic</h2>
         </div>
         <p className="mb-3 text-xs text-muted-foreground">
-          Add any topic you want written about — it appears in the list below, ready to draft.
+          Add any topic you want written about. It goes into this week&apos;s brief below, ready to draft, and into your
+          weekly scan topics.
         </p>
         <div className="flex gap-2">
           <Input
@@ -146,38 +78,9 @@ export function BlogTopicControls({ initialQueries }: { initialQueries: string[]
         </div>
       </div>
 
-      {/* Weekly auto-scan topics */}
-      <div className="rounded-xl border border-border bg-white p-4 lg:col-span-2">
-        <div className="mb-1 flex items-center gap-2">
-          <Search className="size-4 text-primary" />
-          <h2 className="text-sm font-semibold text-primary">Weekly auto-scan topics</h2>
-        </div>
-        <p className="mb-2 text-xs text-muted-foreground">
-          One search topic per line. These drive the automatic suggestions — broaden or replace them to steer the
-          content away from any single theme. Save applies to the next weekly scan, or hit{" "}
-          <span className="font-medium">Run scan now</span> to pull fresh topics immediately.
-        </p>
-        <Label htmlFor="scan-queries" className="sr-only">
-          Scan topics
-        </Label>
-        <Textarea
-          id="scan-queries"
-          value={queriesText}
-          onChange={(e) => setQueriesText(e.target.value)}
-          rows={6}
-          className="font-mono text-xs"
-        />
-        <div className="mt-2 flex justify-end gap-2">
-          <Button size="sm" variant="outline" onClick={saveQueries} disabled={savingQueries || scanning}>
-            {savingQueries ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Save className="mr-1.5 size-4" />}
-            Save topics
-          </Button>
-          <Button size="sm" onClick={runScanNow} disabled={scanning || savingQueries}>
-            {scanning ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Sparkles className="mr-1.5 size-4" />}
-            Run scan now
-          </Button>
-        </div>
-      </div>
+      {/* The key remounts the editor when the server sends a new list (a topic added by research or by
+          "Suggest your own topic"), so it never shows a stale one. */}
+      <ScanTopicsEditor key={JSON.stringify(initialTopics)} initialTopics={initialTopics} />
     </div>
   )
 }

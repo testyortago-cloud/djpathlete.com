@@ -114,6 +114,27 @@ describe("TopicResearchForm", () => {
     expect(screen.getByRole("button", { name: /add 1 selected/i })).toBeInTheDocument()
   })
 
+  it("adds the chosen angles with the researched subject, so it becomes a weekly scan topic", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: "job-1", status: "pending" }) })
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [], scan_topic: "on" }) })
+    useAiJobMock.mockReturnValue(
+      defaultAiJobState({
+        status: "completed",
+        result: { topics: [{ title: "Topic A", summary: "s1", tavily_url: "https://a.example/1", rank: 1 }] },
+      }),
+    )
+
+    render(<TopicResearchForm />)
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\./i), { target: { value: "  some topic here " } })
+    fireEvent.click(screen.getByRole("button", { name: /research/i }))
+    fireEvent.click(await screen.findByRole("button", { name: /add 1 selected/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const [url, init] = fetchMock.mock.calls[1]
+    expect(url).toBe("/api/admin/topic-suggestions/research/commit")
+    expect(JSON.parse(init.body)).toMatchObject({ subject: "some topic here", topics: [{ title: "Topic A" }] })
+  })
+
   it("shows a no-results message when the job completes with zero candidates", async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: "job-1", status: "pending" }) })
     useAiJobMock.mockReturnValue(defaultAiJobState({ status: "completed", result: { topics: [] } }))

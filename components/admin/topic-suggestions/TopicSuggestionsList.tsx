@@ -41,6 +41,14 @@ function formatScheduledFor(dateStr: string): string {
   })
 }
 
+/** Where a card came from, by metadata.source. */
+const SOURCE_LABEL: Record<string, string> = {
+  tavily: "Weekly scan",
+  topic_research: "Researched",
+  manual: "Your topic",
+  seo_agent: "SEO agent",
+}
+
 function metadataOf(entry: ContentCalendarEntry): TopicMetadata {
   return (entry.metadata ?? {}) as TopicMetadata
 }
@@ -122,6 +130,12 @@ function TopicCard({ entry, isHero, generatePost, generatingId }: TopicCardProps
 
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
             <span aria-label={`Rank ${label}`}>RANK {label}</span>
+            {meta.source && SOURCE_LABEL[meta.source] && (
+              <>
+                <span aria-hidden className="text-muted-foreground/40">·</span>
+                <span className="text-primary">{SOURCE_LABEL[meta.source]}</span>
+              </>
+            )}
             {host && (
               <>
                 <span aria-hidden className="text-muted-foreground/40">·</span>

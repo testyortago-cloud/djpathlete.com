@@ -7,6 +7,8 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { createResearchedTopicSuggestions } from "@/lib/db/content-calendar"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { nextMondayISO } from "@/lib/blog/scan-topics"
+import { addScanTopic } from "@/lib/blog/scan-topics-store"
 
 const schema = z.object({
   topics: z
@@ -20,6 +22,8 @@ const schema = z.object({
     )
     .min(1, "Select at least one topic")
     .max(10, "Too many topics at once"),
+  /** What the coach researched; it becomes a weekly scan topic. */
+  subject: z.string().trim().min(3).max(300).optional(),
 })
 
 export async function POST(request: Request) {
@@ -34,7 +38,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
   }
 
-  const today = new Date().toISOString().slice(0, 10)
-  const entries = await createResearchedTopicSuggestions(parsed.data.topics, today)
-  return NextResponse.json({ entries }, { status: 201 })
+  // Dated like the weekly scan's cards, so they sit in the same week's brief rather than in the archive.
+  const entries = await createResearchedTopicSuggestions(parsed.data.topics, nextMondayISO(new Date()))
+  // The subject also becomes a weekly scan topic. A failure there must not undo the cards just added.
+  const scanTopic = parsed.data.subject
+    ? await addScanTopic(parsed.data.subject, "research", session.user.id).catch((err) => {
+        console.error("[topic-suggestions/research/commit] adding the scan topic failed:", err)
+        return null
+      })
+    : null
+  return NextResponse.json({ entries, scan_topic: scanTopic }, { status: 201 })
 }

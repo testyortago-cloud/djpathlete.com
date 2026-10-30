@@ -1,7 +1,6 @@
 import { Lightbulb } from "lucide-react"
 import { listTopicSuggestions } from "@/lib/db/content-calendar"
-import { getSetting } from "@/lib/db/system-settings"
-import { BLOG_SCAN_QUERIES_KEY, DEFAULT_BLOG_SCAN_QUERIES } from "@/lib/blog/scan-queries"
+import { getScanTopics } from "@/lib/blog/scan-topics-store"
 import { TopicSuggestionsList } from "@/components/admin/topic-suggestions/TopicSuggestionsList"
 import { BlogTopicControls } from "@/components/admin/topic-suggestions/BlogTopicControls"
 import type { ContentCalendarEntry } from "@/types/database"
@@ -9,10 +8,7 @@ import type { ContentCalendarEntry } from "@/types/database"
 export const metadata = { title: "Topic Suggestions" }
 
 export default async function TopicSuggestionsPage() {
-  const [suggestions, scanQueries] = await Promise.all([
-    listTopicSuggestions(),
-    getSetting<string[]>(BLOG_SCAN_QUERIES_KEY, DEFAULT_BLOG_SCAN_QUERIES),
-  ])
+  const [suggestions, scanTopics] = await Promise.all([listTopicSuggestions(), getScanTopics()])
 
   return (
     <div>
@@ -21,10 +17,10 @@ export default async function TopicSuggestionsPage() {
         <h1 className="text-2xl font-semibold text-primary">Topic Suggestions</h1>
       </div>
       <p className="text-sm text-muted-foreground mb-6">
-        Weekly trending topics pulled from search and ranked for strength &amp; conditioning coaches and sport science / performance practitioners. Add your own topics or steer the weekly scan below, then click &quot;Draft blog&quot; on any topic.
+        Weekly trending topics pulled from search and ranked for strength &amp; conditioning coaches and sport science / performance practitioners. Choose what the weekly scan searches, add your own topics, then click &quot;Generate draft&quot; on any topic.
       </p>
 
-      <BlogTopicControls initialQueries={scanQueries} />
+      <BlogTopicControls initialTopics={scanTopics} />
 
       <TopicSuggestionsList suggestions={suggestions as ContentCalendarEntry[]} />
     </div>

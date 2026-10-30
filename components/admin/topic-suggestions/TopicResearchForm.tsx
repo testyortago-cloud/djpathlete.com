@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { scanTopicNote } from "@/lib/blog/scan-topics"
 import { Loader2, Search as SearchIcon, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -103,11 +104,13 @@ export function TopicResearchForm() {
       const res = await fetch("/api/admin/topic-suggestions/research/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topics: chosen }),
+        body: JSON.stringify({ topics: chosen, subject: submittedTopic }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? "Failed to add topics")
-      toast.success(`Added ${chosen.length} topic${chosen.length === 1 ? "" : "s"} — check this week's brief or the Archive section below.`)
+      toast.success(
+        `Added ${chosen.length} topic${chosen.length === 1 ? "" : "s"} to this week's brief below. ${scanTopicNote(data.scan_topic)}`,
+      )
       reset()
       router.refresh()
     } catch (e) {
