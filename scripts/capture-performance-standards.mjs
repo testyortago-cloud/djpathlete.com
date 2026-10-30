@@ -22,7 +22,7 @@ if (new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname !== "anjvztjiokcgiyhobknq.sup
 const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
 
 const APP = process.env.APP_URL ?? "http://localhost:3051"
-const OUT = "screenshots/performance-standards"
+const OUT = "screenshots/performance/standards"
 const W = 1440
 const H = 900
 mkdirSync(`${OUT}/raw`, { recursive: true })

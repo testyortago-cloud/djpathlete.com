@@ -5,7 +5,7 @@ import { ArrowLeft, Gauge } from "lucide-react"
 import { auth } from "@/lib/auth"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { listStandards } from "@/lib/db/performance-standards"
-import { PerformanceStandardsEditor } from "@/components/admin/PerformanceStandardsEditor"
+import { PerformanceStandardsEditor } from "@/components/admin/performance/performance-standards-editor"
 
 export const metadata: Metadata = { title: "Trained & Elite Standards — DJP Athlete Admin" }
 
