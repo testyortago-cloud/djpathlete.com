@@ -101,6 +101,7 @@ import {
   shouldChunkSelector,
   type PickedExercise,
 } from "./selector-chunking.js"
+import { placeStaples, stapleNote, staplesDueInWeek, staplesFromParams } from "./staples.js"
 import { z } from "zod"
 
 const MAX_RETRIES = 2
@@ -1290,7 +1291,11 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   // windowed rather than the full program history.
   // The coach's pool is left out: a pool exercise is never "too recent" to use (withoutPoolHistory).
   // ...and so are exercises the coach named specifically (specificNamedIds).
-  const historyExemptIds = [...(poolIds ?? []), ...specificNamedIds(coachNamed)]
+  // ...and the program's staples, saved with the request that generated it: a continuation week
+  // or a later "Generate week" keeps them on schedule. A single day does not place them.
+  const staples = staplesFromParams(program.ai_generation_params)
+  const dueStaples = isSingleDay ? [] : staplesDueInWeek(staples, newWeekNumber)
+  const historyExemptIds = [...(poolIds ?? []), ...specificNamedIds(coachNamed), ...staples.map((s) => s.exercise_id)]
   const priorExercisesForDedup = withoutPoolHistory(buildDedupSourceExercises(existingExercises, newWeekNumber), historyExemptIds)
 
   const priorContext = buildPriorContextFromExistingExercises(priorExercisesForDedup)
@@ -1450,7 +1455,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   // every later call; the small skeleton rides the variable suffix. (2026-08-03:
   // a 60-slot single-call selector burned all attempts and the 450s budget —
   // big weeks now run one day per call, see selector-chunking.ts.)
-  const selectorCachedPrefix = `Constraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${poolNote}${namedNote}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.`
+  const selectorCachedPrefix = `Constraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${poolNote}${namedNote}${stapleNote(dueStaples, candidatesAfterExclusions)}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.`
 
   type WeekScope = (typeof skeleton.weeks)[number]
 
@@ -1646,6 +1651,14 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
   if (!assignment) {
     throw new Error("Failed to generate exercise assignments")
+  }
+
+  if (dueStaples.length > 0) {
+    const staplesResult = placeStaples(assignment.assignments, skeleton.weeks[0], dueStaples, candidatesAfterExclusions)
+    console.log(
+      `[week-orchestrator] Week ${newWeekNumber} staples: ${dueStaples.length} due, ${staplesResult.placed.length} placed by code` +
+        (staplesResult.unplaced.length ? `, NOT placed: ${staplesResult.unplaced.join(", ")}` : ""),
+    )
   }
 
   // ── Step 3.5: Last-resort within-week deduplication ────────────────────

@@ -40,6 +40,7 @@ import {
   formatExerciseLibrary,
 } from "./exercise-context.js"
 import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn, getClientFavoriteExerciseIds } from "./usage-history.js"
+import { placeStaples, stapleNote, staplesDueInWeek, withoutStaples, type Staple } from "./staples.js"
 import { getCoachPolicyFromFn, formatCoachPolicyAsInstructions } from "./coach-policy.js"
 import { getBlockedExerciseIdsFromFn } from "../lib/exercise-blocks.js"
 import { extractInstructionIntent, resolveIntentToExerciseIds } from "./instruction-intent.js"
@@ -108,6 +109,8 @@ export interface AiGenerationRequest {
   pool_exercise_ids?: string[]
   /** How the Exercise Pool is enforced: "preferred" (bias, default) or "strict" (hard restrict) */
   pool_mode?: "preferred" | "strict"
+  /** Pool exercises that come back on a schedule (see ./staples.ts). */
+  staple_exercises?: Staple[]
   ignore_profile?: boolean
   is_public?: boolean
   price_cents?: number
@@ -878,6 +881,9 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // Labelled so an abort raised deep in the retry loop can leave BOTH loops
     // without discarding the weeks already committed.
     let abortError: unknown = null
+    // Repeating a staple is the point, so prior weeks are compared without them.
+    const staples = request.staple_exercises ?? []
+    const stapleMisses = new Map<number, string[]>()
     weekLoop: for (const week of skeleton.weeks) {
       // Stop before starting a week there is no time to finish: a week aborted
       // mid-flight costs its whole spend and produces nothing.
@@ -893,7 +899,10 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       const weekSkeleton = extractWeekSkeleton(skeleton.weeks, weekNum)
       if (!weekSkeleton) continue
 
-      const priorContext = buildPriorWeekContext(completedWeeksSync, skeleton.weeks)
+      const priorWeeksForVariety = withoutStaples(completedWeeksSync, staples)
+      const priorContext = buildPriorWeekContext(priorWeeksForVariety, skeleton.weeks)
+      const dueStaples = staplesDueInWeek(staples, weekNum)
+      const dueStapleNote = stapleNote(dueStaples, candidatesAfterExclusions)
       const weekSkeletonPayload = {
         weeks: [weekSkeleton],
         split_type: skeleton.split_type,
@@ -942,7 +951,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         if (attempt > 0 && weekAssignment) {
           const dedupResult = verifyWeekDiversity(
             { week_number: weekNum, assignments: weekAssignment.assignments },
-            completedWeeksSync,
+            priorWeeksForVariety,
             skeleton.weeks,
           )
           if (!dedupResult.pass) {
@@ -966,7 +975,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         }
 
         // Stable prefix — identical across the 3 attempts for this week. Cache it.
-        const agent3StablePrefix = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${thisWeekLibrary.length} exercises, pre-filtered for relevance):\n${thisWeekLibraryText}${poolNote}\n\n${priorContext.prompt_text}${coachInstructionsSection}`
+        const agent3StablePrefix = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${thisWeekLibrary.length} exercises, pre-filtered for relevance):\n${thisWeekLibraryText}${poolNote}${dueStapleNote}\n\n${priorContext.prompt_text}${coachInstructionsSection}`
         // Variable suffix — only present on retries (attempt > 0).
         const agent3VariableSuffix = `${feedbackSection}${dedupFeedback}${withinWeekFeedback}`.trim() || "Begin."
 
@@ -1005,6 +1014,14 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           if (strippedCount > 0) {
             console.warn(`[orchestrator:sync] Week ${weekNum}: Stripped ${strippedCount} hallucinated exercise IDs`)
           }
+          if (dueStaples.length > 0) {
+            const staplesResult = placeStaples(weekAssignment.assignments, weekSkeleton, dueStaples, candidatesAfterExclusions)
+            stapleMisses.set(weekNum, staplesResult.unplaced) // the last attempt's is the one kept
+            console.log(
+              `[orchestrator:sync] Week ${weekNum} staples: ${dueStaples.length} due, ${staplesResult.placed.length} placed by code` +
+                (staplesResult.unplaced.length ? `, NOT placed: ${staplesResult.unplaced.join(", ")}` : ""),
+            )
+          }
 
           console.log(`[orchestrator:sync] Week ${weekNum} Agent 3: ${weekAssignment.assignments.length} assignments`)
 
@@ -1022,7 +1039,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           // Dedup verification against prior weeks
           const dedupResult = verifyWeekDiversity(
             { week_number: weekNum, assignments: weekAssignment.assignments },
-            completedWeeksSync,
+            priorWeeksForVariety,
             skeleton.weeks,
           )
           console.log(`[orchestrator:sync] Week ${weekNum} dedup: ${dedupResult.summary}`)
@@ -1198,7 +1215,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       : skeleton
 
     // Full-program dedup report
-    const syncRepetitionReport = analyzeFullProgramRepetition(completedWeeksSync, builtSkeleton.weeks)
+    const syncRepetitionReport = analyzeFullProgramRepetition(withoutStaples(completedWeeksSync, staples), builtSkeleton.weeks)
     console.log(`[orchestrator:sync] Full program repetition: ${syncRepetitionReport.summary}`)
 
     // Full-program validation
@@ -1228,6 +1245,16 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         category: "instruction_unmatched",
         message: `You asked for "${phrase}" but no exercise in the library matches it.`,
       })
+    }
+    for (const [weekNum, ids] of stapleMisses) {
+      for (const id of ids) {
+        const name = allCompressed.find((e) => e.id === id)?.name ?? id
+        validation.issues.push({
+          type: "warning",
+          category: "staple_not_placed",
+          message: `Staple "${name}" is missing from week ${weekNum}: no slot that week fits its movement pattern, or it is blocked or ruled out for this client.`,
+        })
+      }
     }
     for (const id of blockedByAssessment) {
       const blocked = allCompressed.find((e) => e.id === id)

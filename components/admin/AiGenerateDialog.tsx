@@ -75,6 +75,7 @@ import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
 import type { User, ClientProfile, Exercise } from "@/types/database"
 import { ExercisePool } from "@/components/admin/ExercisePool"
 import { BlockedExercisePanel } from "@/components/admin/BlockedExercisePanel"
+import { MAX_STAPLES } from "@/lib/validators/ai-generation"
 import { summarizeApiError } from "@/lib/errors/humanize"
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -224,6 +225,9 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   const [allExercises, setAllExercises] = useState<Exercise[]>([])
   const [poolExercises, setPoolExercises] = useState<Exercise[]>([])
   const [strictPool, setStrictPool] = useState(false)
+  // Pool exercises that come back on a schedule, by exercise id: every 1-4 weeks from week 1.
+  const [staples, setStaples] = useState<Record<string, number>>({})
+  const stapleCount = poolExercises.filter((e) => staples[e.id]).length
 
   useEffect(() => {
     if (!sidePanel || allExercises.length > 0) return
@@ -416,6 +420,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     setSidePanel(null)
     setPoolExercises([])
     setStrictPool(false)
+    setStaples({})
     setIgnoreProfile(false)
     setSelectedTier("generalize")
     setAudience("private")
@@ -568,6 +573,11 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
       if (poolExercises.length > 0) {
         body.pool_exercise_ids = poolExercises.map((e) => e.id)
         body.pool_mode = strictPool ? "strict" : "preferred"
+        // Only exercises still in the pool: removing one from the pool drops its staple.
+        const stapleList = poolExercises
+          .filter((e) => staples[e.id])
+          .map((e) => ({ exercise_id: e.id, every_weeks: staples[e.id] }))
+        if (stapleList.length > 0) body.staple_exercises = stapleList
       }
       if (profileSummary && profileSummary.availableEquipment.length > 0 && !ignoreProfile) {
         body.equipment_override = profileSummary.availableEquipment
@@ -1116,6 +1126,45 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                           </p>
                         </div>
                         <Switch id="ai-strict-pool" checked={strictPool} onCheckedChange={setStrictPool} />
+                      </div>
+                    )}
+                    {poolExercises.length > 0 && (
+                      <div className="space-y-2 rounded-lg border p-3">
+                        <div className="space-y-0.5">
+                          <p className="text-sm font-medium">Staple exercises</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            A staple comes back on a schedule so you can track the client&apos;s progress on it. Every 3
+                            weeks means weeks 1, 4, 7 and 10. Up to {MAX_STAPLES}.
+                          </p>
+                        </div>
+                        <ul className="max-h-48 divide-y overflow-y-auto">
+                          {poolExercises.map((e) => (
+                            <li key={e.id} className="flex items-center justify-between gap-3 py-1.5">
+                              <span className="truncate text-sm">{e.name}</span>
+                              <select
+                                aria-label={`How often ${e.name} comes back`}
+                                value={staples[e.id] ?? 0}
+                                onChange={(ev) => {
+                                  const every = Number(ev.target.value)
+                                  setStaples((prev) => {
+                                    const next = { ...prev }
+                                    if (every) next[e.id] = every
+                                    else delete next[e.id]
+                                    return next
+                                  })
+                                }}
+                                className="h-8 shrink-0 rounded-md border border-input bg-background px-2 text-xs"
+                              >
+                                <option value={0}>Not a staple</option>
+                                {[1, 2, 3, 4].map((n) => (
+                                  <option key={n} value={n} disabled={!staples[e.id] && stapleCount >= MAX_STAPLES}>
+                                    {n === 1 ? "Every week" : `Every ${n} weeks`}
+                                  </option>
+                                ))}
+                              </select>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     )}
                   </div>
