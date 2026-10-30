@@ -1,0 +1,49 @@
+{
+  "startedAt": "2026-10-30T15:33:00.826Z",
+  "app": "http://localhost:3051",
+  "assertions": [
+    {
+      "name": "the age group saved (200)",
+      "ok": true,
+      "evidence": "200"
+    },
+    {
+      "name": "one row stored, for that test and age group",
+      "ok": true,
+      "evidence": "[{\"id\":\"5b60efa6-d159-47e4-aaa2-cd41b1ede3b5\",\"business_id\":\"95ea4120-dc97-4faf-a0f3-20eb7f9959e5\",\"test_type\":\"broad_jump\",\"age_min\":23,\"age_max\":25,\"floor_value\":155,\"trained_value\":297,\"elite_value\":361,\"created_at\":\"2026-10-30T15:33:11.386885+00:00\",\"updated_at\":\"2026-10-30T15:33:11.386885+00:00\"}]"
+    },
+    {
+      "name": "the Broad Jump record shows the coach's Trained 297 and Elite 361",
+      "ok": true,
+      "evidence": "Trained 297 cm · Elite 361 cm"
+    },
+    {
+      "name": "and reads \"Developing\": the best 258 is below Trained 297",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "no uncaught page errors",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the Arena links to the standards",
+      "ok": true,
+      "evidence": ""
+    }
+  ],
+  "beats": [
+    "[+   2.4s] client Felix Boateng, age 24, best Broad Jump 258; age group 23-25 {\"floor\":155,\"trained\":297,\"elite\":361}",
+    "[+  10.6s] PASS the age group saved (200) -- 200",
+    "[+  11.3s] PASS one row stored, for that test and age group -- [{\"id\":\"5b60efa6-d159-47e4-aaa2-cd41b1ede3b5\",\"business_id\":\"95ea4120-dc97-4faf-a0f3-20eb7f9959e5\",\"test_type\":\"broad_jump\",\"age_min\":23,\"age_max\":25,\"floor_value\":155,\"trained_value\":297,\"elite_value\":361,\"created_at\":\"2026-10-30T15:33:11.386885+00:00\",\"updated_at\":\"2026-10-30T15:33:11.386885+00:00\"}]",
+    "[+  11.9s] shot 01-settings",
+    "[+  15.6s] PASS the Broad Jump record shows the coach's Trained 297 and Elite 361 -- Trained 297 cm · Elite 361 cm",
+    "[+  15.6s] PASS and reads \"Developing\": the best 258 is below Trained 297",
+    "[+  15.6s] PASS no uncaught page errors",
+    "[+  16.2s] shot 02-arena",
+    "[+  16.6s] PASS the Arena links to the standards",
+    "[+  16.7s] shot 03-arena-link",
+    "[+  18.7s] cleanup: removed 1 standard row(s); left from this run: 0"
+  ]
+}
