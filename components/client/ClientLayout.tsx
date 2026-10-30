@@ -152,7 +152,8 @@ export function ClientLayout({ children, flags }: { children: React.ReactNode; f
           </Link>
           <NotificationBell />
         </div>
-        <main className="p-6 pb-28 lg:pb-6">
+        {/* pb-28 clears the mobile tab bar; lg:pb-20 keeps the last row clear of the Messages dock. */}
+        <main className="p-6 pb-28 lg:pb-20">
           <div className="mx-auto w-full max-w-7xl">
             <PullToRefresh>{children}</PullToRefresh>
           </div>

@@ -51,7 +51,8 @@ export function AdminLayout({
                 initials={initials}
                 businessSwitcher={businessSwitcher}
               />
-              <main className="flex-1 p-6">
+              {/* lg:pb-20: the last row of any page (a table's page arrows) clears the Messages dock. */}
+              <main className="flex-1 p-6 lg:pb-20">
                 <div className="w-full">{children}</div>
               </main>
             </div>

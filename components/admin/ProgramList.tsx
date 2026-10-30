@@ -481,6 +481,7 @@ export function ProgramList({ programs, athleteCounts = {}, excelImportEnabled =
             <button
               onClick={() => setPage(page - 1)}
               disabled={page <= 1}
+              aria-label="Previous page"
               className="p-1.5 rounded-lg hover:bg-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft className="size-4" />
@@ -488,6 +489,7 @@ export function ProgramList({ programs, athleteCounts = {}, excelImportEnabled =
             <button
               onClick={() => setPage(page + 1)}
               disabled={page >= totalPages}
+              aria-label="Next page"
               className="p-1.5 rounded-lg hover:bg-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronRight className="size-4" />
