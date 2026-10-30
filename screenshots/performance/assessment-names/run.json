@@ -1,0 +1,40 @@
+{
+  "app": "http://localhost:3051",
+  "results": [
+    {
+      "name": "a custom name is accepted and typed in full",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the custom one is marked Custom",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "\"Cable turns_Core\" links the library exercise",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the box stays editable after a library pick",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the suggestion list holds more than 20 exercises",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "no uncaught page errors",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "both exercise cards fit in the shot",
+      "ok": true,
+      "evidence": "{\"x\":301,\"y\":567,\"width\":1094,\"height\":40}"
+    }
+  ]
+}

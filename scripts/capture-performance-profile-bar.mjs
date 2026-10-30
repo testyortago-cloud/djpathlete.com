@@ -118,6 +118,25 @@ try {
     markers: [await marker(perf, "Performance: results, Arena card and the test report.", "above")],
   })
 
+  // 3. The Tests tab links to the standards its results are coloured against.
+  await page.goto(`${APP}/admin/clients/${client.id}/performance?tab=tests`, { waitUntil: "load", timeout: 120000 })
+  await hideChrome()
+  const edit = page.getByRole("link", { name: "Edit Trained & Elite standards" })
+  await edit.waitFor({ timeout: 60000 })
+  check(
+    "the Tests tab links to the standards",
+    (await edit.getAttribute("href")) === "/admin/settings/performance-standards",
+  )
+  await edit.scrollIntoViewIfNeeded()
+  await page.mouse.move(3, 3)
+  await page.waitForTimeout(400)
+  await page.screenshot({ path: `${OUT}/raw/03-tests-tab.png` })
+  await annotate(`${OUT}/raw/03-tests-tab.png`, `${OUT}/03-tests-tab.png`, {
+    title: "Change the standards from the results",
+    subtitle: `Clients > ${name} > Performance > Tests`,
+    markers: [await marker(edit, "Opens Trained & Elite Standards.", "above")],
+  })
+
   writeFileSync(
     `${OUT}/index.html`,
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Arena card on Performance</title>
@@ -128,6 +147,7 @@ h1{color:#0E3F50}figure{margin:32px 0}img{width:100%;border:1px solid #ddd;borde
 <p>Real app, development clone, light mode. Nothing was changed; the pages were only opened.</p>
 <figure><img src="01-performance.png" alt="Performance page"><figcaption><strong>01.</strong> The athlete profile bar on Performance.</figcaption></figure>
 <figure><img src="02-client-page.png" alt="Client page"><figcaption><strong>02.</strong> The client page's Performance button.</figcaption></figure>
+<figure><img src="03-tests-tab.png" alt="Tests tab"><figcaption><strong>03.</strong> The Tests tab links to the standards.</figcaption></figure>
 </body></html>\n`,
   )
 } finally {

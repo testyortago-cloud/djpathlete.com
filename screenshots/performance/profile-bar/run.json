@@ -35,6 +35,11 @@
       "name": "no uncaught page errors",
       "ok": true,
       "evidence": ""
+    },
+    {
+      "name": "the Tests tab links to the standards",
+      "ok": true,
+      "evidence": ""
     }
   ]
 }
