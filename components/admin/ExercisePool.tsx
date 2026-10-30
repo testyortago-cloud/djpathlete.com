@@ -26,9 +26,17 @@ interface ExercisePoolProps {
   poolExercises: Exercise[]
   onPoolChange: (exercises: Exercise[]) => void
   onClose: () => void
+  /** The line above the pool list. The builder's default mentions dragging onto days. */
+  hint?: string
 }
 
-export function ExercisePool({ allExercises, poolExercises, onPoolChange, onClose }: ExercisePoolProps) {
+export function ExercisePool({
+  allExercises,
+  poolExercises,
+  onPoolChange,
+  onClose,
+  hint = "AI generation will use these exercises. Drag to add to days manually.",
+}: ExercisePoolProps) {
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [browseOpen, setBrowseOpen] = useState(poolExercises.length === 0)
@@ -200,9 +208,7 @@ export function ExercisePool({ allExercises, poolExercises, onPoolChange, onClos
           </div>
         ) : (
           <>
-            <p className="text-[10px] text-muted-foreground px-1 pb-0.5">
-              AI generation will use these exercises. Drag to add to days manually.
-            </p>
+            <p className="text-[10px] text-muted-foreground px-1 pb-0.5">{hint}</p>
             {poolExercises.map((exercise) => (
               <ExercisePoolCard key={exercise.id} exercise={exercise} onRemove={() => removeFromPool(exercise.id)} />
             ))}

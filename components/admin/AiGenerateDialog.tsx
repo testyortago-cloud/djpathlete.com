@@ -1129,6 +1129,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
               poolExercises={poolExercises}
               onPoolChange={setPoolExercises}
               onClose={() => setSidePanel(null)}
+              hint="The AI picks these exercises first."
             />
           )}
           {step === 2 && sidePanel === "blocked" && (
