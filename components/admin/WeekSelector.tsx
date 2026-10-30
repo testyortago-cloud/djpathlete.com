@@ -76,8 +76,9 @@ export function WeekSelector({
                   : `Week ${week}`
             }
           >
-            {isHidden && <EyeOff className="size-3.5" aria-label="hidden from clients" />}
+            {isHidden && <EyeOff className="size-3.5" aria-hidden="true" />}
             Week {week}
+            {isHidden && <span className="sr-only">(hidden)</span>}
             {isBlank &&
               (repeatSrc ? (
                 <span className="ml-1 inline-flex items-center gap-0.5 text-[10px] opacity-70">
