@@ -1,0 +1,40 @@
+{
+  "app": "http://localhost:3051",
+  "results": [
+    {
+      "name": "Performance links to the Arena card",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "Performance has the test report's share link",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "Performance links to the standards",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the client page links to Performance",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the client page no longer has the Arena card button",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "nor the share button",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "no uncaught page errors",
+      "ok": true,
+      "evidence": ""
+    }
+  ]
+}
