@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { ImportRow } from "@/lib/output-sports/map"
+import type { TestType } from "@/types/database"
 
 /** Service-role client bypasses RLS — these functions are only called from server-side code. */
 function getClient() {
@@ -141,6 +142,18 @@ export async function markSynced(businessId: string, clientUserId: string, at: D
     .eq("business_id", businessId)
     .eq("client_user_id", clientUserId)
   if (error) throw new Error(`output_athlete_links: ${error.message}`)
+}
+
+/** Deletes every result brought in from Output for the client. Answers the test types it touched. */
+export async function deleteImportedTests(clientUserId: string): Promise<TestType[]> {
+  const { data, error } = await getClient()
+    .from("performance_tests")
+    .delete()
+    .eq("client_user_id", clientUserId)
+    .not("output_key", "is", null)
+    .select("test_type")
+  if (error) throw new Error(`performance_tests: ${error.message}`)
+  return [...new Set((data ?? []).map((r) => r.test_type as TestType))]
 }
 
 /**

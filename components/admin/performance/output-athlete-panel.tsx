@@ -96,6 +96,9 @@ export function OutputAthletePanel({
       router.refresh()
     } catch (err) {
       setMessage((err as Error).message)
+      // The link may have been saved before the request failed (a timeout during the first
+      // sync); refreshing shows it, so clicking Link again does not start the year-long read over.
+      router.refresh()
     } finally {
       setBusy(null)
     }
@@ -115,13 +118,13 @@ export function OutputAthletePanel({
     }
   }
 
-  async function unlink() {
+  async function unlink(removeResults: boolean) {
     setBusy("unlink")
     try {
-      await request(base, { method: "DELETE" })
+      await request(removeResults ? `${base}?remove=1` : base, { method: "DELETE" })
       setConfirmUnlink(false)
       setMessage(null)
-      toast.success("Unlinked from Output")
+      toast.success(removeResults ? "Unlinked, and its results removed" : "Unlinked from Output")
       router.refresh()
     } catch (err) {
       setMessage((err as Error).message)
@@ -161,9 +164,12 @@ export function OutputAthletePanel({
             </Button>
             {confirmUnlink ? (
               <>
-                <Button size="sm" variant="destructive" onClick={unlink} disabled={!!busy}>
+                <Button size="sm" variant="outline" onClick={() => unlink(false)} disabled={!!busy}>
                   {spin("unlink")}
-                  Yes, unlink
+                  Unlink, keep results
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => unlink(true)} disabled={!!busy}>
+                  Unlink and remove its results
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setConfirmUnlink(false)}>
                   Cancel
@@ -230,6 +236,12 @@ export function OutputAthletePanel({
             </>
           )}
         </div>
+      )}
+
+      {confirmUnlink && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Remove the results only if this was the wrong athlete. Results you typed in yourself are never removed.
+        </p>
       )}
 
       {message && <p className="mt-2 text-sm text-muted-foreground">{message}</p>}

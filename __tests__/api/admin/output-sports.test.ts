@@ -15,7 +15,7 @@ const db = vi.hoisted(() => ({
 }))
 const signIn = vi.fn()
 const listAthletes = vi.fn()
-const sync = vi.hoisted(() => ({ outputAccessToken: vi.fn(), syncClient: vi.fn() }))
+const sync = vi.hoisted(() => ({ outputAccessToken: vi.fn(), syncClient: vi.fn(), removeImportedTests: vi.fn() }))
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/permissions/guard", () => ({ canAccessAdminPath: (...a: unknown[]) => canAccess(...a) }))
@@ -37,9 +37,9 @@ vi.mock("@/lib/output-sports/sync", async (orig) => ({
 }))
 
 import { POST as connect } from "@/app/api/admin/output-sports/connection/route"
-import { GET as athletes, POST as link } from "@/app/api/admin/clients/[id]/output/route"
+import { GET as athletes, POST as link, DELETE as unlink } from "@/app/api/admin/clients/[id]/output/route"
 import { POST as syncRoute } from "@/app/api/admin/clients/[id]/output/sync/route"
-import { OutputAuthError } from "@/lib/output-sports/api"
+import { OutputApiError, OutputAuthError } from "@/lib/output-sports/api"
 
 const json = (url: string, body: unknown) => new Request(url, { method: "POST", body: JSON.stringify(body) })
 const clientCtx = { params: Promise.resolve({ id: "client-1" }) }
@@ -139,5 +139,40 @@ describe("/api/admin/clients/[id]/output", () => {
     sync.syncClient.mockRejectedValue(new OutputAuthError("OAuth error. Invalid refresh token!"))
     const res = await syncRoute(new Request(`${url}/sync`, { method: "POST" }), clientCtx)
     expect(res.status).toBe(409)
+  })
+
+  it("relinking to a different athlete removes the old athlete's results first", async () => {
+    db.getLink.mockResolvedValueOnce({ output_athlete_id: "a1", last_synced_at: "2026-11-01T00:00:00Z" })
+    await link(json(url, { athleteId: "a2" }), clientCtx)
+    expect(db.linkAthlete).toHaveBeenCalled()
+    expect(sync.removeImportedTests).toHaveBeenCalledWith("client-1")
+    expect(sync.removeImportedTests.mock.invocationCallOrder[0]).toBeLessThan(
+      sync.syncClient.mock.invocationCallOrder[0],
+    )
+  })
+
+  it("linking the same athlete again keeps the link (and its last sync) and removes nothing", async () => {
+    db.getLink.mockResolvedValueOnce({ output_athlete_id: "a2", last_synced_at: "2026-11-01T00:00:00Z" })
+    await link(json(url, { athleteId: "a2" }), clientCtx)
+    expect(db.linkAthlete).not.toHaveBeenCalled()
+    expect(sync.removeImportedTests).not.toHaveBeenCalled()
+    expect(sync.syncClient).toHaveBeenCalled()
+  })
+
+  it("unlink keeps the results unless the coach asks to remove them", async () => {
+    await unlink(new Request(url, { method: "DELETE" }), clientCtx)
+    expect(sync.removeImportedTests).not.toHaveBeenCalled()
+    await unlink(new Request(`${url}?remove=1`, { method: "DELETE" }), clientCtx)
+    expect(sync.removeImportedTests).toHaveBeenCalledWith("client-1")
+    expect(db.unlinkAthlete).toHaveBeenCalledTimes(2)
+  })
+
+  it("blames Output only when Output failed: 502 for Output, 500 for our own database", async () => {
+    sync.syncClient.mockRejectedValueOnce(new OutputApiError("Output Sports answered 500"))
+    expect((await syncRoute(new Request(`${url}/sync`, { method: "POST" }), clientCtx)).status).toBe(502)
+    sync.syncClient.mockRejectedValueOnce(new Error("performance_tests: duplicate key"))
+    const res = await syncRoute(new Request(`${url}/sync`, { method: "POST" }), clientCtx)
+    expect(res.status).toBe(500)
+    expect((await res.json()).error).not.toMatch(/Output Sports/)
   })
 })

@@ -251,6 +251,16 @@ try {
     .eq("client_user_id", client.id)
     .not("output_key", "is", null)
   check("a second sync adds no duplicates", after === before, `${before} -> ${after}`)
+  // 8. Wrong athlete: unlink and remove what it brought in. Typed-in results are never touched.
+  await page.getByRole("button", { name: "Unlink" }).click()
+  await page.getByRole("button", { name: "Unlink and remove its results" }).click()
+  await page.getByRole("button", { name: "Link to Output athlete" }).waitFor({ timeout: 60000 })
+  const { count: left } = await db
+    .from("performance_tests")
+    .select("id", { count: "exact", head: true })
+    .eq("client_user_id", client.id)
+    .not("output_key", "is", null)
+  check("unlink and remove leaves no imported results", left === 0, `${left} left`)
   check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | "))
   mkdirSync(DEST, { recursive: true })
   cpSync(OUT, DEST, { recursive: true })

@@ -2,6 +2,7 @@ import type { TestType } from "@/types/database"
 import { OutputAuthError, listMeasurements, refreshAccess } from "./api"
 import { localDate, measurementsToTests, syncWindows, type OutputMeasurement } from "./map"
 import {
+  deleteImportedTests,
   getLink,
   getRefreshToken,
   markSynced,
@@ -10,7 +11,7 @@ import {
   upsertImportedTests,
 } from "@/lib/db/output-sports"
 import { recomputeDownstream } from "@/lib/db/performance-tests"
-import { getBusinessSettings } from "@/lib/db/businesses"
+import { BusinessSettingsMissingError, getBusinessSettings } from "@/lib/db/businesses"
 import { checkGoals } from "@/lib/coach-intel/check-goals"
 import { reduceTrials } from "@/lib/validators/performance-test"
 
@@ -20,8 +21,12 @@ export class OutputNotLinkedError extends Error {}
 const DAY_MS = 86_400_000
 /** How far back the first sync of a newly linked client reads. */
 const FIRST_SYNC_DAYS = 365
-/** Later syncs re-read this many days before the last one, to catch results uploaded late. */
-const OVERLAP_DAYS = 3
+/**
+ * Later syncs re-read this many days before the last one, to catch results a phone
+ * uploaded late. The window's first day is cut and dropped, so a full day less than
+ * this is covered.
+ */
+const OVERLAP_DAYS = 4
 
 /**
  * A fresh access token for the business's Output account. When Output refuses the
@@ -34,10 +39,24 @@ export async function outputAccessToken(businessId: string): Promise<string> {
   try {
     const t = await refreshAccess(refresh)
     if (t.refreshToken && t.refreshToken !== refresh) await storeRefreshToken(businessId, t.refreshToken)
+    // Output accepts the connection again, so an earlier refusal no longer applies.
+    await setConnectionError(businessId, null)
     return t.accessToken
   } catch (err) {
     if (err instanceof OutputAuthError) await setConnectionError(businessId, err.message)
     throw err
+  }
+}
+
+const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - DAY_MS).toISOString().slice(0, 10)
+
+/**
+ * Removes a client's results brought in from Output (when they are linked to a different
+ * athlete, the old ones belong to someone else) and fixes PRs on what is left.
+ */
+export async function removeImportedTests(clientUserId: string) {
+  for (const testType of await deleteImportedTests(clientUserId)) {
+    await recomputeDownstream(clientUserId, testType, "1900-01-01")
   }
 }
 
@@ -63,9 +82,14 @@ export async function syncClient(
   const link = await getLink(businessId, clientUserId)
   if (!link) throw new OutputNotLinkedError("This client is not linked to an Output athlete.")
   const token = await outputAccessToken(businessId)
+  // UTC only when the business has no settings row. Any other failed read stops the sync:
+  // days keyed in the wrong zone would mix two local days for good.
   const timeZone = await getBusinessSettings(businessId)
     .then((s) => s.timezone)
-    .catch(() => "UTC")
+    .catch((err) => {
+      if (err instanceof BusinessSettingsMissingError) return "UTC"
+      throw err
+    })
 
   const from = link.last_synced_at
     ? new Date(Date.parse(link.last_synced_at) - OVERLAP_DAYS * DAY_MS)
@@ -84,18 +108,24 @@ export async function syncClient(
   const complete = rows.filter((r) => r.test_date > firstDay)
   const added = await upsertImportedTests(clientUserId, complete, actorId)
 
+  // Goals are marked achieved by recent results only: a first sync reads a year back, and
+  // a jump from March must not complete a goal set today.
+  const recentFrom = localDate(new Date(now.getTime() - OVERLAP_DAYS * DAY_MS).toISOString(), timeZone)
   const byType = new Map<TestType, typeof complete>()
   for (const r of complete) byType.set(r.test_type, [...(byType.get(r.test_type) ?? []), r])
   for (const [testType, list] of byType) {
     const earliest = list.reduce((min, r) => (r.test_date < min ? r.test_date : min), list[0].test_date)
-    const dayBefore = new Date(Date.parse(`${earliest}T00:00:00Z`) - DAY_MS).toISOString().slice(0, 10)
-    await recomputeDownstream(clientUserId, testType, dayBefore)
-    const best = reduceTrials(
-      list.map((r) => r.result_value),
-      list[0].best_method,
-    )
+    await recomputeDownstream(clientUserId, testType, dayBefore(earliest))
+    const recent = list.filter((r) => r.test_date >= recentFrom)
+    if (recent.length === 0) continue
     try {
-      await checkGoals(clientUserId, { testType, testValue: best })
+      await checkGoals(clientUserId, {
+        testType,
+        testValue: reduceTrials(
+          recent.map((r) => r.result_value),
+          recent[0].best_method,
+        ),
+      })
     } catch (e) {
       console.error("[output-sports] checkGoals failed", e)
     }

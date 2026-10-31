@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { OutputAuthError } from "./api"
+import { OutputApiError, OutputAuthError } from "./api"
 import { OutputNotConnectedError, OutputNotLinkedError } from "./sync"
 
 /**
@@ -19,5 +19,11 @@ export function outputErrorResponse(err: unknown): NextResponse {
     )
   }
   console.error("[output-sports]", err)
-  return NextResponse.json({ error: "Could not reach Output Sports. Try again in a minute." }, { status: 502 })
+  if (err instanceof OutputApiError) {
+    return NextResponse.json(
+      { error: `Could not reach Output Sports (${err.message}). Try again in a minute.` },
+      { status: 502 },
+    )
+  }
+  return NextResponse.json({ error: "Something went wrong on our side, not in Output. Try again." }, { status: 500 })
 }

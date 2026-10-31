@@ -9,6 +9,8 @@ const BASE = "https://api.outputsports.com/api/v1"
 
 /** Output refused the login or the stored token. The coach has to reconnect. */
 export class OutputAuthError extends Error {}
+/** Output could not be reached, timed out, or answered with an error. */
+export class OutputApiError extends Error {}
 
 export interface OutputAthlete {
   id: string
@@ -26,14 +28,19 @@ interface TokenResponse {
 
 async function call<T>(path: string, init: RequestInit & { token?: string } = {}): Promise<T> {
   const { token, ...rest } = init
-  const res = await fetch(`${BASE}${path}`, {
-    ...rest,
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    signal: AbortSignal.timeout(20_000),
-  })
+  let res: Response
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...rest,
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      signal: AbortSignal.timeout(20_000),
+    })
+  } catch (err) {
+    throw new OutputApiError(`Output Sports did not answer (${(err as Error).name})`)
+  }
   if (res.ok) return (await res.json()) as T
   // Output's errors are { title, status, detail }; detail is the readable part.
   const detail = await res
@@ -42,7 +49,7 @@ async function call<T>(path: string, init: RequestInit & { token?: string } = {}
     .catch(() => undefined)
   const message = detail ?? `Output Sports answered ${res.status}`
   if (res.status === 401 || res.status === 403) throw new OutputAuthError(message)
-  throw new Error(message)
+  throw new OutputApiError(message)
 }
 
 function token(body: Record<string, string>) {

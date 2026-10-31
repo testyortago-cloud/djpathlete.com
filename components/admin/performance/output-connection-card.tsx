@@ -44,6 +44,8 @@ export function OutputConnectionCard({
       setShowForm(false)
       toast.success("Output Sports connected")
       router.refresh()
+    } catch {
+      setError("Could not reach the app. Check your internet connection and try again.")
     } finally {
       setBusy(false)
     }
@@ -61,6 +63,8 @@ export function OutputConnectionCard({
       setConfirmDisconnect(false)
       setShowForm(true)
       router.refresh()
+    } catch {
+      toast.error("Could not disconnect Output Sports")
     } finally {
       setBusy(false)
     }

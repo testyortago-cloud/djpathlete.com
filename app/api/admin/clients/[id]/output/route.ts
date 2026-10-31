@@ -9,10 +9,13 @@ import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getLink, linkAthlete, linkedAthletes, unlinkAthlete } from "@/lib/db/output-sports"
 import { listAthletes } from "@/lib/output-sports/api"
 import { looksLikeClient } from "@/lib/output-sports/map"
-import { outputAccessToken, syncClient } from "@/lib/output-sports/sync"
+import { outputAccessToken, removeImportedTests, syncClient } from "@/lib/output-sports/sync"
 import { outputErrorResponse } from "@/lib/output-sports/errors"
 
 type Ctx = { params: Promise<{ id: string }> }
+
+// A first link reads a year of results from Output in 31-day pieces, then recomputes PRs.
+export const maxDuration = 300
 
 /** The caller, their business and the client, or a response saying why not. */
 async function contextOr(request: Request, ctx: Ctx) {
@@ -78,29 +81,40 @@ export const POST = withAudit(
     }
     if (!athlete) return NextResponse.json({ error: "That athlete is not in your Output account." }, { status: 404 })
     const name = athlete.fullName?.trim() || `${athlete.firstName ?? ""} ${athlete.lastName ?? ""}`.trim()
-    const link = await linkAthlete(c.businessId, c.client.id, { id: athlete.id, name }, c.userId)
-    if (link === "taken") {
-      return NextResponse.json({ error: `${name} is already linked to another client.` }, { status: 409 })
+    const previous = await getLink(c.businessId, c.client.id)
+    // Linking the same athlete again keeps last_synced_at, so it is not a second year-long read.
+    if (previous?.output_athlete_id !== athlete.id) {
+      const link = await linkAthlete(c.businessId, c.client.id, { id: athlete.id, name }, c.userId)
+      if (link === "taken") {
+        return NextResponse.json({ error: `${name} is already linked to another client.` }, { status: 409 })
+      }
+      // Results from the athlete they were linked to before belong to someone else.
+      if (previous) await removeImportedTests(c.client.id)
     }
 
+    let summary
     try {
-      const summary = await syncClient(c.businessId, c.client.id, c.userId)
-      return NextResponse.json({ link: await getLink(c.businessId, c.client.id), summary })
+      summary = await syncClient(c.businessId, c.client.id, c.userId)
     } catch (err) {
       // The link is saved either way; the coach can press Sync again.
       const body = await outputErrorResponse(err).json()
-      return NextResponse.json({ link, syncError: body.error })
+      return NextResponse.json({ link: await getLink(c.businessId, c.client.id), syncError: body.error })
     }
+    return NextResponse.json({ link: await getLink(c.businessId, c.client.id), summary })
   },
 )
 
-/** Unlinks. Results already pulled in stay in the client's history. */
+/**
+ * Unlinks. Results already brought in stay in the client's history, unless `?remove=1`
+ * (the coach linked the wrong athlete).
+ */
 export const DELETE = withAudit(
   { action: "output_sports.athlete_unlinked", category: "admin_write", target },
   async (request, context) => {
     const c = await contextOr(request, context as unknown as Ctx)
     if (c instanceof NextResponse) return c
     await unlinkAthlete(c.businessId, c.client.id)
+    if (new URL(request.url).searchParams.get("remove") === "1") await removeImportedTests(c.client.id)
     return NextResponse.json({ ok: true })
   },
 )

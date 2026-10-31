@@ -9,6 +9,9 @@ import { outputErrorResponse } from "@/lib/output-sports/errors"
 
 type Ctx = { params: Promise<{ id: string }> }
 
+// A sync after a long gap reads Output in 31-day pieces, then recomputes PRs.
+export const maxDuration = 300
+
 /** Pulls the client's latest Output results into their performance tests. */
 export const POST = withAudit(
   {
@@ -23,11 +26,12 @@ export const POST = withAudit(
     }
     const { id } = await (context as unknown as Ctx).params
     const { businessId } = await resolveAdminTenantForRequest(request)
+    let summary
     try {
-      const summary = await syncClient(businessId, id, session.user.id)
-      return NextResponse.json({ summary, link: await getLink(businessId, id) })
+      summary = await syncClient(businessId, id, session.user.id)
     } catch (err) {
       return outputErrorResponse(err)
     }
+    return NextResponse.json({ summary, link: await getLink(businessId, id) })
   },
 )

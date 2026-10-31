@@ -6,6 +6,7 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import { OutputAuthError, signIn } from "@/lib/output-sports/api"
 import { disconnect, getConnection, saveConnection } from "@/lib/db/output-sports"
+import { outputErrorResponse } from "@/lib/output-sports/errors"
 
 const bodySchema = z.object({
   email: z.string().trim().email("Enter the email you sign in to Output with."),
@@ -41,7 +42,7 @@ export const POST = withAudit({ action: "output_sports.connected", category: "ad
       return NextResponse.json({ error: `Output Sports did not accept that login: ${err.message}` }, { status: 400 })
     }
     console.error("[output-sports] connect failed", err)
-    return NextResponse.json({ error: "Could not reach Output Sports. Try again in a minute." }, { status: 502 })
+    return outputErrorResponse(err)
   }
   return NextResponse.json({ connection: await getConnection(actor.businessId) })
 })
