@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { programExerciseSchema } from "@/lib/validators/program-exercise"
 import { addExerciseToProgram } from "@/lib/db/program-exercises"
+import { logBuilderExerciseEdit } from "@/lib/program-exercise-edit-log"
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -19,6 +20,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const programExercise = await addExerciseToProgram({
       program_id: id,
       ...result.data,
+    })
+
+    await logBuilderExerciseEdit(request, {
+      programId: id,
+      exerciseId: programExercise.exercise_id,
+      action: "added",
+      aiPick: false,
+      weekNumber: programExercise.week_number,
+      dayOfWeek: programExercise.day_of_week,
     })
 
     return NextResponse.json(programExercise, { status: 201 })

@@ -14,6 +14,7 @@ import {
   type TavilySearchResult,
 } from "./lib/research-candidates.js"
 import { capPerTheme, themeLabel, themeOf } from "./lib/topic-themes.js"
+import { focusQueriesFrom } from "./lib/scan-focus.js"
 
 export type { TavilySearchResult }
 
@@ -125,6 +126,39 @@ async function getScanQueries(): Promise<string[]> {
 }
 
 /**
+ * The searches of the focus topics (on, with keywords) on /admin/topic-suggestions. Fails open to none: a
+ * missing focus only means an ordinary, broad brief.
+ */
+async function getFocusQueries(): Promise<Set<string>> {
+  try {
+    const supabase = getSupabase()
+    const { data } = await supabase.from("system_settings").select("value").eq("key", "blog_scan_topics").maybeSingle()
+    return focusQueriesFrom(data?.value)
+  } catch {
+    return new Set()
+  }
+}
+
+/**
+ * Caps every theme except the focus topic's results. A focus topic is the coach asking for depth on one subject,
+ * so capping it at three would undo the request; every other theme keeps the cap. Input order is preserved.
+ */
+export function capPerThemeExceptFocus(
+  items: TavilySearchResult[],
+  maxPerTheme: number,
+  focusUrls: ReadonlySet<string>,
+): TavilySearchResult[] {
+  const capped = new Set(
+    capPerTheme(
+      items.filter((r) => !focusUrls.has(r.url)),
+      maxPerTheme,
+      (r) => r.title,
+    ),
+  )
+  return items.filter((r) => focusUrls.has(r.url) || capped.has(r))
+}
+
+/**
  * Renders the "already covered" guard rail. Returns "" when there is nothing to
  * avoid, so the prompt shape is unchanged on a first-ever run.
  */
@@ -147,7 +181,11 @@ export function buildCoveredBlock(coveredTitles: string[]): string {
   ].join("\n")
 }
 
-export function buildRankingPrompt(results: TavilySearchResult[], coveredTitles: string[] = []): string {
+export function buildRankingPrompt(
+  results: TavilySearchResult[],
+  coveredTitles: string[] = [],
+  focusUrls: ReadonlySet<string> = new Set(),
+): string {
   if (results.length === 0) {
     return [
       "# TAVILY SEARCH",
@@ -163,7 +201,11 @@ export function buildRankingPrompt(results: TavilySearchResult[], coveredTitles:
   // agreement rather than behaviour.
   const block = results
     .map((r, i) => {
-      const meta = [themeLabel(themeOf(r.title)), r.published_date ? `published ${r.published_date}` : null]
+      const meta = [
+        focusUrls.has(r.url) ? "FOCUS" : null,
+        themeLabel(themeOf(r.title)),
+        r.published_date ? `published ${r.published_date}` : null,
+      ]
         .filter(Boolean)
         .join(" · ")
       return `${i + 1}. ${r.title}\n   URL: ${r.url}\n   [${meta}]\n   ${r.content}`
@@ -187,6 +229,12 @@ export function buildRankingPrompt(results: TavilySearchResult[], coveredTitles:
     "",
     "SPREAD THE BRIEF ACROSS DIFFERENT THEMES. Each candidate above is tagged with its theme. No more than TWO of your chosen topics may share a theme, and you should cover at least four different themes when the candidate pool allows it. A brief where half the topics are variations on one mechanism is a failed brief, however strong each individual paper is.",
     "",
+    ...(results.some((r) => focusUrls.has(r.url))
+      ? [
+          "THIS WEEK HAS A FOCUS. Candidates tagged FOCUS come from a subject the coach chose to go deep on. The two-per-theme limit does NOT apply to them: include up to SIX FOCUS topics that pass the gates, each a different finding. Use the rest of the brief for breadth as usual.",
+          "",
+        ]
+      : []),
     "Do not include two topics that describe the same underlying study or finding — if multiple sources cover it, keep only the single strongest source.",
     "",
     "Write each title the way a performance coach would — specific and mechanism-aware, naming the finding and who it applies to. Rank 1 = strongest combination of (a) scientific rigor of source, (b) practical applicability for performance coaches, (c) novelty — and where two topics are close, prefer the one whose theme is NOT already represented higher in your list.",
@@ -227,6 +275,8 @@ Reject:
   • Two topics describing the same underlying study or finding — keep only the strongest source
 
 BREADTH IS A HARD REQUIREMENT, NOT A PREFERENCE. Each candidate is tagged with its theme. At most TWO chosen topics may share a theme, and you should span at least four themes whenever the pool allows. Several excellent papers about the same mechanism are ONE topic's worth of brief — pick the best of them and move on. A brief is judged on what a reader learns across the whole list, not on the peak rigour of any single row.
+
+The one exception: candidates tagged FOCUS come from a subject the coach chose to go deep on this week, and the two-per-theme limit does not apply to them.
 
 Some candidates are flagged as already covered. Those findings are spent: a fresh angle on a covered finding is still a repeat.
 
@@ -301,7 +351,7 @@ export async function handleTavilyTrendingScan(jobId: string): Promise<void> {
   try {
     await jobRef.update({ status: "processing", updatedAt: FieldValue.serverTimestamp() })
 
-    const scanQueries = await getScanQueries()
+    const [scanQueries, focusQueries] = await Promise.all([getScanQueries(), getFocusQueries()])
     const searches = await Promise.all(
       scanQueries.map((query) =>
         tavilySearch({
@@ -331,15 +381,18 @@ export async function handleTavilyTrendingScan(jobId: string): Promise<void> {
     // three slots on papers that are about to be discarded anyway.
     const collected = collectDiverseResults(searches, MAX_RESULTS_TO_RANK)
     const uncovered = dropCovered(collected, coveredTitles, (r) => r.title)
-    const topicsFromTavily = capPerTheme(uncovered, MAX_CANDIDATES_PER_THEME, (r) => r.title)
+    const focusUrls = new Set(
+      searches.flatMap((search, i) => (focusQueries.has(scanQueries[i]) ? search.results.map((r) => r.url) : [])),
+    )
+    const topicsFromTavily = capPerThemeExceptFocus(uncovered, MAX_CANDIDATES_PER_THEME, focusUrls)
 
     console.log(
       `[tavily-trending-scan] candidates: ${collected.length} collected → ${uncovered.length} uncovered → ` +
-        `${topicsFromTavily.length} after per-theme cap; ${coveredTitles.length} covered titles` +
+        `${topicsFromTavily.length} after per-theme cap (${focusQueries.size} focus searches); ${coveredTitles.length} covered titles` +
         `${coverageDegraded ? " (COVERAGE READ DEGRADED)" : ""}`,
     )
 
-    const userMessage = buildRankingPrompt(topicsFromTavily, coveredTitles)
+    const userMessage = buildRankingPrompt(topicsFromTavily, coveredTitles, focusUrls)
 
     const result = await callAgent(SYSTEM_PROMPT, userMessage, TrendingSchema, {
       model: MODEL_SONNET,

@@ -6,6 +6,8 @@ import { getCoachPolicy } from "@/lib/db/coach-ai-policy"
 import { listStudioBlocks } from "@/lib/db/exercise-blocks"
 import { AiPolicyForm } from "@/components/admin/ai-policy-form"
 import { BlockedExercisesCard } from "@/components/admin/BlockedExercisesCard"
+import { LearnedFromEditsCard } from "@/components/admin/LearnedFromEditsCard"
+import { getExerciseEditSummary } from "@/lib/db/program-exercise-edits"
 import { redirect } from "next/navigation"
 
 export const metadata: Metadata = { title: "AI Program Policy — DJP Athlete Admin" }
@@ -13,8 +15,11 @@ export const metadata: Metadata = { title: "AI Program Policy — DJP Athlete Ad
 export default async function AiPolicyPage() {
   const session = await auth()
   if (!session?.user?.id || session.user.role !== "admin") redirect("/login")
-  const policy = await getCoachPolicy(session.user.id)
-  const blocks = await listStudioBlocks(session.user.id)
+  const [policy, blocks, edits] = await Promise.all([
+    getCoachPolicy(session.user.id),
+    listStudioBlocks(session.user.id),
+    getExerciseEditSummary(session.user.id),
+  ])
 
   const disallowedCount = policy?.disallowed_techniques?.length ?? 0
   const preferredCount = policy?.preferred_techniques?.length ?? 0
@@ -106,6 +111,10 @@ export default async function AiPolicyPage() {
           scopeLabel="Blocked exercises"
           emptyHint="No exercises blocked. Use the ⊘ on an exercise in a program to block one."
         />
+      </div>
+
+      <div className="mt-6">
+        <LearnedFromEditsCard summary={edits} />
       </div>
     </div>
   )

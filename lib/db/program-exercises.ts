@@ -77,10 +77,17 @@ export async function addExerciseToProgram(
   return data as ProgramExercise
 }
 
+/** Returns the removed row (null if it was already gone), so the caller can log what was taken out. */
 export async function removeExerciseFromProgram(id: string) {
   const supabase = getClient()
-  const { error } = await supabase.from("program_exercises").delete().eq("id", id)
+  const { data, error } = await supabase
+    .from("program_exercises")
+    .delete()
+    .eq("id", id)
+    .select("program_id, exercise_id, slot_role, week_number, day_of_week")
+    .maybeSingle()
   if (error) throw error
+  return data as Pick<ProgramExercise, "program_id" | "exercise_id" | "slot_role" | "week_number" | "day_of_week"> | null
 }
 
 export async function updateProgramExercise(id: string, updates: Partial<Omit<ProgramExercise, "id" | "created_at">>) {

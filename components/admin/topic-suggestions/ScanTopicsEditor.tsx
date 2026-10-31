@@ -174,7 +174,8 @@ export function ScanTopicsEditor({ initialTopics }: { initialTopics: ScanTopic[]
       <p className="mb-3 text-xs text-muted-foreground">
         Every Monday the scan searches each topic that is on. Switch a topic off to leave it out: it stays here, crossed
         out, so you can switch it back on any week. Add keywords to dig deeper into a topic: each keyword is its own
-        search. Topics you research or suggest above are added here too.
+        search, and that week&apos;s brief can hold up to six suggestions on it instead of two. Topics you research or
+        suggest above are added here too.
       </p>
 
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

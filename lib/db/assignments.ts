@@ -227,3 +227,26 @@ export async function getCompletedAssignments(userId: string) {
   if (error) throw error
   return data as (ProgramAssignment & { programs: Program | null })[]
 }
+
+/**
+ * The client's most recently started program: the one a new AI program follows on from. Reads the same row as
+ * getPreviousProgramFromFn in functions/src/ai/previous-program.ts, so the AI Generate dialog names the program
+ * the generator will actually read.
+ */
+export async function getLatestAssignmentProgram(
+  userId: string,
+): Promise<{ name: string; start_date: string; status: ProgramAssignment["status"] } | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("program_assignments")
+    .select("start_date, status, programs(name)")
+    .eq("user_id", userId)
+    .order("start_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  const row = data as { start_date: string; status: ProgramAssignment["status"]; programs: { name: string } | null } | null
+  if (!row?.programs) return null
+  return { name: row.programs.name, start_date: row.start_date, status: row.status }
+}

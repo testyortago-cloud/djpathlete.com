@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { programExerciseUpdateSchema } from "@/lib/validators/program-exercise"
 import { updateProgramExercise, removeExerciseFromProgram } from "@/lib/db/program-exercises"
+import { logBuilderExerciseEdit } from "@/lib/program-exercise-edit-log"
 
 type Params = { params: Promise<{ id: string; exerciseId: string }> }
 
@@ -35,10 +36,20 @@ export async function PATCH(request: Request, { params }: Params) {
   }
 }
 
-export async function DELETE(_request: Request, { params }: Params) {
+export async function DELETE(request: Request, { params }: Params) {
   try {
     const { exerciseId } = await params
-    await removeExerciseFromProgram(exerciseId)
+    const removed = await removeExerciseFromProgram(exerciseId)
+    if (removed) {
+      await logBuilderExerciseEdit(request, {
+        programId: removed.program_id,
+        exerciseId: removed.exercise_id,
+        action: "removed",
+        aiPick: removed.slot_role !== null,
+        weekNumber: removed.week_number,
+        dayOfWeek: removed.day_of_week,
+      })
+    }
     return NextResponse.json({ success: true })
   } catch {
     return NextResponse.json({ error: "Failed to remove exercise. Please try again." }, { status: 500 })

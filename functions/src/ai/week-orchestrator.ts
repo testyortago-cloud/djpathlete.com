@@ -33,6 +33,7 @@ import {
 } from "./usage-history.js"
 import { getSupabase } from "../lib/supabase.js"
 import { getSetting } from "../lib/system-settings.js"
+import { getCoachEditScoresFromFn } from "./edit-learning.js"
 import { getBlockedExerciseIdsFromFn } from "../lib/exercise-blocks.js"
 import {
   getProgramById,
@@ -802,7 +803,8 @@ async function buildWeekAttempt(
   await updateJobProgress("fetching_context", 1, "Loading program data & client logs")
 
   const favoritesEnabled = await getSetting<boolean>("exercise_favorites_ai_enabled", true)
-  const [program, existingExercises, fullLibrary, coachPolicy, coachUsage, clientUsage, favoriteIds, blockedIds] =
+  const learnFromEdits = await getSetting<boolean>("ai_learn_from_edits_enabled", true)
+  const [program, existingExercises, fullLibrary, coachPolicy, coachUsage, clientUsage, favoriteIds, blockedIds, editScores] =
     await Promise.all([
       getProgramById(request.program_id),
       getProgramExercises(request.program_id),
@@ -822,9 +824,15 @@ async function buildWeekAttempt(
         console.warn("[week-orchestrator] blocklist fetch failed:", e instanceof Error ? e.message : e)
         return new Set<string>()
       }),
+      learnFromEdits
+        ? getCoachEditScoresFromFn(requestedBy).catch((e) => {
+            console.warn("[week-orchestrator] edit-learning fetch failed:", e instanceof Error ? e.message : e)
+            return new Map<string, number>()
+          })
+        : Promise.resolve(new Map<string, number>()),
     ])
   console.log(
-    `[week-orchestrator] policy: ${coachPolicy ? "loaded" : "none"}, coach usage: ${coachUsage.size}, client usage: ${clientUsage.size}, blocked: ${blockedIds.size}`,
+    `[week-orchestrator] policy: ${coachPolicy ? "loaded" : "none"}, coach usage: ${coachUsage.size}, client usage: ${clientUsage.size}, blocked: ${blockedIds.size}, learned from edits: ${editScores.size}`,
   )
 
   // Exercise Pool — preferred (default) biases the AI toward the coach's
@@ -1358,6 +1366,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     excludeIds,
     preferredIds,
     favoriteIds,
+    editScores,
     namedGroups: coachNamed,
     mmrLambda: 0.7,
     // The job id is unique per generation, so pressing "AI Fill Week" twice

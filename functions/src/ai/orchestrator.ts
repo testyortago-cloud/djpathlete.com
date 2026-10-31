@@ -42,6 +42,8 @@ import {
 import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn, getClientFavoriteExerciseIds } from "./usage-history.js"
 import { placeStaples, stapleNote, staplesDueInWeek, withoutStaples, type Staple } from "./staples.js"
 import { getCoachPolicyFromFn, formatCoachPolicyAsInstructions } from "./coach-policy.js"
+import { getPreviousProgramFromFn, formatPreviousProgram } from "./previous-program.js"
+import { getCoachEditScoresFromFn } from "./edit-learning.js"
 import { getBlockedExerciseIdsFromFn } from "../lib/exercise-blocks.js"
 import { extractInstructionIntent, resolveIntentToExerciseIds } from "./instruction-intent.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
@@ -402,13 +404,25 @@ Maximum Exercise Difficulty: ${assessmentContext.maxDifficultyScore}/10
 IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.maxDifficultyScore}.`
       : ""
 
+    // The client's last block, so this one follows on from it. Skipped with "ignore profile", which means
+    // "assume nothing about this client". Its own section, never part of the coach instructions.
+    const previousProgram =
+      request.client_id && !request.ignore_profile
+        ? await getPreviousProgramFromFn(request.client_id).catch((e) => {
+            console.warn("[orchestrator:sync] previous program fetch failed:", e instanceof Error ? e.message : e)
+            return null
+          })
+        : null
+    const previousProgramSection = previousProgram ? formatPreviousProgram(previousProgram) : ""
+    if (previousProgram) console.log(`[orchestrator:sync] Follows on from "${previousProgram.name}"`)
+
     // Fetch coach AI policy — injected into Agent 1 instructions as studio-wide overrides
     const coachPolicy = await getCoachPolicyFromFn(requestedBy)
     const policyInstructions = formatCoachPolicyAsInstructions(coachPolicy)
     const combinedInstructions = [request.additional_instructions, policyInstructions].filter(Boolean).join("\n\n")
     const coachInstructionsSection = buildCoachInstructionsSection(combinedInstructions)
 
-    const agent1UserMessage = `Client Profile:\n${profileContext}\n\nTraining Request:\n- Goals: ${request.goals.join(", ")}\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n${request.split_type ? `- Requested split type: ${request.split_type}` : ""}\n${request.periodization ? `- Requested periodization: ${request.periodization}` : ""}\n${request.equipment_override ? `- Equipment override: ${request.equipment_override.join(", ")}` : ""}${coachInstructionsSection}${assessmentSection}`
+    const agent1UserMessage = `Client Profile:\n${profileContext}\n\nTraining Request:\n- Goals: ${request.goals.join(", ")}\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n${request.split_type ? `- Requested split type: ${request.split_type}` : ""}\n${request.periodization ? `- Requested periodization: ${request.periodization}` : ""}\n${request.equipment_override ? `- Equipment override: ${request.equipment_override.join(", ")}` : ""}${coachInstructionsSection}${assessmentSection}${previousProgramSection}`
 
     // RAG
     const ragQuery = `${request.goals.join(", ")} ${request.duration_weeks}wk ${request.sessions_per_week}x/wk ${profile?.experience_level ?? "beginner"}`
@@ -425,8 +439,9 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     await onProgress?.("Analyzing client profile", 1, 5)
     console.log("[orchestrator:sync] Running Agent 1 + exercise fetch...")
     const favoritesEnabled = await getSetting<boolean>("exercise_favorites_ai_enabled", true)
+    const learnFromEdits = await getSetting<boolean>("ai_learn_from_edits_enabled", true)
     deadline?.assertLive("profile analyzer")
-    const [agent1Result, allExercises, coachUsage, clientUsage, favoriteIds, instructionIntent, blockedIds] =
+    const [agent1Result, allExercises, coachUsage, clientUsage, favoriteIds, instructionIntent, blockedIds, editScores] =
       await Promise.all([
       callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, {
         model: MODEL_SONNET,
@@ -453,12 +468,18 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         console.warn("[orchestrator:sync] blocklist fetch failed:", e instanceof Error ? e.message : e)
         return new Set<string>()
       }),
+      learnFromEdits
+        ? getCoachEditScoresFromFn(requestedBy).catch((e) => {
+            console.warn("[orchestrator:sync] edit-learning fetch failed:", e instanceof Error ? e.message : e)
+            return new Map<string, number>()
+          })
+        : Promise.resolve(new Map<string, number>()),
     ])
     tokenUsage.agent1 = agent1Result.tokens_used
     tokenUsage.cache_creation += agent1Result.cache_creation_tokens ?? 0
     tokenUsage.cache_read += agent1Result.cache_read_tokens ?? 0
     console.log(
-      `[orchestrator:sync] Agent 1 complete. Tokens: ${agent1Result.tokens_used}. Exercises: ${allExercises.length}. Coach policy: ${coachPolicy ? "loaded" : "none"}. Usage — coach: ${coachUsage.size}, client: ${clientUsage.size}.`,
+      `[orchestrator:sync] Agent 1 complete. Tokens: ${agent1Result.tokens_used}. Exercises: ${allExercises.length}. Coach policy: ${coachPolicy ? "loaded" : "none"}. Usage — coach: ${coachUsage.size}, client: ${clientUsage.size}. Learned from edits: ${editScores.size}.`,
     )
 
     // Save conversation (fire-and-forget)
@@ -640,7 +661,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // Agent 2
     await updateJobProgress("designing_structure", 3, "Designing program structure & weekly layout")
     await onProgress?.("Designing program structure", 2, 5)
-    const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}${coachInstructionsSection}${buildPoolPatternSection(compressed, poolActive)}\n\n## Muscle names\ntarget_muscles may only use these values: ${muscleVocabulary(allExercises).join(", ")}`
+    const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}${coachInstructionsSection}${previousProgramSection}${buildPoolPatternSection(compressed, poolActive)}\n\n## Muscle names\ntarget_muscles may only use these values: ${muscleVocabulary(allExercises).join(", ")}`
 
     console.log("[orchestrator:sync] Running Agent 2 (program architect)...")
     deadline?.assertLive("program architect")
@@ -773,6 +794,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       clientUsage,
       preferredIds,
       favoriteIds,
+      editScores,
       excludeIds,
       // The generation-log id is unique per run and already persisted, so two
       // identical requests diverge while any single run stays reproducible.
@@ -975,7 +997,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         }
 
         // Stable prefix — identical across the 3 attempts for this week. Cache it.
-        const agent3StablePrefix = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${thisWeekLibrary.length} exercises, pre-filtered for relevance):\n${thisWeekLibraryText}${poolNote}${dueStapleNote}\n\n${priorContext.prompt_text}${coachInstructionsSection}`
+        const agent3StablePrefix = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${thisWeekLibrary.length} exercises, pre-filtered for relevance):\n${thisWeekLibraryText}${poolNote}${dueStapleNote}\n\n${priorContext.prompt_text}${coachInstructionsSection}${previousProgramSection}`
         // Variable suffix — only present on retries (attempt > 0).
         const agent3VariableSuffix = `${feedbackSection}${dedupFeedback}${withinWeekFeedback}`.trim() || "Begin."
 

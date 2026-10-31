@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
+import { readFileSync } from "node:fs"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 import {
   applyUsagePenalty,
   scoreAndFilterExercises,
@@ -210,6 +213,38 @@ describe("favoriteIds soft boost", () => {
       favoriteIds: new Set(["not-in-library"]),
     })
     expect(result.some((e) => e.id === "not-in-library")).toBe(false)
+  })
+})
+
+describe("editScores (learned from the coach's changes)", () => {
+  const exercises = [
+    ex("push-1", { movement_pattern: "push", primary_muscles: ["chest"], difficulty: "intermediate" }),
+    ex("push-2", { movement_pattern: "push", primary_muscles: ["chest"], difficulty: "intermediate" }),
+    ex("low-ranker", { movement_pattern: "push", primary_muscles: ["chest"], difficulty: "advanced" }),
+  ]
+
+  it("moves an exercise the coach keeps putting in up the ranking", () => {
+    const before = scoreAndFilterExercises(exercises, SKELETON, [], ANALYSIS, {}).findIndex((e) => e.id === "low-ranker")
+    const after = scoreAndFilterExercises(exercises, SKELETON, [], ANALYSIS, {
+      editScores: new Map([["low-ranker", 30]]),
+    }).findIndex((e) => e.id === "low-ranker")
+    expect(before).toBe(2)
+    expect(after).toBeLessThan(before)
+  })
+
+  it("moves an exercise the coach keeps taking out down the ranking", () => {
+    const before = scoreAndFilterExercises(exercises, SKELETON, [], ANALYSIS, {}).findIndex((e) => e.id === "push-1")
+    const after = scoreAndFilterExercises(exercises, SKELETON, [], ANALYSIS, {
+      editScores: new Map([["push-1", -45]]),
+    }).findIndex((e) => e.id === "push-1")
+    expect(before).toBeLessThan(2)
+    expect(after).toBe(2)
+  })
+
+  it("the semantic path adds the same term to each candidate's score", () => {
+    const src = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../exercise-filter.ts"), "utf8")
+    expect(src).toContain("(options?.editScores?.get(e.id) ?? 0) +")
+    expect(src).toContain("editScores: options?.editScores,")
   })
 })
 

@@ -94,6 +94,11 @@ export interface FilterOptions {
   /** Exercise IDs the CLIENT has favorited — a soft scoring boost (FAVORITE_BOOST). */
   favoriteIds?: Set<string>
   /**
+   * What the coach's own changes to AI programs taught: a score adjustment per exercise, lower for ones the coach
+   * keeps taking out, higher for ones the coach puts in (ai/edit-learning.ts). Soft, like favourites.
+   */
+  editScores?: Map<string, number>
+  /**
    * Exercises the coach asked for by name, one group per phrase ("box jumps" →
    * every library match). The cut keeps a few of each (retainNamed).
    */
@@ -458,6 +463,14 @@ export function scoreAndFilterExercises(
     }
   }
 
+  const editScores = options?.editScores
+  if (editScores && editScores.size > 0) {
+    for (const [id, score] of exerciseMaxScores) {
+      const adjust = editScores.get(id)
+      if (adjust) exerciseMaxScores.set(id, score + adjust)
+    }
+  }
+
   // Hard-prune excluded IDs (used for cross-week dedup defense in depth)
   const excludeIds = options?.excludeIds
   const candidates = excludeIds && excludeIds.size > 0 ? exercises.filter((e) => !excludeIds.has(e.id)) : exercises
@@ -609,6 +622,7 @@ export async function semanticFilterExercises(
       excludeIds: options?.excludeIds,
       preferredIds: options?.preferredIds,
       favoriteIds: options?.favoriteIds,
+      editScores: options?.editScores,
       namedGroups: options?.namedGroups,
       mmrLambda: options?.mmrLambda,
       seed: options?.seed,
@@ -689,6 +703,7 @@ export async function semanticFilterExercises(
       ) +
       (hasPreferred && preferredIds!.has(e.id) ? POOL_PREFERENCE_BOOST : 0) +
       (hasFavorites && favoriteIds!.has(e.id) ? FAVORITE_BOOST : 0) +
+      (options?.editScores?.get(e.id) ?? 0) +
       seededJitter(options?.seed, e.id),
   }))
   scoredAll.sort((a, b) => b.score - a.score)
@@ -712,7 +727,8 @@ export async function semanticFilterExercises(
       `${options?.seed ? " (seeded)" : ""}${useMMR ? ` + MMR lambda=${lambda}` : ""} -> ${filtered.length}` +
       ` (coach usage: ${coachUsage.size}, client usage: ${clientUsage.size}` +
       `${hasPreferred ? `, pool preferred: ${preferredIds!.size}` : ""}` +
-      `${hasFavorites ? `, favorites: ${favoriteIds!.size}` : ""})`,
+      `${hasFavorites ? `, favorites: ${favoriteIds!.size}` : ""}` +
+      `${options?.editScores?.size ? `, learned from edits: ${options.editScores.size}` : ""})`,
   )
 
   // Ensure pattern balance — when pool active, only pulls from pool exercises.

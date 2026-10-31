@@ -1237,6 +1237,43 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
 
 // ─── Step 1: Client ──────────────────────────────────────────────────────────
 
+/** Names the program the generator will build on (functions/src/ai/previous-program.ts reads the same row). */
+function PreviousProgramNote({ clientId }: { clientId: string }) {
+  const [program, setProgram] = useState<{ name: string; start_date: string } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    setProgram(null)
+    fetch(`/api/admin/clients/${clientId}/previous-program`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled) setProgram(data?.program ?? null)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [clientId])
+  if (!program) return null
+  const started = new Date(`${program.start_date}T00:00:00`).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })
+  return (
+    <div className="rounded-lg border border-border bg-surface/50 p-3 flex items-start gap-2">
+      <Layers className="size-4 text-primary shrink-0 mt-0.5" />
+      <div>
+        <p className="text-sm font-medium text-foreground">
+          Follows on from &ldquo;{program.name}&rdquo; <span className="font-normal text-muted-foreground">(started {started})</span>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          The AI reads what that program worked on and builds on it, without copying its exercises.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function Step1Client({
   clients,
   loadingClients,
@@ -1314,12 +1351,14 @@ function Step1Client({
               Ignore athlete profile
             </Label>
             <p className="text-[11px] text-muted-foreground">
-              Skip the client&apos;s questionnaire data and create a program from scratch
+              Skip the client&apos;s questionnaire data and previous program, and create a program from scratch
             </p>
           </div>
           <Switch id="ai-ignore-profile" checked={ignoreProfile} onCheckedChange={onIgnoreProfileChange} />
         </div>
       )}
+
+      {clientId && !ignoreProfile && <PreviousProgramNote clientId={clientId} />}
 
       {/* Questionnaire summary panel */}
       {profileStatus === "found" && profileSummary && !ignoreProfile && (
