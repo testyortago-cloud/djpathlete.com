@@ -41,6 +41,8 @@ import { OpenGoalsCard } from "@/components/client/profile/open-goals-card"
 import { CoachGoalsManager } from "./coach-goals-manager"
 import { ReportPreview } from "./ReportPreview"
 import { OutputAthletePanel, type OutputPanelState } from "./output-athlete-panel"
+import { SelfAssessmentCard } from "./self-assessment-card"
+import type { ClientQuizResult } from "@/lib/quizzes/client-result"
 import { latestTestValueByType, type GoalMetricContext } from "@/lib/goals/progress"
 import type { StandardRow } from "@/lib/coach-intel/test-normalization"
 import type {
@@ -92,6 +94,7 @@ export function AthletePerformanceHub({
   clientName,
   share = null,
   output = null,
+  selfAssessment,
 }: {
   clientUserId: string
   tab: string
@@ -102,6 +105,8 @@ export function AthletePerformanceHub({
   share?: ReportShare | null
   /** Output Sports link state; null when it could not be read (the panel is hidden). */
   output?: OutputPanelState | null
+  /** The client's own website quiz result: null when there is none, undefined when it could not be read. */
+  selfAssessment?: ClientQuizResult | null
   latestReadiness: DailyReadiness | null
   readinessTrend: { date: string; readiness_score: number }[]
   activeInjuries: Injury[]
@@ -310,6 +315,7 @@ export function AthletePerformanceHub({
 
         <TabsContent value="tests" className="mt-6 space-y-6">
           {output && <OutputAthletePanel clientUserId={clientUserId} clientName={clientName} state={output} />}
+          {selfAssessment !== undefined && <SelfAssessmentCard result={selfAssessment} />}
           {/* The standards these results are coloured against, one click away from the results. */}
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-white px-4 py-3 shadow-sm">
             <p className="text-sm text-muted-foreground">

@@ -63,6 +63,7 @@ const getQuizDefinition = vi.fn()
 const getAttempt = vi.fn()
 const completeAttempt = vi.fn()
 const setAttemptAlert = vi.fn()
+const setAttemptContact = vi.fn()
 const recordContactEvent = vi.fn()
 const recordConsent = vi.fn()
 const getBusinessSettings = vi.fn()
@@ -78,6 +79,7 @@ vi.mock("@/lib/db/quizzes", () => ({
   getAttempt: (...a: unknown[]) => getAttempt(...a),
   completeAttempt: (...a: unknown[]) => completeAttempt(...a),
   setAttemptAlert: (...a: unknown[]) => setAttemptAlert(...a),
+  setAttemptContact: (...a: unknown[]) => setAttemptContact(...a),
 }))
 vi.mock("@/lib/db/funnels", () => ({
   createSubmission: (...a: unknown[]) => createSubmission(...a),
@@ -147,6 +149,7 @@ beforeEach(() => {
   recordConsent.mockResolvedValue(undefined)
   getBusinessSettings.mockResolvedValue({ display_name: "DJP Athlete", reply_to: "darren@example.com" })
   setAttemptAlert.mockResolvedValue(undefined)
+  setAttemptContact.mockResolvedValue(undefined)
   applyPipelineEvent.mockResolvedValue({ decision: { kind: "noop", reason: "x" }, opportunityId: null })
   sendQuizAlert.mockResolvedValue({ delivered: true })
   createSubmission.mockResolvedValue({ id: "sub-1" })

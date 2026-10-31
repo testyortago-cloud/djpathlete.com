@@ -29,6 +29,7 @@ import {
   UserPlus,
   Layers,
   Ban,
+  ClipboardCheck,
 } from "lucide-react"
 import {
   Dialog,
@@ -1274,6 +1275,47 @@ function PreviousProgramNote({ clientId }: { clientId: string }) {
   )
 }
 
+/** Names the client's own quiz result the generator will use (the generate route reads the same one). */
+function SelfAssessmentNote({ clientId }: { clientId: string }) {
+  const [result, setResult] = useState<{ quizName: string; completedAt: string } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    setResult(null)
+    fetch(`/api/admin/clients/${clientId}/self-assessment`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled) setResult(data?.result ?? null)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [clientId])
+  if (!result) return null
+  // UTC, like the Performance card and the date the AI is given.
+  const taken = new Date(result.completedAt).toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  })
+  return (
+    <div className="rounded-lg border border-border bg-surface/50 p-3 flex items-start gap-2">
+      <ClipboardCheck className="size-4 text-primary shrink-0 mt-0.5" />
+      <div>
+        <p className="text-sm font-medium text-foreground">
+          Uses their &ldquo;{result.quizName}&rdquo; self-assessment{" "}
+          <span className="font-normal text-muted-foreground">(taken {taken})</span>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          The AI works on the weak areas and side-to-side differences the client reported. It never overrides your
+          instructions or their injuries.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function Step1Client({
   clients,
   loadingClients,
@@ -1345,13 +1387,14 @@ function Step1Client({
 
       {/* Ignore profile toggle */}
       {clientId && profileStatus !== "loading" && (
-        <div className="flex items-center justify-between rounded-lg border p-3">
+        <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
           <div className="space-y-0.5">
             <Label htmlFor="ai-ignore-profile" className="text-sm font-medium cursor-pointer">
               Ignore athlete profile
             </Label>
             <p className="text-[11px] text-muted-foreground">
-              Skip the client&apos;s questionnaire data and previous program, and create a program from scratch
+              Skip the client&apos;s questionnaire data, previous program and self-assessment, and create a program
+              from scratch
             </p>
           </div>
           <Switch id="ai-ignore-profile" checked={ignoreProfile} onCheckedChange={onIgnoreProfileChange} />
@@ -1359,6 +1402,7 @@ function Step1Client({
       )}
 
       {clientId && !ignoreProfile && <PreviousProgramNote clientId={clientId} />}
+      {clientId && !ignoreProfile && <SelfAssessmentNote clientId={clientId} />}
 
       {/* Questionnaire summary panel */}
       {profileStatus === "found" && profileSummary && !ignoreProfile && (

@@ -28,6 +28,8 @@ import {
   QuizNotInBusinessError,
   getQuizDefinitionForEditor,
   getAnsweredQuestionIds,
+  getLatestAttemptForContacts,
+  setAttemptContact,
 } from "@/lib/db/quizzes"
 import type { QuizDefinition } from "@/lib/quizzes/types"
 
@@ -94,8 +96,31 @@ const TABLES: Record<string, Row[]> = {
     { id: "p1", quiz_id: "q1", key: "not_sure", name: "Not sure", description: "", position: 0 },
     { id: "pX", quiz_id: "q2", key: "intruder", name: "Intruder", description: "", position: 0 },
   ],
-  quiz_attempts: [],
+  // getLatestAttemptForContacts. Array order is the trap: the fake returns the FIRST surviving row, so the
+  // in-progress, other-business and stranger rows sit ahead of the one that should come back.
+  quiz_attempts: [
+    { id: "a-open", business_id: "b1", contact_id: "c1", status: "in_progress", quiz_id: "q1" },
+    { id: "a-elsewhere", business_id: "b2", contact_id: "c1", status: "completed", quiz_id: "q1" },
+    { id: "a-stranger", business_id: "b1", contact_id: "c9", status: "completed", quiz_id: "q1" },
+    {
+      id: "a-done",
+      business_id: "b1",
+      contact_id: "c2",
+      status: "completed",
+      quiz_id: "q1",
+      branch_id: "br1",
+      answers: [{ questionId: "qu1", optionId: "o2" }],
+      score: 88,
+      tier_key: "green",
+      profile_key: "not_sure",
+      completed_at: "2026-09-06T10:00:00Z",
+    },
+  ],
 }
+
+/** Every `.order()` / `.limit()` asked for, per table: the fake cannot sort, so a test asserts the request. */
+const orders: [string, string, boolean | undefined][] = []
+const limits: [string, number][] = []
 
 // `eqs` is a LIVE reference (not a snapshot) to the chain's own array, so a
 // `.eq()` called after `.update()`/`.insert()`/`.delete()` (the normal
@@ -134,7 +159,14 @@ function makeClient() {
           ins.push([col, vals])
           return chain
         },
-        order: () => chain,
+        order: (col: string, opts?: { ascending?: boolean }) => {
+          orders.push([table, col, opts?.ascending])
+          return chain
+        },
+        limit: (n: number) => {
+          limits.push([table, n])
+          return chain
+        },
         insert: (p: Row) => {
           op = "insert"
           payload = p
@@ -187,6 +219,46 @@ vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => makeClient() }
 beforeEach(() => {
   calls.length = 0
   eqCalls.length = 0
+  orders.length = 0
+  limits.length = 0
+})
+
+describe("getLatestAttemptForContacts", () => {
+  it("returns the client's finished attempt, not an open one, a stranger's or another business's", async () => {
+    // MUTANTS: drop .eq("status"), .eq("business_id") or .in("contact_id") and an earlier row comes back.
+    const attempt = await getLatestAttemptForContacts("b1", ["c1", "c2"])
+    expect(attempt).toEqual({
+      id: "a-done",
+      quizId: "q1",
+      branchId: "br1",
+      answers: [{ questionId: "qu1", optionId: "o2" }],
+      score: 88,
+      tierKey: "green",
+      profileKey: "not_sure",
+      completedAt: "2026-09-06T10:00:00Z",
+    })
+  })
+
+  it("asks for the newest one only", async () => {
+    await getLatestAttemptForContacts("b1", ["c2"])
+    expect(orders).toContainEqual(["quiz_attempts", "completed_at", false])
+    expect(limits).toContainEqual(["quiz_attempts", 1])
+  })
+
+  it("answers null without a read when there are no contacts", async () => {
+    expect(await getLatestAttemptForContacts("b1", [])).toBeNull()
+    expect(calls.filter((c) => c.table === "quiz_attempts")).toHaveLength(0)
+  })
+})
+
+describe("setAttemptContact", () => {
+  it("stamps the contact on that attempt", async () => {
+    await setAttemptContact({ attemptId: "a1", contactId: "c1" })
+    const write = calls.find((c) => c.table === "quiz_attempts" && c.op === "update")
+    expect(write, "no update was issued").toBeDefined()
+    expect(write!.payload).toMatchObject({ contact_id: "c1" })
+    expect(write!.eqs).toContainEqual(["id", "a1"])
+  })
 })
 
 describe("getQuizDefinition", () => {
@@ -266,6 +338,18 @@ describe("completeAttempt", () => {
       contact_id: "c1",
     })
     expect(write!.payload!.completed_at).toEqual(expect.any(String))
+  })
+
+  it("leaves a stamped contact alone when it has none to give — a resubmit must not erase the link", async () => {
+    // The submit route completes BEFORE the contact exists (contactId null) and the route does not refuse a
+    // finished attempt, so writing null here would undo setAttemptContact on every resubmit.
+    await completeAttempt({
+      attemptId: "a1", branchId: null, answers: [], rawScore: 0, maxScore: 0, score: 0,
+      tierKey: null, profileKey: null, contactId: null,
+    })
+    const write = calls.find((c) => c.table === "quiz_attempts" && c.op === "update")
+    expect(write!.payload).toMatchObject({ status: "completed" }) // presence control
+    expect(write!.payload).not.toHaveProperty("contact_id")
   })
 })
 

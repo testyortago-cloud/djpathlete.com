@@ -149,6 +149,27 @@ export type RecordContactEventInput = {
   businessId: string
 }
 
+/**
+ * The contacts in this business that are this client: linked to the account, or carrying its email.
+ * `contacts.user_id` is fill-only, so a lead who became a client by another path is matched by email alone.
+ * `email` must already be normalised (normaliseEmail), the form contacts store it in.
+ */
+export async function listClientContactIds(
+  businessId: string,
+  client: { userId: string; email: string | null },
+): Promise<string[]> {
+  const supabase = getClient()
+  const reads = [supabase.from("contacts").select("id").eq("business_id", businessId).eq("user_id", client.userId)]
+  if (client.email) reads.push(supabase.from("contacts").select("id").eq("business_id", businessId).eq("email", client.email))
+  const results = await Promise.all(reads)
+  const ids = new Set<string>()
+  for (const { data, error } of results) {
+    if (error) throw error
+    for (const row of (data ?? []) as { id: string }[]) ids.add(row.id)
+  }
+  return [...ids]
+}
+
 function getClient() {
   return createServiceRoleClient()
 }

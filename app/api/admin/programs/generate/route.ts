@@ -6,6 +6,25 @@ import { FieldValue } from "firebase-admin/firestore"
 import { createGenerationLog } from "@/lib/db/ai-generation-log"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { enqueueGenerationTask, GENERATION_QUEUES } from "@/lib/ai-task-queue"
+import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
+import { formatClientQuizResult, getClientQuizResult } from "@/lib/quizzes/client-result"
+import type { AiGenerationRequest } from "@/lib/validators/ai-generation"
+
+/**
+ * The client's own quiz result as a prompt section. Skipped with "ignore profile", which means "assume
+ * nothing about this client". A failed read only drops the section: it must never fail a generation.
+ */
+async function selfAssessmentSection(request: Request, data: AiGenerationRequest): Promise<string | null> {
+  if (!data.client_id || data.ignore_profile) return null
+  try {
+    const { businessId } = await resolveAdminTenantForRequest(request)
+    const result = await getClientQuizResult(businessId, data.client_id)
+    return result ? formatClientQuizResult(result) : null
+  } catch (error) {
+    console.error("[generate] self-assessment read failed:", error instanceof Error ? error.message : error)
+    return null
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -48,6 +67,10 @@ export async function POST(request: Request) {
       total_steps: 3,
     })
 
+    // Set by the server after Zod parsing, which strips a browser-sent key of the same name. Spread, not
+    // assigned: Firestore refuses an undefined field.
+    const selfAssessment = await selfAssessmentSection(request, result.data)
+
     // Create Firestore job doc — Firebase Function picks it up via onDocumentCreated
     const firestoreDb = getAdminFirestore()
     const jobRef = firestoreDb.collection("ai_jobs").doc()
@@ -60,7 +83,7 @@ export async function POST(request: Request) {
       // this field and yields, so the job cannot run twice.
       dispatch: "task",
       input: {
-        request: result.data,
+        request: { ...result.data, ...(selfAssessment ? { self_assessment: selfAssessment } : {}) },
         requestedBy: session.user.id,
         logId: log.id,
         notify_email: result.data.notify_email ?? null,

@@ -72,6 +72,7 @@ const recordContactEvent = vi.fn()
 const recordConsent = vi.fn()
 const getBusinessSettings = vi.fn()
 const setAttemptAlert = vi.fn()
+const setAttemptContact = vi.fn()
 const applyPipelineEvent = vi.fn()
 const sendQuizAlert = vi.fn()
 
@@ -80,6 +81,7 @@ vi.mock("@/lib/db/quizzes", () => ({
   getAttempt: (...a: unknown[]) => getAttempt(...a),
   completeAttempt: (...a: unknown[]) => completeAttempt(...a),
   setAttemptAlert: (...a: unknown[]) => setAttemptAlert(...a),
+  setAttemptContact: (...a: unknown[]) => setAttemptContact(...a),
 }))
 vi.mock("@/lib/db/pipeline", () => ({ applyPipelineEvent: (...a: unknown[]) => applyPipelineEvent(...a) }))
 // `shouldAlert` is NOT mocked — it is the pure rule deciding red/orange, and
@@ -135,6 +137,7 @@ beforeEach(() => {
   recordConsent.mockResolvedValue(undefined)
   getBusinessSettings.mockResolvedValue({ display_name: "DJP Athlete", reply_to: "darren@example.com" })
   setAttemptAlert.mockResolvedValue(undefined)
+  setAttemptContact.mockResolvedValue(undefined)
   applyPipelineEvent.mockResolvedValue({ decision: { kind: "noop", reason: "x" }, opportunityId: null })
   sendQuizAlert.mockResolvedValue({ delivered: true })
 })
@@ -315,6 +318,30 @@ describe("POST /api/quiz/submit", () => {
     expect(res.status).toBe(200)
     expect((await res.json()).tier.key).toBe("red")
     expect(spy.mock.calls.map((c) => String(c[0])).join(" | ")).toContain("recordContactEvent failed")
+    spy.mockRestore()
+  })
+
+  it("6d. stamps the contact on the attempt once the contact exists, so a client's result can be found", async () => {
+    await post()
+    expect(setAttemptContact).toHaveBeenCalledWith({ attemptId: ATTEMPT_ID, contactId: CONTACT_ID })
+  })
+
+  it("6e. stamps nothing when there is no contact", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+    recordContactEvent.mockRejectedValue(new Error("contact spine is down"))
+    await post()
+    expect(setAttemptContact).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it("6f. a failed stamp still returns the result and still opens the pipeline card, logging that step by name", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+    setAttemptContact.mockRejectedValue(new Error("attempts table is down"))
+    const res = await post()
+    expect(res.status).toBe(200)
+    expect((await res.json()).tier.key).toBe("red")
+    expect(applyPipelineEvent).toHaveBeenCalled()
+    expect(spy.mock.calls.map((c) => String(c[0])).join(" | ")).toContain("setAttemptContact failed")
     spy.mockRestore()
   })
 

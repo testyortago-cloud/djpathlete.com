@@ -38,7 +38,7 @@
 import { NextResponse } from "next/server"
 import { submittedTimezone } from "@/lib/validators/timezone"
 import { z } from "zod"
-import { completeAttempt, getAttempt, getQuizDefinition, setAttemptAlert } from "@/lib/db/quizzes"
+import { completeAttempt, getAttempt, getQuizDefinition, setAttemptAlert, setAttemptContact } from "@/lib/db/quizzes"
 import { createSubmission, getFunnelById, getStep } from "@/lib/db/funnels"
 import { quizAnswerPayload } from "@/lib/quizzes/answer-payload"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
@@ -431,6 +431,17 @@ async function handoff(input: {
     contactId = contact.contactId
   } catch (error) {
     logFailure("recordContactEvent", error, correlation)
+  }
+
+  // 4b. WHOSE ATTEMPT THIS WAS. completeAttempt ran before the contact existed, so the link is stamped
+  // here. It is what lets a coach see, and AI Generate use, the result of a client who took the quiz
+  // (lib/quizzes/client-result.ts). The timeline's attempt_id is not enough: retention empties it.
+  if (contactId) {
+    try {
+      await setAttemptContact({ attemptId: body.attemptId, contactId })
+    } catch (error) {
+      logFailure("setAttemptContact", error, correlation)
+    }
   }
 
   // 5a. THE PIPELINE. Red and Orange open a card; Green and Yellow do not.

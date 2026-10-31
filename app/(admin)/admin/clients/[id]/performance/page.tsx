@@ -31,6 +31,7 @@ import { listStandards } from "@/lib/db/performance-standards"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { standardNumbers } from "@/lib/coach-intel/test-normalization"
 import { getConnection, getLink } from "@/lib/db/output-sports"
+import { getClientQuizResult } from "@/lib/quizzes/client-result"
 import type { OutputPanelState } from "@/components/admin/performance/output-athlete-panel"
 
 function addDays(iso: string, days: number): string {
@@ -65,7 +66,7 @@ export default async function AdminPerformanceHubPage({
   // The report's share dialog (QR, link, cover photo) lives here, next to the results. A QR
   // failure only drops the dialog.
   const tenant = resolveAdminTenant()
-  const [reportQr, clientProfile, standards, output] = await Promise.all([
+  const [reportQr, clientProfile, standards, output, selfAssessment] = await Promise.all([
     reportUrl ? QRCode.toDataURL(reportUrl, { width: 320, margin: 1 }).catch(() => null) : Promise.resolve(null),
     getProfileByUserId(id).catch(() => null),
     // The coach's own Trained / Elite standards for the radar. A failed read falls back to the built-in ones.
@@ -84,6 +85,14 @@ export default async function AdminPerformanceHubPage({
       .catch((err) => {
         console.error("[performance] Output Sports read failed:", err)
         return null
+      }),
+    // The client's own website quiz result, the one AI Generate uses. Undefined on a failed read hides the card,
+    // where null would wrongly say "none yet".
+    tenant
+      .then((t) => getClientQuizResult(t.businessId, id))
+      .catch((err) => {
+        console.error("[performance] self-assessment read failed:", err)
+        return undefined
       }),
   ])
 
@@ -143,6 +152,7 @@ export default async function AdminPerformanceHubPage({
       reportUrl={reportUrl}
       clientName={clientName}
       output={output}
+      selfAssessment={selfAssessment}
       share={
         reportUrl && reportQr
           ? {

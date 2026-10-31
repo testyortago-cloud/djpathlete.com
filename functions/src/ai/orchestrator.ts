@@ -116,6 +116,8 @@ export interface AiGenerationRequest {
   ignore_profile?: boolean
   is_public?: boolean
   price_cents?: number
+  /** The client's own quiz result as a prompt section. Set only by the generate route, never the browser. */
+  self_assessment?: string
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -416,13 +418,19 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const previousProgramSection = previousProgram ? formatPreviousProgram(previousProgram) : ""
     if (previousProgram) console.log(`[orchestrator:sync] Follows on from "${previousProgram.name}"`)
 
+    // The client's own quiz result, built by the generate route (lib/quizzes/client-result.ts, which this
+    // runtime cannot import). Same placement and the same "ignore profile" rule as the section above.
+    const selfAssessmentSection =
+      request.self_assessment && !request.ignore_profile ? request.self_assessment : ""
+    if (selfAssessmentSection) console.log("[orchestrator:sync] Uses the client's self-assessment")
+
     // Fetch coach AI policy — injected into Agent 1 instructions as studio-wide overrides
     const coachPolicy = await getCoachPolicyFromFn(requestedBy)
     const policyInstructions = formatCoachPolicyAsInstructions(coachPolicy)
     const combinedInstructions = [request.additional_instructions, policyInstructions].filter(Boolean).join("\n\n")
     const coachInstructionsSection = buildCoachInstructionsSection(combinedInstructions)
 
-    const agent1UserMessage = `Client Profile:\n${profileContext}\n\nTraining Request:\n- Goals: ${request.goals.join(", ")}\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n${request.split_type ? `- Requested split type: ${request.split_type}` : ""}\n${request.periodization ? `- Requested periodization: ${request.periodization}` : ""}\n${request.equipment_override ? `- Equipment override: ${request.equipment_override.join(", ")}` : ""}${coachInstructionsSection}${assessmentSection}${previousProgramSection}`
+    const agent1UserMessage = `Client Profile:\n${profileContext}\n\nTraining Request:\n- Goals: ${request.goals.join(", ")}\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n${request.split_type ? `- Requested split type: ${request.split_type}` : ""}\n${request.periodization ? `- Requested periodization: ${request.periodization}` : ""}\n${request.equipment_override ? `- Equipment override: ${request.equipment_override.join(", ")}` : ""}${coachInstructionsSection}${assessmentSection}${previousProgramSection}${selfAssessmentSection}`
 
     // RAG
     const ragQuery = `${request.goals.join(", ")} ${request.duration_weeks}wk ${request.sessions_per_week}x/wk ${profile?.experience_level ?? "beginner"}`
@@ -661,7 +669,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // Agent 2
     await updateJobProgress("designing_structure", 3, "Designing program structure & weekly layout")
     await onProgress?.("Designing program structure", 2, 5)
-    const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}${coachInstructionsSection}${previousProgramSection}${buildPoolPatternSection(compressed, poolActive)}\n\n## Muscle names\ntarget_muscles may only use these values: ${muscleVocabulary(allExercises).join(", ")}`
+    const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}${coachInstructionsSection}${previousProgramSection}${selfAssessmentSection}${buildPoolPatternSection(compressed, poolActive)}\n\n## Muscle names\ntarget_muscles may only use these values: ${muscleVocabulary(allExercises).join(", ")}`
 
     console.log("[orchestrator:sync] Running Agent 2 (program architect)...")
     deadline?.assertLive("program architect")
@@ -997,7 +1005,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         }
 
         // Stable prefix — identical across the 3 attempts for this week. Cache it.
-        const agent3StablePrefix = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${thisWeekLibrary.length} exercises, pre-filtered for relevance):\n${thisWeekLibraryText}${poolNote}${dueStapleNote}\n\n${priorContext.prompt_text}${coachInstructionsSection}${previousProgramSection}`
+        const agent3StablePrefix = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${thisWeekLibrary.length} exercises, pre-filtered for relevance):\n${thisWeekLibraryText}${poolNote}${dueStapleNote}\n\n${priorContext.prompt_text}${coachInstructionsSection}${previousProgramSection}${selfAssessmentSection}`
         // Variable suffix — only present on retries (attempt > 0).
         const agent3VariableSuffix = `${feedbackSection}${dedupFeedback}${withinWeekFeedback}`.trim() || "Begin."
 

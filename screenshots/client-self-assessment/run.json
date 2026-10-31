@@ -1,0 +1,45 @@
+{
+  "app": "http://localhost:3051",
+  "results": [
+    {
+      "name": "signed in to the admin",
+      "ok": true,
+      "evidence": "http://localhost:3051/admin/clients"
+    },
+    {
+      "name": "the card names the quiz",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "score and tier come from the stored attempt",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the Copenhagen row shows both sides",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "and flags the side difference",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the dialog names the self-assessment it will use",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "a client with no quiz gets the 'none yet' line, not an error",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "no uncaught page errors",
+      "ok": true,
+      "evidence": ""
+    }
+  ]
+}

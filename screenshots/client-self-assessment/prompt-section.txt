@@ -1,0 +1,16 @@
+What AI Generate adds to agents 1, 2 and 3 for the dev demo client (Jordan Reyes), printed on 2026-10-31
+from the dev clone by getClientQuizResult + formatClientQuizResult. No model was called.
+
+## Client self-assessment: Rotational Performance Index
+Taken 2026-10-31 (today). The client answered this quiz themselves on the website. It is their own report, not a measured test: use it to choose emphasis (a big left/right difference first, then low areas), and never let it override the coach's instructions or the injury list.
+Result: score 73/100, tier yellow, profile "Strong but slow".
+Areas (points out of the maximum; L = left side, R = right side):
+- Prone hip abduction with external rotation: L 3/3, R 2/3 (room to improve)
+- Rocking hollow: 2/3 (room to improve)
+- Short lever Copenhagen: L 3/3, R 1/3 (big difference between sides)
+- Windshield wipers: L 2/3, R 2/3 (room to improve)
+- Retro backwards hop: L 3/3, R 3/3 (solid)
+What they told us:
+- When you rotate or change direction quickly, do you ever feel unstable, stiff, or like the power does not connect? Occasionally
+- How often do you train rotational power specifically — not just playing your sport? About once a week
+- After a heavy session or a competition, where do you feel it most? Hips

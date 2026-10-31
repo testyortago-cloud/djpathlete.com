@@ -117,9 +117,10 @@ describe("orchestrator wiring", () => {
   const src = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../orchestrator.ts"), "utf8")
 
   it("gives the section to all three agents", () => {
-    expect(src).toContain("${coachInstructionsSection}${assessmentSection}${previousProgramSection}`")
-    expect(src).toContain("${coachInstructionsSection}${previousProgramSection}${buildPoolPatternSection(")
-    expect(src).toContain("${priorContext.prompt_text}${coachInstructionsSection}${previousProgramSection}`")
+    // The client's self-assessment follows it in each (self-assessment-wiring.test.ts).
+    expect(src).toContain("${coachInstructionsSection}${assessmentSection}${previousProgramSection}${selfAssessmentSection}`")
+    expect(src).toContain("${coachInstructionsSection}${previousProgramSection}${selfAssessmentSection}${buildPoolPatternSection(")
+    expect(src).toContain("${priorContext.prompt_text}${coachInstructionsSection}${previousProgramSection}${selfAssessmentSection}`")
   })
 
   it("keeps it out of the coach instructions, which are parsed for exercise names", () => {

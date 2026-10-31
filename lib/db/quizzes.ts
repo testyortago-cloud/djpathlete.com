@@ -1061,12 +1061,67 @@ export async function completeAttempt(input: {
       score: input.score,
       tier_key: input.tierKey,
       profile_key: input.profileKey,
-      contact_id: input.contactId,
+      // Only ever SET here, never cleared: the submit route passes null (the contact does not exist yet) and
+      // does not refuse a finished attempt, so a null would undo setAttemptContact on every resubmit.
+      ...(input.contactId ? { contact_id: input.contactId } : {}),
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq("id", input.attemptId)
   if (error) throw error
+}
+
+/**
+ * The contact a finished attempt belongs to. Not known at completeAttempt, which runs before the contact
+ * write on purpose, so the submit handoff stamps it once recordContactEvent has answered.
+ */
+export async function setAttemptContact(input: { attemptId: string; contactId: string }): Promise<void> {
+  const { error } = await getClient()
+    .from("quiz_attempts")
+    .update({ contact_id: input.contactId, updated_at: new Date().toISOString() })
+    .eq("id", input.attemptId)
+  if (error) throw error
+}
+
+export interface ContactQuizAttempt {
+  id: string
+  quizId: string
+  branchId: string | null
+  answers: QuizAnswer[]
+  score: number | null
+  tierKey: string | null
+  profileKey: string | null
+  completedAt: string
+}
+
+/** The newest finished attempt, of any quiz in this business, by any of these contacts. */
+export async function getLatestAttemptForContacts(
+  businessId: string,
+  contactIds: string[],
+): Promise<ContactQuizAttempt | null> {
+  if (contactIds.length === 0) return null
+  const { data, error } = await getClient()
+    .from("quiz_attempts")
+    .select("id, quiz_id, branch_id, answers, score, tier_key, profile_key, completed_at")
+    .eq("business_id", businessId)
+    .eq("status", "completed")
+    .in("contact_id", contactIds)
+    .order("completed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const row = data as Row
+  return {
+    id: str(row.id),
+    quizId: str(row.quiz_id),
+    branchId: strOrNull(row.branch_id),
+    answers: Array.isArray(row.answers) ? (row.answers as QuizAnswer[]) : [],
+    score: typeof row.score === "number" ? row.score : null,
+    tierKey: strOrNull(row.tier_key),
+    profileKey: strOrNull(row.profile_key),
+    completedAt: str(row.completed_at),
+  }
 }
 
 export async function setAttemptAlert(input: {
