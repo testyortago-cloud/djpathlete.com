@@ -1821,6 +1821,42 @@ export const newsletterRetryCron = onSchedule(
   },
 )
 
+// ─── Output Sports sync (hourly, :35) ───────────────────────────────────────
+// Brings in new Output Sports results for every linked client of every business
+// with Output connected (lib/output-sports/sync.ts syncAllLinkedClients), so the
+// coach does not have to press "Sync from Output". Gated by
+// cron_output_sync_enabled (default true; a business without Output is skipped).
+
+export const outputSyncCron = onSchedule(
+  {
+    schedule: "35 * * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 320,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[outputSyncCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/output-sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[outputSyncCron]", res.status, JSON.stringify(body))
+    } catch (err) {
+      console.error("[outputSyncCron] failed:", err)
+    }
+  },
+)
+
 // ─── Lead Engine pipeline reconciler (hourly, UTC) ──────────────────────────
 // Stage 1c: a hook that throws AFTER its booking/payment row is already
 // written loses a board card permanently — this catches it up. Ships OFF by

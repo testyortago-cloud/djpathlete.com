@@ -98,6 +98,14 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
     enabled_flag_default: true, // unbounded growth is a cost risk — on by default
   },
   {
+    name: "outputSyncCron", // hourly :35
+    sla_hours: 3,
+    reports_to_cron_runs: true,
+    watch_from: "2026-10-31",
+    enabled_flag: "cron_output_sync_enabled",
+    enabled_flag_default: true, // a no-op until a business connects Output
+  },
+  {
     name: "bookkeepingRetentionCron", // daily 04:00
     sla_hours: 30,
     reports_to_cron_runs: true,

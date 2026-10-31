@@ -181,8 +181,8 @@ export function OutputConnectionCard({
             link them to their Output athlete. Their results come in straight away.
           </li>
           <li>
-            After each testing session, press <strong>Sync from Output</strong> on the same tab to bring in the new
-            results.
+            New results come in by themselves every hour. To bring them in straight away, press{" "}
+            <strong>Sync from Output</strong> on the same tab.
           </li>
         </ol>
         <p className="mt-3 text-xs text-muted-foreground">

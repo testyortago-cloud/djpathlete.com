@@ -5,6 +5,8 @@ import {
   deleteImportedTests,
   getLink,
   getRefreshToken,
+  listConnections,
+  listLinks,
   markSynced,
   setConnectionError,
   storeRefreshToken,
@@ -78,10 +80,12 @@ export async function syncClient(
   clientUserId: string,
   actorId: string,
   now = new Date(),
+  /** A token already fetched for this business (the hourly job shares one across its clients). */
+  accessToken?: string,
 ): Promise<SyncSummary> {
   const link = await getLink(businessId, clientUserId)
   if (!link) throw new OutputNotLinkedError("This client is not linked to an Output athlete.")
-  const token = await outputAccessToken(businessId)
+  const token = accessToken ?? (await outputAccessToken(businessId))
   // UTC only when the business has no settings row. Any other failed read stops the sync:
   // days keyed in the wrong zone would mix two local days for good.
   const timeZone = await getBusinessSettings(businessId)
@@ -133,4 +137,58 @@ export async function syncClient(
 
   await markSynced(businessId, clientUserId, now)
   return { imported: complete.length, added, updated: complete.length - added, skipped }
+}
+
+export interface AutoSyncSummary {
+  businesses: number
+  clients: number
+  added: number
+  updated: number
+  failures: { businessId: string; clientUserId?: string; message: string }[]
+}
+
+/**
+ * The hourly job: brings in new results for every linked client of every business that
+ * has Output connected, so nobody has to press Sync. One access token per business. A
+ * business whose token Output refuses is skipped (outputAccessToken flags it in Settings);
+ * one client failing does not stop the others.
+ */
+export async function syncAllLinkedClients(now = new Date()): Promise<AutoSyncSummary> {
+  const summary: AutoSyncSummary = { businesses: 0, clients: 0, added: 0, updated: 0, failures: [] }
+  for (const conn of await listConnections()) {
+    let token: string
+    try {
+      token = await outputAccessToken(conn.business_id)
+    } catch (err) {
+      summary.failures.push({ businessId: conn.business_id, message: (err as Error).message })
+      continue
+    }
+    summary.businesses++
+    // ponytail: one Output call per client per hour; batch athleteIds per business if a coach links dozens.
+    for (const link of await listLinks(conn.business_id)) {
+      // performance_tests.created_by is required: the coach who linked them, else who connected Output.
+      const actor = link.linked_by ?? conn.connected_by
+      if (!actor) {
+        summary.failures.push({
+          businessId: conn.business_id,
+          clientUserId: link.client_user_id,
+          message: "No coach to record the results under (the coach who linked them was removed).",
+        })
+        continue
+      }
+      try {
+        const s = await syncClient(conn.business_id, link.client_user_id, actor, now, token)
+        summary.clients++
+        summary.added += s.added
+        summary.updated += s.updated
+      } catch (err) {
+        summary.failures.push({
+          businessId: conn.business_id,
+          clientUserId: link.client_user_id,
+          message: (err as Error).message,
+        })
+      }
+    }
+  }
+  return summary
 }

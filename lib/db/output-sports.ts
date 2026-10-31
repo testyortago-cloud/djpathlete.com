@@ -89,6 +89,23 @@ export async function getLink(businessId: string, clientUserId: string): Promise
   return data as OutputAthleteLink | null
 }
 
+/** Every business with Output connected, and who connected it. */
+export async function listConnections(): Promise<{ business_id: string; connected_by: string | null }[]> {
+  const { data, error } = await getClient().from("output_connections").select("business_id, connected_by")
+  if (error) throw new Error(`output_connections: ${error.message}`)
+  return (data ?? []) as { business_id: string; connected_by: string | null }[]
+}
+
+/** The business's linked clients, with the coach who linked each one. */
+export async function listLinks(businessId: string): Promise<(OutputAthleteLink & { linked_by: string | null })[]> {
+  const { data, error } = await getClient()
+    .from("output_athlete_links")
+    .select(`${LINK_COLUMNS}, linked_by`)
+    .eq("business_id", businessId)
+  if (error) throw new Error(`output_athlete_links: ${error.message}`)
+  return (data ?? []) as (OutputAthleteLink & { linked_by: string | null })[]
+}
+
 /** Output athlete id -> the client it is linked to, for the business. */
 export async function linkedAthletes(businessId: string): Promise<Map<string, string>> {
   const { data, error } = await getClient()

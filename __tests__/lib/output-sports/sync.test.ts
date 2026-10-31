@@ -8,6 +8,8 @@ const db = vi.hoisted(() => ({
   storeRefreshToken: vi.fn(),
   upsertImportedTests: vi.fn(),
   deleteImportedTests: vi.fn(),
+  listConnections: vi.fn(),
+  listLinks: vi.fn(),
 }))
 const api = vi.hoisted(() => ({ listMeasurements: vi.fn(), refreshAccess: vi.fn() }))
 const recomputeDownstream = vi.hoisted(() => vi.fn())
@@ -26,7 +28,13 @@ vi.mock("@/lib/db/performance-tests", () => ({ recomputeDownstream }))
 vi.mock("@/lib/db/businesses", () => settings)
 vi.mock("@/lib/coach-intel/check-goals", () => ({ checkGoals }))
 
-import { syncClient, outputAccessToken, removeImportedTests, OutputNotConnectedError } from "@/lib/output-sports/sync"
+import {
+  syncClient,
+  syncAllLinkedClients,
+  outputAccessToken,
+  removeImportedTests,
+  OutputNotConnectedError,
+} from "@/lib/output-sports/sync"
 import { OutputAuthError } from "@/lib/output-sports/api"
 
 const cmj = (completedDate: string, jumpHeight: number, athleteId = "ath1") => ({
@@ -155,6 +163,70 @@ describe("removeImportedTests", () => {
     expect(recomputeDownstream.mock.calls).toEqual([
       ["client", "cmj", "1900-01-01"],
       ["client", "back_squat_1rm", "1900-01-01"],
+    ])
+  })
+})
+
+describe("syncAllLinkedClients (the hourly job)", () => {
+  const now = new Date("2026-11-03T20:00:00Z")
+  const link = (client_user_id: string, output_athlete_id: string, linked_by: string | null = "coach-1") => ({
+    client_user_id,
+    output_athlete_id,
+    linked_by,
+    last_synced_at: "2026-11-03T10:00:00Z",
+  })
+
+  beforeEach(() => {
+    db.listConnections.mockResolvedValue([{ business_id: "biz-A", connected_by: "owner-A" }])
+    db.listLinks.mockResolvedValue([link("c1", "ath1"), link("c2", "ath2")])
+    db.getLink.mockImplementation(async (_b: string, c: string) =>
+      c === "c1" ? link("c1", "ath1") : link("c2", "ath2"),
+    )
+    api.listMeasurements.mockImplementation(async (_t: string, q: { athleteIds: string[] }) => [
+      cmj("2026-11-03T15:00:00Z", 0.45, q.athleteIds[0]),
+    ])
+  })
+
+  it("syncs every linked client, each with their own athlete, on one token per business", async () => {
+    const summary = await syncAllLinkedClients(now)
+    expect(api.refreshAccess).toHaveBeenCalledTimes(1)
+    expect(api.listMeasurements.mock.calls.map(([, q]) => q.athleteIds)).toEqual([["ath1"], ["ath2"]])
+    expect(db.upsertImportedTests.mock.calls.map(([c]) => c)).toEqual(["c1", "c2"])
+    expect(summary).toMatchObject({ businesses: 1, clients: 2, added: 2, failures: [] })
+  })
+
+  it("skips a business whose token Output refuses, and still syncs the next business", async () => {
+    db.listConnections.mockResolvedValue([
+      { business_id: "biz-A", connected_by: "owner-A" },
+      { business_id: "biz-B", connected_by: "owner-B" },
+    ])
+    db.getRefreshToken.mockImplementation(async (b: string) => (b === "biz-A" ? "bad" : "good"))
+    api.refreshAccess.mockImplementation(async (t: string) => {
+      if (t === "bad") throw new OutputAuthError("OAuth error. Invalid refresh token!")
+      return { accessToken: "access", refreshToken: t }
+    })
+    const summary = await syncAllLinkedClients(now)
+    expect(summary.failures).toEqual([{ businessId: "biz-A", message: "OAuth error. Invalid refresh token!" }])
+    expect(db.listLinks).toHaveBeenCalledWith("biz-B")
+    expect(db.listLinks).not.toHaveBeenCalledWith("biz-A")
+    expect(summary.clients).toBe(2)
+  })
+
+  it("keeps going when one client fails", async () => {
+    api.listMeasurements.mockRejectedValueOnce(new Error("Output Sports answered 500"))
+    const summary = await syncAllLinkedClients(now)
+    expect(summary.failures).toEqual([
+      { businessId: "biz-A", clientUserId: "c1", message: "Output Sports answered 500" },
+    ])
+    expect(summary.clients).toBe(1)
+  })
+
+  it("records results under the coach who linked them, else whoever connected Output", async () => {
+    db.listLinks.mockResolvedValue([link("c1", "ath1", null), link("c2", "ath2", "coach-2")])
+    await syncAllLinkedClients(now)
+    expect(db.upsertImportedTests.mock.calls.map(([c, , actor]) => [c, actor])).toEqual([
+      ["c1", "owner-A"],
+      ["c2", "coach-2"],
     ])
   })
 })

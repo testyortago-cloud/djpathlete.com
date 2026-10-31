@@ -148,6 +148,7 @@ export function OutputAthletePanel({
               {state.link.last_synced_at
                 ? `last synced ${new Date(state.link.last_synced_at).toLocaleString()}`
                 : "not synced yet"}
+              {" · new results come in every hour"}
             </p>
           )}
         </div>

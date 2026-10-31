@@ -185,7 +185,7 @@ try {
   await page.getByRole("button", { name: "Link and bring in results" }).click()
   const linked = page.locator("strong", { hasText: "Performance Paddy" }).first()
   await linked.waitFor({ timeout: 120000 })
-  const summary = page.getByText(/new results?|No new results/)
+  const summary = page.getByText(/^(\d+ new results?|No new results)/)
   await summary.waitFor({ timeout: 60000 })
   const { data: rows } = await db
     .from("performance_tests")
@@ -217,7 +217,7 @@ try {
       await marker(linked, "Who they are in Output, and when the results were last brought in.", "above"),
       await marker(
         page.getByRole("button", { name: "Sync from Output" }),
-        "After each testing session, click to bring in new results.",
+        "New results come in every hour. Click to bring them in straight away.",
         "above",
       ),
       await marker(summary, "What came in. Other kinds of Output result (mobility, throws) stay in Output."),
@@ -244,7 +244,7 @@ try {
   // 7. A second sync changes nothing: the same days are updated, not duplicated.
   const before = rows.length
   await page.getByRole("button", { name: "Sync from Output" }).click()
-  await page.getByText(/No new results|updated/).waitFor({ timeout: 120000 })
+  await page.getByText(/^(No new results|\d+ updated)/).waitFor({ timeout: 120000 })
   const { count: after } = await db
     .from("performance_tests")
     .select("id", { count: "exact", head: true })
