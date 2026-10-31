@@ -118,7 +118,8 @@ export async function deleteTest(id: string) {
   await recomputeDownstream(existing.client_user_id, existing.test_type, existing.test_date)
 }
 
-async function recomputeDownstream(clientUserId: string, testType: TestType, fromDate: string) {
+/** Recomputes is_pr and pct_change_from_prev for the client's results of a type dated after `fromDate`. */
+export async function recomputeDownstream(clientUserId: string, testType: TestType, fromDate: string) {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("performance_tests")

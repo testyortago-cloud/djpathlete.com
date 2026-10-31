@@ -702,6 +702,17 @@ export const AUDIT_ACTIONS = [
   },
   { slug: "business.updated", category: "admin_write", description: "Business name or status changed" },
   { slug: "business.settings_updated", category: "admin_write", description: "Business settings changed" },
+
+  // Output Sports (sensor results pulled into performance tests)
+  { slug: "output_sports.connected", category: "admin_write", description: "Output Sports account connected" },
+  { slug: "output_sports.disconnected", category: "admin_write", description: "Output Sports account disconnected" },
+  { slug: "output_sports.athlete_linked", category: "admin_write", description: "Client linked to an Output athlete" },
+  {
+    slug: "output_sports.athlete_unlinked",
+    category: "admin_write",
+    description: "Client unlinked from their Output athlete",
+  },
+  { slug: "output_sports.synced", category: "admin_write", description: "Client's Output results pulled in" },
   {
     slug: "business.brand_kit_updated",
     category: "admin_write",

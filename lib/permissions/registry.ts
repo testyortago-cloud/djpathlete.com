@@ -397,6 +397,7 @@ export const OWNER_ONLY_PREFIXES: readonly string[] = [
   "/api/admin/platform-connections",
   "/api/admin/ai-policy",
   "/api/admin/performance-standards",
+  "/api/admin/output-sports",
   "/api/admin/reset-data",
   "/api/admin/internal",
 ] as const

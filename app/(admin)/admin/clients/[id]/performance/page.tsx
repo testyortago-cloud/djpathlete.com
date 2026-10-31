@@ -30,6 +30,8 @@ import { computeAge } from "@/lib/profile-share/data"
 import { listStandards } from "@/lib/db/performance-standards"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { standardNumbers } from "@/lib/coach-intel/test-normalization"
+import { getConnection, getLink } from "@/lib/db/output-sports"
+import type { OutputPanelState } from "@/components/admin/performance/output-athlete-panel"
 
 function addDays(iso: string, days: number): string {
   const d = new Date(iso + "T00:00:00Z")
@@ -62,15 +64,26 @@ export default async function AdminPerformanceHubPage({
     : ""
   // The report's share dialog (QR, link, cover photo) lives here, next to the results. A QR
   // failure only drops the dialog.
-  const [reportQr, clientProfile, standards] = await Promise.all([
+  const tenant = resolveAdminTenant()
+  const [reportQr, clientProfile, standards, output] = await Promise.all([
     reportUrl ? QRCode.toDataURL(reportUrl, { width: 320, margin: 1 }).catch(() => null) : Promise.resolve(null),
     getProfileByUserId(id).catch(() => null),
     // The coach's own Trained / Elite standards for the radar. A failed read falls back to the built-in ones.
-    resolveAdminTenant()
+    tenant
       .then((t) => listStandards(t.businessId))
       .catch((err) => {
         console.error("[performance] performance standards read failed:", err)
         return []
+      }),
+    // Output Sports link state for the Tests tab. A failed read only hides that panel.
+    tenant
+      .then(async (t): Promise<OutputPanelState> => {
+        const [connection, link] = await Promise.all([getConnection(t.businessId), getLink(t.businessId, id)])
+        return { connected: !!connection, connectionError: connection?.last_error ?? null, link }
+      })
+      .catch((err) => {
+        console.error("[performance] Output Sports read failed:", err)
+        return null
       }),
   ])
 
@@ -129,6 +142,7 @@ export default async function AdminPerformanceHubPage({
       tab={tab}
       reportUrl={reportUrl}
       clientName={clientName}
+      output={output}
       share={
         reportUrl && reportQr
           ? {
