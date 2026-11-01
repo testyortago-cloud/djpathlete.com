@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { ProgramFormDialog } from "@/components/admin/ProgramFormDialog"
 import { AssignProgramDialog } from "@/components/admin/AssignProgramDialog"
 import { GiveToClientDialog } from "@/components/admin/library/GiveToClientDialog"
+import { ExpandableText } from "@/components/shared/ExpandableText"
 import type { Program, User } from "@/types/database"
 
 import type { AssignmentPaymentStatus } from "@/types/database"
@@ -133,7 +134,17 @@ export function ProgramHeader({
                 </Badge>
               )}
             </div>
-            {program.description && <p className="text-sm text-muted-foreground">{program.description}</p>}
+            {program.description && (
+              // AI programs carry their full coach notes here (thousands of characters).
+              <ExpandableText
+                text={program.description}
+                threshold={400}
+                clampClassName="line-clamp-3"
+                className="text-sm text-muted-foreground"
+                more="See more"
+                less="See less"
+              />
+            )}
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <span>
                 {program.duration_weeks} week{program.duration_weeks !== 1 ? "s" : ""}

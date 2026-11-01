@@ -6,6 +6,7 @@ import { getActiveProgramById } from "@/lib/db/programs"
 import { getAssignmentByUserAndProgram } from "@/lib/db/assignments"
 import { getActiveSubscription } from "@/lib/db/subscriptions"
 import { isAssignmentExpired } from "@/lib/utils"
+import { ExpandableText } from "@/components/shared/ExpandableText"
 import { ClientBuyButton } from "./ClientBuyButton"
 import { ManageSubscriptionButton } from "./ManageSubscriptionButton"
 
@@ -126,7 +127,14 @@ export default async function ClientProgramDetailPage({ params }: Props) {
 
       {/* Description */}
       {program.description && (
-        <p className="text-base text-muted-foreground leading-relaxed mb-6 max-w-3xl">{program.description}</p>
+        <ExpandableText
+          text={program.description}
+          threshold={400}
+          clampClassName="line-clamp-4"
+          className="text-base text-muted-foreground leading-relaxed mb-6 max-w-3xl"
+          more="See more"
+          less="See less"
+        />
       )}
 
       {/* Stats */}

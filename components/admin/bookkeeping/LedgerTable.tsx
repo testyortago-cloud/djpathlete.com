@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatCents } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import { formatPeriodLabel } from "@/lib/bookkeeping/period-close"
+import { ExpandableText } from "@/components/shared/ExpandableText"
 import type { BookkeepingAccount, BookkeepingLedgerEntry, LedgerSource } from "@/types/database"
 
 const SOURCE_LABELS: Record<LedgerSource, string> = {
@@ -21,27 +22,6 @@ const SOURCE_LABELS: Record<LedgerSource, string> = {
 // and, against TableCell's whitespace-nowrap, stretched the memo column until
 // the whole ledger scrolled sideways (owner report, 2026-08-04).
 const MEMO_CLAMP_CHARS = 90
-
-/** Two-line clamp with a Show more/less toggle. Hoisted to module scope so the
- *  toggle keeps its state across parent re-renders (row edits, refetches). */
-function ExpandableText({ text, className }: { text: string; className?: string }) {
-  const [expanded, setExpanded] = useState(false)
-  const long = text.length > MEMO_CLAMP_CHARS
-  return (
-    <div className={className}>
-      <span className={!expanded && long ? "line-clamp-2" : "block"}>{text}</span>
-      {long && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="mt-0.5 text-xs font-medium text-accent underline underline-offset-2 hover:text-primary"
-        >
-          {expanded ? "Show less" : "Show more"}
-        </button>
-      )}
-    </div>
-  )
-}
 
 const SOURCE_TONE: Record<LedgerSource, string> = {
   manual: "bg-muted text-muted-foreground",
@@ -137,9 +117,13 @@ export function LedgerTable({
               {/* Receipt-scanned entries pre-memo-field carry only a
                   business_purpose — surface it instead of a bare dash. */}
               {row.memo ? (
-                <ExpandableText text={row.memo} className="font-medium" />
+                <ExpandableText text={row.memo} threshold={MEMO_CLAMP_CHARS} className="font-medium" />
               ) : row.business_purpose ? (
-                <ExpandableText text={row.business_purpose} className="font-normal italic text-muted-foreground" />
+                <ExpandableText
+                  text={row.business_purpose}
+                  threshold={MEMO_CLAMP_CHARS}
+                  className="font-normal italic text-muted-foreground"
+                />
               ) : (
                 <div className="font-medium">—</div>
               )}
