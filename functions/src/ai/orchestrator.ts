@@ -902,6 +902,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         is_active: true,
         created_by: requestedBy,
         price_cents: request.price_cents ?? null,
+        // Never the column default: an unpriced "one_time" program cannot be saved from the Edit dialog.
+        payment_type: request.price_cents ? "one_time" : "free",
       })
       createdProgramId = created.id as string
       console.log(`[orchestrator:sync] Program ${createdProgramId} created — committing weeks as they finish`)

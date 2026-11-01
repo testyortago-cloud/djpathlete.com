@@ -34,7 +34,9 @@ export const programFormSchema = z
     name: z.string().min(2, "Name must be at least 2 characters").max(100, "Name must be under 100 characters"),
     description: z
       .string()
-      .max(2000, "Description must be under 2000 characters")
+      // AI-generated programs carry the skeleton notes here (up to ~4,800 characters on prod), and the
+      // pricing sheet sends the stored description back through this schema.
+      .max(10000, "Description must be under 10,000 characters")
       .nullable()
       .transform((v) => v || null),
     category: z.array(z.enum(PROGRAM_CATEGORIES)).min(1, "Select at least one category"),
