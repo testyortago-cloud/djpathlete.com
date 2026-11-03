@@ -1,4 +1,5 @@
 import type { TestType } from "@/types/database"
+import { TEST_TYPE_DEFAULTS } from "@/lib/validators/performance-test"
 
 interface Range {
   min: number
@@ -39,10 +40,15 @@ export const RADAR_CATEGORIES: Record<RadarCategory, TestType[]> = {
 
 /**
  * Which way "better" points for a test type — sprints improve downward,
- * jumps upward. null for custom/unknown types: no judgment can be made.
+ * jumps upward. A test with no reference range follows its own best method
+ * (ground contact time is "lowest"). null for custom: no judgment can be made.
  */
 export function testDirection(testType: TestType): "higher" | "lower" | null {
-  return REFERENCE_RANGES[testType]?.direction ?? null
+  if (testType === "custom") return null
+  const range = REFERENCE_RANGES[testType]
+  if (range) return range.direction
+  const method = TEST_TYPE_DEFAULTS[testType]?.best_method
+  return method ? (method === "lowest" ? "lower" : "higher") : null
 }
 
 /**

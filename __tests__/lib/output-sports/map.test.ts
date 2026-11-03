@@ -135,6 +135,127 @@ describe("measurementsToTests", () => {
     expect(skipped).toEqual({ Jumps: 1 })
   })
 
+  // The tests Darren asked for on 2026-11-03. Shapes as Output sent them on 2026-11-02/03.
+  const sided = (
+    exerciseId: string,
+    variant: string | null,
+    at: string,
+    metrics: Record<string, number>,
+    category: string,
+  ) => ({
+    ...m(exerciseId, at, metrics, category),
+    variant,
+  })
+
+  it("takes Repeated Jumps' average RSI, per leg for the single-leg version", () => {
+    const { rows } = measurementsToTests(
+      [
+        m("REPEATED_JUMPS", "2026-11-03T14:00:00Z", { averageRsi: 1.8234, maxRsi: 2.1 }, "Reactive Strength"),
+        sided(
+          "UNILATERAL_REPEATED_JUMPS",
+          "Left",
+          "2026-11-03T14:01:00Z",
+          { averageRsi: 0.1441, maxRsi: 0.1836 },
+          "Reactive Strength",
+        ),
+        sided(
+          "UNILATERAL_REPEATED_JUMPS",
+          "Right",
+          "2026-11-03T14:02:00Z",
+          { averageRsi: 0.2, maxRsi: 0.25 },
+          "Reactive Strength",
+        ),
+      ],
+      "UTC",
+    )
+    expect(rows.map((r) => [r.test_type, r.result_value, r.result_unit])).toEqual([
+      ["repeated_jumps", 1.82, "RSI"],
+      ["repeated_jumps_left", 0.14, "RSI"],
+      ["repeated_jumps_right", 0.2, "RSI"],
+    ])
+  })
+
+  it("takes the SHORTEST average ground contact of a day's sprints, in ms, per leg", () => {
+    const { rows } = measurementsToTests(
+      [
+        sided(
+          "SPRINTING_CONTACTS",
+          "Left",
+          "2026-11-03T14:00:00Z",
+          { averageContactTime: 0.3367, bestContactTime: 0.196 },
+          "Contacts",
+        ),
+        sided("SPRINTING_CONTACTS", "Left", "2026-11-03T14:05:00Z", { averageContactTime: 0.2912 }, "Contacts"),
+        sided("SPRINTING_CONTACTS", "Right", "2026-11-03T14:06:00Z", { averageContactTime: 0.305 }, "Contacts"),
+      ],
+      "UTC",
+    )
+    expect(rows.map((r) => [r.test_type, r.result_value, r.result_unit, r.best_method, r.trial_values])).toEqual([
+      ["sprint_contact_left", 291, "ms", "lowest", [337, 291]],
+      ["sprint_contact_right", 305, "ms", "lowest", [305]],
+    ])
+  })
+
+  it("takes the med ball throw's peak ball speed and notes the ball's weight once", () => {
+    const { rows } = measurementsToTests(
+      [
+        m(
+          "MEDBALL_VERTICAL_PRESS_SQUAT_THROW_SST",
+          "2026-11-03T14:00:00Z",
+          { peakVelocity: 3.8475, peakPower: 845, weight: 4.54 },
+          "Slams, Swings & Throws",
+        ),
+        m(
+          "MEDBALL_VERTICAL_PRESS_SQUAT_THROW_SST",
+          "2026-11-03T14:02:00Z",
+          { peakVelocity: 3.91, weight: 4.54 },
+          "Slams, Swings & Throws",
+        ),
+      ],
+      "UTC",
+    )
+    expect(rows[0]).toMatchObject({ test_type: "med_ball_squat_throw", result_value: 3.91, result_unit: "m/s" })
+    expect(rows[0].notes).toBe("Imported from Output Sports. 4.54 kg ball")
+  })
+
+  it("takes the trap bar's estimated 1RM and keeps each set's load and bar speed as the load-velocity profile", () => {
+    const { rows } = measurementsToTests(
+      [
+        m(
+          "TRAP_BAR_DEADLIFT",
+          "2026-11-03T14:00:00Z",
+          { weight: 60, meanVelocity: 1.6571, estimatedOneRepMax: 71.406 },
+          "Barbell Velocity",
+        ),
+        m(
+          "TRAP_BAR_DEADLIFT",
+          "2026-11-03T14:05:00Z",
+          { weight: 100, meanVelocity: 0.8123, estimatedOneRepMax: 140.2 },
+          "Barbell Velocity",
+        ),
+      ],
+      "UTC",
+    )
+    expect(rows[0]).toMatchObject({ test_type: "trap_bar_deadlift_1rm", result_value: 140.2, result_unit: "kg" })
+    expect(rows[0].notes).toBe(
+      "Imported from Output Sports. 1RM estimated by Output from bar speed. 60 kg at 1.66 m/s, 100 kg at 0.81 m/s",
+    )
+  })
+
+  it("takes torso rotation's range of motion per side", () => {
+    const { rows } = measurementsToTests(
+      [
+        sided("TORSO_ROTATION", "Left", "2026-11-03T14:00:00Z", { rangeOfMotion: 52.34 }, "Mobility"),
+        sided("TORSO_ROTATION", "Right", "2026-11-03T14:01:00Z", { rangeOfMotion: 47.9 }, "Mobility"),
+      ],
+      "UTC",
+    )
+    expect(rows.map((r) => [r.test_type, r.result_value, r.result_unit])).toEqual([
+      ["torso_rotation_left", 52.3, "deg"],
+      ["torso_rotation_right", 47.9, "deg"],
+    ])
+  })
+
   it("keeps the drop jump's height as the result and its RSI in the note", () => {
     const { rows } = measurementsToTests(
       [m("BILATERAL_DROP_JUMP", "2026-11-03T14:00:00Z", { rsi: 1.874, jumpHeight: 0.38 }, "Reactive Strength")],

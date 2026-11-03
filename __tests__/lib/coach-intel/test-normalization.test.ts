@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { normalize, referenceTargets, RADAR_CATEGORIES } from "@/lib/coach-intel/test-normalization"
+import { normalize, referenceTargets, RADAR_CATEGORIES, testDirection } from "@/lib/coach-intel/test-normalization"
 
 describe("normalize", () => {
   it("drop_jump 60cm = 100 (max of higher-is-better)", () => {
@@ -59,5 +59,19 @@ describe("referenceTargets", () => {
 
   it("returns null for a test with no reference range", () => {
     expect(referenceTargets("custom")).toBeNull()
+  })
+})
+
+describe("testDirection", () => {
+  it("follows the reference range when the test has one", () => {
+    expect(testDirection("sprint_10m")).toBe("lower")
+    expect(testDirection("cmj")).toBe("higher")
+  })
+  it("falls back to the test's own best method when it has no reference range", () => {
+    expect(testDirection("sprint_contact_left")).toBe("lower")
+    expect(testDirection("torso_rotation_right")).toBe("higher")
+  })
+  it("makes no judgment on a custom test", () => {
+    expect(testDirection("custom")).toBeNull()
   })
 })
