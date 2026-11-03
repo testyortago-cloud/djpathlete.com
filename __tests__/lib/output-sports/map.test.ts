@@ -109,6 +109,32 @@ describe("measurementsToTests", () => {
     expect(rows[0].notes).toMatch(/estimated/i)
   })
 
+  it("files a single-leg CMJ under its own leg, apart from the other leg and the two-leg jump", () => {
+    // The shape Output sent on 2026-11-02: UNILATERAL_CMJ once per leg, told apart only by variant.
+    const side = (variant: string | null, at: string, jumpHeight: number) => ({
+      ...m("UNILATERAL_CMJ", at, { jumpHeight }),
+      variant,
+    })
+    const { rows, skipped } = measurementsToTests(
+      [
+        side("Left", "2026-11-02T14:14:44Z", 0.2779),
+        side("Right", "2026-11-02T14:15:04Z", 0.124),
+        side("Left", "2026-11-02T14:16:00Z", 0.1923),
+        m("BILATERAL_CMJ", "2026-11-02T14:20:00Z", { jumpHeight: 0.2993 }),
+        side(null, "2026-11-02T14:21:00Z", 0.3),
+      ],
+      "UTC",
+    )
+    expect(rows.map((r) => [r.test_type, r.result_value, r.trial_values])).toEqual([
+      ["cmj_left", 27.8, [27.8, 19.2]],
+      ["cmj_right", 12.4, [12.4]],
+      ["cmj", 29.9, [29.9]],
+    ])
+    expect(rows[0].output_key).toBe("cmj_left:2026-11-02")
+    // Without a leg there is nothing to file it under, so it stays in Output.
+    expect(skipped).toEqual({ Jumps: 1 })
+  })
+
   it("keeps the drop jump's height as the result and its RSI in the note", () => {
     const { rows } = measurementsToTests(
       [m("BILATERAL_DROP_JUMP", "2026-11-03T14:00:00Z", { rsi: 1.874, jumpHeight: 0.38 }, "Reactive Strength")],

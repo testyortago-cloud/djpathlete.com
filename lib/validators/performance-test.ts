@@ -3,6 +3,8 @@ import { z } from "zod"
 export const TEST_TYPES = [
   "drop_jump",
   "cmj",
+  "cmj_left",
+  "cmj_right",
   "squat_jump",
   "broad_jump",
   "sprint_10m",
@@ -26,6 +28,8 @@ export const BEST_METHODS = ["highest", "lowest", "mean", "median"] as const
 export const TEST_TYPE_LABELS: Record<(typeof TEST_TYPES)[number], string> = {
   drop_jump: "Drop Jump",
   cmj: "Countermovement Jump",
+  cmj_left: "Single-Leg CMJ (Left)",
+  cmj_right: "Single-Leg CMJ (Right)",
   squat_jump: "Squat Jump",
   broad_jump: "Broad Jump",
   sprint_10m: "10m Sprint",
@@ -48,6 +52,8 @@ type Default = { unit: string; best_method: (typeof BEST_METHODS)[number] }
 export const TEST_TYPE_DEFAULTS: Record<(typeof TEST_TYPES)[number], Default> = {
   drop_jump: { unit: "cm", best_method: "highest" },
   cmj: { unit: "cm", best_method: "highest" },
+  cmj_left: { unit: "cm", best_method: "highest" },
+  cmj_right: { unit: "cm", best_method: "highest" },
   squat_jump: { unit: "cm", best_method: "highest" },
   broad_jump: { unit: "cm", best_method: "highest" },
   sprint_10m: { unit: "sec", best_method: "lowest" },

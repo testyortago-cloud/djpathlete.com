@@ -2753,6 +2753,8 @@ export interface Injury {
 export type TestType =
   | "drop_jump"
   | "cmj"
+  | "cmj_left"
+  | "cmj_right"
   | "squat_jump"
   | "broad_jump"
   | "sprint_10m"

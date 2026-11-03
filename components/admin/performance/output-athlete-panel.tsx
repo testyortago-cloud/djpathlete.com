@@ -23,7 +23,7 @@ interface AthleteOption {
   linkedToOther: boolean
 }
 
-/** "3 new results, 1 updated. Kept in Output only: 4 Mobility · 2 Contacts" */
+/** "3 new results, 1 updated. Not brought in (no matching test in the app): 4 Mobility · 2 Contacts" */
 export function summaryText(s: SyncSummary): string {
   const parts: string[] = []
   if (s.added) parts.push(`${s.added} new ${s.added === 1 ? "result" : "results"}`)
@@ -31,7 +31,8 @@ export function summaryText(s: SyncSummary): string {
   const head = parts.length ? parts.join(", ") : "No new results"
   // Output's category names contain commas ("Slams, Swings & Throws"), so they are joined with dots.
   const left = Object.entries(s.skipped).map(([category, n]) => `${n} ${category}`)
-  return left.length ? `${head}. Kept in Output only: ${left.join(" · ")}` : `${head}.`
+  // "Kept in Output only: 2 Jumps" was read as two results added (2026-11-02), so it says "not".
+  return left.length ? `${head}. Not brought in (no matching test in the app): ${left.join(" · ")}` : `${head}.`
 }
 
 /**

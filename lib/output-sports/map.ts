@@ -44,12 +44,16 @@ const lift = (testType: TestType): Mapping => ({
 })
 
 /**
- * Output exercises that match a test the app already tracks. Anything else (mobility,
- * hops, throws, other lifts) stays in Output: the app's "custom" test type is a single
- * bucket, so importing them would mix unrelated exercises into one history.
+ * Output exercises that match a test the app already tracks, keyed by exercise id, or by
+ * `id:variant` for a one-sided exercise (Output records each leg as its own result with
+ * variant "Left" or "Right"). Anything else (mobility, hops, throws, other lifts) stays
+ * in Output: the app's "custom" test type is a single bucket, so importing them would mix
+ * unrelated exercises into one history.
  */
 const MAPPINGS: Record<string, Mapping> = {
   BILATERAL_CMJ: jump("cmj"),
+  "UNILATERAL_CMJ:Left": jump("cmj_left"),
+  "UNILATERAL_CMJ:Right": jump("cmj_right"),
   SQUAT_JUMP: jump("squat_jump"),
   BILATERAL_DROP_JUMP: jump("drop_jump"),
   BILATERAL_BROAD_JUMP_INPUT: jump("broad_jump", "jumpDistance"),
@@ -64,9 +68,6 @@ const MAPPINGS: Record<string, Mapping> = {
   BARBELL_BENCH_PRESS: lift("bench_press_1rm"),
   BARBELL_DEADLIFT: lift("deadlift_1rm"),
 }
-
-/** The Output exercise ids the sync asks for. */
-export const MAPPED_EXERCISE_IDS = Object.keys(MAPPINGS)
 
 /** YYYY-MM-DD of an instant in `timeZone`, or in UTC when the zone is unknown. */
 export function localDate(iso: string, timeZone: string): string {
@@ -98,7 +99,7 @@ export function measurementsToTests(
 
   for (const ms of sorted) {
     if (athleteId && ms.athleteId !== athleteId) continue
-    const mapping = MAPPINGS[ms.exerciseId]
+    const mapping = MAPPINGS[`${ms.exerciseId}:${ms.variant}`] ?? MAPPINGS[ms.exerciseId]
     const raw = mapping ? ms.metrics.find((x) => x.field === mapping.field)?.value : undefined
     if (!mapping || typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) {
       const category = ms.exerciseCategory || "Other"
