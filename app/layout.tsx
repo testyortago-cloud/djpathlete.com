@@ -1,30 +1,16 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Lexend_Exa, Lexend_Deca, JetBrains_Mono } from "next/font/google"
+import { preload } from "react-dom"
 import { SessionProvider } from "@/components/providers/SessionProvider"
 import { Toaster } from "@/components/ui/sonner"
 import { GoogleAnalytics } from "@/components/shared/GoogleAnalytics"
 import { CaptureGclid } from "@/components/analytics/CaptureGclid"
 import { SITE_URL, SITE_BRAND } from "@/lib/constants"
+import "./fonts.css"
 import "./globals.css"
 
-const lexendExa = Lexend_Exa({
-  subsets: ["latin"],
-  variable: "--font-lexend-exa",
-  weight: ["600", "700"],
-})
-
-const lexendDeca = Lexend_Deca({
-  subsets: ["latin"],
-  variable: "--font-lexend-deca",
-  weight: ["300", "400", "500"],
-})
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-  weight: ["400"],
-})
+// Self-hosted (see app/fonts.css for why). The Latin files are preloaded, as next/font did.
+const PRELOAD_FONTS = ["lexend-exa-latin", "lexend-deca-latin", "jetbrains-mono-latin"]
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -69,9 +55,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  for (const name of PRELOAD_FONTS) preload(`/fonts/${name}.woff2`, { as: "font", type: "font/woff2", crossOrigin: "" })
   return (
     <html lang="en">
-      <body className={`${lexendDeca.variable} ${lexendExa.variable} ${jetbrainsMono.variable} font-body antialiased`}>
+      <body className="font-body antialiased">
         <noscript>
           <style>{`[style*="opacity: 0"] { opacity: 1 !important; transform: none !important; }`}</style>
         </noscript>

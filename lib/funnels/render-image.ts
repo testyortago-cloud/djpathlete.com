@@ -22,7 +22,7 @@ import type { BrandKit } from "@/lib/funnels/sections/render"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 /**
- * The three faces `app/layout.tsx` loads via `next/font/google`, which are the
+ * The three faces the app self-hosts (`app/fonts.css`), which are the
  * ENTIRE font budget any funnel page has. `doc.ts`'s ALLOWED_FONT_FAMILIES
  * says so: everything else in a `FONT_STACKS` entry is a system keyword or a
  * pre-installed face, never a download.

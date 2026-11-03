@@ -165,6 +165,11 @@ const nextConfig = {
         ],
       },
       {
+        // Self-hosted fonts (app/fonts.css). Rename a file to change it, never edit one in place.
+        source: "/fonts/:file*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+      {
         source: "/(.*)",
         headers: [
           { key: "Content-Security-Policy", value: csp },

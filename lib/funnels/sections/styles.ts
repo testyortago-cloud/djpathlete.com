@@ -27,8 +27,8 @@
 // `--font-mono` are declared inside `@theme inline {}` (globals.css:82-86),
 // NOT on bare `:root`, so nothing guarantees Tailwind v4 emits them as real
 // custom properties reachable from here. Every font-family below uses the
-// full fallback chain the plan specifies, ending in the next/font variable
-// that IS guaranteed on `<body>` (app/layout.tsx) and then a system fallback.
+// full fallback chain the plan specifies, ending in the font variable
+// that IS guaranteed on `:root` (app/fonts.css) and then a system fallback.
 //
 // `--djp-radius` is this file's one invented custom property: a single knob
 // every rounded corner below reads from, defaulting to a "soft" radius here.

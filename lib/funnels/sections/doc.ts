@@ -103,9 +103,9 @@ const DENSITY_MULTIPLIER: Record<NonNullable<SectionDocTheme["density"]>, number
 
 // ---------------------------------------------------------------------------
 // ALLOWED_FONT_FAMILIES — the only families FONT_STACKS (below) may ever
-// name. Three are the exact fonts `app/layout.tsx` loads via
-// `next/font/google` (that file's lines ~11-25): Lexend Exa, Lexend Deca and
-// JetBrains Mono, each stamped as a CSS custom property on `<body>`
+// name. Three are the exact fonts the app self-hosts (`app/fonts.css`,
+// imported by `app/layout.tsx`): Lexend Exa, Lexend Deca and
+// JetBrains Mono, each stamped as a CSS custom property on `:root`
 // (`--font-lexend-exa`, `--font-lexend-deca`, `--font-jetbrains-mono`) — the
 // funnel route inherits only the ROOT layout, so these three are the entire
 // font budget any funnel page has, ever. Everything else in this set is a
@@ -126,8 +126,8 @@ const DENSITY_MULTIPLIER: Record<NonNullable<SectionDocTheme["density"]>, number
 // that can never sneak back in unnoticed.
 // ---------------------------------------------------------------------------
 export const ALLOWED_FONT_FAMILIES = new Set([
-  // the three fonts app/layout.tsx actually loads, both as the CSS variable
-  // next/font stamps and as the literal family name that variable resolves to
+  // the three fonts app/fonts.css actually loads, both as the CSS variable
+  // it stamps and as the literal family name that variable resolves to
   "var(--font-lexend-exa)",
   "var(--font-lexend-deca)",
   "var(--font-jetbrains-mono)",
