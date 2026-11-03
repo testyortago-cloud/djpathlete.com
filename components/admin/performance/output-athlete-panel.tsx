@@ -23,16 +23,23 @@ interface AthleteOption {
   linkedToOther: boolean
 }
 
-/** "3 new results, 1 updated. Not brought in (no matching test in the app): 4 Mobility · 2 Contacts" */
+/** What a sync brought in: "3 new results, 1 updated." */
 export function summaryText(s: SyncSummary): string {
   const parts: string[] = []
   if (s.added) parts.push(`${s.added} new ${s.added === 1 ? "result" : "results"}`)
   if (s.updated) parts.push(`${s.updated} updated`)
-  const head = parts.length ? parts.join(", ") : "No new results"
+  return `${parts.length ? parts.join(", ") : "No new results"}.`
+}
+
+/**
+ * What it left in Output, on a line of its own: "Not brought in (no matching test in the
+ * app): 4 Mobility · 2 Contacts", or null. "Kept in Output only: 2 Jumps" was read as two
+ * results added (2026-11-02), so it says "not".
+ */
+export function notBroughtIn(s: SyncSummary): string | null {
   // Output's category names contain commas ("Slams, Swings & Throws"), so they are joined with dots.
   const left = Object.entries(s.skipped).map(([category, n]) => `${n} ${category}`)
-  // "Kept in Output only: 2 Jumps" was read as two results added (2026-11-02), so it says "not".
-  return left.length ? `${head}. Not brought in (no matching test in the app): ${left.join(" · ")}` : `${head}.`
+  return left.length ? `Not brought in (no matching test in the app): ${left.join(" · ")}` : null
 }
 
 /**
@@ -53,6 +60,11 @@ export function OutputAthletePanel({
   const [athletes, setAthletes] = useState<AthleteOption[] | null>(null)
   const [choice, setChoice] = useState<string>("")
   const [message, setMessage] = useState<string | null>(null)
+  const [leftInOutput, setLeftInOutput] = useState<string | null>(null)
+  const say = (text: string | null, summary: SyncSummary | null = null) => {
+    setMessage(text)
+    setLeftInOutput(summary ? notBroughtIn(summary) : null)
+  }
   const [confirmUnlink, setConfirmUnlink] = useState(false)
   const base = `/api/admin/clients/${clientUserId}/output`
 
@@ -65,14 +77,14 @@ export function OutputAthletePanel({
 
   async function loadAthletes() {
     setBusy("load")
-    setMessage(null)
+    say(null)
     try {
       const { athletes: list } = (await request(base)) as { athletes: AthleteOption[] }
       setAthletes(list)
       const suggested = list.find((a) => a.suggested && !a.linkedToOther)
       setChoice(suggested?.id ?? "")
     } catch (err) {
-      setMessage((err as Error).message)
+      say((err as Error).message)
     } finally {
       setBusy(null)
     }
@@ -88,15 +100,15 @@ export function OutputAthletePanel({
       })
       if (body.syncError) {
         toast.warning("Linked, but the results could not be brought in yet")
-        setMessage(body.syncError)
+        say(body.syncError)
       } else {
         toast.success("Linked to Output")
-        setMessage(summaryText(body.summary))
+        say(summaryText(body.summary), body.summary)
       }
       setAthletes(null)
       router.refresh()
     } catch (err) {
-      setMessage((err as Error).message)
+      say((err as Error).message)
       // The link may have been saved before the request failed (a timeout during the first
       // sync); refreshing shows it, so clicking Link again does not start the year-long read over.
       router.refresh()
@@ -109,11 +121,11 @@ export function OutputAthletePanel({
     setBusy("sync")
     try {
       const body = await request(`${base}/sync`, { method: "POST" })
-      setMessage(summaryText(body.summary))
+      say(summaryText(body.summary), body.summary)
       toast.success("Output results brought in")
       router.refresh()
     } catch (err) {
-      setMessage((err as Error).message)
+      say((err as Error).message)
     } finally {
       setBusy(null)
     }
@@ -124,11 +136,11 @@ export function OutputAthletePanel({
     try {
       await request(removeResults ? `${base}?remove=1` : base, { method: "DELETE" })
       setConfirmUnlink(false)
-      setMessage(null)
+      say(null)
       toast.success(removeResults ? "Unlinked, and its results removed" : "Unlinked from Output")
       router.refresh()
     } catch (err) {
-      setMessage((err as Error).message)
+      say((err as Error).message)
     } finally {
       setBusy(null)
     }
@@ -246,7 +258,8 @@ export function OutputAthletePanel({
         </p>
       )}
 
-      {message && <p className="mt-2 text-sm text-muted-foreground">{message}</p>}
+      {message && <p className="mt-2 text-sm font-medium text-foreground">{message}</p>}
+      {leftInOutput && <p className="mt-0.5 text-xs text-muted-foreground">{leftInOutput}</p>}
     </div>
   )
 }

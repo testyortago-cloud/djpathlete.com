@@ -2799,6 +2799,8 @@ export interface PerformanceTest {
   video_url: string | null
   is_pr: boolean
   pct_change_from_prev: number | null
+  /** Set when the result was brought in from Output Sports (test_type:local-date). */
+  output_key?: string | null
   created_at: string
   updated_at: string
 }

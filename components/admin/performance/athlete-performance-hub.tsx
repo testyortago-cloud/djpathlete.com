@@ -1,31 +1,18 @@
 "use client"
 
 import Link from "next/link"
-import {
-  LayoutDashboard,
-  Activity,
-  Gauge,
-  AlertTriangle,
-  User,
-  HeartPulse,
-  Trophy,
-} from "lucide-react"
+import { LayoutDashboard, Activity, Gauge, AlertTriangle, User, HeartPulse, Trophy } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PerformanceActionButtons } from "./performance-action-buttons"
 import { AthleteProfileBar, type ReportShare } from "./athlete-profile-bar"
-import type {
-  DailyReadiness,
-  Injury,
-  PerformanceTest,
-  PerformanceTestPR,
-  RiskFlag,
-} from "@/types/database"
+import type { DailyReadiness, Injury, PerformanceTest, PerformanceTestPR, RiskFlag } from "@/types/database"
 import { ReadinessScoreGauge } from "./readiness-score-gauge"
 import { ReadinessTrendChart } from "./readiness-trend-chart"
 import { ActiveInjuriesCard } from "./active-injuries-card"
 import { InjuryTimelineList } from "./injury-timeline-list"
 import { PRsShelfCard } from "./prs-shelf-card"
-import { PerformanceTestCard } from "./performance-test-card"
+import { PairedTestCard, PerformanceTestCard } from "./performance-test-card"
+import { testCards } from "@/lib/coach-intel/test-cards"
 import { TrainingLoadCard } from "@/components/admin/coach-intel/training-load-card"
 import { TrainingLoadChart } from "@/components/admin/coach-intel/training-load-chart"
 import { ACWRChart } from "@/components/admin/coach-intel/acwr-chart"
@@ -45,11 +32,7 @@ import { SelfAssessmentCard } from "./self-assessment-card"
 import type { ClientQuizResult } from "@/lib/quizzes/client-result"
 import { latestTestValueByType, type GoalMetricContext } from "@/lib/goals/progress"
 import type { StandardRow } from "@/lib/coach-intel/test-normalization"
-import type {
-  AthleteGoal,
-  Badge as BadgeType,
-  TrainingSession,
-} from "@/types/database"
+import type { AthleteGoal, Badge as BadgeType, TrainingSession } from "@/types/database"
 
 export interface ProfileSummary {
   tests: PerformanceTest[]
@@ -116,12 +99,9 @@ export function AthletePerformanceHub({
   coachIntel: CoachIntelSummary
   profile: ProfileSummary
 }) {
-  const grouped = recentTests.reduce<Record<string, PerformanceTest[]>>((acc, t) => {
-    const key = t.test_type === "custom" ? `custom:${t.custom_name}` : t.test_type
-    acc[key] = acc[key] ?? []
-    acc[key].push(t)
-    return acc
-  }, {})
+  // Every result, not recentTests (the newest 10): one Output session brings in about 7, and
+  // older tests used to drop off the tab.
+  const testGroups = testCards(profile.tests)
 
   const sparkline = coachIntel.dailyLoadSeries.slice(-7)
 
@@ -139,12 +119,8 @@ export function AthletePerformanceHub({
       {/* Page header */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-muted-foreground mb-1 text-xs font-medium uppercase tracking-[0.18em]">
-            Athlete
-          </p>
-          <h1 className="font-heading text-primary text-3xl font-bold tracking-tight">
-            Performance
-          </h1>
+          <p className="text-muted-foreground mb-1 text-xs font-medium uppercase tracking-[0.18em]">Athlete</p>
+          <h1 className="font-heading text-primary text-3xl font-bold tracking-tight">Performance</h1>
         </div>
         <PerformanceActionButtons clientUserId={clientUserId} reportUrl={reportUrl} />
       </div>
@@ -156,45 +132,26 @@ export function AthletePerformanceHub({
           variant="line"
           className="border-border h-auto w-full justify-start overflow-x-auto rounded-none border-b px-0 pb-0"
         >
-          <TabsTrigger
-            value="overview"
-            asChild
-            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
-          >
+          <TabsTrigger value="overview" asChild className="font-heading h-10 px-3 text-sm font-medium tracking-wide">
             <Link href={`/admin/clients/${clientUserId}/performance?tab=overview`}>
               <LayoutDashboard className="size-4" strokeWidth={1.75} />
               Overview
             </Link>
           </TabsTrigger>
-          <TabsTrigger
-            value="readiness"
-            asChild
-            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
-          >
+          <TabsTrigger value="readiness" asChild className="font-heading h-10 px-3 text-sm font-medium tracking-wide">
             <Link href={`/admin/clients/${clientUserId}/performance?tab=readiness`}>
               <Activity className="size-4" strokeWidth={1.75} />
               Readiness
             </Link>
           </TabsTrigger>
-          <TabsTrigger
-            value="load"
-            asChild
-            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
-          >
+          <TabsTrigger value="load" asChild className="font-heading h-10 px-3 text-sm font-medium tracking-wide">
             <Link href={`/admin/clients/${clientUserId}/performance?tab=load`}>
               <Gauge className="size-4" strokeWidth={1.75} />
               Load
             </Link>
           </TabsTrigger>
-          <TabsTrigger
-            value="alerts"
-            asChild
-            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
-          >
-            <Link
-              href={`/admin/clients/${clientUserId}/performance?tab=alerts`}
-              className="flex items-center gap-1.5"
-            >
+          <TabsTrigger value="alerts" asChild className="font-heading h-10 px-3 text-sm font-medium tracking-wide">
+            <Link href={`/admin/clients/${clientUserId}/performance?tab=alerts`} className="flex items-center gap-1.5">
               <AlertTriangle className="size-4" strokeWidth={1.75} />
               Alerts
               {alertCount > 0 && (
@@ -204,31 +161,19 @@ export function AthletePerformanceHub({
               )}
             </Link>
           </TabsTrigger>
-          <TabsTrigger
-            value="profile"
-            asChild
-            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
-          >
+          <TabsTrigger value="profile" asChild className="font-heading h-10 px-3 text-sm font-medium tracking-wide">
             <Link href={`/admin/clients/${clientUserId}/performance?tab=profile`}>
               <User className="size-4" strokeWidth={1.75} />
               Profile
             </Link>
           </TabsTrigger>
-          <TabsTrigger
-            value="injuries"
-            asChild
-            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
-          >
+          <TabsTrigger value="injuries" asChild className="font-heading h-10 px-3 text-sm font-medium tracking-wide">
             <Link href={`/admin/clients/${clientUserId}/performance?tab=injuries`}>
               <HeartPulse className="size-4" strokeWidth={1.75} />
               Injuries
             </Link>
           </TabsTrigger>
-          <TabsTrigger
-            value="tests"
-            asChild
-            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
-          >
+          <TabsTrigger value="tests" asChild className="font-heading h-10 px-3 text-sm font-medium tracking-wide">
             <Link href={`/admin/clients/${clientUserId}/performance?tab=tests`}>
               <Trophy className="size-4" strokeWidth={1.75} />
               Tests
@@ -238,23 +183,15 @@ export function AthletePerformanceHub({
 
         <TabsContent value="overview" className="mt-6 grid gap-6 md:grid-cols-2">
           <ReadinessScoreGauge readiness={latestReadiness} />
-          <TrainingLoadCard
-            weeklyTotal={coachIntel.weeklyTotal}
-            sparkline={sparkline}
-          />
+          <TrainingLoadCard weeklyTotal={coachIntel.weeklyTotal} sparkline={sparkline} />
           <ActiveInjuriesCard injuries={activeInjuries} clientUserId={clientUserId} />
           <RiskFlagsCard flags={coachIntel.openFlags} />
-          <OpenGoalsCard
-            goals={activeGoals}
-            goalsHref={`/admin/clients/${clientUserId}/performance?tab=profile`}
-          />
+          <OpenGoalsCard goals={activeGoals} goalsHref={`/admin/clients/${clientUserId}/performance?tab=profile`} />
           <PRsShelfCard prs={prs} />
           {recentTests[0] && (
             <PerformanceTestCard
               latest={recentTests[0]}
-              history={recentTests
-                .filter((t) => t.test_type === recentTests[0].test_type)
-                .slice(0, 10)}
+              history={recentTests.filter((t) => t.test_type === recentTests[0].test_type).slice(0, 10)}
               clientUserId={clientUserId}
             />
           )}
@@ -270,15 +207,9 @@ export function AthletePerformanceHub({
             acute={coachIntel.acuteSeries}
             chronic={coachIntel.chronicSeries}
           />
-          <ACWRChart
-            acute={coachIntel.acuteSeries}
-            chronic={coachIntel.chronicSeries}
-          />
+          <ACWRChart acute={coachIntel.acuteSeries} chronic={coachIntel.chronicSeries} />
           <div className="grid gap-4 md:grid-cols-2">
-            <MonotonyStrainCard
-              monotony={coachIntel.monotony}
-              strain={coachIntel.strain}
-            />
+            <MonotonyStrainCard monotony={coachIntel.monotony} strain={coachIntel.strain} />
             <WeekOverWeekCard
               current={coachIntel.weekOverWeek.current}
               previous={coachIntel.weekOverWeek.previous}
@@ -295,16 +226,9 @@ export function AthletePerformanceHub({
           <AthleteRadarCard tests={profile.tests} standards={profile.standards} age={profile.age} />
           <TrainingStreakHeatmap sessions={profile.sessions} />
           <BadgeShelfCard badges={profile.badges} />
-          <OpenGoalsCard
-            goals={activeGoals}
-            goalsHref={`/admin/clients/${clientUserId}/performance?tab=profile`}
-          />
+          <OpenGoalsCard goals={activeGoals} goalsHref={`/admin/clients/${clientUserId}/performance?tab=profile`} />
           <div className="md:col-span-2">
-            <CoachGoalsManager
-              clientUserId={clientUserId}
-              goals={profile.goals}
-              metricContext={goalMetricContext}
-            />
+            <CoachGoalsManager clientUserId={clientUserId} goals={profile.goals} metricContext={goalMetricContext} />
           </div>
         </TabsContent>
 
@@ -316,11 +240,43 @@ export function AthletePerformanceHub({
         <TabsContent value="tests" className="mt-6 space-y-6">
           {output && <OutputAthletePanel clientUserId={clientUserId} clientName={clientName} state={output} />}
           {selfAssessment !== undefined && <SelfAssessmentCard result={selfAssessment} />}
+          {/* The results come first; the report preview below them is tall. */}
+          {testGroups.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-border bg-white px-4 py-8 text-center text-sm text-muted-foreground">
+              No test results yet. Log a test, or link this client to Output Sports to bring their results in.
+            </p>
+          ) : (
+            testGroups.map(({ group, cards }) => (
+              <section key={group} className="space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{group}</h3>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {cards.map((card) =>
+                    card.kind === "pair" ? (
+                      <PairedTestCard
+                        key={card.key}
+                        label={card.label}
+                        left={card.left}
+                        right={card.right}
+                        clientUserId={clientUserId}
+                      />
+                    ) : (
+                      <PerformanceTestCard
+                        key={card.key}
+                        latest={card.history[0]}
+                        history={card.history.slice(0, 10)}
+                        clientUserId={clientUserId}
+                      />
+                    ),
+                  )}
+                </div>
+              </section>
+            ))
+          )}
           {/* The standards these results are coloured against, one click away from the results. */}
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-white px-4 py-3 shadow-sm">
             <p className="text-sm text-muted-foreground">
-              Results on the Arena card and the test report are compared with your Trained &amp; Elite standards,
-              by age group.
+              Results on the Arena card and the test report are compared with your Trained &amp; Elite standards, by age
+              group.
             </p>
             <Link
               href="/admin/settings/performance-standards"
@@ -332,16 +288,6 @@ export function AthletePerformanceHub({
           </div>
           {/* Keyed on the test count so the preview reloads when an Output sync brings results in. */}
           {reportUrl && <ReportPreview key={profile.tests.length} reportUrl={reportUrl} clientName={clientName} />}
-          <div className="grid gap-4 md:grid-cols-2">
-            {Object.entries(grouped).map(([key, list]) => (
-              <PerformanceTestCard
-                key={key}
-                latest={list[0]}
-                history={list}
-                clientUserId={clientUserId}
-              />
-            ))}
-          </div>
         </TabsContent>
       </Tabs>
     </div>

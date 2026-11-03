@@ -4,7 +4,12 @@ import { ArrowLeft } from "lucide-react"
 import { auth } from "@/lib/auth"
 import { getTestHistory } from "@/lib/db/performance-tests"
 import { TEST_TYPES, TEST_TYPE_LABELS } from "@/lib/validators/performance-test"
-import { PerformanceTestHistoryChart } from "@/components/admin/performance/performance-test-history-chart"
+import { otherSide, sidesLabel } from "@/lib/coach-intel/test-cards"
+import { formatDate, num } from "@/lib/test-report/format"
+import {
+  PerformanceTestHistoryChart,
+  SidesHistoryChart,
+} from "@/components/admin/performance/performance-test-history-chart"
 import {
   DataTable,
   DataTableBadge,
@@ -14,8 +19,12 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/ui/data-table"
+import type { PerformanceTest } from "@/types/database"
 
-/** One test's full history for a client: where each card on Performance > Tests links. */
+/**
+ * One test's full history for a client: where each card on Performance > Tests links.
+ * A left/right test shows both sides, whichever side the link named.
+ */
 export default async function AdminPerformanceTestTypePage({
   params,
 }: {
@@ -26,7 +35,17 @@ export default async function AdminPerformanceTestTypePage({
   const { id, testType } = await params
   if (!(TEST_TYPES as readonly string[]).includes(testType)) notFound()
   const type = testType as (typeof TEST_TYPES)[number]
-  const history = await getTestHistory(id, type)
+  const partner = otherSide(type)
+  const [history, partnerHistory] = await Promise.all([
+    getTestHistory(id, type),
+    partner ? getTestHistory(id, partner) : Promise.resolve([] as PerformanceTest[]),
+  ])
+  const [left, right] = type.endsWith("_left") ? [history, partnerHistory] : [partnerHistory, history]
+  const sideOf = (t: PerformanceTest) => (t.test_type.endsWith("_left") ? "Left" : "Right")
+  // Newest first; on one day, left before right.
+  const rows = [...history, ...partnerHistory].sort(
+    (a, b) => b.test_date.localeCompare(a.test_date) || sideOf(a).localeCompare(sideOf(b)),
+  )
 
   return (
     <div className="container max-w-4xl py-8">
@@ -37,25 +56,31 @@ export default async function AdminPerformanceTestTypePage({
         <ArrowLeft className="size-4" />
         Back to tests
       </Link>
-      <h1 className="font-heading mb-8 text-3xl font-bold">{TEST_TYPE_LABELS[type]}</h1>
-      <PerformanceTestHistoryChart tests={history} />
+      <h1 className="font-heading mb-8 text-3xl font-bold">{partner ? sidesLabel(type) : TEST_TYPE_LABELS[type]}</h1>
+      {partner ? (
+        <SidesHistoryChart label={sidesLabel(type)} left={left} right={right} />
+      ) : (
+        <PerformanceTestHistoryChart tests={history} />
+      )}
       {/* Notes hold what the chart cannot: an Output import's load-velocity sets, ball weight or RSI. */}
-      {history.length > 0 && (
+      {rows.length > 0 && (
         <DataTableCard className="mt-6">
           <DataTable>
             <DataTableHeader>
               <DataTableHead className="w-32">Date</DataTableHead>
+              {partner && <DataTableHead className="w-20">Side</DataTableHead>}
               <DataTableHead className="w-36">Result</DataTableHead>
               <DataTableHead>Attempts</DataTableHead>
               <DataTableHead>Notes</DataTableHead>
             </DataTableHeader>
             <tbody>
-              {[...history].reverse().map((t) => (
+              {rows.map((t) => (
                 <DataTableRow key={t.id}>
-                  <DataTableCell className="font-mono text-xs">{t.test_date}</DataTableCell>
-                  <DataTableCell>
+                  <DataTableCell className="whitespace-nowrap text-xs">{formatDate(t.test_date)}</DataTableCell>
+                  {partner && <DataTableCell className="text-xs">{sideOf(t)}</DataTableCell>}
+                  <DataTableCell className="whitespace-nowrap">
                     <span className="font-semibold">
-                      {t.result_value} {t.result_unit}
+                      {num(t.result_value)} {t.result_unit}
                     </span>
                     {t.is_pr && (
                       <DataTableBadge tone="success" className="ml-2">
@@ -63,7 +88,9 @@ export default async function AdminPerformanceTestTypePage({
                       </DataTableBadge>
                     )}
                   </DataTableCell>
-                  <DataTableCell className="text-muted-foreground">{t.trial_values?.join(", ") ?? "-"}</DataTableCell>
+                  <DataTableCell className="text-muted-foreground">
+                    {t.trial_values?.map((v) => num(v)).join(", ") || "-"}
+                  </DataTableCell>
                   <DataTableCell className="text-muted-foreground">{t.notes ?? "-"}</DataTableCell>
                 </DataTableRow>
               ))}
