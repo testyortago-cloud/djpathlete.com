@@ -262,16 +262,37 @@ function toToolInputSchema(schema: ZodSchema): { type: "object"; [key: string]: 
  *
  * Do NOT extend this list speculatively. Every entry must come from an observed
  * 400, or it silently converts a working constraint into a retry loop.
+ *
+ * Two more keywords are REWRITTEN, not stripped (observed 2026-11-08, Sonnet 5.5
+ * via OpenRouter; every SEO agent run 400'd on both):
+ *   "For 'array' type, property 'prefixItems' is not supported"  (z.tuple)
+ *   "Schema type 'oneOf' is not supported"             (z.discriminatedUnion)
+ * `oneOf` becomes `anyOf`, which means the same thing when the branches are
+ * disjoint, as a discriminated union's are. `prefixItems` becomes `items`: the
+ * tuple's one item schema, or an `anyOf` of them. The tuple's length and slot
+ * order then hold only in `parse()`, so the prompt must state them, as the SEO
+ * agent's does ("exactly two actions"). Requests without these keywords are
+ * unchanged, and requests with them were refused outright before.
  */
 const UNSUPPORTED_SCHEMA_KEYWORDS = ["minItems", "maxItems"] as const
 
 export function stripUnsupportedSchemaKeywords(node: unknown, depth = 0): unknown {
   if (depth > 20 || node === null || typeof node !== "object") return node
   if (Array.isArray(node)) return node.map((n) => stripUnsupportedSchemaKeywords(n, depth + 1))
+  const src = node as Record<string, unknown>
   const out: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries(src)) {
     if ((UNSUPPORTED_SCHEMA_KEYWORDS as readonly string[]).includes(key)) continue
-    out[key] = stripUnsupportedSchemaKeywords(value, depth + 1)
+    if (key === "prefixItems" || (key === "items" && Array.isArray(src.prefixItems))) continue
+    out[key === "oneOf" ? "anyOf" : key] = stripUnsupportedSchemaKeywords(value, depth + 1)
+  }
+  if (Array.isArray(src.prefixItems)) {
+    const slots = [...src.prefixItems, ...(src.items && typeof src.items === "object" ? [src.items] : [])]
+    const variants = slots.map((s) => stripUnsupportedSchemaKeywords(s, depth + 1))
+    const unique = variants.filter(
+      (v, i) => variants.findIndex((w) => JSON.stringify(w) === JSON.stringify(v)) === i,
+    )
+    out.items = unique.length === 1 ? unique[0] : { anyOf: unique }
   }
   return out
 }

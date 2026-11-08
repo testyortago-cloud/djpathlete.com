@@ -109,6 +109,35 @@ describe("stripUnsupportedSchemaKeywords", () => {
     expect(stripUnsupportedSchemaKeywords("x")).toBe("x")
     expect(stripUnsupportedSchemaKeywords(5)).toBe(5)
   })
+
+  // 2026-11-08: every SEO agent run 400'd on the live API with
+  // "property 'prefixItems' is not supported" and then "Schema type 'oneOf' is
+  // not supported". The decision schema is a z.tuple of z.discriminatedUnion.
+  it("rewrites the SEO decision schema's tuple and union into keywords the API accepts", async () => {
+    const { toJSONSchema } = await import("zod")
+    const { decisionSchema } = await import("../seo/decision-schema.js")
+    const out = stripUnsupportedSchemaKeywords(toJSONSchema(decisionSchema, { unrepresentable: "any" }))
+    const text = JSON.stringify(out)
+    expect(text).not.toContain('"prefixItems"')
+    expect(text).not.toContain('"oneOf"')
+    const actions = (out as { properties: { actions: { items: { anyOf: Array<{ properties: { tool: { const: string } } }> } } } })
+      .properties.actions
+    expect(actions.items.anyOf.map((v) => v.properties.tool.const)).toEqual([
+      "queue_new_post",
+      "queue_refresh",
+      "queue_internal_link_sweep",
+      "flag_for_human",
+    ])
+  })
+
+  it("turns a tuple of different slots into an anyOf of each distinct slot", () => {
+    const out = stripUnsupportedSchemaKeywords({
+      type: "array",
+      prefixItems: [{ type: "string" }, { type: "number" }, { type: "string" }],
+    }) as Record<string, unknown>
+    expect(out).not.toHaveProperty("prefixItems")
+    expect(out.items).toEqual({ anyOf: [{ type: "string" }, { type: "number" }] })
+  })
 })
 
 // 2026-10-02: five real coach requests replayed on the dev clone. GPT-6.1 Sol
