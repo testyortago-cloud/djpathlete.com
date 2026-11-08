@@ -209,3 +209,16 @@ export async function isSlugTaken(slug: string, excludeId?: string): Promise<boo
   if (error) throw error
   return (data?.length ?? 0) > 0
 }
+
+/**
+ * id → title and slug, for screens that only hold post ids (the SEO agent's
+ * memo actions). An id with no row is simply absent from the result.
+ */
+export async function getBlogPostTitles(ids: string[]): Promise<Record<string, { title: string; slug: string }>> {
+  if (ids.length === 0) return {}
+  const supabase = getClient()
+  const { data, error } = await supabase.from("blog_posts").select("id, title, slug").in("id", ids)
+  if (error) throw error
+  const rows = (data ?? []) as Array<{ id: string; title: string; slug: string }>
+  return Object.fromEntries(rows.map((p) => [p.id, { title: p.title, slug: p.slug }]))
+}

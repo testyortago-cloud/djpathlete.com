@@ -290,3 +290,23 @@ export async function listRecentCaptionRenders(limit = 300): Promise<RecentCapti
   }
   return out
 }
+
+export interface AiJobSnapshot {
+  status: AiJobStatus
+  result: Record<string, unknown> | null
+  error: string | null
+}
+
+/** Current status, result and error of the given ai_jobs docs. A missing doc is absent from the result. */
+export async function getAiJobSnapshots(ids: string[]): Promise<Record<string, AiJobSnapshot>> {
+  if (ids.length === 0) return {}
+  const db = getAdminFirestore()
+  const docs = await db.getAll(...ids.map((id) => db.collection("ai_jobs").doc(id)))
+  const out: Record<string, AiJobSnapshot> = {}
+  for (const doc of docs) {
+    if (!doc.exists) continue
+    const data = doc.data() as { status: AiJobStatus; result?: Record<string, unknown> | null; error?: string | null }
+    out[doc.id] = { status: data.status, result: data.result ?? null, error: data.error ?? null }
+  }
+  return out
+}

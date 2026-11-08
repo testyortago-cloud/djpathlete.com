@@ -2517,6 +2517,8 @@ export interface SeoAgentMemoAction {
   executed: boolean
   execution_target_id: string | null
   complementary_to_rank_1?: string
+  /** Why the agent's own guard refused the action: `repeat_sweep:<jobId>` or `brief_dont_do:<phrase>`. */
+  rejection_reason?: string
 }
 
 export interface SeoAgentMemoOutcomeMetric {

@@ -63,3 +63,20 @@ export async function getUnreadCount(userId: string): Promise<number> {
   if (error) throw error
   return count ?? 0
 }
+
+/**
+ * Recipient and read state of the given notifications, for the SEO agent's
+ * memo page, which shows whether a "needs your answer" flag was handled and
+ * offers the button only to the person it was sent to. Read-only: marking
+ * one read still goes through markAsRead, scoped to its owner.
+ */
+export async function getNotificationReadStates(
+  ids: string[],
+): Promise<Record<string, Pick<Notification, "user_id" | "is_read">>> {
+  if (ids.length === 0) return {}
+  const supabase = getClient()
+  const { data, error } = await supabase.from("notifications").select("id, user_id, is_read").in("id", ids)
+  if (error) throw error
+  const rows = (data ?? []) as Array<Pick<Notification, "id" | "user_id" | "is_read">>
+  return Object.fromEntries(rows.map((n) => [n.id, { user_id: n.user_id, is_read: n.is_read }]))
+}
