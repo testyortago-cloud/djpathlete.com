@@ -3,13 +3,15 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 const supabaseFromMock = vi.fn()
 const firestoreDocSet = vi.fn()
 const firestoreCollectionDoc = vi.fn(() => ({ id: "new-doc-id", set: firestoreDocSet }))
+const firestoreWhereGet = vi.fn()
+const firestoreWhere = vi.fn((..._args: unknown[]) => ({ get: firestoreWhereGet }))
 
 vi.mock("../lib/supabase.js", () => ({
   getSupabase: () => ({ from: supabaseFromMock }),
 }))
 vi.mock("firebase-admin/firestore", () => ({
   getFirestore: () => ({
-    collection: vi.fn(() => ({ doc: firestoreCollectionDoc })),
+    collection: vi.fn(() => ({ doc: firestoreCollectionDoc, where: firestoreWhere })),
   }),
   FieldValue: { serverTimestamp: () => "server-ts" },
 }))
@@ -18,6 +20,9 @@ beforeEach(() => {
   supabaseFromMock.mockReset()
   firestoreDocSet.mockReset()
   firestoreCollectionDoc.mockClear()
+  firestoreWhere.mockClear()
+  firestoreWhereGet.mockReset()
+  firestoreWhereGet.mockResolvedValue({ docs: [] })
 })
 
 describe("executeQueueNewPost", () => {
@@ -87,6 +92,51 @@ describe("executeQueueInternalLinkSweep", () => {
     expect(out).toEqual({ executed: true, execution_target_id: "new-doc-id" })
     const arg = firestoreDocSet.mock.calls[0]?.[0] as Record<string, unknown>
     expect(arg.type).toBe("internal_link_sweep")
+    expect(firestoreWhere).toHaveBeenCalledWith("input.targetBlogPostId", "==", "11111111-1111-1111-1111-111111111111")
+  })
+
+  const TARGET = "11111111-1111-1111-1111-111111111111"
+  const sweep = () =>
+    executeQueueSweep({
+      target_blog_post_id: TARGET,
+      candidate_anchor_post_ids: ["22222222-2222-2222-2222-222222222222"],
+    })
+  async function executeQueueSweep(args: { target_blog_post_id: string; candidate_anchor_post_ids: string[] }) {
+    const { executeQueueInternalLinkSweep } = await import("../seo/execute.js")
+    return executeQueueInternalLinkSweep(args, { memoId: "memo-2", userId: "u", businessId: "biz-1" })
+  }
+  const priorJob = (id: string, job: { type: string; status: string; daysAgo: number }) => ({
+    id,
+    data: () => ({
+      type: job.type,
+      status: job.status,
+      createdAt: { toMillis: () => Date.now() - job.daysAgo * 86_400_000 },
+    }),
+  })
+
+  // MUTANT: delete the repeat check. 2026-11-08's Sunday run re-queued that morning's sweep and
+  // both added 0 links.
+  it("refuses a second sweep of a post that had one in the last 14 days, and queues nothing", async () => {
+    firestoreWhereGet.mockResolvedValueOnce({
+      docs: [priorJob("job-9", { type: "internal_link_sweep", status: "completed", daysAgo: 1 })],
+    })
+    expect(await sweep()).toEqual({
+      executed: false,
+      execution_target_id: null,
+      rejection_reason: "repeat_sweep:job-9",
+    })
+    expect(firestoreDocSet).not.toHaveBeenCalled()
+  })
+
+  // Presence controls: each of these must still queue.
+  it.each([
+    ["a failed sweep (may be retried)", { type: "internal_link_sweep", status: "failed", daysAgo: 1 }],
+    ["a sweep older than 14 days", { type: "internal_link_sweep", status: "completed", daysAgo: 15 }],
+    ["another job type on the same post", { type: "blog_refresh", status: "pending", daysAgo: 1 }],
+  ])("still queues after %s", async (_label, job) => {
+    firestoreWhereGet.mockResolvedValueOnce({ docs: [priorJob("job-old", job)] })
+    firestoreDocSet.mockResolvedValueOnce(undefined)
+    expect(await sweep()).toEqual({ executed: true, execution_target_id: "new-doc-id" })
   })
 })
 

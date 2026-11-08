@@ -9,7 +9,17 @@ export interface GscSignals {
   total_clicks: number
   total_impressions: number
   avg_position: number
-  top_winnable: Array<{ query: string; avg_position: number; impressions_28d: number; clicks_28d: number }>
+  top_winnable: Array<{
+    query: string
+    avg_position: number
+    impressions_28d: number
+    clicks_28d: number
+    /**
+     * Path of the page Google shows most for this query (most impressions), e.g. "/blog/<slug>".
+     * Answers "does a post already target this?" — the question the agent used to ask the coach.
+     */
+    ranking_page: string
+  }>
   top_decayed: Array<{ slug: string; position_drop: number; clicks_28d: number; avg_position_recent: number }>
 }
 
@@ -17,6 +27,12 @@ export interface InventorySignals {
   total_posts: number
   oldest_post_age_days: number
   never_refreshed_count: number
+  /**
+   * The published posts themselves, newest first, capped at INVENTORY_POST_LIMIT. Without this the
+   * agent saw only counts and orphan ids, so it picked link-sweep anchors blind (two 2026-11-08
+   * sweeps added 0 links) and could not name a post in anything it wrote.
+   */
+  posts: Array<{ id: string; title: string; slug: string }>
 }
 
 export interface TavilySignal {
@@ -28,6 +44,8 @@ export interface TavilySignal {
 export interface MemoryOutcomeSignal {
   run_date: string
   tool: string
+  /** What the action was aimed at: the post id it targeted, or a new post's keyword. Absent for a flag. */
+  target?: string
   outcome_status: string
   outcome_summary?: string
 }
@@ -69,6 +87,7 @@ export interface SeoSignalsSummary {
 
 const TOP_K = 20
 const ORPHAN_LOOKBACK_LIMIT = 200
+const INVENTORY_POST_LIMIT = 50
 
 // ─── Individual gatherers ───────────────────────────────────────────────────
 
@@ -121,13 +140,14 @@ export async function gatherGscSignals(supabase: SupabaseClient): Promise<GscSig
   // Aggregate per-query for the winnable pick.
   const perQuery = new Map<
     string,
-    { impressions: number; clicks: number; weightedPosition: number }
+    { impressions: number; clicks: number; weightedPosition: number; pages: Map<string, number> }
   >()
   for (const r of rows) {
-    const entry = perQuery.get(r.query) ?? { impressions: 0, clicks: 0, weightedPosition: 0 }
+    const entry = perQuery.get(r.query) ?? { impressions: 0, clicks: 0, weightedPosition: 0, pages: new Map() }
     entry.impressions += r.impressions
     entry.clicks += r.clicks
     entry.weightedPosition += r.position * r.impressions
+    entry.pages.set(r.page, (entry.pages.get(r.page) ?? 0) + r.impressions)
     perQuery.set(r.query, entry)
   }
   const winnable = Array.from(perQuery.entries())
@@ -136,6 +156,7 @@ export async function gatherGscSignals(supabase: SupabaseClient): Promise<GscSig
       impressions_28d: agg.impressions,
       clicks_28d: agg.clicks,
       avg_position: agg.impressions > 0 ? agg.weightedPosition / agg.impressions : 0,
+      ranking_page: pagePath(topKey(agg.pages)),
     }))
     .filter((q) => q.avg_position >= 8 && q.avg_position <= 20 && q.impressions_28d >= 50)
     .sort(
@@ -206,15 +227,19 @@ export async function gatherGscSignals(supabase: SupabaseClient): Promise<GscSig
 export async function gatherInventorySignals(supabase: SupabaseClient): Promise<InventorySignals> {
   const { data, error } = await supabase
     .from("blog_posts")
-    .select("id, published_at, last_refreshed_at")
+    .select("id, title, slug, published_at, last_refreshed_at")
     .eq("status", "published")
   if (error) throw error
-  type Row = { id: string; published_at: string | null; last_refreshed_at: string | null }
+  type Row = { id: string; title: string; slug: string; published_at: string | null; last_refreshed_at: string | null }
   const rows = (data as Row[] | null) ?? []
   const totalPosts = rows.length
   if (totalPosts === 0) {
-    return { total_posts: 0, oldest_post_age_days: 0, never_refreshed_count: 0 }
+    return { total_posts: 0, oldest_post_age_days: 0, never_refreshed_count: 0, posts: [] }
   }
+  const posts = [...rows]
+    .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""))
+    .slice(0, INVENTORY_POST_LIMIT)
+    .map((r) => ({ id: r.id, title: r.title, slug: r.slug }))
   const now = Date.now()
   const oldestAgeMs = rows.reduce((acc, r) => {
     if (!r.published_at) return acc
@@ -225,6 +250,7 @@ export async function gatherInventorySignals(supabase: SupabaseClient): Promise<
     total_posts: totalPosts,
     oldest_post_age_days: Math.floor(oldestAgeMs / 86_400_000),
     never_refreshed_count: neverRefreshedCount,
+    posts,
   }
 }
 
@@ -288,7 +314,7 @@ export async function gatherMemorySignals(supabase: SupabaseClient): Promise<Mem
   if (error) throw error
   type Row = {
     run_date: string
-    actions: Array<{ tool: string }>
+    actions: Array<{ tool: string; args?: Record<string, unknown> }>
     outcome_status: string
     outcome_metrics: unknown
   }
@@ -296,9 +322,13 @@ export async function gatherMemorySignals(supabase: SupabaseClient): Promise<Mem
   const out: MemoryOutcomeSignal[] = []
   for (const m of rows) {
     for (const a of m.actions ?? []) {
+      const target = [a.args?.target_blog_post_id, a.args?.blog_post_id, a.args?.keyword].find(
+        (v): v is string => typeof v === "string",
+      )
       out.push({
         run_date: m.run_date,
         tool: a.tool,
+        ...(target ? { target } : {}),
         outcome_status: m.outcome_status,
         outcome_summary: m.outcome_metrics ? JSON.stringify(m.outcome_metrics).slice(0, 200) : undefined,
       })
@@ -429,6 +459,23 @@ export async function gatherSeoSignals(supabase: SupabaseClient): Promise<SeoSig
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** The key with the largest value; "" for an empty map. */
+function topKey(m: Map<string, number>): string {
+  let best = ""
+  let max = -1
+  for (const [k, v] of m) if (v > max) [best, max] = [k, v]
+  return best
+}
+
+/** "https://www.darrenjpaul.com/blog/x?y" -> "/blog/x". A value that is not a URL is returned as is. */
+function pagePath(page: string): string {
+  try {
+    return new URL(page).pathname
+  } catch {
+    return page
+  }
+}
 
 function isoDateNDaysAgo(n: number): string {
   const d = new Date()

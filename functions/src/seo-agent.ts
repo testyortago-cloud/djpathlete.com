@@ -177,6 +177,9 @@ export async function handleSeoAgent(jobId: string): Promise<void> {
       executed: results[i].executed,
       execution_target_id: results[i].execution_target_id,
       complementary_to_rank_1: a.complementary_to_rank_1,
+      // Kept so the memos page can say WHY an action was not done (a repeat, the brief's dont_do)
+      // instead of reporting a deliberate refusal as a failure.
+      ...(results[i].rejection_reason ? { rejection_reason: results[i].rejection_reason } : {}),
     }))
     await supabase
       .from("seo_agent_memos")

@@ -11,7 +11,7 @@ function emptySignals(): SeoSignalsSummary {
       top_winnable: [],
       top_decayed: [],
     },
-    inventory: { total_posts: 0, oldest_post_age_days: 0, never_refreshed_count: 0 },
+    inventory: { total_posts: 0, oldest_post_age_days: 0, never_refreshed_count: 0, posts: [] },
     recent_tavily: [],
     orphan_post_ids: [],
     last_8_memos_outcomes: [],

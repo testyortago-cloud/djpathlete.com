@@ -307,6 +307,35 @@ describe("handleSeoAgent", () => {
       )
     })
 
+    // MUTANT: drop the rejection_reason spread from finalActions. The memos page then reports a
+    // deliberate refusal (a repeat sweep) as "Not done: did not go through".
+    it("keeps a guard's rejection reason on the memo's action, and adds none to a clean one", async () => {
+      silence("warn")
+      silence("log")
+      runWith({ userId: "u", businessId: "biz-1" }, [
+        { executed: true, execution_target_id: "notif-1" },
+        { executed: false, execution_target_id: null, rejection_reason: "repeat_sweep:job-9" },
+      ])
+      const updates: Array<{ actions?: Array<Record<string, unknown>> }> = []
+      const base = defaultSupabaseRouter({ critiqueFlag: { enabled: false } })
+      supabaseFromMock.mockImplementation((table: string) => {
+        const chain = base(table) as Record<string, unknown>
+        if (table !== "seo_agent_memos") return chain
+        return {
+          ...chain,
+          update: (payload: { actions?: Array<Record<string, unknown>> }) => {
+            updates.push(payload)
+            return { eq: () => Promise.resolve({ error: null }) }
+          },
+        }
+      })
+      const { handleSeoAgent } = await import("../seo-agent.js")
+      await handleSeoAgent("job-refused")
+      const actions = updates.find((u) => u.actions)?.actions
+      expect(actions?.[1]).toMatchObject({ executed: false, rejection_reason: "repeat_sweep:job-9" })
+      expect(actions?.[0]).not.toHaveProperty("rejection_reason")
+    })
+
     // Presence control: a clean action still logs on console.log, unadorned.
     it("logs a clean action as before", async () => {
       const log = silence("log")

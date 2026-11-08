@@ -104,12 +104,33 @@ export async function executeQueueRefresh(
 
 // ─── queue_internal_link_sweep ─────────────────────────────────────────────
 
+/** Matches the outcome tracker's MEASUREMENT_AGE_DAYS: a sweep is not judged, or repeated, before then. */
+const SWEEP_REPEAT_WINDOW_DAYS = 14
+
 export async function executeQueueInternalLinkSweep(
   args: { target_blog_post_id: string; candidate_anchor_post_ids: string[] },
   ctx: AgentContext,
 ): Promise<ExecutionResult> {
   try {
     const db = getFirestore()
+
+    // Refuse a repeat. A second sweep of the same post within the window meets the same posts and
+    // the same text, so it finds the same nothing: on 2026-11-08 the Sunday run re-queued that
+    // morning's sweep, and both added 0 links. Any sweep counts (the admin's "Sweep links" button
+    // writes the same input field) except a failed one, which may be retried. Equality on one
+    // field needs no composite index, so type and age are checked here, not in the query.
+    const since = Date.now() - SWEEP_REPEAT_WINDOW_DAYS * 86_400_000
+    const prior = await db.collection("ai_jobs").where("input.targetBlogPostId", "==", args.target_blog_post_id).get()
+    const repeat = prior.docs.find((d) => {
+      const job = d.data() as { type?: string; status?: string; createdAt?: { toMillis?: () => number } }
+      return (
+        job.type === "internal_link_sweep" && job.status !== "failed" && (job.createdAt?.toMillis?.() ?? 0) >= since
+      )
+    })
+    if (repeat) {
+      return { executed: false, execution_target_id: null, rejection_reason: `repeat_sweep:${repeat.id}` }
+    }
+
     const jobRef = db.collection("ai_jobs").doc()
     await jobRef.set({
       type: "internal_link_sweep",
