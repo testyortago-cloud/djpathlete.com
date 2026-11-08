@@ -465,3 +465,33 @@ describe("callAgent: a status-less error is judged by a status-shaped token, not
     expect(models).toEqual([...Array(5).fill(MODEL_SONNET), MODEL_HAIKU])
   })
 })
+
+// 2026-11-08: the SEO agent's schema (a tuple of a discriminated union) 400'd on
+// every run. The rewrite existed on the direct-Anthropic branch only; the
+// OpenRouter call, which serves every attempt first, sent the raw schema.
+describe("callAgent: the response_format branch gets a schema the API accepts", () => {
+  const shaped = z.object({
+    pair: z.tuple([z.string(), z.string()]),
+    pick: z.discriminatedUnion("k", [z.object({ k: z.literal("a") }), z.object({ k: z.literal("b") })]),
+    tags: z.array(z.string()).max(3),
+  })
+  const answer = { ...OPENROUTER_OK, content: { pair: ["x", "y"], pick: { k: "a" }, tags: [] } }
+
+  it("rewrites the tuple and oneOf for Sonnet 5.5 and keeps maxItems the model can see", async () => {
+    h.orAgent.mockResolvedValue(answer)
+    await callAgent("system", "user", shaped, { model: MODEL_SONNET })
+    const sent = JSON.stringify(h.orAgent.mock.calls[0][4])
+    expect(sent).not.toContain('"prefixItems"')
+    expect(sent).not.toContain('"oneOf"')
+    expect(sent).toContain('"anyOf"')
+    expect(sent).toContain('"maxItems":3')
+  })
+
+  it("leaves the forced-tool path's schema as it was", async () => {
+    h.orAgent.mockResolvedValue(answer)
+    await callAgent("system", "user", shaped, { model: MODEL_HAIKU })
+    const sent = JSON.stringify(h.orAgent.mock.calls[0][4])
+    expect(sent).toContain('"prefixItems"')
+    expect(sent).toContain('"oneOf"')
+  })
+})

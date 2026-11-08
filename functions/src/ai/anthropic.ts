@@ -276,19 +276,28 @@ function toToolInputSchema(schema: ZodSchema): { type: "object"; [key: string]: 
  */
 const UNSUPPORTED_SCHEMA_KEYWORDS = ["minItems", "maxItems"] as const
 
-export function stripUnsupportedSchemaKeywords(node: unknown, depth = 0): unknown {
+/**
+ * `drop` defaults to the keywords above. The OpenRouter call passes `[]`: it
+ * gets the two rewrites but keeps minItems/maxItems, because no OpenRouter
+ * request has been seen refusing them and dropping one hides it from the model.
+ */
+export function stripUnsupportedSchemaKeywords(
+  node: unknown,
+  depth = 0,
+  drop: readonly string[] = UNSUPPORTED_SCHEMA_KEYWORDS,
+): unknown {
   if (depth > 20 || node === null || typeof node !== "object") return node
-  if (Array.isArray(node)) return node.map((n) => stripUnsupportedSchemaKeywords(n, depth + 1))
+  if (Array.isArray(node)) return node.map((n) => stripUnsupportedSchemaKeywords(n, depth + 1, drop))
   const src = node as Record<string, unknown>
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(src)) {
-    if ((UNSUPPORTED_SCHEMA_KEYWORDS as readonly string[]).includes(key)) continue
+    if (drop.includes(key)) continue
     if (key === "prefixItems" || (key === "items" && Array.isArray(src.prefixItems))) continue
-    out[key === "oneOf" ? "anyOf" : key] = stripUnsupportedSchemaKeywords(value, depth + 1)
+    out[key === "oneOf" ? "anyOf" : key] = stripUnsupportedSchemaKeywords(value, depth + 1, drop)
   }
   if (Array.isArray(src.prefixItems)) {
     const slots = [...src.prefixItems, ...(src.items && typeof src.items === "object" ? [src.items] : [])]
-    const variants = slots.map((s) => stripUnsupportedSchemaKeywords(s, depth + 1))
+    const variants = slots.map((s) => stripUnsupportedSchemaKeywords(s, depth + 1, drop))
     const unique = variants.filter(
       (v, i) => variants.findIndex((w) => JSON.stringify(w) === JSON.stringify(v)) === i,
     )
@@ -451,8 +460,14 @@ function callAgentWithModel<T>(
     console.log(`[callAgent] Structured output via ${branch} (model: ${modelId})`)
   }
 
+  // The response_format branch needs the same oneOf/prefixItems rewrite as the
+  // direct one: without it every SEO agent run 400'd (2026-11-08).
+  const openRouterSchema =
+    toolSchema && modelRejectsForcedToolChoice(modelId)
+      ? (stripUnsupportedSchemaKeywords(toolSchema, 0, []) as typeof toolSchema)
+      : toolSchema
   const viaOpenRouter = () =>
-    callAgentViaOpenRouter(modelId, systemPrompt, userMessage, schema, toolSchema, normalizeEnumFields, {
+    callAgentViaOpenRouter(modelId, systemPrompt, userMessage, schema, openRouterSchema, normalizeEnumFields, {
       maxTokens,
       cacheSystemPrompt: options?.cacheSystemPrompt,
       cachedUserPrefix: options?.cachedUserPrefix,
