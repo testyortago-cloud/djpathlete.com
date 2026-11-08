@@ -72,11 +72,20 @@ const ORPHAN_LOOKBACK_LIMIT = 200
 
 // ─── Individual gatherers ───────────────────────────────────────────────────
 
-export async function gatherCount28dDates(supabase: SupabaseClient): Promise<number> {
+// The warm-up gate in seo-agent.ts wants 28 distinct dates. GSC publishes with a
+// 2-3 day lag, so a 28-day window can never hold 28 dates: every weekly run from
+// 2026-06-14 to 2026-11-01 counted 24-27 and skipped, and the agent never wrote a
+// memo. Counting over 35 days leaves room for the lag and a few missing days.
+// ponytail: reads raw rows, so more than ~28 rows a day would hit PostgREST's
+// 1000-row cap and undercount (prod stores ~5 a day). Use a count-distinct RPC
+// if the GSC sync starts storing more.
+export const WARM_UP_WINDOW_DAYS = 35
+
+export async function gatherWarmUpDateCount(supabase: SupabaseClient): Promise<number> {
   const { data, error } = await supabase
     .from("gsc_query_daily")
     .select("date", { count: "exact" })
-    .gte("date", isoDateNDaysAgo(28))
+    .gte("date", isoDateNDaysAgo(WARM_UP_WINDOW_DAYS))
   if (error) throw error
   // The select returns rows; count distinct via Set.
   const dates = new Set((data as Array<{ date: string }> | null)?.map((r) => r.date) ?? [])
@@ -403,7 +412,7 @@ export async function gatherSeoSignals(supabase: SupabaseClient): Promise<SeoSig
     gatherTavilySignals(supabase),
     gatherOrphanPostIds(supabase),
     gatherMemorySignals(supabase),
-    gatherCount28dDates(supabase),
+    gatherWarmUpDateCount(supabase),
     gatherLatestApprovedBrief(supabase),
     gatherToolPerformance(supabase),
   ])

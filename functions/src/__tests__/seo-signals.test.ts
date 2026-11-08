@@ -12,9 +12,9 @@ async function loadSignals() {
   return import("../seo/signals.js")
 }
 
-describe("gatherCount28dDates", () => {
-  it("returns the count of distinct dates in the 28d window", async () => {
-    const { gatherCount28dDates } = await loadSignals()
+describe("gatherWarmUpDateCount", () => {
+  it("returns the count of distinct dates in the window", async () => {
+    const { gatherWarmUpDateCount } = await loadSignals()
     const supabase = buildSupabase({
       gsc_query_daily: {
         select: () => ({
@@ -26,7 +26,27 @@ describe("gatherCount28dDates", () => {
         }),
       },
     }) as never
-    expect(await gatherCount28dDates(supabase)).toBe(2)
+    expect(await gatherWarmUpDateCount(supabase)).toBe(2)
+  })
+
+  // GSC lags 2-3 days. A window of 28 days held at most 27 dates, so the
+  // 28-date warm-up gate skipped every weekly run (2026-06-14 to 2026-11-01).
+  it("looks back far enough that 28 dates fit despite GSC's 3-day lag", async () => {
+    const { gatherWarmUpDateCount } = await loadSignals()
+    let since = ""
+    const supabase = buildSupabase({
+      gsc_query_daily: {
+        select: () => ({
+          gte: (_col: string, value: string) => {
+            since = value
+            return Promise.resolve({ data: [], error: null })
+          },
+        }),
+      },
+    }) as never
+    await gatherWarmUpDateCount(supabase)
+    const daysBack = Math.round((Date.now() - Date.parse(`${since}T00:00:00Z`)) / 86_400_000)
+    expect(daysBack).toBeGreaterThanOrEqual(28 + 3)
   })
 })
 
