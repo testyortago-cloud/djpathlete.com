@@ -103,10 +103,12 @@ interface LaneProps {
   tone?: "neutral" | "primary"
   /** Optional explainer shown via help icon next to the section title. */
   help?: ReactNode
+  /** Optional buttons at the right of the header (e.g. "Add photos"). */
+  actions?: ReactNode
   children: React.ReactNode
 }
 
-export function Lane({ title, subtitle, meta, tone = "neutral", help, children }: LaneProps) {
+export function Lane({ title, subtitle, meta, tone = "neutral", help, actions, children }: LaneProps) {
   return (
     <section
       aria-label={title}
@@ -137,9 +139,12 @@ export function Lane({ title, subtitle, meta, tone = "neutral", help, children }
             )}
           </div>
         </div>
-        {meta && (
-          <div className="text-[11px] text-muted-foreground font-mono tabular-nums whitespace-nowrap">
-            {meta}
+        {(meta || actions) && (
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {meta && (
+              <div className="text-[11px] text-muted-foreground font-mono tabular-nums whitespace-nowrap">{meta}</div>
+            )}
+            {actions}
           </div>
         )}
       </header>

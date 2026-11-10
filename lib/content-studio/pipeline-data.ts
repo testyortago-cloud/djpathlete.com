@@ -1,6 +1,7 @@
 import { listVideoUploads } from "@/lib/db/video-uploads"
 import { listSocialPostsForPipeline, type PipelinePostRow } from "@/lib/db/social-posts"
 import { listRenderedVideoIds } from "@/lib/db/media-assets"
+import { listMediaForPosts } from "@/lib/db/social-post-media"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import type { VideoUpload } from "@/types/database"
 import { listRecentCaptionRenders, type RecentCaptionRender } from "@/lib/ai-jobs"
@@ -8,12 +9,44 @@ import { getSetting } from "@/lib/db/system-settings"
 
 const THUMBNAIL_URL_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
 
+/** First attached image of each story, signed. Thumbnails only: a failure yields none, never a 500. */
+async function signStoryImages(storyIds: string[]): Promise<Record<string, string>> {
+  if (storyIds.length === 0) return {}
+  try {
+    const rows = await listMediaForPosts(storyIds)
+    const firstImage = new Map<string, string>()
+    for (const r of rows)
+      if (r.kind === "image" && !firstImage.has(r.social_post_id)) firstImage.set(r.social_post_id, r.storage_path)
+    const bucket = getAdminStorage().bucket()
+    const entries = await Promise.all(
+      [...firstImage].map(async ([postId, path]) => {
+        try {
+          const [url] = await bucket.file(path).getSignedUrl({
+            version: "v4",
+            action: "read",
+            expires: Date.now() + THUMBNAIL_URL_EXPIRY_MS,
+          })
+          return [postId, url] as const
+        } catch {
+          return null
+        }
+      }),
+    )
+    return Object.fromEntries(entries.filter((e): e is readonly [string, string] => e !== null))
+  } catch (err) {
+    console.error("[getPipelineData] story thumbnails failed:", err)
+    return {}
+  }
+}
+
 export interface PipelineData {
   videos: VideoUpload[]
   posts: PipelinePostRow[]
   postCountsByVideo: Record<string, PostCounts>
   /** Signed read URL per video-id, only for videos that have a thumbnail_path. */
   thumbnailUrlsByVideo: Record<string, string>
+  /** Signed URL of each photo story's image, by post id (Stories lane cards). */
+  storyImageUrls?: Record<string, string>
   /** Video ids that have a rendered reel or captioned cut (for the "Reel" badge). */
   cutVideoIds: Set<string>
   /** True when feature_captioned_cut_enabled is on — switches the lane to 7 columns. */
@@ -167,13 +200,17 @@ export async function getPipelineData(): Promise<PipelineData> {
     }
   }
 
-  const thumbnailUrlsByVideo = await signThumbnailUrls(videos)
+  const [thumbnailUrlsByVideo, storyImageUrls] = await Promise.all([
+    signThumbnailUrls(videos),
+    signStoryImages(posts.filter((p) => p.post_type === "story").map((p) => p.id)),
+  ])
 
   return {
     videos,
     posts,
     postCountsByVideo,
     thumbnailUrlsByVideo,
+    storyImageUrls,
     cutVideoIds,
     captionedCutEnabled,
     renderJobIdByVideo,

@@ -90,6 +90,40 @@ export async function listSocialPostsBySourceVideo(videoId: string): Promise<Soc
 }
 
 /**
+ * Story posts made from this video's quote cards. They carry no source_video_id
+ * (a quote card is not the video), so they are found through their attached
+ * image, whose media_assets.derived_from_video_id names the video.
+ */
+export async function listQuoteStoriesForVideo(videoId: string): Promise<SocialPost[]> {
+  const supabase = getClient()
+  const { data: assets, error: aErr } = await supabase
+    .from("media_assets")
+    .select("id")
+    .eq("derived_from_video_id", videoId)
+    .eq("kind", "image")
+  if (aErr) throw new Error(`listQuoteStoriesForVideo assets: ${aErr.message}`)
+  const assetIds = (assets ?? []).map((a) => a.id as string)
+  if (assetIds.length === 0) return []
+
+  const { data: links, error: lErr } = await supabase
+    .from("social_post_media")
+    .select("social_post_id")
+    .in("media_asset_id", assetIds)
+  if (lErr) throw new Error(`listQuoteStoriesForVideo links: ${lErr.message}`)
+  const postIds = [...new Set((links ?? []).map((l) => l.social_post_id as string))]
+  if (postIds.length === 0) return []
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select("*")
+    .in("id", postIds)
+    .eq("post_type", "story")
+    .order("created_at", { ascending: true })
+  if (error) throw new Error(`listQuoteStoriesForVideo posts: ${error.message}`)
+  return (data ?? []) as SocialPost[]
+}
+
+/**
  * Update a social post. `media_url` is excluded — it's derived from
  * `social_post_media` at position 0 via the mirror trigger, so direct writes
  * would silently diverge from the join table. Use `attachMedia` / `detachMedia`

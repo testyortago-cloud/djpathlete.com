@@ -71,6 +71,7 @@ export default async function ContentStudioPage({ searchParams }: PageProps) {
         <PipelineBoard
           initialData={data}
           initialFilters={coerceStoredFilters(prefs?.last_pipeline_filters) ?? undefined}
+          canAddPhotos={isContentStudioMultimediaEnabled()}
         />
       )
   }

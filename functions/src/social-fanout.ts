@@ -86,6 +86,48 @@ export function buildReviewMessage(input: BuildReviewMessageInput): string {
   ].join("\n")
 }
 
+/**
+ * Every video also gets one Instagram Story post (the coach's ask, 2026-11-10):
+ * no caption (Instagram ignores captions on stories), waiting in "Needs review"
+ * like the six caption posts. At publish time the story borrows the edited cut
+ * attached to the Instagram reel (lib/social/story-media.ts). Skipped when the
+ * video already has a non-rejected story, so a fanout re-run adds no duplicate.
+ * Never throws: a missing story must not fail the caption job.
+ */
+export async function ensureVideoStory(
+  supabase: ReturnType<typeof getSupabase>,
+  videoUploadId: string,
+): Promise<string | null> {
+  try {
+    const { data: existing, error: findErr } = await supabase
+      .from("social_posts")
+      .select("id")
+      .eq("source_video_id", videoUploadId)
+      .eq("post_type", "story")
+      .neq("approval_status", "rejected")
+      .limit(1)
+    if (findErr) throw new Error(findErr.message)
+    if ((existing ?? []).length > 0) return null
+
+    const { data: story, error } = await supabase
+      .from("social_posts")
+      .insert({
+        platform: "instagram",
+        post_type: "story",
+        content: "",
+        approval_status: "draft",
+        source_video_id: videoUploadId,
+      })
+      .select()
+      .single()
+    if (error || !story) throw new Error(error?.message ?? "no row returned")
+    return story.id as string
+  } catch (err) {
+    console.warn(`[social-fanout] story post for ${videoUploadId} not created: ${(err as Error).message}`)
+    return null
+  }
+}
+
 export async function handleSocialFanout(jobId: string): Promise<void> {
   const firestore = getFirestore()
   const supabase = getSupabase()
@@ -244,10 +286,14 @@ export async function handleSocialFanout(jobId: string): Promise<void> {
       .map((r, i) => (r.status === "rejected" ? PLATFORMS[i] : null))
       .filter(Boolean) as string[]
 
+    // After the caption posts, so the Instagram reel stays the oldest Instagram
+    // row — the one render-worker planCutAttachment attaches the edited cut to.
+    const storyPostId = await ensureVideoStory(supabase, videoUploadId)
+
     await jobRef.update({
       status: created.length > 0 ? "completed" : "failed",
       error: failedPlatforms.length > 0 ? `Platforms that failed: ${failedPlatforms.join(", ")}` : null,
-      result: { videoUploadId, created, failedPlatforms },
+      result: { videoUploadId, created, failedPlatforms, storyPostId },
       updatedAt: FieldValue.serverTimestamp(),
     })
   } catch (error) {

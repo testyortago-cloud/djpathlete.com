@@ -41,9 +41,11 @@ interface PostsTabRowProps {
   isExpanded: boolean
   onToggle: (postId: string) => void
   onMutate: (updated: SocialPost) => void
+  /** Plain-words problem to show on the row, e.g. a story video over 60 seconds. */
+  warning?: string | null
 }
 
-export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate }: PostsTabRowProps) {
+export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate, warning }: PostsTabRowProps) {
   const [draft, setDraft] = useState(post.content)
   const [busy, setBusy] = useState<"publishNow" | "unschedule" | "save" | null>(null)
   const [scheduleOpen, setScheduleOpen] = useState(false)
@@ -129,7 +131,10 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate 
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-primary">{PLATFORM_LABELS[post.platform]}</span>
+              <span className="text-sm font-medium text-primary">
+                {PLATFORM_LABELS[post.platform]}
+                {isStory ? " Story" : ""}
+              </span>
               <span
                 className={cn(
                   "text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full",
@@ -142,7 +147,15 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate 
                 <span className="text-[10px] text-muted-foreground">{new Date(post.scheduled_at).toLocaleString()}</span>
               )}
             </div>
-            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{post.content}</p>
+            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+              {isStory ? (slides.length > 0 ? "Photo story" : "Video story") : post.content}
+            </p>
+            {warning && (
+              <p className="mt-1 flex items-start gap-1 text-xs text-warning">
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                <span>{warning}</span>
+              </p>
+            )}
           </div>
           {isExpanded ? (
             <ChevronDown className="size-4 text-muted-foreground" />
@@ -190,17 +203,23 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate 
                 <span>{post.rejection_notes}</span>
               </div>
             )}
-            <label className="block text-xs text-muted-foreground">
-              Caption
-              <textarea
-                aria-label="Caption"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                rows={5}
-                disabled={isPublished || isRejected}
-                className="mt-1 w-full rounded-md border border-border p-2 text-sm font-body bg-surface/40 disabled:opacity-60"
-              />
-            </label>
+            {isStory ? (
+              <p className="pt-3 text-xs text-muted-foreground">
+                Instagram does not show captions on stories, so there is nothing to write. Pick a time, or post it now.
+              </p>
+            ) : (
+              <label className="block text-xs text-muted-foreground">
+                Caption
+                <textarea
+                  aria-label="Caption"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  rows={5}
+                  disabled={isPublished || isRejected}
+                  className="mt-1 w-full rounded-md border border-border p-2 text-sm font-body bg-surface/40 disabled:opacity-60"
+                />
+              </label>
+            )}
             <div className="flex flex-wrap gap-2">
               {showActions && !isStory && (
                 <button
@@ -212,7 +231,7 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate 
                   {busy === "save" ? "Saving..." : "Save caption"}
                 </button>
               )}
-              {showActions && !isStory && (
+              {showActions && (
                 <button
                   type="button"
                   onClick={() => setScheduleOpen(true)}
@@ -233,7 +252,7 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate 
                   {busy === "publishNow" ? "Queueing..." : isFailed ? "Retry now" : "Publish now"}
                 </button>
               )}
-              {showActions && isScheduled && !isStory && (
+              {showActions && isScheduled && (
                 <button
                   type="button"
                   onClick={unschedule}

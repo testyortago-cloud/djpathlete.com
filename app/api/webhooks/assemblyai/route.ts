@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebase-admin"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { createAiJob } from "@/lib/ai-jobs"
+import { videoSecondsFromAudioDuration } from "@/lib/content-studio/stories"
 
 const ASSEMBLYAI_BASE = "https://api.assemblyai.com/v2"
 
@@ -162,6 +163,8 @@ export async function POST(request: NextRequest) {
     language_code?: string
     status: string
     error?: string
+    /** Seconds. The only place a video's length is learned (Instagram stories cap at 60 s). */
+    audio_duration?: number
   }
 
   if (!videoUploadId) {
@@ -203,7 +206,11 @@ export async function POST(request: NextRequest) {
     assemblyai_job_id: transcript.id,
     analysis: null,
   })
-  await supabase.from("video_uploads").update({ status: "transcribed" }).eq("id", videoUploadId)
+  const durationSeconds = videoSecondsFromAudioDuration(transcript.audio_duration)
+  await supabase
+    .from("video_uploads")
+    .update({ status: "transcribed", ...(durationSeconds !== null ? { duration_seconds: durationSeconds } : {}) })
+    .eq("id", videoUploadId)
 
   await jobRef.update({
     status: "completed",

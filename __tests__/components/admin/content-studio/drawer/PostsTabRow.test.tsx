@@ -79,7 +79,9 @@ describe("<PostsTabRow>", () => {
     expect(screen.getByText(/Published\s+\d/)).toBeInTheDocument()
   })
 
-  it("hides Save caption and Schedule buttons for Story posts", () => {
+  // Stories have no caption (Instagram ignores it) but can be scheduled: the
+  // publish-due cron fires them at the chosen time (2026-11-10).
+  it("gives a Story post a Schedule button but no caption box", () => {
     render(
       <PostsTabRow
         post={makePost({ post_type: "story", approval_status: "draft" })}
@@ -89,7 +91,29 @@ describe("<PostsTabRow>", () => {
       />,
     )
     expect(screen.queryByRole("button", { name: /save caption/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: /^schedule$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("textbox", { name: /caption/i })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^schedule$/i })).toBeInTheDocument()
+    expect(screen.getByText("Instagram Story")).toBeInTheDocument()
+  })
+
+  it("shows a warning on the row when one is given", () => {
+    render(
+      <PostsTabRow
+        post={makePost({ post_type: "story", approval_status: "draft" })}
+        isExpanded={false}
+        onToggle={vi.fn()}
+        onMutate={vi.fn()}
+        warning="This video is 2:14 long."
+      />,
+    )
+    expect(screen.getByText("This video is 2:14 long.")).toBeInTheDocument()
+  })
+
+  it("keeps the caption box for a feed post", () => {
+    render(
+      <PostsTabRow post={makePost({ post_type: "video" })} isExpanded={true} onToggle={vi.fn()} onMutate={vi.fn()} />,
+    )
+    expect(screen.getByRole("textbox", { name: /caption/i })).toBeInTheDocument()
   })
 
   it("shows Publish now button for draft Story posts", () => {

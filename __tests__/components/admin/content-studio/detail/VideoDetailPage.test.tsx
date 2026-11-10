@@ -82,6 +82,35 @@ describe("<VideoDetailPage>", () => {
     expect(screen.getByText(/Posts \(3\)/)).toBeInTheDocument()
   })
 
+  it("lists stories in their own section, out of the Posts count, with the length warning", () => {
+    const post = (id: string, post_type: string, source_video_id: string | null) =>
+      ({ id, post_type, source_video_id, platform: "instagram", content: "", approval_status: "draft" }) as never
+    render(
+      <VideoDetailPage
+        data={{
+          ...data,
+          posts: [post("reel", "video", "v1"), post("story", "story", "v1")],
+          quoteStories: [post("quote", "story", null)],
+          storyVideoDurationMs: 134_000,
+        }}
+        backHref="/admin/content"
+        backLabel="Pipeline"
+        highlightPostId={null}
+      />,
+    )
+    expect(screen.getByText(/Posts \(1\)/)).toBeInTheDocument()
+    expect(screen.getByText(/Instagram Stories \(2\)/)).toBeInTheDocument()
+    expect(screen.getByText(/This video is 2:14 long/)).toBeInTheDocument()
+    // The video already has its story, so only the quote-card button is offered.
+    expect(screen.queryByRole("button", { name: /add this video to the story/i })).toBeNull()
+    expect(screen.getByRole("button", { name: /delete video/i })).toBeInTheDocument()
+  })
+
+  it("offers to add the video to the story when it has none", () => {
+    render(<VideoDetailPage data={data} backHref="/admin/content" backLabel="Pipeline" highlightPostId={null} />)
+    expect(screen.getByRole("button", { name: /add this video to the story/i })).toBeInTheDocument()
+  })
+
   it("shows Mark as ready only while the video needs editing", () => {
     const { rerender } = render(
       <VideoDetailPage data={data} backHref="/admin/content" backLabel="Pipeline" highlightPostId={null} />,

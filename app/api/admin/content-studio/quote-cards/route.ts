@@ -47,10 +47,18 @@ export async function POST(request: NextRequest) {
     videoUploadId?: string
     count?: number
     platform?: string
+    format?: string
   } | null
 
   if (!body?.videoUploadId) {
     return NextResponse.json({ error: "videoUploadId is required" }, { status: 400 })
+  }
+
+  // "carousel" (default): one square-card carousel post. "story": tall cards,
+  // one Instagram story post per card.
+  const format = body.format ?? "carousel"
+  if (format !== "carousel" && format !== "story") {
+    return NextResponse.json({ error: "format must be carousel or story" }, { status: 400 })
   }
 
   // If body explicitly set platform to something unsupported, reject
@@ -110,12 +118,17 @@ export async function POST(request: NextRequest) {
     const bucket = getAdminStorage().bucket()
     const mediaAssetIds: string[] = []
     const userId = session.user.id
+    const isStory = format === "story"
 
     for (let i = 0; i < quotes.length; i += 1) {
       const quote = quotes[i]
-      const useJpeg = platform === "instagram"
+      const useJpeg = isStory || platform === "instagram"
       stage = `render-card-${i}`
-      const buffer = useJpeg ? await renderQuoteCardJpeg(quote) : await renderQuoteCard(quote)
+      const buffer = isStory
+        ? await renderQuoteCardJpeg(quote, "story")
+        : useJpeg
+          ? await renderQuoteCardJpeg(quote)
+          : await renderQuoteCard(quote)
       const extension = useJpeg ? "jpg" : "png"
       const mimeType = useJpeg ? "image/jpeg" : "image/png"
       const storagePath = `images/${userId}/${Date.now()}-quote-${i}.${extension}`
@@ -130,7 +143,7 @@ export async function POST(request: NextRequest) {
         mime_type: mimeType,
         bytes: buffer.length,
         width: 1080,
-        height: 1080,
+        height: isStory ? 1920 : 1080,
         duration_ms: null,
         derived_from_video_id: body.videoUploadId,
         ai_alt_text: quote.slice(0, 125),
@@ -138,6 +151,35 @@ export async function POST(request: NextRequest) {
         created_by: userId,
       })
       mediaAssetIds.push(asset.id)
+    }
+
+    // One Instagram story per card, each waiting in "Needs review". No
+    // source_video_id: a quote card is not the video, and the render worker
+    // attaches cuts to posts by source_video_id.
+    if (isStory) {
+      const postIds: string[] = []
+      try {
+        for (let i = 0; i < mediaAssetIds.length; i += 1) {
+          stage = `create-story-${i}`
+          const post = await createSocialPost({
+            platform: "instagram",
+            content: "",
+            media_url: null,
+            post_type: "story",
+            approval_status: "draft",
+            scheduled_at: null,
+            source_video_id: null,
+            created_by: userId,
+          })
+          postIds.push(post.id)
+          stage = `attach-story-${i}`
+          await attachMedia(post.id, mediaAssetIds[i], 0)
+        }
+      } catch (err) {
+        await Promise.allSettled(postIds.map((id) => deleteSocialPost(id)))
+        throw err
+      }
+      return NextResponse.json({ postIds, mediaAssetIds })
     }
 
     // Create the draft carousel post + attach each asset.

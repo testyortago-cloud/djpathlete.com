@@ -12,6 +12,7 @@ import {
   updateVideoUpload,
 } from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
+import { deleteSocialPost, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const PREVIEW_URL_EXPIRY_MS = 10 * 60 * 1000 // 10 minutes
@@ -99,6 +100,34 @@ export async function DELETE(
     return NextResponse.json({ error: "Video not found" }, { status: 404 })
   }
 
+  // The video's posts. Left alone, social_posts.source_video_id is SET NULL and a
+  // scheduled post still fires with no video (Facebook posts the bare caption).
+  // So every post that has not gone out goes with the video; published ones stay
+  // as the record of what went live (deleting them here would not remove them
+  // from Instagram or Facebook anyway).
+  const posts = await listSocialPostsBySourceVideo(id)
+  const nativelyScheduled = posts.filter((p) => p.approval_status === "scheduled" && p.platform_post_id)
+  if (nativelyScheduled.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "A post from this video is waiting in Facebook's own schedule. Open it in the Posts list and press " +
+          '"Unschedule" first, then delete the video.',
+      },
+      { status: 409 },
+    )
+  }
+  const unsent = posts.filter((p) => p.approval_status !== "published")
+  try {
+    for (const p of unsent) await deleteSocialPost(p.id)
+  } catch (err) {
+    console.error("[videos/delete] post delete failed:", err)
+    return NextResponse.json(
+      { error: "Could not remove this video's posts, so the video was kept. Try again." },
+      { status: 500 },
+    )
+  }
+
   // Delete the storage blob first — if the row exists but the blob is gone,
   // a second DELETE attempt should still succeed cleaning up the row.
   const bucket = getAdminStorage().bucket()
@@ -110,9 +139,9 @@ export async function DELETE(
   }
 
   // ON DELETE CASCADE on video_transcripts handles transcript rows automatically
-  // (see migration 00079). Other FK references (social_posts, blog_posts) are
+  // (see migration 00079). The published posts kept above, and blog_posts, are
   // ON DELETE SET NULL so they just detach.
   await deleteVideoUpload(id)
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, deletedPosts: unsent.length, keptPublished: posts.length - unsent.length })
 }

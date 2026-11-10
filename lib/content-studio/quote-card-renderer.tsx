@@ -19,6 +19,9 @@ import { ImageResponse } from "next/og"
 import sharp from "sharp"
 
 const CANVAS_SIZE = 1080
+/** Instagram Story canvas: 9:16, same width as the square card. */
+const STORY_HEIGHT = 1920
+export type QuoteCardFormat = "square" | "story"
 const PRIMARY = "#0e3f50" // Green Azure approximation of oklch(0.30 0.04 220)
 const ACCENT = "#c49b7a" // Gray Orange approximation of oklch(0.70 0.08 60)
 const TEXT_ON_PRIMARY = "#f5f2ef"
@@ -42,9 +45,10 @@ function fontSizeForLength(length: number): number {
   return 48
 }
 
-export async function renderQuoteCard(text: string): Promise<Buffer> {
+export async function renderQuoteCard(text: string, format: QuoteCardFormat = "square"): Promise<Buffer> {
   const safe = (text ?? "").trim() || "—"
   const fontSize = fontSizeForLength(safe.length)
+  const height = format === "story" ? STORY_HEIGHT : CANVAS_SIZE
 
   const response = new ImageResponse(
     (
@@ -90,7 +94,7 @@ export async function renderQuoteCard(text: string): Promise<Buffer> {
     ),
     {
       width: CANVAS_SIZE,
-      height: CANVAS_SIZE,
+      height,
       fonts: brandFont
         ? [
             {
@@ -114,8 +118,8 @@ export async function renderQuoteCard(text: string): Promise<Buffer> {
  * through sharp for conversion — sharp is transitively available via
  * @huggingface/transformers and is the standard server-side image encoder.
  */
-export async function renderQuoteCardJpeg(text: string): Promise<Buffer> {
-  const png = await renderQuoteCard(text)
+export async function renderQuoteCardJpeg(text: string, format: QuoteCardFormat = "square"): Promise<Buffer> {
+  const png = await renderQuoteCard(text, format)
   return await sharp(png)
     .jpeg({ quality: 90, mozjpeg: true })
     .toBuffer()

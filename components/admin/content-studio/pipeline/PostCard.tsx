@@ -15,9 +15,35 @@ interface PostCardProps {
   onToggleSelected: (postId: string, selected: boolean) => void
   /** Signed thumbnail URL of the source video, if available. */
   sourceThumbnailUrl?: string | null
+  /** Signed URL of a photo story's image (stories carry no caption to show). */
+  storyImageUrl?: string | null
 }
 
-export function PostCard({ post, selected, onToggleSelected, sourceThumbnailUrl }: PostCardProps) {
+/** A story has no caption, so its card shows the picture in story shape instead. */
+function StoryPreview({ imageUrl, isVideo }: { imageUrl: string | null; isVideo: boolean }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageUrl}
+          alt=""
+          className="h-20 w-[45px] shrink-0 rounded-md object-cover ring-1 ring-border"
+          loading="lazy"
+        />
+      ) : (
+        <span className="flex h-20 w-[45px] shrink-0 items-center justify-center rounded-md bg-muted/40 ring-1 ring-border">
+          <Film className="size-4 text-muted-foreground" />
+        </span>
+      )}
+      <span className="text-[12px] leading-snug text-muted-foreground">
+        {isVideo ? "Video story" : "Photo story"}
+      </span>
+    </div>
+  )
+}
+
+export function PostCard({ post, selected, onToggleSelected, sourceThumbnailUrl, storyImageUrl }: PostCardProps) {
   const isPublished = post.approval_status === "published"
   const isFailed = post.approval_status === "failed"
   const isDraggable = !isPublished
@@ -104,12 +130,13 @@ export function PostCard({ post, selected, onToggleSelected, sourceThumbnailUrl 
               </span>
             )}
           </div>
-          <p
-            className="text-[12.5px] leading-snug text-primary/90 line-clamp-3"
-            title={post.content}
-          >
-            {post.content}
-          </p>
+          {post.post_type === "story" ? (
+            <StoryPreview imageUrl={storyImageUrl ?? sourceThumbnailUrl ?? null} isVideo={!storyImageUrl && !!videoId} />
+          ) : (
+            <p className="text-[12.5px] leading-snug text-primary/90 line-clamp-3" title={post.content}>
+              {post.content}
+            </p>
+          )}
         </Link>
       </div>
       {(scheduled || (isFailed && post.rejection_notes)) && (

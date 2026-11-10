@@ -91,6 +91,42 @@ export async function listMediaForPosts(postIds: string[]): Promise<PostMediaWit
     }))
 }
 
+/**
+ * The edited cut that this video's Instagram reel will post: the video asset
+ * attached to the oldest non-rejected Instagram VIDEO post for the source video.
+ * Mirrors render-worker `planCutAttachment`, which attaches the cut to the oldest
+ * Instagram post. A story borrows it so it never posts the raw upload. Null when
+ * no cut is attached. Throws (as an Error, not a PostgREST object) on a read
+ * failure so the publish runner retries instead of falling back to raw footage.
+ */
+export async function findReelCutForVideo(
+  sourceVideoId: string,
+): Promise<{ storage_path: string; duration_ms: number | null } | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select("id, social_post_media(position, media_assets(kind, storage_path, duration_ms))")
+    .eq("source_video_id", sourceVideoId)
+    .eq("platform", "instagram")
+    .eq("post_type", "video")
+    .neq("approval_status", "rejected")
+    .order("created_at", { ascending: true })
+    .limit(1)
+  if (error) throw new Error(`findReelCutForVideo(${sourceVideoId}): ${error.message}`)
+
+  type Row = {
+    social_post_media: Array<{
+      position: number
+      media_assets: { kind: MediaAssetKind; storage_path: string; duration_ms: number | null } | null
+    }> | null
+  }
+  const media = ((data ?? []) as unknown as Row[])[0]?.social_post_media ?? []
+  const cut = [...media]
+    .sort((a, b) => a.position - b.position)
+    .find((m) => m.media_assets?.kind === "video")?.media_assets
+  return cut ? { storage_path: cut.storage_path, duration_ms: cut.duration_ms } : null
+}
+
 export async function reorderMedia(
   socialPostId: string,
   positions: Array<{ assetId: string; position: number }>,

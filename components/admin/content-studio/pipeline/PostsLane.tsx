@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, type ReactNode } from "react"
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
@@ -18,6 +18,15 @@ interface PostsLaneProps {
   /** Signed thumbnail URL per source video id. Passed to each PostCard so it
    *  can show which video the post came from. */
   thumbnailUrlsByVideo: Record<string, string>
+  /** Signed photo URL per story post id. */
+  storyImageUrls?: Record<string, string>
+  /** Lane header — defaults are the Posts lane's. The Stories lane passes its own. */
+  title?: string
+  subtitle?: string
+  help?: ReactNode
+  actions?: ReactNode
+  /** Prefix for the droppable column ids, so two lanes on one board never share an id. */
+  idPrefix?: string
 }
 
 const POST_COLUMN_TONES: Record<PostColumn, LaneTone> = {
@@ -56,6 +65,12 @@ export function PostsLane({
   selectedIds,
   onToggleSelected,
   thumbnailUrlsByVideo,
+  storyImageUrls = {},
+  title = "Posts",
+  subtitle = "Drag between columns to approve, reject, or retry",
+  help = HELP_COPY.postsLane,
+  actions,
+  idPrefix = "post-",
 }: PostsLaneProps) {
   const [posts, setPosts] = useState(initialPosts)
   const router = useRouter()
@@ -75,8 +90,8 @@ export function PostsLane({
     const { active, over } = event
     if (!over) return
     const overId = String(over.id)
-    if (!overId.startsWith("post-")) return
-    const targetColumn = overId.slice("post-".length) as PostColumn
+    if (!overId.startsWith(idPrefix)) return
+    const targetColumn = overId.slice(idPrefix.length) as PostColumn
 
     const post = posts.find((p) => p.id === active.id)
     if (!post) return
@@ -119,10 +134,11 @@ export function PostsLane({
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
       <Lane
-        title="Posts"
-        subtitle="Drag between columns to approve, reject, or retry"
+        title={title}
+        subtitle={subtitle}
         tone="primary"
-        help={HELP_COPY.postsLane}
+        help={help}
+        actions={actions}
         meta={
           posts.length > 0
             ? `${posts.length} total${totalApproved > 0 ? ` · ${totalApproved} approved` : ""}`
@@ -132,7 +148,7 @@ export function PostsLane({
         {POST_COLUMNS.map((col) => (
           <LaneColumn
             key={col}
-            id={`post-${col}`}
+            id={`${idPrefix}${col}`}
             label={POST_COLUMN_LABELS[col]}
             count={grouped[col].length}
             accepts={col !== "scheduled" && col !== "published"}
@@ -148,6 +164,7 @@ export function PostsLane({
                 sourceThumbnailUrl={
                   p.source_video_id ? thumbnailUrlsByVideo[p.source_video_id] ?? null : null
                 }
+                storyImageUrl={storyImageUrls[p.id] ?? null}
               />
             ))}
             {grouped[col].length === 0 && (

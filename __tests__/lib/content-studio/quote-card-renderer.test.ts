@@ -30,6 +30,15 @@ describe("renderQuoteCard", () => {
     expect(buffer.length).toBeGreaterThan(1000)
   })
 
+  it("renders a story card at 1080x1920", async () => {
+    const { renderQuoteCardJpeg } = await import("@/lib/content-studio/quote-card-renderer")
+    const sharp = (await import("sharp")).default
+    const meta = await sharp(await renderQuoteCardJpeg("Strength is a habit, not a mood.", "story")).metadata()
+    expect([meta.format, meta.width, meta.height]).toEqual(["jpeg", 1080, 1920])
+    const square = await sharp(await renderQuoteCard("Strength is a habit, not a mood.")).metadata()
+    expect([square.width, square.height]).toEqual([1080, 1080])
+  })
+
   it("renderQuoteCardJpeg returns a buffer with JPEG magic bytes", async () => {
     const { renderQuoteCardJpeg } = await import("@/lib/content-studio/quote-card-renderer")
     const buffer = await renderQuoteCardJpeg("Strength is a habit, not a mood.")

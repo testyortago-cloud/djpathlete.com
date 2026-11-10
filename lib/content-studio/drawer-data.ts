@@ -1,8 +1,9 @@
 import { getAdminStorage } from "@/lib/firebase-admin"
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
-import { getSocialPostById, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
+import { getSocialPostById, listQuoteStoriesForVideo, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
 import { listMediaForPosts } from "@/lib/db/social-post-media"
+import { storyVideoFor } from "@/lib/social/story-media"
 import { getSetting } from "@/lib/db/system-settings"
 import { getVideoPerformance } from "@/lib/content-studio/insights-data"
 import type { VideoUpload, VideoTranscript, SocialPost } from "@/types/database"
@@ -28,6 +29,11 @@ export interface DrawerData {
   posts: SocialPost[]
   /** Attached image slides per post id (carousel/image/story), ordered by position. */
   mediaByPost: Record<string, PostSlide[]>
+  /** Instagram stories made from this video's quote cards (no source_video_id). */
+  quoteStories?: SocialPost[]
+  /** Length of the video this video's own story will post (the reel's cut, else
+   *  the upload); null when unknown or the video has no story. */
+  storyVideoDurationMs?: number | null
   /** When opened from a post card, echoed back so the client can pre-expand. */
   highlightPostId: string | null
   /** Whether the Split Reel feature flag is on (gates the Split Reel panel). */
@@ -124,7 +130,22 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
         }),
     ])
 
-  const mediaByPost = await signMediaByPost(posts.map((p) => p.id))
+  // Stories are an extra on this page: a failed read must not take the page down.
+  const videoStory = posts.find((p) => p.post_type === "story") ?? null
+  const [quoteStories, storyVideo] = await Promise.all([
+    listQuoteStoriesForVideo(videoId).catch((error): SocialPost[] => {
+      console.error("[drawer-data] listQuoteStoriesForVideo failed", { videoId, error })
+      return []
+    }),
+    videoStory
+      ? storyVideoFor(videoStory).catch((error) => {
+          console.error("[drawer-data] storyVideoFor failed", { videoId, error })
+          return null
+        })
+      : Promise.resolve(null),
+  ])
+
+  const mediaByPost = await signMediaByPost([...posts, ...quoteStories].map((p) => p.id))
 
   return {
     mode: "video",
@@ -133,6 +154,8 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
     thumbnailUrl,
     transcript,
     posts,
+    quoteStories,
+    storyVideoDurationMs: storyVideo?.durationMs ?? null,
     mediaByPost,
     highlightPostId: null,
     splitReelEnabled,

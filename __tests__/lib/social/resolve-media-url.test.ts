@@ -12,7 +12,7 @@ vi.mock("@/lib/firebase-admin", () => ({
 }))
 
 import sharp from "sharp"
-import { resolveMediaUrl, resolveCoverUrl } from "@/lib/social/resolve-media-url"
+import { resolveMediaUrl, resolveCoverUrl, resolveStoryImageUrl } from "@/lib/social/resolve-media-url"
 
 describe("resolveMediaUrl", () => {
   beforeEach(() => {
@@ -189,5 +189,62 @@ describe("resolveCoverUrl", () => {
     getVideoUploadByIdMock.mockResolvedValue({ storage_path: VIDEO, thumbnail_path: CUSTOM })
     fakeBucket({})
     expect(await resolveCoverUrl("v1")).toBeNull()
+  })
+})
+
+describe("resolveStoryImageUrl", () => {
+  const PHOTO = "images/u/1700-gym.png"
+
+  function fakeBucket(files: Record<string, { bytes: Buffer; contentType: string }>) {
+    const saved: Array<{ path: string; bytes: Buffer; contentType?: string }> = []
+    const signed: string[] = []
+    getAdminStorageMock.mockReturnValue({
+      bucket: () => ({
+        file: (path: string) => ({
+          exists: async () => [path in files],
+          getMetadata: async () => {
+            if (!(path in files)) throw new Error("No such object")
+            return [{ contentType: files[path].contentType, size: String(files[path].bytes.length) }]
+          },
+          download: async () => [files[path].bytes],
+          save: async (bytes: Buffer, opts: { contentType?: string }) => {
+            saved.push({ path, bytes, contentType: opts?.contentType })
+          },
+          getSignedUrl: async () => {
+            signed.push(path)
+            return [`https://signed.example/${path}`]
+          },
+        }),
+      }),
+    })
+    return { saved, signed }
+  }
+
+  beforeEach(() => vi.clearAllMocks())
+
+  it("signs a JPEG photo as it is", async () => {
+    const { saved, signed } = fakeBucket({
+      [PHOTO]: { bytes: Buffer.from([0xff, 0xd8, 0xff]), contentType: "image/jpeg" },
+    })
+    expect(await resolveStoryImageUrl(PHOTO)).toBe(`https://signed.example/${PHOTO}`)
+    expect(saved).toEqual([])
+    expect(signed).toEqual([PHOTO])
+  })
+
+  // Instagram documents JPEG for story images; a phone photo or upload may be PNG/WebP.
+  it("converts a PNG photo to a JPEG beside it and signs that", async () => {
+    const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#0c0" } }).png().toBuffer()
+    const { saved, signed } = fakeBucket({ [PHOTO]: { bytes: png, contentType: "image/png" } })
+    expect(await resolveStoryImageUrl(PHOTO)).toBe(`https://signed.example/${PHOTO}.story.jpg`)
+    expect(saved).toHaveLength(1)
+    expect(saved[0].path).toBe(`${PHOTO}.story.jpg`)
+    expect(saved[0].contentType).toBe("image/jpeg")
+    expect([...saved[0].bytes.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff])
+    expect(signed).toEqual([`${PHOTO}.story.jpg`])
+  })
+
+  it("answers null when the photo is gone", async () => {
+    fakeBucket({})
+    expect(await resolveStoryImageUrl(PHOTO)).toBeNull()
   })
 })

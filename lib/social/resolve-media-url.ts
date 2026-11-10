@@ -71,24 +71,42 @@ export async function resolveCoverUrl(sourceVideoId: string | null): Promise<str
     const upload = await getVideoUploadById(sourceVideoId)
     const path = upload?.thumbnail_path
     if (!upload || !path || path === autoThumbnailPath(upload.storage_path)) return null
-
-    const bucket = getAdminStorage().bucket()
-    const [meta] = await bucket.file(path).getMetadata()
-    if (meta.contentType === "image/jpeg" && Number(meta.size) <= COVER_MAX_BYTES) return signStoragePath(path)
-
-    const coverPath = `${path}.cover.jpg`
-    const [converted] = await bucket.file(coverPath).exists()
-    if (!converted) {
-      const [bytes] = await bucket.file(path).download()
-      const jpeg = await sharp(bytes)
-        .resize({ width: 1920, height: 1920, fit: "inside", withoutEnlargement: true })
-        .jpeg({ quality: 90 })
-        .toBuffer()
-      await bucket.file(coverPath).save(jpeg, { contentType: "image/jpeg" })
-    }
-    return signStoragePath(coverPath)
+    return await signedJpegCopy(path, ".cover.jpg")
   } catch (err) {
     console.warn(`[resolveCoverUrl] video ${sourceVideoId}: no cover sent`, err)
     return null
   }
+}
+
+/**
+ * Signed JPEG URL for a story photo. Instagram documents JPEG for story
+ * images, and a phone photo or quote card may be PNG or WebP, so anything else
+ * is converted once to `<path>.story.jpg` and reused. Null when the file is gone.
+ */
+export async function resolveStoryImageUrl(path: string): Promise<string | null> {
+  try {
+    return await signedJpegCopy(path, ".story.jpg")
+  } catch (err) {
+    console.warn(`[resolveStoryImageUrl] ${path}: could not read the photo`, err)
+    return null
+  }
+}
+
+/** Sign `path` if it is already a JPEG within 8 MB; otherwise convert it once to `<path><suffix>` and sign that. */
+async function signedJpegCopy(path: string, suffix: string): Promise<string | null> {
+  const bucket = getAdminStorage().bucket()
+  const [meta] = await bucket.file(path).getMetadata()
+  if (meta.contentType === "image/jpeg" && Number(meta.size) <= COVER_MAX_BYTES) return signStoragePath(path)
+
+  const copyPath = `${path}${suffix}`
+  const [converted] = await bucket.file(copyPath).exists()
+  if (!converted) {
+    const [bytes] = await bucket.file(path).download()
+    const jpeg = await sharp(bytes)
+      .resize({ width: 1920, height: 1920, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 90 })
+      .toBuffer()
+    await bucket.file(copyPath).save(jpeg, { contentType: "image/jpeg" })
+  }
+  return signStoragePath(copyPath)
 }

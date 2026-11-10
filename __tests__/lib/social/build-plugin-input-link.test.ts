@@ -17,6 +17,9 @@ vi.mock("@/lib/social/resolve-media-url", () => ({
   resolveMediaUrl: (x: unknown) => resolveMediaUrlMock(x),
   resolveCoverUrl: (id: unknown) => resolveCoverUrlMock(id),
 }))
+vi.mock("@/lib/social/story-media", () => ({
+  resolveStoryMedia: async () => ({ url: "https://signed.example/story.mp4" }),
+}))
 vi.mock("@/lib/social/registry", () => ({
   pluginRegistry: { get: vi.fn(), reset: vi.fn(), register: vi.fn(), list: () => [], all: () => [] },
 }))

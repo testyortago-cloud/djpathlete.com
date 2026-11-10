@@ -10,6 +10,10 @@ vi.mock("@/lib/db/video-transcripts", () => ({
 vi.mock("@/lib/db/social-posts", () => ({
   getSocialPostById: vi.fn(),
   listSocialPostsBySourceVideo: vi.fn(),
+  listQuoteStoriesForVideo: vi.fn(async () => []),
+}))
+vi.mock("@/lib/social/story-media", () => ({
+  storyVideoFor: vi.fn(async () => null),
 }))
 vi.mock("@/lib/db/social-post-media", () => ({
   listMediaForPosts: vi.fn(async () => []),
@@ -35,8 +39,9 @@ vi.mock("@/lib/content-studio/insights-data", () => ({
 
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
-import { getSocialPostById, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
+import { getSocialPostById, listQuoteStoriesForVideo, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
 import { listMediaForPosts } from "@/lib/db/social-post-media"
+import { storyVideoFor } from "@/lib/social/story-media"
 import { getVideoPerformance } from "@/lib/content-studio/insights-data"
 import { getDrawerData, getDrawerDataForPost } from "@/lib/content-studio/drawer-data"
 
@@ -108,6 +113,35 @@ describe("getDrawerData", () => {
     expect(result!.transcript?.transcript_text).toContain("rotational")
     expect(result!.posts).toHaveLength(1)
     expect(result!.posts[0].id).toBe("post-1")
+  })
+
+  it("adds the video's quote-card stories and the length of what its own story will post", async () => {
+    const story = { ...fixturePost, id: "story-1", post_type: "story" as const }
+    const quote = { ...fixturePost, id: "quote-1", post_type: "story" as const, source_video_id: null }
+    vi.mocked(getVideoUploadById).mockResolvedValueOnce(fixtureVideo)
+    vi.mocked(getTranscriptForVideo).mockResolvedValueOnce(fixtureTranscript)
+    vi.mocked(listSocialPostsBySourceVideo).mockResolvedValueOnce([fixturePost, story])
+    vi.mocked(listQuoteStoriesForVideo).mockResolvedValueOnce([quote])
+    vi.mocked(storyVideoFor).mockResolvedValueOnce({ path: "cuts/c.mp4", durationMs: 134_000 })
+
+    const result = await getDrawerData("video-1")
+    expect(result!.quoteStories!.map((p) => p.id)).toEqual(["quote-1"])
+    expect(result!.storyVideoDurationMs).toBe(134_000)
+    expect(storyVideoFor).toHaveBeenCalledWith(story)
+    // Thumbnails are signed for the quote stories too.
+    expect(listMediaForPosts).toHaveBeenCalledWith(["post-1", "story-1", "quote-1"])
+  })
+
+  it("still opens the page when the quote-story read fails", async () => {
+    vi.mocked(getVideoUploadById).mockResolvedValueOnce(fixtureVideo)
+    vi.mocked(getTranscriptForVideo).mockResolvedValueOnce(fixtureTranscript)
+    vi.mocked(listSocialPostsBySourceVideo).mockResolvedValueOnce([fixturePost])
+    vi.mocked(listQuoteStoriesForVideo).mockRejectedValueOnce(new Error("db down"))
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const result = await getDrawerData("video-1")
+    expect(result!.quoteStories).toEqual([])
+    expect(result!.storyVideoDurationMs).toBeNull()
+    spy.mockRestore()
   })
 
   it("wires DrawerData.performance from getVideoPerformance, scoped to this video", async () => {

@@ -7,6 +7,9 @@ import { MetaTab } from "@/components/admin/content-studio/drawer/MetaTab"
 import { MarkReadyButton } from "@/components/admin/content-studio/drawer/MarkReadyButton"
 import { VideoPerformance } from "@/components/admin/content-studio/detail/VideoPerformance"
 import { isVideoPostable } from "@/lib/content-studio/postable"
+import { isStoryVideoTooLong, storyTooLongMessage } from "@/lib/content-studio/stories"
+import { DeleteVideoButton } from "./DeleteVideoButton"
+import { VideoStoriesSection } from "./VideoStoriesSection"
 
 interface VideoDetailPageProps {
   data: DrawerData
@@ -24,6 +27,13 @@ export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: 
   const title = video.title ?? video.original_filename
   // "Ready to send" = postable: marked ready (needs_edit === false).
   const isReady = isVideoPostable(video)
+  // Stories get their own section; "Publish all" / "Schedule all" act on feed posts only.
+  const feedPosts = data.posts.filter((p) => p.post_type !== "story")
+  const stories = [...data.posts.filter((p) => p.post_type === "story"), ...(data.quoteStories ?? [])]
+  const videoStoryWarning = isStoryVideoTooLong(data.storyVideoDurationMs)
+    ? storyTooLongMessage(data.storyVideoDurationMs as number)
+    : null
+  const publishedCount = data.posts.filter((p) => p.approval_status === "published").length
 
   return (
     <div className="px-4 py-4 sm:px-6">
@@ -33,7 +43,15 @@ export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: 
           <h1 className="min-w-0 truncate font-heading text-xl text-primary" title={title}>
             {title}
           </h1>
-          <MarkReadyButton videoUploadId={video.id} needsEdit={video.needs_edit} />
+          <div className="flex shrink-0 items-center gap-2">
+            <DeleteVideoButton
+              videoUploadId={video.id}
+              title={title}
+              unsentCount={data.posts.length - publishedCount}
+              publishedCount={publishedCount}
+            />
+            <MarkReadyButton videoUploadId={video.id} needsEdit={video.needs_edit} />
+          </div>
         </div>
       </div>
 
@@ -59,13 +77,26 @@ export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: 
 
           <section aria-labelledby="posts-heading">
             <h2 id="posts-heading" className={SECTION_HEADING}>
-              Posts ({data.posts.length})
+              Posts ({feedPosts.length})
             </h2>
             <PostsTab
-              posts={data.posts}
+              posts={feedPosts}
               mediaByPost={data.mediaByPost}
               initialExpandedPostId={highlightPostId}
               isReady={isReady}
+            />
+          </section>
+
+          <section aria-labelledby="stories-heading">
+            <h2 id="stories-heading" className={SECTION_HEADING}>
+              Instagram Stories ({stories.length})
+            </h2>
+            <VideoStoriesSection
+              videoUploadId={video.id}
+              stories={stories}
+              mediaByPost={data.mediaByPost}
+              hasTranscript={Boolean(data.transcript?.transcript_text)}
+              videoStoryWarning={videoStoryWarning}
             />
           </section>
 

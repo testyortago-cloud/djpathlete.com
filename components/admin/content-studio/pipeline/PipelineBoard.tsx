@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { VideosLane } from "./VideosLane"
 import { PostsLane } from "./PostsLane"
+import { StoriesLane } from "./StoriesLane"
 import { BulkActionsBar } from "./BulkActionsBar"
 import { PipelineFilters } from "./PipelineFilters"
 import {
@@ -18,9 +19,11 @@ interface PipelineBoardProps {
   initialData: PipelineData
   /** When the URL has no filter params, fall back to these (from user_preferences). */
   initialFilters?: Filters
+  /** CS_MULTIMEDIA_ENABLED: photo stories can be added. */
+  canAddPhotos?: boolean
 }
 
-export function PipelineBoard({ initialData, initialFilters }: PipelineBoardProps) {
+export function PipelineBoard({ initialData, initialFilters, canAddPhotos = false }: PipelineBoardProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -36,6 +39,9 @@ export function PipelineBoard({ initialData, initialFilters }: PipelineBoardProp
   )
 
   const filtered = useMemo(() => applyFilters(initialData.videos, initialData.posts, filters), [initialData, filters])
+  // Stories get their own lane; the Posts lane keeps the feed posts.
+  const feedPosts = useMemo(() => filtered.posts.filter((p) => p.post_type !== "story"), [filtered.posts])
+  const stories = useMemo(() => filtered.posts.filter((p) => p.post_type === "story"), [filtered.posts])
 
   function toggleSelected(id: string, value: boolean) {
     setSelectedIds((prev) => {
@@ -57,10 +63,18 @@ export function PipelineBoard({ initialData, initialFilters }: PipelineBoardProp
         }}
       />
       <PostsLane
-        posts={filtered.posts}
+        posts={feedPosts}
         selectedIds={selectedIds}
         onToggleSelected={toggleSelected}
         thumbnailUrlsByVideo={initialData.thumbnailUrlsByVideo}
+      />
+      <StoriesLane
+        stories={stories}
+        selectedIds={selectedIds}
+        onToggleSelected={toggleSelected}
+        thumbnailUrlsByVideo={initialData.thumbnailUrlsByVideo}
+        storyImageUrls={initialData.storyImageUrls ?? {}}
+        canAddPhotos={canAddPhotos}
       />
       <BulkActionsBar
         selectedIds={selectedIds}

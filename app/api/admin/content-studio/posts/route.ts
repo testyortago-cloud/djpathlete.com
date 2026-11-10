@@ -22,6 +22,7 @@ const VALID_PLATFORMS: readonly SocialPlatform[] = [
 const VALID_POST_TYPES: readonly PostType[] = ["video", "image", "carousel", "story", "text"]
 const CAROUSEL_MIN_SLIDES = 2
 const CAROUSEL_MAX_SLIDES = 10
+const STORY_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"])
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -177,9 +178,11 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       )
     }
-    if (platform === "instagram" && asset.mime_type !== "image/jpeg") {
+    // Publishing converts PNG/WebP to JPEG (resolveStoryImageUrl); refuse only
+    // what that conversion cannot read.
+    if (platform === "instagram" && !STORY_IMAGE_TYPES.has(asset.mime_type)) {
       return NextResponse.json(
-        { error: `Instagram stories require JPEG images — ${body.mediaAssetId} is ${asset.mime_type}` },
+        { error: `Instagram stories take JPEG, PNG or WebP photos — ${body.mediaAssetId} is ${asset.mime_type}` },
         { status: 400 },
       )
     }

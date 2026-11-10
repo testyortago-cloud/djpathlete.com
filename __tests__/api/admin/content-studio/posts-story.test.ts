@@ -147,19 +147,23 @@ describe("POST /api/admin/content-studio/posts — story path", () => {
     expect(mockCreate).not.toHaveBeenCalled()
   })
 
-  it("rejects IG story when asset is not JPEG", async () => {
-    mockGetAsset.mockImplementation(async (id: string) => ({
-      id,
-      kind: "image",
-      mime_type: "image/png",
-    }))
-    const res = await call({
-      platform: "instagram",
-      caption: "x",
-      postType: "story",
-      mediaAssetId: "png-asset",
-    })
+  // Publishing converts a story photo to JPEG (resolveStoryImageUrl), so PNG and
+  // WebP are accepted; a format sharp cannot read is still refused up front.
+  it.each(["image/png", "image/webp"])("accepts an IG story photo of type %s", async (mime) => {
+    mockGetAsset.mockImplementation(async (id: string) => ({ id, kind: "image", mime_type: mime }))
+    const res = await call({ platform: "instagram", caption: "", postType: "story", mediaAssetId: "a1" })
+    expect(res.status).toBe(200)
+    expect(mockCreate).toHaveBeenCalled()
+  })
+
+  it("refuses an IG story photo Instagram cannot take, naming the allowed types", async () => {
+    mockGetAsset.mockImplementation(async (id: string) => ({ id, kind: "image", mime_type: "image/heic" }))
+    const res = await call({ platform: "instagram", caption: "", postType: "story", mediaAssetId: "heic" })
     expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe(
+      "Instagram stories take JPEG, PNG or WebP photos — heic is image/heic",
+    )
+    expect(mockCreate).not.toHaveBeenCalled()
   })
 
   it("rolls back the post when attachMedia fails", async () => {

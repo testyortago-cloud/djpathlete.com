@@ -229,4 +229,58 @@ describe("POST /api/admin/content-studio/quote-cards", () => {
     expect(res.status).toBe(400)
     expect(mockCreateSocialPost).not.toHaveBeenCalled()
   })
+
+  describe("format=story", () => {
+    beforeEach(() => {
+      let n = 0
+      mockCreateSocialPost.mockImplementation(async () => ({ id: `story-${++n}`, approval_status: "draft" }))
+    })
+
+    it("renders tall JPEG cards and makes one Instagram story per card", async () => {
+      const res = await call({ videoUploadId: "video-1", format: "story", count: 3 })
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({
+        postIds: ["story-1", "story-2", "story-3"],
+        mediaAssetIds: ["asset-1", "asset-2", "asset-3"],
+      })
+
+      expect(mockRenderJpeg).toHaveBeenCalledTimes(3)
+      expect(mockRenderJpeg).toHaveBeenCalledWith("Power is hip hinge plus speed.", "story")
+      expect(mockRenderCard).not.toHaveBeenCalled()
+      expect(mockCreateMediaAsset).toHaveBeenCalledWith(
+        expect.objectContaining({ width: 1080, height: 1920, mime_type: "image/jpeg", derived_from_video_id: "video-1" }),
+      )
+
+      expect(mockCreateSocialPost).toHaveBeenCalledTimes(3)
+      for (const [arg] of mockCreateSocialPost.mock.calls) {
+        expect(arg).toEqual(
+          expect.objectContaining({
+            platform: "instagram",
+            post_type: "story",
+            approval_status: "draft",
+            content: "",
+            source_video_id: null,
+          }),
+        )
+      }
+      expect(mockAttachMedia.mock.calls).toEqual([
+        ["story-1", "asset-1", 0],
+        ["story-2", "asset-2", 0],
+        ["story-3", "asset-3", 0],
+      ])
+    })
+
+    it("deletes every story it made when one attach fails", async () => {
+      mockAttachMedia.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("boom"))
+      const res = await call({ videoUploadId: "video-1", format: "story", count: 3 })
+      expect(res.status).toBe(500)
+      expect(mockDeleteSocialPost.mock.calls.map((c) => c[0]).sort()).toEqual(["story-1", "story-2"])
+    })
+
+    it("refuses an unknown format", async () => {
+      const res = await call({ videoUploadId: "video-1", format: "poster" })
+      expect(res.status).toBe(400)
+      expect(mockCreateSocialPost).not.toHaveBeenCalled()
+    })
+  })
 })

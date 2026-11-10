@@ -9,6 +9,7 @@ import { listPlatformConnections } from "@/lib/db/platform-connections"
 import { pluginRegistry } from "@/lib/social/registry"
 import { bootstrapPlugins } from "@/lib/social/bootstrap"
 import { resolveMediaUrl, resolveCoverUrl } from "@/lib/social/resolve-media-url"
+import { resolveStoryMedia } from "@/lib/social/story-media"
 import type { PendingPublish, PublishInput } from "@/lib/social/plugins/types"
 import type { SocialPost } from "@/types/database"
 
@@ -97,6 +98,14 @@ export async function runScheduledPublish(
 export async function buildPluginInput(
   post: SocialPost,
 ): Promise<{ input: PublishInput } | { error: string }> {
+  // A story posts one photo or video and no caption (Instagram ignores it).
+  // Its media rules (borrow the reel's cut, JPEG photos, 60 s cap) live in story-media.
+  if (post.post_type === "story") {
+    const story = await resolveStoryMedia(post)
+    if ("error" in story) return { error: story.error }
+    return { input: { content: "", mediaUrl: story.url, postType: "story", scheduledAt: null } }
+  }
+
   let mediaUrls: string[] | undefined
   let mediaKinds: Array<"image" | "video"> | undefined
 
