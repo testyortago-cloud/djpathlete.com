@@ -98,9 +98,10 @@ export async function runScheduledPublish(
 export async function buildPluginInput(
   post: SocialPost,
 ): Promise<{ input: PublishInput } | { error: string }> {
-  // A story posts one photo or video and no caption (Instagram ignores it).
-  // Its media rules (borrow the reel's cut, JPEG photos, 60 s cap) live in story-media.
-  if (post.post_type === "story") {
+  // An Instagram story posts one photo or video and no caption (Instagram ignores it).
+  // Its media rules (borrow the reel's cut, JPEG photos, 60 s cap) live in story-media
+  // and are Instagram's; a Facebook story keeps the general path below.
+  if (post.post_type === "story" && post.platform === "instagram") {
     const story = await resolveStoryMedia(post)
     if ("error" in story) return { error: story.error }
     return { input: { content: "", mediaUrl: story.url, postType: "story", scheduledAt: null } }

@@ -1,5 +1,6 @@
 // __tests__/api/admin/social/fanout.test.ts
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { NextRequest } from "next/server"
 
 const authMock = vi.fn()
 const createAiJobMock = vi.fn()
@@ -19,8 +20,8 @@ vi.mock("@/lib/db/social-posts", () => ({
 
 import { POST } from "@/app/api/admin/social/fanout/route"
 
-function makeRequest(body: unknown): Request {
-  return new Request("http://localhost/api/admin/social/fanout", {
+function makeRequest(body: unknown): NextRequest {
+  return new NextRequest("http://localhost/api/admin/social/fanout", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -86,6 +87,17 @@ describe("POST /api/admin/social/fanout", () => {
     const body = await res.json()
     expect(body.existingCount).toBe(2)
     expect(createAiJobMock).not.toHaveBeenCalled()
+  })
+
+  it("still generates captions when the video's only post is its Instagram story", async () => {
+    getVideoUploadByIdMock.mockResolvedValue({ id: "v1", status: "transcribed" })
+    getTranscriptForVideoMock.mockResolvedValue({ id: "t1", transcript_text: "hello" })
+    createAiJobMock.mockResolvedValue({ jobId: "job-1", status: "pending" })
+    listSocialPostsBySourceVideoMock.mockResolvedValue([{ id: "s1", post_type: "story" }])
+
+    const res = await POST(makeRequest({ videoUploadId: "v1" }))
+    expect(res.status).toBe(202)
+    expect(createAiJobMock).toHaveBeenCalled()
   })
 
   it("regenerates when force=true is passed even if posts exist", async () => {

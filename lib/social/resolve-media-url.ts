@@ -102,7 +102,10 @@ async function signedJpegCopy(path: string, suffix: string): Promise<string | nu
   const [converted] = await bucket.file(copyPath).exists()
   if (!converted) {
     const [bytes] = await bucket.file(path).download()
+    // .rotate() with no angle applies the EXIF orientation: a phone photo is often
+    // stored sideways with a tag saying so, and the tag is dropped on re-encode.
     const jpeg = await sharp(bytes)
+      .rotate()
       .resize({ width: 1920, height: 1920, fit: "inside", withoutEnlargement: true })
       .jpeg({ quality: 90 })
       .toBuffer()

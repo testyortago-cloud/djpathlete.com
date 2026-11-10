@@ -15,6 +15,25 @@ export function videoSecondsFromAudioDuration(audioDuration: unknown): number | 
     : null
 }
 
+type SpreadCandidate = { approval_status: string; source_video_id: string | null; created_at: string }
+
+/**
+ * Stories "Spread over a day" may schedule, oldest first. Scheduling releases the
+ * video's edit gate (schedule route → releaseSourceVideoForSend), so a VIDEO story
+ * must be approved first — otherwise one click would mark every new video ready and
+ * could post raw footage. Photo and quote-card stories (no source video) can go
+ * straight from "Needs review".
+ */
+export function spreadableStories<T extends SpreadCandidate>(stories: T[]): T[] {
+  return stories
+    .filter(
+      (s) =>
+        s.approval_status === "approved" ||
+        (!s.source_video_id && (s.approval_status === "draft" || s.approval_status === "edited")),
+    )
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+}
+
 /** "2:14" for 134 000 ms. */
 export function formatClock(ms: number): string {
   const total = Math.round(ms / 1000)
@@ -34,11 +53,13 @@ export function storyTooLongMessage(durationMs: number): string {
 
 /**
  * `count` times spread evenly from `start` to `end`, both included. One story
- * goes out at `start`. Returns [] when count < 1 or end is before start.
+ * goes out at `start`. Returns [] when count < 1, end is before start, or several
+ * stories would share one instant (end equal to start).
  */
 export function spreadTimes(start: Date, end: Date, count: number): Date[] {
   if (count < 1 || end.getTime() < start.getTime()) return []
   if (count === 1) return [new Date(start)]
+  if (end.getTime() === start.getTime()) return []
   const step = (end.getTime() - start.getTime()) / (count - 1)
   return Array.from({ length: count }, (_, i) => new Date(Math.round(start.getTime() + step * i)))
 }

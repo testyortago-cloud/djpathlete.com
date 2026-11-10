@@ -54,7 +54,8 @@ describe("<PipelineBoard>", () => {
     )
     // The board applies the stored filter, so the UI must show it as active + clearable.
     expect(screen.getByRole("button", { name: /Clear all/i })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /Instagram/i })).toHaveAttribute("aria-pressed", "true")
+    // Exact name: the Stories lane's help button ("About Instagram Stories") also says Instagram.
+    expect(screen.getByRole("button", { name: "Instagram" })).toHaveAttribute("aria-pressed", "true")
   })
 
   it("does not empty the board when a stored sourceVideoId points to a deleted video", () => {

@@ -66,6 +66,17 @@ describe("videoColumnFor", () => {
     ]
     expect(videoColumnFor(v, posts)).toBe("complete")
   })
+
+  // A story that can never publish (over 60 s) must not hold the video out of "Complete",
+  // and a lone story is not "generated" captions.
+  it("judges a video by its feed posts, not its Instagram story", () => {
+    const v = video("v1", { status: "analyzed" })
+    const story = post("s1", { source_video_id: "v1", post_type: "story", approval_status: "draft" })
+    expect(videoColumnFor(v, [post("p1", { source_video_id: "v1", approval_status: "published" }), story])).toBe(
+      "complete",
+    )
+    expect(videoColumnFor(v, [story])).toBe("transcribed")
+  })
 })
 
 describe("videosByColumn", () => {

@@ -6,7 +6,7 @@ import { PostsTab } from "@/components/admin/content-studio/drawer/PostsTab"
 import { MetaTab } from "@/components/admin/content-studio/drawer/MetaTab"
 import { MarkReadyButton } from "@/components/admin/content-studio/drawer/MarkReadyButton"
 import { VideoPerformance } from "@/components/admin/content-studio/detail/VideoPerformance"
-import { isVideoPostable } from "@/lib/content-studio/postable"
+import { hasGoneOut, isVideoPostable } from "@/lib/content-studio/postable"
 import { isStoryVideoTooLong, storyTooLongMessage } from "@/lib/content-studio/stories"
 import { DeleteVideoButton } from "./DeleteVideoButton"
 import { VideoStoriesSection } from "./VideoStoriesSection"
@@ -33,7 +33,8 @@ export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: 
   const videoStoryWarning = isStoryVideoTooLong(data.storyVideoDurationMs)
     ? storyTooLongMessage(data.storyVideoDurationMs as number)
     : null
-  const publishedCount = data.posts.filter((p) => p.approval_status === "published").length
+  // Same rule the delete route uses, so the dialog's numbers match what it does.
+  const publishedCount = data.posts.filter((p) => hasGoneOut(p)).length
 
   return (
     <div className="px-4 py-4 sm:px-6">

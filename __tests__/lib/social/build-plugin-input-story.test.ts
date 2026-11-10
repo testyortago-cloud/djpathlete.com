@@ -48,6 +48,14 @@ describe("buildPluginInput for a story", () => {
     expect(resolveMediaUrlMock).not.toHaveBeenCalled()
   })
 
+  it("leaves a Facebook story on the general path (Instagram's rules are not Facebook's)", async () => {
+    getSocialPostWithMediaMock.mockResolvedValue({ media: [] })
+    resolveMediaUrlMock.mockResolvedValue("https://signed/raw.mp4")
+    const built = await buildPluginInput({ ...story, platform: "facebook" } as SocialPost)
+    expect(resolveStoryMediaMock).not.toHaveBeenCalled()
+    expect(built).toEqual({ input: expect.objectContaining({ mediaUrl: "https://signed/raw.mp4", postType: "story" }) })
+  })
+
   it("passes the resolver's plain-words refusal through as the error", async () => {
     resolveStoryMediaMock.mockResolvedValue({ error: "This video is 2:14 long." })
     expect(await buildPluginInput(story)).toEqual({ error: "This video is 2:14 long." })

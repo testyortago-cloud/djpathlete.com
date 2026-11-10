@@ -303,12 +303,16 @@ async function main() {
       .filter((p): p is string => p !== null && (VIDEO_PLATFORMS as readonly string[]).includes(p))
 
     // Existing posts for this video, oldest first so the original fanout caption
-    // is preferred over any later row for the same platform.
+    // is preferred over any later row for the same platform. Stories never take the
+    // cut: an Instagram story borrows it from the reel at publish time
+    // (lib/social/story-media.ts), so a story that is the oldest Instagram row must
+    // not leave the reel posting the raw upload.
     const { data: existingPosts, error: epErr } = await supabase
       .from("social_posts")
       .select("id, platform, created_at")
       .eq("source_video_id", videoUploadId)
       .neq("approval_status", "rejected")
+      .neq("post_type", "story")
       .order("created_at", { ascending: true })
     if (epErr) throw new Error(`load existing posts failed: ${epErr.message}`)
 
@@ -533,6 +537,7 @@ async function runSplitReel(): Promise<void> {
       .select("id, platform, created_at")
       .eq("source_video_id", videoUploadId)
       .neq("approval_status", "rejected")
+      .neq("post_type", "story") // stories borrow the reel's cut; see the captioned-cut path
       .order("created_at", { ascending: true })
     if (epErr) throw new Error(`load existing posts failed: ${epErr.message}`)
     const plan = planCutAttachment(platforms, (existingPosts ?? []) as { id: string; platform: string }[])

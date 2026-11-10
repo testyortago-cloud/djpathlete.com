@@ -60,13 +60,31 @@ describe("DELETE /api/admin/videos/[id]", () => {
 
   // Deleting our row would not stop Facebook: it holds the post in its own queue.
   it("refuses while a post sits in Facebook's own schedule, and deletes nothing", async () => {
-    listPostsMock.mockResolvedValue([post("fb", "scheduled", "FB_1", "facebook"), post("draft", "draft")])
+    listPostsMock.mockResolvedValue([
+      { ...post("fb", "scheduled", "FB_1", "facebook"), scheduled_at: "2099-01-01T10:00:00Z" },
+      post("draft", "draft"),
+    ])
     const res = await call()
     expect(res.status).toBe(409)
     expect((await res.json()).error).toContain("Unschedule")
     expect(deletePostMock).not.toHaveBeenCalled()
     expect(deleteVideoMock).not.toHaveBeenCalled()
     expect(blobDeleteMock).not.toHaveBeenCalled()
+  })
+
+  // Nothing marks a Facebook-queued post "published" after it goes out. Once its time
+  // has passed it is live: keep it, and never send the coach to "Unschedule" (which
+  // deletes the post on Facebook).
+  it("keeps a Facebook-queued post whose time has passed, and deletes the video", async () => {
+    listPostsMock.mockResolvedValue([
+      { ...post("fb-live", "scheduled", "FB_1", "facebook"), scheduled_at: "2026-01-01T10:00:00Z" },
+      post("draft", "draft"),
+    ])
+    const res = await call()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true, deletedPosts: 1, keptPublished: 1 })
+    expect(deletePostMock.mock.calls.map((c) => c[0])).toEqual(["draft"])
+    expect(deleteVideoMock).toHaveBeenCalledWith("v1")
   })
 
   it("stops before touching the video when a post delete fails", async () => {

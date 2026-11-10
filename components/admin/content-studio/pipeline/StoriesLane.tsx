@@ -7,7 +7,7 @@ import { toast } from "sonner"
 import { PostsLane } from "./PostsLane"
 import { uploadImageFile } from "@/lib/firebase-client-upload"
 import { readApiError } from "@/lib/errors/humanize"
-import { spreadTimes } from "@/lib/content-studio/stories"
+import { spreadableStories, spreadTimes } from "@/lib/content-studio/stories"
 import {
   Dialog,
   DialogContent,
@@ -22,8 +22,6 @@ import type { PipelinePostRow } from "@/lib/db/social-posts"
 const STORY_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"]
 /** Same cap as the image uploader (ImageUploader MAX_BYTES). */
 const MAX_PHOTO_BYTES = 25 * 1024 * 1024
-/** Stories waiting for a time: "Needs review" and "Approved". */
-const SPREADABLE = new Set(["draft", "edited", "approved"])
 
 const BUTTON =
   "inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold transition disabled:opacity-50"
@@ -45,7 +43,7 @@ export function StoriesLane({ stories, canAddPhotos, ...laneProps }: StoriesLane
       posts={stories}
       idPrefix="story-"
       title="Instagram Stories"
-      subtitle="Each new video adds its own story. Add photos, approve them, then spread them across a day."
+      subtitle="Each new video adds its own story. Add photos, approve the video stories, then spread them across a day."
       help="A story stays on Instagram for 24 hours. Stories have no caption. A video story posts the same edited cut as the Instagram reel, and must be 60 seconds or less."
       actions={
         <>
@@ -128,9 +126,11 @@ function localDateInput(d: Date): string {
 
 function SpreadStoriesButton({ stories }: { stories: PipelinePostRow[] }) {
   const router = useRouter()
-  const waiting = stories
-    .filter((s) => SPREADABLE.has(s.approval_status))
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+  const waiting = spreadableStories(stories)
+  // Video stories still in "Needs review" are left alone (see spreadableStories).
+  const heldBack = stories.filter(
+    (s) => s.source_video_id && (s.approval_status === "draft" || s.approval_status === "edited"),
+  ).length
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [day, setDay] = useState(() => localDateInput(new Date(Date.now() + 24 * 60 * 60 * 1000)))
@@ -174,7 +174,13 @@ function SpreadStoriesButton({ stories }: { stories: PipelinePostRow[] }) {
         type="button"
         onClick={() => setOpen(true)}
         disabled={waiting.length === 0}
-        title={waiting.length === 0 ? "No stories are waiting for a time" : undefined}
+        title={
+          waiting.length === 0
+            ? heldBack > 0
+              ? "Approve the video stories first"
+              : "No stories are waiting for a time"
+            : undefined
+        }
         className={`${BUTTON} border border-border bg-white text-primary shadow-sm hover:bg-surface`}
       >
         <CalendarClock className="size-3.5" />
@@ -185,8 +191,10 @@ function SpreadStoriesButton({ stories }: { stories: PipelinePostRow[] }) {
           <DialogHeader>
             <DialogTitle>Spread stories over a day</DialogTitle>
             <DialogDescription>
-              The {waiting.length} {waiting.length === 1 ? "story" : "stories"} in &ldquo;Needs review&rdquo; and
-              &ldquo;Approved&rdquo; go out one at a time, evenly spaced, oldest first.
+              {waiting.length} {waiting.length === 1 ? "story goes" : "stories go"} out one at a time, evenly spaced,
+              oldest first: photo stories waiting for review, and approved stories.
+              {heldBack > 0 &&
+                ` ${heldBack} video ${heldBack === 1 ? "story waits" : "stories wait"} until you approve ${heldBack === 1 ? "it" : "them"}, so no unfinished video goes out.`}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-3 gap-3 text-xs">

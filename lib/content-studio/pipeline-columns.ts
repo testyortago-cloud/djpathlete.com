@@ -57,8 +57,10 @@ export const POST_COLUMN_LABELS: Record<PostColumn, string> = {
   failed: "Failed",
 }
 
+// A video's progress is its feed posts. Its Instagram story has its own lane, and a
+// story that can never publish (over 60 s) must not hold the video out of "Complete".
 export function videoColumnFor(video: VideoUpload, posts: SocialPost[]): VideoColumn {
-  const myPosts = posts.filter((p) => p.source_video_id === video.id)
+  const myPosts = posts.filter((p) => p.source_video_id === video.id && p.post_type !== "story")
   if (myPosts.length > 0) {
     const allPublished = myPosts.every((p) => p.approval_status === "published")
     if (allPublished) return "complete"
@@ -134,7 +136,7 @@ export function videoColumnForWithEdit(
   // back into its post/edit-derived column once the render finishes.
   if (signals.isRendering) return "rendering"
 
-  const myPosts = posts.filter((p) => p.source_video_id === video.id)
+  const myPosts = posts.filter((p) => p.source_video_id === video.id && p.post_type !== "story")
   // Fully shipped: every post published → Complete, regardless of edit state.
   if (myPosts.length > 0 && myPosts.every((p) => p.approval_status === "published")) return "complete"
 

@@ -39,7 +39,9 @@ export async function POST(request: NextRequest) {
   }
 
   if (!force) {
-    const existing = await listSocialPostsBySourceVideo(videoUploadId)
+    // A story is not a caption: a video with only its story (added by hand, or left by
+    // a fanout whose six captions all failed) must still be able to generate captions.
+    const existing = (await listSocialPostsBySourceVideo(videoUploadId)).filter((p) => p.post_type !== "story")
     if (existing.length > 0) {
       return NextResponse.json(
         {

@@ -247,4 +247,17 @@ describe("resolveStoryImageUrl", () => {
     fakeBucket({})
     expect(await resolveStoryImageUrl(PHOTO)).toBeNull()
   })
+
+  // A phone stores a portrait shot sideways plus an EXIF "rotate 90°" tag; re-encoding
+  // drops the tag, so the copy must be turned upright first or it posts sideways.
+  it("turns a sideways phone photo upright when converting", async () => {
+    const sideways = await sharp({ create: { width: 40, height: 20, channels: 3, background: "#00c" } })
+      .webp()
+      .withMetadata({ orientation: 6 })
+      .toBuffer()
+    const { saved } = fakeBucket({ [PHOTO]: { bytes: sideways, contentType: "image/webp" } })
+    await resolveStoryImageUrl(PHOTO)
+    const meta = await sharp(saved[0].bytes).metadata()
+    expect([meta.width, meta.height]).toEqual([20, 40])
+  })
 })

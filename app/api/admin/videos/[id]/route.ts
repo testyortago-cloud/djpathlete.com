@@ -13,6 +13,7 @@ import {
 } from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { deleteSocialPost, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
+import { hasGoneOut, isInPlatformQueue } from "@/lib/content-studio/postable"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const PREVIEW_URL_EXPIRY_MS = 10 * 60 * 1000 // 10 minutes
@@ -106,8 +107,11 @@ export async function DELETE(
   // as the record of what went live (deleting them here would not remove them
   // from Instagram or Facebook anyway).
   const posts = await listSocialPostsBySourceVideo(id)
-  const nativelyScheduled = posts.filter((p) => p.approval_status === "scheduled" && p.platform_post_id)
-  if (nativelyScheduled.length > 0) {
+  // A post scheduled in Facebook's OWN queue (platform_post_id set) stays "scheduled"
+  // here forever: nothing reads back that Facebook published it. So once its time has
+  // passed it is live, and is kept like a published post. Only one still waiting blocks
+  // the delete — and "Unschedule" is safe only for that one (it deletes the post on Facebook).
+  if (posts.some((p) => isInPlatformQueue(p) && !hasGoneOut(p))) {
     return NextResponse.json(
       {
         error:
@@ -117,7 +121,7 @@ export async function DELETE(
       { status: 409 },
     )
   }
-  const unsent = posts.filter((p) => p.approval_status !== "published")
+  const unsent = posts.filter((p) => !hasGoneOut(p))
   try {
     for (const p of unsent) await deleteSocialPost(p.id)
   } catch (err) {

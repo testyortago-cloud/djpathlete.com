@@ -9,11 +9,17 @@ import { getSetting } from "@/lib/db/system-settings"
 
 const THUMBNAIL_URL_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
 
+const STORY_ID_BATCH = 100
+
 /** First attached image of each story, signed. Thumbnails only: a failure yields none, never a 500. */
 async function signStoryImages(storyIds: string[]): Promise<Record<string, string>> {
   if (storyIds.length === 0) return {}
   try {
-    const rows = await listMediaForPosts(storyIds)
+    // One story per video accumulates forever; batch the ids so the `.in()` URL
+    // stays short and no batch nears PostgREST's 1000-row cap.
+    const batches: string[][] = []
+    for (let i = 0; i < storyIds.length; i += STORY_ID_BATCH) batches.push(storyIds.slice(i, i + STORY_ID_BATCH))
+    const rows = (await Promise.all(batches.map((ids) => listMediaForPosts(ids)))).flat()
     const firstImage = new Map<string, string>()
     for (const r of rows)
       if (r.kind === "image" && !firstImage.has(r.social_post_id)) firstImage.set(r.social_post_id, r.storage_path)
@@ -176,7 +182,8 @@ export async function getPipelineData(): Promise<PipelineData> {
 
   const postCountsByVideo: Record<string, PostCounts> = {}
   for (const p of posts) {
-    if (!p.source_video_id) continue
+    // Stories are counted in their own lane, not as the video's posts (see videoColumnFor).
+    if (!p.source_video_id || p.post_type === "story") continue
     const counts = (postCountsByVideo[p.source_video_id] ??= emptyCounts())
     counts.total += 1
     switch (p.approval_status) {

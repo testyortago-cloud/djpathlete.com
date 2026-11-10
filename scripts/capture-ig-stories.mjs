@@ -233,7 +233,7 @@ try {
       ),
       await marker(
         lane.getByRole("button", { name: /Spread over a day/ }),
-        "Gives every waiting story a time, evenly spaced across one day.",
+        "Gives photo stories and approved stories a time, evenly spaced across one day.",
         "above",
       ),
       await marker(
@@ -258,8 +258,13 @@ try {
   await page.screenshot({ path: `${OUT}/raw/05-spread.png` })
   await annotate(`${OUT}/raw/05-spread.png`, `${OUT}/05-spread-over-a-day.png`, {
     title: "“Spread over a day” spaces the stories out",
-    subtitle: "Stories in “Needs review” and “Approved” get one time each, oldest first.",
+    subtitle: "Photo and quote stories, and approved video stories, get one time each, oldest first.",
     markers: [
+      await marker(
+        dialog.getByText(/video stories wait until you approve them/),
+        "Video stories in “Needs review” are left out until approved, so no unfinished video goes out.",
+        "after",
+      ),
       await marker(dialog.getByLabel("Day"), "Pick the day (tomorrow by default).", "before"),
       await marker(dialog.getByLabel("First at"), "First and last story times.", "before"),
       await marker(dialog.getByText(/^Times:/), "Every time it will use, before anything is saved.", "before"),
@@ -271,7 +276,7 @@ try {
   await page.addStyleTag({ content: "[data-sonner-toaster]{display:block!important}" })
   await dialog.getByRole("button", { name: /^Schedule \d+$/ }).click()
   await dialog.waitFor({ state: "hidden", timeout: 60000 })
-  const refusal = page.getByText(/7 not scheduled: Connect instagram first/)
+  const refusal = page.getByText(/5 not scheduled: Connect instagram first/)
   await refusal.waitFor({ timeout: 60000 })
   check("without an Instagram connection, the refusal is shown in plain words", true)
   await park(page)

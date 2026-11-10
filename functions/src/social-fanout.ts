@@ -286,9 +286,10 @@ export async function handleSocialFanout(jobId: string): Promise<void> {
       .map((r, i) => (r.status === "rejected" ? PLATFORMS[i] : null))
       .filter(Boolean) as string[]
 
-    // After the caption posts, so the Instagram reel stays the oldest Instagram
-    // row — the one render-worker planCutAttachment attaches the edited cut to.
-    const storyPostId = await ensureVideoStory(supabase, videoUploadId)
+    // After the caption posts, so the Instagram reel is the oldest Instagram row
+    // (render-worker planCutAttachment also skips stories). Only when a caption
+    // post exists: a lone story on a failed fanout would read as "generated".
+    const storyPostId = created.length > 0 ? await ensureVideoStory(supabase, videoUploadId) : null
 
     await jobRef.update({
       status: created.length > 0 ? "completed" : "failed",
