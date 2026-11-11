@@ -270,7 +270,7 @@ Given a profile analysis and training parameters, you must output a JSON object 
               "reps": string. A HOLD IS ALWAYS A TIME, NEVER A COUNT: when movement_pattern is "isometric", or the exercise is a plank / hold / iso variant, write a duration ("30s", "40 sec", "30s each side") and never a rep count ("10", "8-10", "6 each side") — a plank has no reps, and "10" tells the athlete nothing. Everything else is a count: "5", "8-10", "3 each side", "10 cal", "5+5+5", "3x20m".
               "rest_seconds": number,
               "rpe_target": number | null (1-10 scale),
-              "tempo": string | null (e.g., "3-1-2-0" = eccentric-pause-concentric-pause),
+              "tempo": string | null (e.g., "3-1-2-0" = eccentric-pause-concentric-pause). Counted phases only, digits and X ("2-0-X-0"). Never words such as "controlled", "explosive" or "30s hold": a hold time goes in reps. null when there is no counted tempo.
               "group_tag": string | null (same tag = superset, e.g., "A1", "A2"),
               "technique": "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap" | "cluster_set" | "complex" | "emom" | "wave_loading" (default "straight_set"),
               "intensity_pct": number | null (percentage of 1RM, e.g., 75 for 75%. Use ONLY when the coach's words give a percentage; otherwise null)

@@ -805,6 +805,17 @@ export function withSide(reps: string, perSide: boolean | undefined): string {
   return `${reps} each side`
 }
 
+/**
+ * A tempo is counted phases: "3-1-2-0", "2-0-X-0", "15-5-10", or compact "3010" / "31X1".
+ * Anything else is dropped. The model wrote coaching cues here ("Gentle thoracic rotation;
+ * exhale into…", "explosive", "30s hold") and the client saw them in the Tempo box (2026-11-11).
+ * The cue already lives in the row's notes, and a hold time belongs in reps.
+ */
+export function cleanTempo(tempo: string | null | undefined): string | null {
+  const t = tempo?.trim() ?? ""
+  return /^[0-9xX]{1,2}(?:[-./:][0-9xX]{1,2}){1,3}$|^[0-9xX]{4}$/.test(t) ? t : null
+}
+
 export interface RowBuildOptions {
   /** Library names by exercise id. The model's exercise_name is never trusted (2026-10-04). */
   nameById?: Map<string, string>
@@ -887,7 +898,7 @@ export function buildExerciseRows(
         ),
         rpe_target: details.rpe_target,
         intensity_pct: details.intensity_pct,
-        tempo: details.tempo,
+        tempo: cleanTempo(details.tempo),
         group_tag: details.group_tag,
         technique: VALID_TECHNIQUES.has(details.technique ?? "") ? details.technique : "straight_set",
         slot_role: details.role,

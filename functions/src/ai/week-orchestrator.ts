@@ -50,6 +50,7 @@ import {
   createCancellationChecker,
   buildSlotLookups,
   buildExerciseRows,
+  cleanTempo,
   dedupeSkeletonDaysInPlace,
   resolveCrossDayExcludeIds,
   planExclusions,
@@ -257,7 +258,7 @@ const SLOT_SCHEMA = `{
               "reps": string. A HOLD IS ALWAYS A TIME, NEVER A COUNT: when movement_pattern is "isometric", or the exercise is a plank / hold / iso variant, write a duration ("30s", "40 sec", "30s each side") and never a rep count ("10", "8-10", "6 each side") — a plank has no reps. Everything else is a count: "8-10", "10 cal", "3+3+3", "3/2/1/3/2/1".
               "rest_seconds": number,
               "rpe_target": number | null,
-              "tempo": string | null,
+              "tempo": string | null. Counted phases only, digits and X: "3-1-2-0", "2-0-X-0", "4-2-4". Never words such as "controlled", "explosive" or "30s hold": a hold time goes in reps. null when there is no counted tempo.
               "group_tag": string | null,
               "technique": "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap" | "cluster_set" | "complex" | "emom" | "wave_loading",
               "intensity_pct": number | null (percentage of 1RM — ONLY when the coach's words give a percentage; otherwise null)
@@ -907,7 +908,8 @@ async function buildWeekAttempt(
     sets: pe.sets,
     reps: pe.reps,
     rpe: pe.rpe_target,
-    tempo: pe.tempo,
+    // Cleaned so an old cue in the last block's tempo is not copied into the next week.
+    tempo: cleanTempo(pe.tempo as string | null),
     technique: pe.technique,
     group_tag: pe.group_tag,
     rest: pe.rest_seconds,

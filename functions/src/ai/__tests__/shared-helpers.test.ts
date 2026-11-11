@@ -487,6 +487,52 @@ describe("buildExerciseRows persists slot_role", () => {
   })
 })
 
+describe("buildExerciseRows keeps only a counted tempo (2026-11-11)", () => {
+  // Darren's video: the Tempo box read "Gentle thoracic rotation; exhale into comfortable range
+  // without twisting the lower back". Prod had 2,273 rows with words in tempo.
+  const tempoOf = (tempo: string | null) => {
+    const weeks: ProgramWeek[] = [{
+      week_number: 1, phase: "x", intensity_modifier: "moderate",
+      days: [{ day_of_week: 1, label: "L", focus: "f", slots: [{
+        slot_id: "w1d1s1", role: "accessory", movement_pattern: "rotation",
+        target_muscles: ["core"], sets: 2, reps: "6 each side", rest_seconds: 30,
+        rpe_target: 3, tempo, group_tag: null, technique: "straight_set", intensity_pct: null,
+      }] }],
+    }]
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(weeks)
+    return buildExerciseRows(
+      [{ slot_id: "w1d1s1", exercise_id: "ex-1", notes: null }],
+      slotLookup, slotDetailsLookup, "prog-1",
+    )[0].tempo
+  }
+
+  it.each(["3-1-2-0", "4-2-4", "2-0-X-0", "15-5-10", "3010", "31X1", "3.1.2.0"])("keeps %s", (t) => {
+    expect(tempoOf(t)).toBe(t)
+  })
+
+  it("trims a counted tempo", () => {
+    expect(tempoOf(" 3-1-1-0 ")).toBe("3-1-1-0")
+  })
+
+  it.each([
+    "Gentle thoracic rotation; exhale into comfortable range without twisting the lower back",
+    "Controlled landing, full reset, crisp propulsion; stop if power declines",
+    "explosive",
+    "slow and controlled",
+    "30s hold",
+    "X (explosive)",
+    "s",
+    "3",
+    "",
+  ])("drops %j", (t) => {
+    expect(tempoOf(t)).toBeNull()
+  })
+
+  it("keeps null as null", () => {
+    expect(tempoOf(null)).toBeNull()
+  })
+})
+
 describe("stripPipelineInternals keeps AI self-narration away from the client", () => {
   // The exact note that shipped to a real client (Matthew C, week 3, slot 5).
   // The coach found the duplicate by reading this in the workout.
