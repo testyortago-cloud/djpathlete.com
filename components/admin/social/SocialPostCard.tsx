@@ -4,6 +4,7 @@ import { useState } from "react"
 import { X, Pencil, Calendar, CalendarX, Zap, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { SchedulePickerDialog } from "./SchedulePickerDialog"
+import { TikTokPostDialog } from "./TikTokPostDialog"
 import type { SocialPost } from "@/types/database"
 import { PLATFORM_ICONS, PLATFORM_LABELS } from "@/lib/social/platform-ui"
 
@@ -27,6 +28,9 @@ export function SocialPostCard({
 }: SocialPostCardProps) {
   const [editing, setEditing] = useState(false)
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  // TikTok posts go through the Post to TikTok screen first.
+  const [tiktokIntent, setTiktokIntent] = useState<"now" | "schedule" | null>(null)
+  const isTikTok = post.platform === "tiktok"
   const [draftContent, setDraftContent] = useState(post.content)
   const [busy, setBusy] = useState<BusyAction>(null)
   const Icon = PLATFORM_ICONS[post.platform]
@@ -190,7 +194,7 @@ export function SocialPostCard({
             <>
               <button
                 type="button"
-                onClick={() => setScheduleOpen(true)}
+                onClick={() => (isTikTok ? setTiktokIntent("schedule") : setScheduleOpen(true))}
                 disabled={busy !== null}
                 className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 inline-flex items-center gap-1"
               >
@@ -198,7 +202,7 @@ export function SocialPostCard({
               </button>
               <button
                 type="button"
-                onClick={publishNow}
+                onClick={() => (isTikTok ? setTiktokIntent("now") : publishNow())}
                 disabled={busy !== null}
                 className="text-xs px-3 py-1.5 rounded-md bg-success/10 text-success hover:bg-success/20 disabled:opacity-60 inline-flex items-center gap-1"
               >
@@ -239,6 +243,24 @@ export function SocialPostCard({
           ) : null}
         </div>
       </div>
+
+      {isTikTok && (
+        <TikTokPostDialog
+          key={post.id}
+          post={post}
+          intent={tiktokIntent ?? "now"}
+          open={tiktokIntent !== null}
+          onOpenChange={(open) => {
+            if (!open) setTiktokIntent(null)
+          }}
+          onQueued={onUpdate}
+          onReadyToSchedule={(updated) => {
+            onUpdate(updated)
+            setTiktokIntent(null)
+            setScheduleOpen(true)
+          }}
+        />
+      )}
 
       <SchedulePickerDialog
         post={post}

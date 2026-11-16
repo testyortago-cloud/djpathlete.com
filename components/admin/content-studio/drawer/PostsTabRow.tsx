@@ -8,6 +8,7 @@ import type { PostSlide } from "@/lib/content-studio/drawer-data"
 import { cn } from "@/lib/utils"
 import { PLATFORM_ICONS, PLATFORM_LABELS } from "@/lib/social/platform-ui"
 import { SchedulePickerDialog } from "@/components/admin/social/SchedulePickerDialog"
+import { TikTokPostDialog } from "@/components/admin/social/TikTokPostDialog"
 import { readApiError } from "@/lib/errors/humanize"
 
 const STATUS_PILL_CLASSES: Record<SocialApprovalStatus, string> = {
@@ -49,6 +50,9 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate,
   const [draft, setDraft] = useState(post.content)
   const [busy, setBusy] = useState<"publishNow" | "unschedule" | "save" | null>(null)
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  // TikTok posts go through the Post to TikTok screen first.
+  const [tiktokIntent, setTiktokIntent] = useState<"now" | "schedule" | null>(null)
+  const isTikTok = post.platform === "tiktok"
   const Icon = PLATFORM_ICONS[post.platform]
   const isPublished = post.approval_status === "published"
   const isRejected = post.approval_status === "rejected"
@@ -234,7 +238,7 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate,
               {showActions && (
                 <button
                   type="button"
-                  onClick={() => setScheduleOpen(true)}
+                  onClick={() => (isTikTok ? setTiktokIntent("schedule") : setScheduleOpen(true))}
                   disabled={busy !== null}
                   className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 inline-flex items-center gap-1"
                 >
@@ -244,7 +248,7 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate,
               {showActions && (
                 <button
                   type="button"
-                  onClick={publishNow}
+                  onClick={() => (isTikTok ? setTiktokIntent("now") : publishNow())}
                   disabled={busy !== null}
                   className="text-xs px-3 py-1.5 rounded-md bg-success/10 text-success hover:bg-success/20 disabled:opacity-60 inline-flex items-center gap-1"
                 >
@@ -271,6 +275,24 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate,
           </div>
         )}
       </div>
+
+      {isTikTok && (
+        <TikTokPostDialog
+          key={post.id}
+          post={post}
+          intent={tiktokIntent ?? "now"}
+          open={tiktokIntent !== null}
+          onOpenChange={(open) => {
+            if (!open) setTiktokIntent(null)
+          }}
+          onQueued={onMutate}
+          onReadyToSchedule={(updated) => {
+            onMutate(updated)
+            setTiktokIntent(null)
+            setScheduleOpen(true)
+          }}
+        />
+      )}
 
       <SchedulePickerDialog
         post={post}
