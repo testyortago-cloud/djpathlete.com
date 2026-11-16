@@ -1,0 +1,55 @@
+{
+  "app": "http://localhost:3051",
+  "results": [
+    {
+      "name": "signed in to the admin",
+      "ok": true,
+      "evidence": "http://localhost:3051/admin/content/37378b65-bedc-40c5-b12b-619413494fb8?tab=posts&postId=0ddcd8c3-c3a8-4cb9-9655-803b8224523b"
+    },
+    {
+      "name": "the bulk bar carries the TikTok note",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the TikTok row is expanded and shows Publish now",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "and Schedule",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "the dialog is the Post to TikTok screen",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "it shows the refused message",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "with only a Close button",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "no write request reached /api/admin/social/posts/*",
+      "ok": true,
+      "evidence": "GET http://localhost:3051/api/admin/social/posts/0ddcd8c3-c3a8-4cb9-9655-803b8224523b/tiktok"
+    },
+    {
+      "name": "the only call was the account lookup",
+      "ok": true,
+      "evidence": ""
+    },
+    {
+      "name": "no uncaught page errors",
+      "ok": true,
+      "evidence": ""
+    }
+  ]
+}
