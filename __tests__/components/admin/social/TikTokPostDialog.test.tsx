@@ -437,6 +437,43 @@ describe("<TikTokPostDialog> — saving and sending", () => {
     expect(onQueued).toHaveBeenCalledWith(expect.objectContaining({ content: "Hips first, then the rest." }))
   })
 
+  // Review finding: the PATCH lands, the PUT fails, and the parent never hears
+  // the caption changed. Reopening must show the caption the server now holds
+  // (the one TikTok would get), not the parent's stale copy.
+  it("after the caption saved but the settings failed, reopening shows and sends the saved caption", async () => {
+    let puts = 0
+    serve({
+      PUT: (init) =>
+        ++puts === 1
+          ? json(500, { error: "Couldn't save your TikTok choices." })
+          : json(200, { tiktok_settings: JSON.parse(String(init?.body)).settings }),
+    })
+    const { rerender, onOpenChange, onQueued, onReadyToSchedule } = renderDialog()
+    const props = { post: makePost(), intent: "now" as const, onOpenChange, onQueued, onReadyToSchedule }
+    await privacySelect()
+    loadVideo(30)
+    choosePrivacy("PUBLIC_TO_EVERYONE")
+    fireEvent.change(screen.getByRole("textbox", { name: "Caption" }), {
+      target: { value: "Hips first, then the rest." },
+    })
+    fireEvent.click(postButton())
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't save your TikTok choices."))
+    expect(calls("PATCH", "/post-1")).toHaveLength(1)
+
+    rerender(<TikTokPostDialog {...props} open={false} />)
+    rerender(<TikTokPostDialog {...props} open />)
+    await privacySelect()
+    expect(screen.getByRole("textbox", { name: "Caption" })).toHaveValue("Hips first, then the rest.")
+
+    loadVideo(30)
+    choosePrivacy("PUBLIC_TO_EVERYONE")
+    fireEvent.click(postButton())
+    await waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1))
+    expect(calls("PATCH", "/post-1")).toHaveLength(1)
+    expect(calls("PUT", "/tiktok")).toHaveLength(2)
+    expect(onQueued).toHaveBeenCalledWith(expect.objectContaining({ content: "Hips first, then the rest." }))
+  })
+
   it("for schedule, saves settings and calls onReadyToSchedule without publish-now", async () => {
     const { onQueued, onReadyToSchedule } = renderDialog({ intent: "schedule" })
     await privacySelect()

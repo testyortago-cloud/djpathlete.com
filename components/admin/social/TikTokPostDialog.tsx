@@ -6,7 +6,7 @@
 // off until the coach turns them on, the declaration above the button, and a
 // preview of the exact file. What the coach picks here is what gets sent.
 
-import { useEffect, useLayoutEffect, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Loader2, Send, UserRound } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -65,6 +65,14 @@ export function TikTokPostDialog({
   const [videoFailed, setVideoFailed] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  // The caption the server holds. A PATCH can land while a later request fails
+  // and the parent never hears of it, so this outranks a stale post.content
+  // until the parent sends a newer one.
+  const savedCaption = useRef(post.content)
+  useEffect(() => {
+    savedCaption.current = post.content
+  }, [post.content])
+
   // Before paint, so a reopen never flashes the previous open's form.
   useLayoutEffect(() => {
     if (open) setLoad({ state: "loading" })
@@ -88,7 +96,7 @@ export function TikTokPostDialog({
         }
         if (!live) return
         setDraft(prefillDraft(data.saved, data.creator))
-        setCaption(post.content)
+        setCaption(savedCaption.current)
         setDuration(null)
         setVideoFailed(false)
         setLoad({ state: "ready", creator: data.creator, previewUrl: data.previewUrl })
@@ -121,8 +129,8 @@ export function TikTokPostDialog({
     if (busy || blocker !== null) return
     setBusy(true)
     try {
-      let updated: SocialPost = { ...post }
-      if (caption.trim() !== post.content.trim()) {
+      let updated: SocialPost = { ...post, content: savedCaption.current }
+      if (caption.trim() !== savedCaption.current.trim()) {
         const res = await fetch(`/api/admin/social/posts/${post.id}`, {
           method: "PATCH",
           headers: JSON_HEADERS,
@@ -130,6 +138,7 @@ export function TikTokPostDialog({
         })
         if (!res.ok) throw new Error(await readApiError(res, "Couldn't save the caption."))
         const data = (await res.json()) as Pick<SocialPost, "content" | "approval_status">
+        savedCaption.current = data.content
         updated = { ...updated, content: data.content, approval_status: data.approval_status }
       }
 
