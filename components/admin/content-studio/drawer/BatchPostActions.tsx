@@ -6,13 +6,18 @@ import { toast } from "sonner"
 import type { SocialPost } from "@/types/database"
 import { BatchScheduleDialog } from "./BatchScheduleDialog"
 
+const isOpen = (p: SocialPost) => p.approval_status !== "published" && p.approval_status !== "rejected"
+
 /**
  * Posts that a batch action can act on: anything not already published or
  * rejected. Mirrors the per-row `showActions` gate (PostsTabRow).
+ * TikTok is left out: each TikTok post goes through its own "Post to TikTok" screen.
  */
 export function eligibleForBatch(posts: SocialPost[]): SocialPost[] {
-  return posts.filter((p) => p.approval_status !== "published" && p.approval_status !== "rejected")
+  return posts.filter((p) => isOpen(p) && p.platform !== "tiktok")
 }
+
+const TIKTOK_NOTE = "TikTok posts are sent one at a time from their own row."
 
 interface BatchPostActionsProps {
   posts: SocialPost[]
@@ -27,7 +32,10 @@ export function BatchPostActions({ posts, isReady, onMutate }: BatchPostActionsP
   const [scheduleOpen, setScheduleOpen] = useState(false)
 
   const eligible = eligibleForBatch(posts)
-  if (eligible.length === 0) return null
+  const hasTikTok = posts.some((p) => p.platform === "tiktok" && isOpen(p))
+  if (eligible.length === 0) {
+    return hasTikTok ? <p className="mb-3 text-[11px] text-muted-foreground">{TIKTOK_NOTE}</p> : null
+  }
 
   async function publishAll() {
     setBusy("publish")
@@ -115,6 +123,7 @@ export function BatchPostActions({ posts, isReady, onMutate }: BatchPostActionsP
           “Mark ready” before sending these posts.
         </p>
       )}
+      {hasTikTok && <p className="w-full text-[11px] text-muted-foreground">{TIKTOK_NOTE}</p>}
       <BatchScheduleDialog
         open={scheduleOpen}
         onOpenChange={setScheduleOpen}

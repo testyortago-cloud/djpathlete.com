@@ -30,9 +30,13 @@ vi.mock("@/components/admin/content-studio/upload/CarouselComposer", () => ({
   ),
 }))
 
+const toastSuccess = vi.fn()
+vi.mock("sonner", () => ({ toast: { success: (m: string) => toastSuccess(m), error: vi.fn() } }))
+
 const fetchMock = vi.fn()
 beforeEach(() => {
   fetchMock.mockReset()
+  toastSuccess.mockReset()
   Object.assign(global, { fetch: fetchMock })
 })
 
@@ -275,6 +279,34 @@ describe("<ManualPostDialog>", () => {
     fireEvent.click(screen.getByRole("button", { name: /^create/i }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).platform).toBe("instagram")
+  })
+
+  it("creating TikTok + Instagram says TikTok needs opening; Instagram stays scheduled", async () => {
+    fetchMock.mockImplementation((_url: string, init: { body: string }) => {
+      const platform = JSON.parse(init.body).platform
+      const approval_status = platform === "tiktok" ? "approved" : "scheduled"
+      return Promise.resolve(new Response(JSON.stringify({ id: `p-${platform}`, approval_status }), { status: 200 }))
+    })
+    render(<ManualPostDialog dayKey="2099-02-02" onClose={vi.fn()} onCreated={vi.fn()} />)
+    fireEvent.click(screen.getByLabelText(/Post to tiktok/i))
+    fireEvent.click(screen.getByRole("button", { name: /fake video upload/i }))
+    fireEvent.click(screen.getByRole("button", { name: /create/i }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+    const message = toastSuccess.mock.calls[0][0] as string
+    expect(message).toContain("TikTok: open the post to send it")
+    expect(message).toContain("Post scheduled to instagram")
+  })
+
+  it("creating Instagram + Facebook keeps the plain scheduled toast", async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ id: "p", approval_status: "scheduled" }), { status: 200 })),
+    )
+    render(<ManualPostDialog dayKey="2099-02-02" onClose={vi.fn()} onCreated={vi.fn()} />)
+    fireEvent.click(screen.getByLabelText(/Post to facebook/i))
+    fireEvent.click(screen.getByRole("button", { name: /fake video upload/i }))
+    fireEvent.click(screen.getByRole("button", { name: /create/i }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+    expect(toastSuccess).toHaveBeenCalledWith("Scheduled to 2 platforms")
   })
 
   it("a photo-only carousel still posts to Facebook too", async () => {

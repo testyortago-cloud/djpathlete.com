@@ -31,6 +31,7 @@ interface PostResult {
   platform: SocialPlatform
   ok: boolean
   id?: string
+  approvalStatus?: string
   error?: string
 }
 
@@ -127,8 +128,8 @@ export function ManualPostDialog({
         const friendly = text || statusToFriendlyMessage(res.status, "Couldn't create the post")
         return { platform, ok: false, error: friendly }
       }
-      const data = (await res.json()) as { id: string }
-      return { platform, ok: true, id: data.id }
+      const data = (await res.json()) as { id: string; approval_status?: string }
+      return { platform, ok: true, id: data.id, approvalStatus: data.approval_status }
     } catch (err) {
       return { platform, ok: false, error: (err as Error).message || "Create failed" }
     }
@@ -144,11 +145,14 @@ export function ManualPostDialog({
       const failures = results.filter((r) => !r.ok)
 
       if (successes.length > 0) {
-        toast.success(
-          successes.length === 1
-            ? `Post scheduled to ${successes[0].platform}`
-            : `Scheduled to ${successes.length} platforms`,
-        )
+        // A post the server left "approved" has no time yet (TikTok): say so, not "scheduled".
+        const held = successes.filter((r) => r.approvalStatus === "approved")
+        const scheduled = successes.filter((r) => r.approvalStatus !== "approved")
+        const parts: string[] = []
+        if (scheduled.length === 1) parts.push(`Post scheduled to ${scheduled[0].platform}`)
+        else if (scheduled.length > 1) parts.push(`Scheduled to ${scheduled.length} platforms`)
+        for (const r of held) parts.push(`${platformLabels[r.platform] ?? r.platform}: open the post to send it`)
+        toast.success(parts.join(". "))
       }
       if (failures.length > 0) {
         const errMap: Record<string, string> = {}

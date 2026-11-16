@@ -189,7 +189,9 @@ export async function POST(request: NextRequest) {
   }
 
   let scheduledAt: string | null = null
-  if (body?.scheduled_at) {
+  // A TikTok post is never scheduled here: its time is chosen on the "Post to TikTok"
+  // screen, so it starts approved with no time and the coach opens it to send.
+  if (body?.scheduled_at && platform !== "tiktok") {
     const d = new Date(body.scheduled_at)
     if (Number.isNaN(d.getTime())) {
       return NextResponse.json({ error: "scheduled_at is not a valid datetime" }, { status: 400 })
