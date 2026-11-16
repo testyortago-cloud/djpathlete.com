@@ -43,6 +43,15 @@ export async function POST(
     )
   }
 
+  // TikTok needs the coach's per-post choices from the "Post to TikTok" screen.
+  // Refuse here, at click time, rather than queue a post the cron will fail.
+  if (post.platform === "tiktok" && !post.tiktok_settings) {
+    return NextResponse.json(
+      { error: "Open this post and choose its TikTok settings first." },
+      { status: 409 },
+    )
+  }
+
   // Stories skip the platform-connection check because the lightweight
   // story pipeline (draft → published) is exempt from the connection gate.
   if (post.post_type !== "story") {

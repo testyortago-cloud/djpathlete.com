@@ -188,6 +188,55 @@ describe("POST /api/admin/social/posts/:id/publish-now", () => {
     expect(releaseMock).toHaveBeenCalledWith(null)
   })
 
+  // The coach consents per TikTok post on the "Post to TikTok" screen. A post with
+  // no settings must bounce here, at click time, instead of failing later at the cron.
+  it("refuses a TikTok post with no TikTok settings, before any write or release", async () => {
+    withConnected(["instagram", "tiktok"])
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "t1",
+      approval_status: "approved",
+      platform: "tiktok",
+      post_type: "video",
+      source_video_id: "v1",
+      tiktok_settings: null,
+    })
+    const res = await call("t1")
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: "Open this post and choose its TikTok settings first." })
+    expect(updateSocialPostMock).not.toHaveBeenCalled()
+    expect(releaseMock).not.toHaveBeenCalled()
+  })
+
+  it("refuses a TikTok post whose settings are missing entirely (undefined)", async () => {
+    withConnected(["tiktok"])
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "t1",
+      approval_status: "approved",
+      platform: "tiktok",
+      post_type: "video",
+    })
+    const res = await call("t1")
+    expect(res.status).toBe(409)
+    expect(updateSocialPostMock).not.toHaveBeenCalled()
+  })
+
+  it("publishes a TikTok post that already has TikTok settings (presence control)", async () => {
+    withConnected(["instagram", "tiktok"])
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "t1",
+      approval_status: "approved",
+      platform: "tiktok",
+      post_type: "video",
+      source_video_id: "v1",
+      tiktok_settings: { privacy_level: "SELF_ONLY" },
+    })
+    updateSocialPostMock.mockResolvedValue({ id: "t1", approval_status: "scheduled" })
+    const res = await call("t1")
+    expect(res.status).toBe(200)
+    expect(updateSocialPostMock).toHaveBeenCalledOnce()
+    expect(releaseMock).toHaveBeenCalledWith("v1")
+  })
+
   it("accepts draft Story posts without a connection check (lightweight pipeline)", async () => {
     withConnected([])
     getSocialPostByIdMock.mockResolvedValue({

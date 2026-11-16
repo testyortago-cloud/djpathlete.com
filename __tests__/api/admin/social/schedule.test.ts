@@ -278,6 +278,49 @@ describe("POST /api/admin/social/posts/:id/schedule", () => {
     expect(releaseMock).not.toHaveBeenCalled()
   })
 
+  // The coach consents per TikTok post on the "Post to TikTok" screen. A post with
+  // no settings must bounce here (calendar drag-and-drop too), not fail later at the cron.
+  it("refuses a TikTok post with no TikTok settings, before any write, release or platform call", async () => {
+    withConnected(["instagram", "tiktok"])
+    const scheduleOnPlatform = vi.fn()
+    registryGetMock.mockReturnValue({ name: "tiktok", publish: vi.fn(), scheduleOnPlatform })
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "t1",
+      approval_status: "approved",
+      platform: "tiktok",
+      post_type: "video",
+      source_video_id: "v1",
+      tiktok_settings: null,
+    })
+    const res = await callSchedule("t1", { scheduled_at: futureIso(60) })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: "Open this post and choose its TikTok settings first." })
+    expect(updateSocialPostMock).not.toHaveBeenCalled()
+    expect(releaseMock).not.toHaveBeenCalled()
+    expect(scheduleOnPlatform).not.toHaveBeenCalled()
+  })
+
+  it("schedules a TikTok post that already has TikTok settings (presence control)", async () => {
+    const future = futureIso(60)
+    withConnected(["instagram", "tiktok"])
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "t1",
+      approval_status: "approved",
+      platform: "tiktok",
+      post_type: "video",
+      source_video_id: "v1",
+      tiktok_settings: { privacy_level: "SELF_ONLY" },
+    })
+    updateSocialPostMock.mockResolvedValue({ id: "t1", approval_status: "scheduled", scheduled_at: future })
+    const res = await callSchedule("t1", { scheduled_at: future })
+    expect(res.status).toBe(200)
+    expect(updateSocialPostMock).toHaveBeenCalledWith("t1", {
+      approval_status: "scheduled",
+      scheduled_at: future,
+    })
+    expect(releaseMock).toHaveBeenCalledWith("v1")
+  })
+
   it("native path: when rescheduling, cancels the previous platform schedule first", async () => {
     const future = futureIso(60)
     getSocialPostByIdMock.mockResolvedValue({

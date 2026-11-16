@@ -74,6 +74,15 @@ export async function POST(
     )
   }
 
+  // TikTok needs the coach's per-post choices from the "Post to TikTok" screen.
+  // Refuse here, at click time, rather than queue a post the cron will fail.
+  if (post.platform === "tiktok" && !post.tiktok_settings) {
+    return NextResponse.json(
+      { error: "Open this post and choose its TikTok settings first." },
+      { status: 409 },
+    )
+  }
+
   const connections = await listPlatformConnections()
   const connected = new Set(
     connections.filter((c) => c.status === "connected").map((c) => c.plugin_name),
