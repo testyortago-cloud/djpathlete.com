@@ -6,6 +6,7 @@ const getSocialPostByIdMock = vi.fn()
 const updateSocialPostMock = vi.fn()
 const listPlatformConnectionsMock = vi.fn()
 const resolveMediaUrlMock = vi.fn()
+const getSocialPostWithMediaMock = vi.fn()
 const bootstrapPluginsMock = vi.fn()
 const registryGetMock = vi.fn()
 const creatorInfoMock = vi.fn()
@@ -17,13 +18,19 @@ vi.mock("@/lib/permissions/guard", () => ({
 vi.mock("@/lib/db/social-posts", () => ({
   getSocialPostById: (id: string) => getSocialPostByIdMock(id),
   updateSocialPost: (id: string, u: unknown) => updateSocialPostMock(id, u),
+  getSocialPostWithMedia: (id: string) => getSocialPostWithMediaMock(id),
+  listSocialPosts: vi.fn(),
 }))
 vi.mock("@/lib/db/platform-connections", () => ({
   listPlatformConnections: () => listPlatformConnectionsMock(),
 }))
 vi.mock("@/lib/social/resolve-media-url", () => ({
   resolveMediaUrl: (i: unknown) => resolveMediaUrlMock(i),
+  resolveCoverUrl: vi.fn(),
 }))
+// The route runs the REAL buildPluginInput, so the preview is checked against the
+// publisher's own choice of file (attached cut first, then the source video).
+vi.mock("@/lib/social/story-media", () => ({ resolveStoryMedia: vi.fn() }))
 vi.mock("@/lib/social/bootstrap", () => ({
   bootstrapPlugins: (c: unknown) => bootstrapPluginsMock(c),
 }))
@@ -58,6 +65,8 @@ function post(over: Record<string, unknown> = {}) {
   return {
     id: "p1",
     platform: "tiktok",
+    post_type: "video",
+    content: "caption",
     approval_status: "draft",
     source_video_id: "v1",
     media_url: null,
@@ -85,6 +94,7 @@ beforeEach(() => {
   listPlatformConnectionsMock.mockResolvedValue([])
   registryGetMock.mockReturnValue({ creatorInfo: creatorInfoMock })
   resolveMediaUrlMock.mockResolvedValue("https://signed.example/video.mp4")
+  getSocialPostWithMediaMock.mockResolvedValue({ media: [] })
   creatorInfoMock.mockResolvedValue({ ok: true, creator })
 })
 
@@ -124,6 +134,20 @@ describe("GET /api/admin/social/posts/:id/tiktok", () => {
     expect(res.status).toBe(409)
     expect(await res.json()).toEqual({ error: "This post has no video to send." })
     expect(resolveMediaUrlMock).toHaveBeenCalledWith({ source_video_id: "v1", media_url: null })
+    // The preview is resolved before creator info, so a post with no video never asks TikTok.
+    expect(creatorInfoMock).not.toHaveBeenCalled()
+  })
+
+  it("previews the attached cut, not the raw source video, when the post has one", async () => {
+    getSocialPostByIdMock.mockResolvedValue(post())
+    getSocialPostWithMediaMock.mockResolvedValue({ media: [{ asset: { public_url: "cuts/p1-captioned.mp4" } }] })
+    resolveMediaUrlMock.mockImplementation(async ({ media_url }: { media_url: string | null }) =>
+      media_url === "cuts/p1-captioned.mp4" ? "https://signed.example/cut.mp4" : "https://signed.example/video.mp4",
+    )
+    const res = await callGet()
+    expect(res.status).toBe(200)
+    expect((await res.json()).previewUrl).toBe("https://signed.example/cut.mp4")
+    expect(getSocialPostWithMediaMock).toHaveBeenCalledWith("p1")
   })
 
   it("409 with the plain-words refusal when TikTok refuses creator info", async () => {

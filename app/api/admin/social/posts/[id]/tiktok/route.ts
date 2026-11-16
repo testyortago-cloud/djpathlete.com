@@ -10,7 +10,7 @@ import { auth } from "@/lib/auth"
 import { getSocialPostById, updateSocialPost } from "@/lib/db/social-posts"
 import { listPlatformConnections } from "@/lib/db/platform-connections"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
-import { resolveMediaUrl } from "@/lib/social/resolve-media-url"
+import { buildPluginInput } from "@/lib/social/publish-runner"
 import { bootstrapPlugins } from "@/lib/social/bootstrap"
 import { pluginRegistry } from "@/lib/social/registry"
 import type { TikTokPlugin } from "@/lib/social/plugins/tiktok"
@@ -47,10 +47,10 @@ export async function GET(_request: NextRequest, { params }: Ctx) {
     return NextResponse.json({ error: "Connect TikTok on the Connections page first." }, { status: 409 })
   }
 
-  const previewUrl = await resolveMediaUrl({
-    source_video_id: post.source_video_id ?? null,
-    media_url: post.media_url ?? null,
-  })
+  // The publisher's own choice of file (an attached cut wins over the raw upload),
+  // so the preview and the length check see exactly what TikTok will receive.
+  const built = await buildPluginInput(post)
+  const previewUrl = "input" in built ? built.input.mediaUrl : null
   if (!previewUrl) {
     return NextResponse.json({ error: "This post has no video to send." }, { status: 409 })
   }
