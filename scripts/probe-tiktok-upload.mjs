@@ -92,7 +92,17 @@ globalThis.fetch = async (url, init) => {
 }
 
 const plugin = createTikTokPlugin({ access_token: "at", refresh_token: "rt", client_key: "ck", client_secret: "cs" })
-const result = await plugin.publish({ content: "probe", mediaUrl: MEDIA, scheduledAt: null })
+// publish() refuses without the coach's choices; the probe sends a complete, private set.
+const tiktokSettings = {
+  privacy_level: "SELF_ONLY",
+  allow_comment: false,
+  allow_duet: false,
+  allow_stitch: false,
+  disclose: false,
+  your_brand: false,
+  branded_content: false,
+}
+const result = await plugin.publish({ content: "probe", mediaUrl: MEDIA, scheduledAt: null, tiktokSettings })
 
 const receivedHash = crypto.createHash("sha256").update(received).digest("hex")
 console.log("file size        :", original.length, `(${(original.length / 1048576).toFixed(1)} MB)`)

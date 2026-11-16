@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { createTikTokPlugin, planUpload, chunkRange } from "@/lib/social/plugins/tiktok"
 import type { TikTokPostSettings } from "@/lib/validators/tiktok-post-settings"
+import type { PublishInput } from "@/lib/social/plugins/types"
 
 const BASE_CREDS = {
   access_token: "at",
@@ -166,7 +167,9 @@ describe("TikTokPlugin (Content Posting API)", () => {
     const { fetchMock } = mockFlow({ size: 1024 })
 
     const plugin = createTikTokPlugin(BASE_CREDS)
-    for (const tiktokSettings of [undefined, null]) {
+    // A malformed row ({} or a half-filled object) is refused like a missing one.
+    const malformed = [{}, { privacy_level: "SELF_ONLY" }] as unknown as PublishInput["tiktokSettings"][]
+    for (const tiktokSettings of [undefined, null, ...malformed]) {
       const result = await plugin.publish({
         content: "c",
         mediaUrl: MEDIA_URL,
@@ -408,6 +411,22 @@ describe("TikTokPlugin creatorInfo()", () => {
     const result = await createTikTokPlugin(BASE_CREDS).creatorInfo()
 
     expect(result).toEqual({ ok: false, code: "spam_risk_too_many_posts", message: "m" })
+  })
+
+  it("drops a privacy level this app does not know", async () => {
+    mockFetchSequence([
+      {
+        status: 200,
+        body: {
+          data: { privacy_level_options: ["PUBLIC_TO_EVERYONE", "SOME_NEW_LEVEL", "SELF_ONLY"] },
+          error: { code: "ok", message: "" },
+        },
+      },
+    ])
+
+    const result = await createTikTokPlugin(BASE_CREDS).creatorInfo()
+
+    expect(result.ok && result.creator.privacyLevelOptions).toEqual(["PUBLIC_TO_EVERYONE", "SELF_ONLY"])
   })
 
   it("reports a dead token as token_invalid", async () => {

@@ -57,7 +57,8 @@ export async function GET(_request: NextRequest, { params }: Ctx) {
 
   const result = await plugin.creatorInfo()
   if (!result.ok) {
-    if (result.code === "network_error") {
+    // A 5xx with no TikTok error body (code http_5xx) is TikTok being down, not a refusal.
+    if (result.code === "network_error" || /^http_5\d\d$/.test(result.code)) {
       return NextResponse.json({ error: "Couldn't reach TikTok. Try again." }, { status: 502 })
     }
     return NextResponse.json({ error: creatorInfoRefusal(result.code, result.message) }, { status: 409 })

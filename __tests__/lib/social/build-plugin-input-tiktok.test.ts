@@ -71,6 +71,8 @@ describe("buildPluginInput tiktok settings", () => {
 
   it("omits tiktokSettings for other platforms", async () => {
     const built = await buildPluginInput(post({ platform: "instagram", tiktok_settings: SETTINGS }))
+    // Presence first: an { error } result would make the absence check pass vacuously.
+    expect("input" in built).toBe(true)
     expect("input" in built && "tiktokSettings" in built.input).toBe(false)
   })
 })

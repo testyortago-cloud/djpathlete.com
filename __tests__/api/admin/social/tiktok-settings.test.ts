@@ -172,6 +172,14 @@ describe("GET /api/admin/social/posts/:id/tiktok", () => {
     expect(await res.json()).toEqual({ error: "Couldn't reach TikTok. Try again." })
   })
 
+  it("502 when TikTok answers a 5xx with no error body", async () => {
+    getSocialPostByIdMock.mockResolvedValue(post())
+    creatorInfoMock.mockResolvedValue({ ok: false, code: "http_503", message: "" })
+    const res = await callGet()
+    expect(res.status).toBe(502)
+    expect(await res.json()).toEqual({ error: "Couldn't reach TikTok. Try again." })
+  })
+
   it("200 with creator, preview URL and the settings saved earlier", async () => {
     getSocialPostByIdMock.mockResolvedValue(post({ tiktok_settings: settings }))
     const res = await callGet()

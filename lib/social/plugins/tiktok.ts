@@ -20,6 +20,7 @@
 
 import type { PublishPlugin, PublishInput, PublishResult, AnalyticsResult, ConnectResult } from "./types"
 import type { CreatorInfoResult, TikTokCreatorInfo } from "@/lib/social/tiktok-post-rules"
+import { TIKTOK_PRIVACY_LEVELS, tiktokPostSettingsSchema } from "@/lib/validators/tiktok-post-settings"
 
 const TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 const PUBLISH_INIT_URL = "https://open.tiktokapis.com/v2/post/publish/video/init/"
@@ -230,7 +231,8 @@ export function createTikTokPlugin(credentials: TikTokCredentials): TikTokPlugin
           avatarUrl: d.creator_avatar_url ?? null,
           username: d.creator_username ?? "",
           nickname: d.creator_nickname ?? "",
-          privacyLevelOptions: d.privacy_level_options ?? [],
+          // A level this app has no label for would render as a blank option.
+          privacyLevelOptions: (d.privacy_level_options ?? []).filter((l) => TIKTOK_PRIVACY_LEVELS.includes(l)),
           commentDisabled: d.comment_disabled ?? false,
           duetDisabled: d.duet_disabled ?? false,
           stitchDisabled: d.stitch_disabled ?? false,
@@ -242,10 +244,12 @@ export function createTikTokPlugin(credentials: TikTokCredentials): TikTokPlugin
     async publish(input: PublishInput): Promise<PublishResult> {
       // The one guard every publish path (Publish now, the cron, retry) routes
       // through. It runs before any request: TikTok forbids a default privacy.
-      const settings = input.tiktokSettings
-      if (!settings) {
+      // A malformed row (e.g. {}) is refused like a missing one.
+      const parsed = tiktokPostSettingsSchema.safeParse(input.tiktokSettings)
+      if (!parsed.success) {
         return { success: false, error: "Open this post and choose its TikTok settings before posting." }
       }
+      const settings = parsed.data
       if (!input.mediaUrl) {
         return { success: false, error: "TikTok requires a video URL" }
       }
