@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { PostsTabRow } from "@/components/admin/content-studio/drawer/PostsTabRow"
@@ -22,8 +23,8 @@ vi.mock("@/components/admin/social/TikTokPostDialog", () => ({
     open ? (
       <div data-testid="tiktok-dialog">
         <span>tiktok intent: {intent}</span>
-        <button onClick={() => onQueued({ ...post, approval_status: "approved" })}>stub queued</button>
-        <button onClick={() => onReadyToSchedule({ ...post, content: "saved caption" })}>stub ready</button>
+        <button onClick={() => onQueued({ ...post, content: "caption from dialog", approval_status: "approved" })}>stub queued</button>
+        <button onClick={() => onReadyToSchedule({ ...post, content: "caption from dialog" })}>stub ready</button>
       </div>
     ) : null,
 }))
@@ -218,7 +219,7 @@ describe("<PostsTabRow>", () => {
       const onMutate = renderTikTok()
       fireEvent.click(screen.getByRole("button", { name: /^schedule$/i }))
       fireEvent.click(screen.getByText("stub ready"))
-      expect(onMutate).toHaveBeenCalledWith(expect.objectContaining({ content: "saved caption" }))
+      expect(onMutate).toHaveBeenCalledWith(expect.objectContaining({ content: "caption from dialog" }))
       expect(screen.queryByTestId("tiktok-dialog")).not.toBeInTheDocument()
       expect(screen.getByText("Schedule post")).toBeInTheDocument()
     })
@@ -228,6 +229,23 @@ describe("<PostsTabRow>", () => {
       fireEvent.click(screen.getByRole("button", { name: /publish now/i }))
       fireEvent.click(screen.getByText("stub queued"))
       expect(onMutate).toHaveBeenCalledWith(expect.objectContaining({ approval_status: "approved" }))
+    })
+
+    // The row applies the updated post, as the real parent does.
+    function Harness() {
+      const [post, setPost] = useState(makePost({ platform: "tiktok" }))
+      return <PostsTabRow post={post} isExpanded={true} onToggle={vi.fn()} onMutate={setPost} />
+    }
+
+    it.each([
+      ["Publish now", "stub queued"],
+      ["Schedule", "stub ready"],
+    ])("TikTok: after %s saves a new caption, the caption box shows it and Save caption stays off", (button, stub) => {
+      render(<Harness />)
+      fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${button}$`, "i") }))
+      fireEvent.click(screen.getByText(stub))
+      expect(screen.getByRole("textbox", { name: /caption/i, hidden: true })).toHaveValue("caption from dialog")
+      expect(screen.getByRole("button", { name: /save caption/i, hidden: true })).toBeDisabled()
     })
 
     it("TikTok: Retry now on a failed post opens the dialog to publish", () => {

@@ -285,9 +285,13 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate,
           onOpenChange={(open) => {
             if (!open) setTiktokIntent(null)
           }}
-          onQueued={onMutate}
+          onQueued={(updated) => {
+            onMutate(updated)
+            setDraft(updated.content)
+          }}
           onReadyToSchedule={(updated) => {
             onMutate(updated)
+            setDraft(updated.content)
             setTiktokIntent(null)
             setScheduleOpen(true)
           }}

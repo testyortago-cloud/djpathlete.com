@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { SocialPostCard } from "@/components/admin/social/SocialPostCard"
@@ -22,8 +23,8 @@ vi.mock("@/components/admin/social/TikTokPostDialog", () => ({
     open ? (
       <div data-testid="tiktok-dialog">
         <span>tiktok intent: {intent}</span>
-        <button onClick={() => onQueued({ ...post, approval_status: "approved" })}>stub queued</button>
-        <button onClick={() => onReadyToSchedule({ ...post, content: "saved caption" })}>stub ready</button>
+        <button onClick={() => onQueued({ ...post, content: "caption from dialog", approval_status: "approved" })}>stub queued</button>
+        <button onClick={() => onReadyToSchedule({ ...post, content: "caption from dialog" })}>stub ready</button>
       </div>
     ) : null,
 }))
@@ -76,7 +77,7 @@ describe("<SocialPostCard> TikTok routing", () => {
     const onUpdate = renderCard(makePost({ platform: "tiktok" }))
     fireEvent.click(screen.getByRole("button", { name: /^schedule$/i }))
     fireEvent.click(screen.getByText("stub ready"))
-    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ content: "saved caption" }))
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ content: "caption from dialog" }))
     expect(screen.queryByTestId("tiktok-dialog")).not.toBeInTheDocument()
     expect(screen.getByText("Schedule post")).toBeInTheDocument()
   })
@@ -86,6 +87,18 @@ describe("<SocialPostCard> TikTok routing", () => {
     fireEvent.click(screen.getByRole("button", { name: /publish now/i }))
     fireEvent.click(screen.getByText("stub queued"))
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ approval_status: "approved" }))
+  })
+
+  it("TikTok: after the dialog saves a new caption, Edit opens with that caption, not the old one", () => {
+    function Harness() {
+      const [post, setPost] = useState(makePost({ platform: "tiktok" }))
+      return <SocialPostCard post={post} onUpdate={setPost} onRemove={vi.fn()} />
+    }
+    render(<Harness />)
+    fireEvent.click(screen.getByRole("button", { name: /publish now/i }))
+    fireEvent.click(screen.getByText("stub queued"))
+    fireEvent.click(screen.getByRole("button", { name: /edit/i }))
+    expect(screen.getByRole("textbox")).toHaveValue("caption from dialog")
   })
 
   it("TikTok: Retry now on a failed post opens the dialog to publish", () => {

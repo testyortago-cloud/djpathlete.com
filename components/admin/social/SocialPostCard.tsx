@@ -253,9 +253,13 @@ export function SocialPostCard({
           onOpenChange={(open) => {
             if (!open) setTiktokIntent(null)
           }}
-          onQueued={onUpdate}
+          onQueued={(updated) => {
+            onUpdate(updated)
+            setDraftContent(updated.content)
+          }}
           onReadyToSchedule={(updated) => {
             onUpdate(updated)
+            setDraftContent(updated.content)
             setTiktokIntent(null)
             setScheduleOpen(true)
           }}
