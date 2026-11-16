@@ -1,4 +1,5 @@
 import type { PermissionMap } from "@/lib/permissions/registry"
+import type { TikTokPostSettings } from "@/lib/validators/tiktok-post-settings"
 
 /**
  * `staff` = invited teammate with a scoped permission map (see
@@ -1817,6 +1818,8 @@ export interface SocialPost {
   link_image_url?: string | null
   /** 00284. Plugin-owned JSON while the platform processes media; null otherwise. Optional: DB-defaulted. */
   platform_publish_state?: Record<string, unknown> | null
+  /** 00301. The coach's per-post TikTok choices; null until they have been through the Post to TikTok dialog. Optional: DB-defaulted. */
+  tiktok_settings?: TikTokPostSettings | null
   created_at: string
   updated_at: string
 }

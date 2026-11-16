@@ -1,5 +1,6 @@
 // lib/social/plugins/types.ts
 import type { SocialPlatform, PlatformConnection, PostType } from "@/types/database"
+import type { TikTokPostSettings } from "@/lib/validators/tiktok-post-settings"
 
 /** A link card (LinkedIn "article" content). LinkedIn's API never scrapes a URL itself. */
 export interface PublishLink {
@@ -46,6 +47,8 @@ export interface PublishInput {
   postType?: PostType
   /** Signed JPEG URL of the cover the operator chose for the source video. Instagram Reels only today. */
   coverUrl?: string | null
+  /** The coach's per-post TikTok choices. Set by the publish runner for TikTok posts only; the TikTok plugin refuses to post without them. */
+  tiktokSettings?: TikTokPostSettings | null
   scheduledAt: string | null
   metadata?: Record<string, unknown>
   /** Saved state from an earlier `pending` answer for this post. */

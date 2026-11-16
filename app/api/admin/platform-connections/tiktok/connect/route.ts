@@ -7,7 +7,7 @@ import crypto from "crypto"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 
-const SCOPES = ["user.info.basic", "video.publish", "video.upload"]
+const SCOPES = ["user.info.basic", "video.publish"]
 
 const STATE_COOKIE = "tk_oauth_state"
 const VERIFIER_COOKIE = "tk_oauth_verifier"

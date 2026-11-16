@@ -169,6 +169,7 @@ export async function buildPluginInput(
       mediaKinds,
       postType: post.post_type,
       ...(coverUrl !== undefined ? { coverUrl } : {}),
+      ...(post.platform === "tiktok" ? { tiktokSettings: post.tiktok_settings ?? null } : {}),
       scheduledAt: null,
       ...(post.link_url && post.link_title
         ? {

@@ -1,6 +1,7 @@
 // __tests__/lib/social/tiktok.test.ts
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { createTikTokPlugin, planUpload, chunkRange } from "@/lib/social/plugins/tiktok"
+import type { TikTokPostSettings } from "@/lib/validators/tiktok-post-settings"
 
 const BASE_CREDS = {
   access_token: "at",
@@ -28,6 +29,17 @@ const UPLOAD_URL = "https://upload.tiktokapis.com/upload/abc"
 const INIT_URL = "https://open.tiktokapis.com/v2/post/publish/video/init/"
 const TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 const MB = 1024 * 1024
+const CREATOR_INFO_URL = "https://open.tiktokapis.com/v2/post/publish/creator_info/query/"
+
+const SETTINGS: TikTokPostSettings = {
+  privacy_level: "MUTUAL_FOLLOW_FRIENDS",
+  allow_comment: true,
+  allow_duet: false,
+  allow_stitch: true,
+  disclose: true,
+  your_brand: true,
+  branded_content: false,
+}
 
 interface FlowCall {
   url: string
@@ -129,6 +141,7 @@ describe("TikTokPlugin (Content Posting API)", () => {
       content: "Hook caption",
       mediaUrl: MEDIA_URL,
       scheduledAt: null,
+      tiktokSettings: SETTINGS,
     })
 
     expect(result.success).toBe(true)
@@ -146,15 +159,69 @@ describe("TikTokPlugin (Content Posting API)", () => {
     // The URL must not travel to TikTok at all any more.
     expect(body.source_info.video_url).toBeUndefined()
     expect(init.body as string).not.toContain("PULL_FROM_URL")
-    expect(body.post_info.privacy_level).toBe("SELF_ONLY")
     expect(body.post_info.title).toBe("Hook caption")
+  })
+
+  it("refuses to publish without tiktok settings and makes no request", async () => {
+    const { fetchMock } = mockFlow({ size: 1024 })
+
+    const plugin = createTikTokPlugin(BASE_CREDS)
+    for (const tiktokSettings of [undefined, null]) {
+      const result = await plugin.publish({
+        content: "c",
+        mediaUrl: MEDIA_URL,
+        scheduledAt: null,
+        tiktokSettings,
+      })
+      expect(result).toEqual({
+        success: false,
+        error: "Open this post and choose its TikTok settings before posting.",
+      })
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("sends the coach's settings in post_info", async () => {
+    const { calls } = mockFlow({ size: 1024 })
+
+    const plugin = createTikTokPlugin(BASE_CREDS)
+    await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null, tiktokSettings: SETTINGS })
+
+    const init = calls.find((c) => c.url === INIT_URL)!
+    const postInfo = (JSON.parse(init.body as string) as { post_info: Record<string, unknown> }).post_info
+    expect(postInfo).toMatchObject({
+      privacy_level: "MUTUAL_FOLLOW_FRIENDS",
+      disable_comment: false,
+      disable_duet: true,
+      disable_stitch: false,
+      brand_organic_toggle: true,
+      brand_content_toggle: false,
+    })
+  })
+
+  it("ignores TIKTOK_PRIVACY_LEVEL", async () => {
+    vi.stubEnv("TIKTOK_PRIVACY_LEVEL", "PUBLIC_TO_EVERYONE")
+    const { calls } = mockFlow({ size: 1024 })
+
+    const plugin = createTikTokPlugin(BASE_CREDS)
+    await plugin.publish({
+      content: "c",
+      mediaUrl: MEDIA_URL,
+      scheduledAt: null,
+      tiktokSettings: { ...SETTINGS, privacy_level: "SELF_ONLY" },
+    })
+    vi.unstubAllEnvs()
+
+    const init = calls.find((c) => c.url === INIT_URL)!
+    const postInfo = (JSON.parse(init.body as string) as { post_info: { privacy_level: string } }).post_info
+    expect(postInfo.privacy_level).toBe("SELF_ONLY")
   })
 
   it("publish() PUTs the bytes to upload_url with a whole-file Content-Range", async () => {
     const { puts } = mockFlow({ size: 2 * MB })
 
     const plugin = createTikTokPlugin(BASE_CREDS)
-    await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null })
+    await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null, tiktokSettings: SETTINGS })
 
     expect(puts()).toHaveLength(1)
     expect(puts()[0].method).toBe("PUT")
@@ -167,7 +234,7 @@ describe("TikTokPlugin (Content Posting API)", () => {
     const { puts } = mockFlow({ size: 1024 })
 
     const plugin = createTikTokPlugin(BASE_CREDS)
-    await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null })
+    await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null, tiktokSettings: SETTINGS })
 
     expect(puts()[0].headers["authorization"]).toBeUndefined()
   })
@@ -177,7 +244,7 @@ describe("TikTokPlugin (Content Posting API)", () => {
     const { puts } = mockFlow({ size })
 
     const plugin = createTikTokPlugin(BASE_CREDS)
-    const result = await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null })
+    const result = await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null, tiktokSettings: SETTINGS })
 
     expect(result.success).toBe(true)
     const ranges = puts().map((c) => c.headers["content-range"])
@@ -192,7 +259,7 @@ describe("TikTokPlugin (Content Posting API)", () => {
     const { calls, puts } = mockFlow({ size: null })
 
     const plugin = createTikTokPlugin(BASE_CREDS)
-    const result = await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null })
+    const result = await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null, tiktokSettings: SETTINGS })
 
     expect(result.success).toBe(true)
     // No Range header on the fallback read -- it fetches the whole file once.
@@ -206,7 +273,7 @@ describe("TikTokPlugin (Content Posting API)", () => {
     mockFlow({ size: 1024, putStatus: 403 })
 
     const plugin = createTikTokPlugin(BASE_CREDS)
-    const result = await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null })
+    const result = await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null, tiktokSettings: SETTINGS })
 
     expect(result.success).toBe(false)
     expect(result.error).toContain("chunk 1/1")
@@ -217,7 +284,7 @@ describe("TikTokPlugin (Content Posting API)", () => {
     mockFlow({ size: 1024, initBody: { data: { publish_id: "pub_only" } } })
 
     const plugin = createTikTokPlugin(BASE_CREDS)
-    const result = await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null })
+    const result = await plugin.publish({ content: "c", mediaUrl: MEDIA_URL, scheduledAt: null, tiktokSettings: SETTINGS })
 
     expect(result.success).toBe(false)
     expect(result.error).toContain("upload_url")
@@ -225,7 +292,7 @@ describe("TikTokPlugin (Content Posting API)", () => {
 
   it("publish() returns error when mediaUrl is missing", async () => {
     const plugin = createTikTokPlugin(BASE_CREDS)
-    const result = await plugin.publish({ content: "caption", mediaUrl: null, scheduledAt: null })
+    const result = await plugin.publish({ content: "caption", mediaUrl: null, scheduledAt: null, tiktokSettings: SETTINGS })
     expect(result.success).toBe(false)
     expect(result.error).toContain("video URL")
   })
@@ -238,6 +305,7 @@ describe("TikTokPlugin (Content Posting API)", () => {
       content: "caption",
       mediaUrl: MEDIA_URL,
       scheduledAt: null,
+      tiktokSettings: SETTINGS,
     })
 
     expect(result.success).toBe(true)
@@ -285,6 +353,72 @@ describe("TikTokPlugin (Content Posting API)", () => {
     const result = await plugin.connect({})
     expect(result.status).toBe("connected")
     expect(result.account_handle).toBe("@djpathlete")
+  })
+})
+
+describe("TikTokPlugin creatorInfo()", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("maps TikTok's fields", async () => {
+    const fetchMock = mockFetchSequence([
+      {
+        status: 200,
+        body: {
+          data: {
+            creator_avatar_url: "https://p16.example/a.jpeg",
+            creator_username: "djpathlete",
+            creator_nickname: "DJ Pathlete",
+            privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"],
+            comment_disabled: false,
+            duet_disabled: true,
+            stitch_disabled: false,
+            max_video_post_duration_sec: 600,
+          },
+          error: { code: "ok", message: "" },
+        },
+      },
+    ])
+
+    const result = await createTikTokPlugin(BASE_CREDS).creatorInfo()
+
+    expect(result).toEqual({
+      ok: true,
+      creator: {
+        avatarUrl: "https://p16.example/a.jpeg",
+        username: "djpathlete",
+        nickname: "DJ Pathlete",
+        privacyLevelOptions: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"],
+        commentDisabled: false,
+        duetDisabled: true,
+        stitchDisabled: false,
+        maxVideoPostDurationSec: 600,
+      },
+    })
+    expect(fetchMock.mock.calls[0][0]).toBe(CREATOR_INFO_URL)
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe("POST")
+  })
+
+  it("returns TikTok's error code", async () => {
+    mockFetchSequence([
+      { status: 200, body: { data: {}, error: { code: "spam_risk_too_many_posts", message: "m" } } },
+    ])
+
+    const result = await createTikTokPlugin(BASE_CREDS).creatorInfo()
+
+    expect(result).toEqual({ ok: false, code: "spam_risk_too_many_posts", message: "m" })
+  })
+
+  it("reports a dead token as token_invalid", async () => {
+    mockFetchSequence([
+      { status: 401, body: { error: { code: "access_token_invalid" } } },
+      { status: 400, body: { error: "invalid_grant" } },
+    ])
+
+    const result = await createTikTokPlugin(BASE_CREDS).creatorInfo()
+
+    expect(result).toEqual({ ok: false, code: "token_invalid", message: "" })
   })
 })
 

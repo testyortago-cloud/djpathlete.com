@@ -13,13 +13,17 @@
 // TikTok never fetches from us -- init returns an upload_url and we PUT the
 // bytes to it. Do not "simplify" this back to PULL_FROM_URL.
 //
-// Privacy: without App Review, posts are forced to SELF_ONLY. After review,
-// set TIKTOK_PRIVACY_LEVEL=PUBLIC_TO_EVERYONE in env to go live.
+// Privacy and interaction settings: the coach chooses them for each post in the
+// Post to TikTok dialog (social_posts.tiktok_settings). TikTok's Direct Post rules
+// forbid a default, so publish() refuses to run without them. Without App Review
+// TikTok forces the post to SELF_ONLY whatever the coach picked.
 
 import type { PublishPlugin, PublishInput, PublishResult, AnalyticsResult, ConnectResult } from "./types"
+import type { CreatorInfoResult, TikTokCreatorInfo } from "@/lib/social/tiktok-post-rules"
 
 const TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 const PUBLISH_INIT_URL = "https://open.tiktokapis.com/v2/post/publish/video/init/"
+const CREATOR_INFO_URL = "https://open.tiktokapis.com/v2/post/publish/creator_info/query/"
 const PUBLISH_STATUS_URL = "https://open.tiktokapis.com/v2/post/publish/status/fetch/"
 const USER_INFO_URL =
   "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,display_name,username"
@@ -32,24 +36,6 @@ export interface TikTokCredentials {
   client_key: string
   client_secret: string
   open_id?: string
-}
-
-type PrivacyLevel =
-  | "SELF_ONLY"
-  | "PUBLIC_TO_EVERYONE"
-  | "MUTUAL_FOLLOW_FRIENDS"
-  | "FOLLOWER_OF_CREATOR"
-
-function defaultPrivacy(): PrivacyLevel {
-  const env = process.env.TIKTOK_PRIVACY_LEVEL as PrivacyLevel | undefined
-  if (
-    env === "PUBLIC_TO_EVERYONE" ||
-    env === "MUTUAL_FOLLOW_FRIENDS" ||
-    env === "FOLLOWER_OF_CREATOR"
-  ) {
-    return env
-  }
-  return "SELF_ONLY"
 }
 
 // TikTok's media-transfer rules for FILE_UPLOAD:
@@ -139,7 +125,12 @@ async function loadVideoSource(url: string): Promise<VideoSource | { error: stri
   }
 }
 
-export function createTikTokPlugin(credentials: TikTokCredentials): PublishPlugin {
+export interface TikTokPlugin extends PublishPlugin {
+  /** What this TikTok account may do right now: audiences, interaction locks, max length. */
+  creatorInfo(): Promise<CreatorInfoResult>
+}
+
+export function createTikTokPlugin(credentials: TikTokCredentials): TikTokPlugin {
   let { access_token, refresh_token } = credentials
   const { client_key, client_secret } = credentials
 
@@ -198,7 +189,63 @@ export function createTikTokPlugin(credentials: TikTokCredentials): PublishPlugi
       }
     },
 
+    async creatorInfo(): Promise<CreatorInfoResult> {
+      let resp: Response
+      try {
+        resp = await authedFetch(CREATOR_INFO_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json; charset=UTF-8" },
+          body: "{}",
+        })
+      } catch (err) {
+        return { ok: false, code: "network_error", message: (err as Error).message }
+      }
+      // authedFetch already tried a refresh; a 401 here means the token is dead.
+      if (resp.status === 401) return { ok: false, code: "token_invalid", message: "" }
+
+      const body = (await resp.json().catch(() => ({}))) as {
+        data?: {
+          creator_avatar_url?: string
+          creator_username?: string
+          creator_nickname?: string
+          privacy_level_options?: TikTokCreatorInfo["privacyLevelOptions"]
+          comment_disabled?: boolean
+          duet_disabled?: boolean
+          stitch_disabled?: boolean
+          max_video_post_duration_sec?: number
+        }
+        error?: { code?: string; message?: string }
+      }
+      if (!resp.ok || (body.error?.code && body.error.code !== "ok")) {
+        return {
+          ok: false,
+          code: body.error?.code ?? `http_${resp.status}`,
+          message: body.error?.message ?? "",
+        }
+      }
+      const d = body.data ?? {}
+      return {
+        ok: true,
+        creator: {
+          avatarUrl: d.creator_avatar_url ?? null,
+          username: d.creator_username ?? "",
+          nickname: d.creator_nickname ?? "",
+          privacyLevelOptions: d.privacy_level_options ?? [],
+          commentDisabled: d.comment_disabled ?? false,
+          duetDisabled: d.duet_disabled ?? false,
+          stitchDisabled: d.stitch_disabled ?? false,
+          maxVideoPostDurationSec: d.max_video_post_duration_sec ?? 0,
+        },
+      }
+    },
+
     async publish(input: PublishInput): Promise<PublishResult> {
+      // The one guard every publish path (Publish now, the cron, retry) routes
+      // through. It runs before any request: TikTok forbids a default privacy.
+      const settings = input.tiktokSettings
+      if (!settings) {
+        return { success: false, error: "Open this post and choose its TikTok settings before posting." }
+      }
       if (!input.mediaUrl) {
         return { success: false, error: "TikTok requires a video URL" }
       }
@@ -212,10 +259,12 @@ export function createTikTokPlugin(credentials: TikTokCredentials): PublishPlugi
       const initBody = {
         post_info: {
           title: input.content.slice(0, 2200),
-          privacy_level: defaultPrivacy(),
-          disable_duet: false,
-          disable_comment: false,
-          disable_stitch: false,
+          privacy_level: settings.privacy_level,
+          disable_comment: !settings.allow_comment,
+          disable_duet: !settings.allow_duet,
+          disable_stitch: !settings.allow_stitch,
+          brand_organic_toggle: settings.your_brand,
+          brand_content_toggle: settings.branded_content,
           video_cover_timestamp_ms: 1000,
         },
         source_info: {
@@ -355,7 +404,7 @@ export function createTikTokPlugin(credentials: TikTokCredentials): PublishPlugi
         "2. Add the redirect URI for this app's /api/admin/platform-connections/tiktok/callback.",
         "3. Copy Client Key + Client Secret into Vercel env (TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET).",
         "4. Click Connect and grant `video.publish` + `user.info.basic`.",
-        "5. While the app is unaudited, posts are SELF_ONLY. After App Review, set TIKTOK_PRIVACY_LEVEL=PUBLIC_TO_EVERYONE.",
+        "5. Privacy is chosen per post in the Post to TikTok dialog. While the app is unaudited, TikTok keeps every post private (SELF_ONLY) whatever is chosen.",
       ].join("\n")
     },
   }
