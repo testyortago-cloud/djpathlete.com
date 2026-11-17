@@ -171,7 +171,8 @@ export function TikTokPostDialog({
   const footerButton = "inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium"
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    // Escape / overlay click mid-request would let the in-flight send act on a closed (or reopened) dialog.
+    <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent showCloseButton={false} className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-primary">

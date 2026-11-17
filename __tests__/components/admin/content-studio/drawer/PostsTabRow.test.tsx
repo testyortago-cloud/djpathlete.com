@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { PostsTabRow } from "@/components/admin/content-studio/drawer/PostsTabRow"
 import type { SocialPost } from "@/types/database"
 
@@ -271,6 +271,8 @@ describe("<PostsTabRow>", () => {
       fireEvent.click(screen.getByRole("button", { name: /publish now/i }))
       expect(fetchMock).toHaveBeenCalledWith("/api/admin/social/posts/post-1/publish-now", { method: "POST" })
       expect(screen.queryByTestId("tiktok-dialog")).not.toBeInTheDocument()
+      // Let the request settle (button back from "Queueing...") so no update lands outside act().
+      await waitFor(() => expect(screen.getByRole("button", { name: /publish now/i })).toBeEnabled())
     })
 
     it("Instagram: Schedule still opens the schedule picker, not the TikTok dialog", () => {

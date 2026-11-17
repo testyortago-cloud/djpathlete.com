@@ -55,7 +55,7 @@ function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } })
 }
 
-type Handler = (init?: RequestInit) => Response
+type Handler = (init?: RequestInit) => Response | Promise<Response>
 let fetchMock: ReturnType<typeof vi.fn>
 
 // One fake server for the four routes the dialog talks to. Unknown calls throw,
@@ -391,6 +391,36 @@ describe("<TikTokPostDialog> — saving and sending", () => {
       expect.objectContaining({ id: "post-1", approval_status: "scheduled", tiktok_settings: sent }),
     )
     expect(toast.success).toHaveBeenCalledWith(SUCCESS)
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it("ignores Escape while a request is in flight", async () => {
+    let releasePut!: () => void
+    serve({
+      PUT: (init) =>
+        new Promise<Response>((resolve) => {
+          releasePut = () => resolve(json(200, { tiktok_settings: JSON.parse(String(init?.body)).settings }))
+        }),
+    })
+    const { onOpenChange, onQueued } = renderDialog()
+    await privacySelect()
+    loadVideo(30)
+    choosePrivacy("PUBLIC_TO_EVERYONE")
+
+    // Presence control: with nothing in flight, Escape does ask to close.
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    onOpenChange.mockClear()
+
+    fireEvent.click(postButton())
+    await waitFor(() => expect(calls("PUT", "/tiktok")).toHaveLength(1))
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" })
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    releasePut()
+    await waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1))
+    // The only close is the one the finished send makes itself.
+    expect(onOpenChange).toHaveBeenCalledTimes(1)
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
