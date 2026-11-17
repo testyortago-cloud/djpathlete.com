@@ -145,9 +145,10 @@ export function ManualPostDialog({
       const failures = results.filter((r) => !r.ok)
 
       if (successes.length > 0) {
-        // A post the server left "approved" has no time yet (TikTok): say so, not "scheduled".
-        const held = successes.filter((r) => r.approvalStatus === "approved")
-        const scheduled = successes.filter((r) => r.approvalStatus !== "approved")
+        // Only a post the server actually scheduled is called scheduled. A TikTok post is
+        // left "approved" (no time yet), or "draft" when the edit gate held it.
+        const scheduled = successes.filter((r) => r.approvalStatus === "scheduled")
+        const held = successes.filter((r) => r.approvalStatus !== "scheduled")
         const parts: string[] = []
         if (scheduled.length === 1) parts.push(`Post scheduled to ${scheduled[0].platform}`)
         else if (scheduled.length > 1) parts.push(`Scheduled to ${scheduled.length} platforms`)

@@ -297,6 +297,23 @@ describe("<ManualPostDialog>", () => {
     expect(message).toContain("Post scheduled to instagram")
   })
 
+  it("a TikTok post the edit gate left as a draft is not called scheduled", async () => {
+    fetchMock.mockImplementation((_url: string, init: { body: string }) => {
+      const platform = JSON.parse(init.body).platform
+      const approval_status = platform === "tiktok" ? "draft" : "scheduled"
+      return Promise.resolve(new Response(JSON.stringify({ id: `p-${platform}`, approval_status }), { status: 200 }))
+    })
+    render(<ManualPostDialog dayKey="2099-02-02" onClose={vi.fn()} onCreated={vi.fn()} />)
+    fireEvent.click(screen.getByLabelText(/Post to tiktok/i))
+    fireEvent.click(screen.getByRole("button", { name: /fake video upload/i }))
+    fireEvent.click(screen.getByRole("button", { name: /create/i }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+    const message = toastSuccess.mock.calls[0][0] as string
+    expect(message).toContain("TikTok: open the post to send it")
+    expect(message).toContain("Post scheduled to instagram")
+    expect(message).not.toMatch(/scheduled to tiktok/i)
+  })
+
   it("creating Instagram + Facebook keeps the plain scheduled toast", async () => {
     fetchMock.mockImplementation(() =>
       Promise.resolve(new Response(JSON.stringify({ id: "p", approval_status: "scheduled" }), { status: 200 })),

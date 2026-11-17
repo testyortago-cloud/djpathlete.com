@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { DndContext } from "@dnd-kit/core"
 import { PostChip } from "@/components/admin/content-studio/calendar/PostChip"
 import { postToChip, newsletterToChip, type CalendarChip } from "@/lib/content-studio/calendar-chips"
@@ -24,6 +24,11 @@ const chip: CalendarChip = postToChip(
   },
   "rotational-reboot.mp4",
 )
+
+const push = vi.hoisted(() => vi.fn())
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }) }))
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
+vi.mock("sonner", () => ({ toast }))
 
 function wrap(ui: React.ReactNode) {
   return <DndContext>{ui}</DndContext>
@@ -139,5 +144,48 @@ describe("<PostChip>", () => {
     }
     render(wrap(<PostChip chip={entry} />))
     expect(screen.getByText(/Draft blog/)).toBeInTheDocument()
+  })
+})
+
+describe("<PostChip> Retry on a failed post", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  function failedChip(platform: "instagram" | "tiktok") {
+    return { ...postToChip({ ...chip.raw, platform } as never, null), status: "failed" as const, rejection_notes: "oops" } as CalendarChip
+  }
+
+  function clickRetry() {
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /failed/i }))
+    fireEvent.click(screen.getByRole("button", { name: /Retry/i }))
+  }
+
+  it("TikTok: opens the post's own page (fresh creator info) and does not call publish-now", () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal("fetch", fetchMock)
+    render(wrap(<PostChip chip={failedChip("tiktok")} />))
+    clickRetry()
+    expect(push).toHaveBeenCalledWith("/admin/content/post/p1")
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("Instagram: still requeues through publish-now", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }))
+    vi.stubGlobal("fetch", fetchMock)
+    render(wrap(<PostChip chip={failedChip("instagram")} />))
+    clickRetry()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Requeued for publishing"))
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/social/posts/p1/publish-now", { method: "POST" })
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it("shows the route's message in plain words, not raw JSON", async () => {
+    const body = JSON.stringify({ error: "Cannot publish a published post" })
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 409 })))
+    render(wrap(<PostChip chip={failedChip("instagram")} />))
+    clickRetry()
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Cannot publish a published post"))
   })
 })

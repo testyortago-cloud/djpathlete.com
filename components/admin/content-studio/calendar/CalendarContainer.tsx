@@ -4,6 +4,7 @@ import { useState, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { toast } from "sonner"
+import { readApiError } from "@/lib/errors/humanize"
 import { CalendarViewToggle } from "./CalendarViewToggle"
 import { MonthGrid } from "./MonthGrid"
 import { WeekGrid } from "./WeekGrid"
@@ -171,7 +172,7 @@ export function CalendarContainer({
       body: JSON.stringify({ scheduled_at: scheduledAtIso }),
     })
     if (!res.ok) {
-      toast.error(await res.text())
+      toast.error(await readApiError(res, "Schedule failed"))
     } else {
       toast.success("Scheduled")
       router.refresh()

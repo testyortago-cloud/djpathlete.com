@@ -10,6 +10,7 @@ import { isLocked, type CalendarChip } from "@/lib/content-studio/calendar-chips
 import type { SocialPlatform, CalendarEntryType } from "@/types/database"
 import { PLATFORM_ICONS } from "@/lib/social/platform-ui"
 import { cn } from "@/lib/utils"
+import { readApiError } from "@/lib/errors/humanize"
 import { PostTypeBadge } from "@/components/admin/content-studio/shared/PostTypeBadge"
 
 function destinationFor(chip: CalendarChip): string {
@@ -93,11 +94,17 @@ export function PostChip({ chip }: PostChipProps) {
 
   async function retry() {
     if (chip.kind !== "post") return
+    // TikTok needs fresh creator info and the coach's choices on every send, so
+    // Retry opens the post's own page (and its Post to TikTok screen) instead.
+    if (chip.platformOrType === "tiktok") {
+      router.push(drawerHref)
+      return
+    }
     try {
       const res = await fetch(`/api/admin/social/posts/${chip.id}/publish-now`, {
         method: "POST",
       })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) throw new Error(await readApiError(res, "Retry failed"))
       toast.success("Requeued for publishing")
     } catch (err) {
       toast.error((err as Error).message || "Retry failed")
