@@ -95,7 +95,9 @@ Schema refinements: `disclose` → at least one of `your_brand` / `branded_conte
 - `GET /api/admin/social/posts/[id]/tiktok` → `{ creator, previewUrl }` or a refusal. Admin-gated like the
   sibling routes (`canAccessAdminPath`). 404 unless the post exists and `platform === "tiktok"`. Bootstraps
   plugins from `listPlatformConnections()`, calls a new `creatorInfo()` on the TikTok plugin. `previewUrl`
-  comes from `resolveMediaUrl` — the same function the publisher uses, so the preview is the exact file posted.
+  comes from `buildPluginInput(post)` — the publisher's own resolver, so the preview is the exact file posted.
+  (Amended 2026-11-17 after the final review: the draft said `resolveMediaUrl`, but the publisher prefers an
+  attached rendered cut over the raw upload, so that would have previewed and measured the wrong file.)
   A creator-info error (cap reached, banned, token dead) returns 409 with TikTok's message mapped to plain
   words, so the dialog shows "try again later" instead of a form.
 - `PUT /api/admin/social/posts/[id]/tiktok` with `{ caption, settings }` → validates, refuses unless the post

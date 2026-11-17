@@ -1,13 +1,22 @@
 # TikTok app review — submission pack
 
-Built 2026-09-21 for the "App details" / "App review" form.
+Built 2026-09-21 for the "App details" / "App review" form. **Updated 2026-11-17 after TikTok rejected
+it** (scopes mismatch; demo recorded by an automated tool; scopes not each shown; no end-to-end post).
 
 | Item | File | State |
 |---|---|---|
 | App icon | `tiktok-app-icon-1024.png` | ✅ ready |
 | Description | below, 112/120 chars | ✅ ready |
-| Products + scopes | `app-review-explanation.txt`, 972/1000 | ✅ ready |
-| Demo video | `tiktok-demo.mp4` + `tiktok-demo-poster.png` | ⚠️ renders, but shows a QUEUED post, not a landed one |
+| Products + scopes | `app-review-explanation.txt`, 956/1000 — `user.info.basic` + `video.publish` only | ✅ rewritten 2026-11-17 |
+| Demo video | record by hand: `manual-recording-script.md` | ⏳ to record, against the sandbox |
+| ~~Old demo~~ | `tiktok-demo.mp4` | ❌ rejected — automated recording; do not resubmit |
+
+**What changed on 2026-11-17.** The site no longer requests `video.upload` (it never used it).
+Every TikTok post now goes through a "Post to TikTok" screen that follows TikTok's Direct Post
+rules (account shown, privacy with no default, interactions off by default, disclosure, Music
+Usage Confirmation), and the privacy level is chosen per post on that screen. The old
+`TIKTOK_PRIVACY_LEVEL` environment variable is gone. Everything below this line is the
+2026-09-21 history.
 
 ## 1. App icon
 
