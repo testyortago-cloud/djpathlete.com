@@ -28,6 +28,7 @@ function mockFetchSequence(responses: Array<{ status: number; body: unknown }>) 
 const MEDIA_URL = "https://media.example.com/v.mp4"
 const UPLOAD_URL = "https://upload.tiktokapis.com/upload/abc"
 const INIT_URL = "https://open.tiktokapis.com/v2/post/publish/video/init/"
+const INBOX_INIT_URL = "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"
 const TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 const MB = 1024 * 1024
 const CREATOR_INFO_URL = "https://open.tiktokapis.com/v2/post/publish/creator_info/query/"
@@ -105,7 +106,7 @@ function mockFlow(
       })
     }
     if (url === TOKEN_URL) return json(200, { access_token: "new_at", refresh_token: "new_rt" })
-    if (url === INIT_URL) {
+    if (url === INIT_URL || url === INBOX_INIT_URL) {
       initSeen++
       if (refreshOnFirstInit && initSeen === 1) {
         return json(401, { error: { code: "access_token_invalid" } })
@@ -356,6 +357,101 @@ describe("TikTokPlugin (Content Posting API)", () => {
     const result = await plugin.connect({})
     expect(result.status).toBe("connected")
     expect(result.account_handle).toBe("@djpathlete")
+  })
+})
+
+// "Send to TikTok drafts": the video.upload scope. The inbox API takes no
+// post_info -- caption, privacy and the rest are chosen in the TikTok app.
+describe("TikTokPlugin uploadDraft()", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("inits on the inbox URL with FILE_UPLOAD and no post_info", async () => {
+    const { calls } = mockFlow({ size: 2 * MB })
+
+    const result = await createTikTokPlugin(BASE_CREDS).uploadDraft({ mediaUrl: MEDIA_URL })
+
+    expect(result).toEqual({ success: true, platform_post_id: "pub_abc123" })
+    expect(calls.some((c) => c.url === INIT_URL)).toBe(false)
+    const init = calls.find((c) => c.url === INBOX_INIT_URL)!
+    expect(init.method).toBe("POST")
+    expect(init.headers["authorization"]).toBe("Bearer at")
+    expect(JSON.parse(init.body as string)).toEqual({
+      source_info: { source: "FILE_UPLOAD", video_size: 2 * MB, chunk_size: 2 * MB, total_chunk_count: 1 },
+    })
+  })
+
+  it("PUTs the chunks to upload_url without the access token", async () => {
+    const { puts } = mockFlow({ size: 200 * MB })
+
+    await createTikTokPlugin(BASE_CREDS).uploadDraft({ mediaUrl: MEDIA_URL })
+
+    expect(puts().map((c) => c.headers["content-range"])).toEqual([
+      `bytes 0-${64 * MB - 1}/${200 * MB}`,
+      `bytes ${64 * MB}-${128 * MB - 1}/${200 * MB}`,
+      `bytes ${128 * MB}-${200 * MB - 1}/${200 * MB}`,
+    ])
+    for (const put of puts()) {
+      expect(put.method).toBe("PUT")
+      expect(put.headers["authorization"]).toBeUndefined()
+    }
+  })
+
+  it("refuses a missing mediaUrl without any request", async () => {
+    const { fetchMock } = mockFlow()
+
+    const result = await createTikTokPlugin(BASE_CREDS).uploadDraft({ mediaUrl: null })
+
+    expect(result).toEqual({ success: false, error: "TikTok requires a video URL" })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("maps an init 4xx to a failure that carries the status and body", async () => {
+    const { puts } = mockFlow({
+      initStatus: 403,
+      initBody: { error: { code: "scope_not_authorized", message: "no scope" } },
+    })
+
+    const result = await createTikTokPlugin(BASE_CREDS).uploadDraft({ mediaUrl: MEDIA_URL })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("403")
+    expect(result.error).toContain("scope_not_authorized")
+    expect(puts()).toHaveLength(0)
+  })
+
+  it("maps a TikTok error code on a 200 to a failure", async () => {
+    const { puts } = mockFlow({ initBody: { error: { code: "spam_risk", message: "Too many drafts" } } })
+
+    const result = await createTikTokPlugin(BASE_CREDS).uploadDraft({ mediaUrl: MEDIA_URL })
+
+    expect(result).toEqual({ success: false, error: "TikTok: Too many drafts" })
+    expect(puts()).toHaveLength(0)
+  })
+
+  it("fails when init returns no publish_id or no upload_url", async () => {
+    mockFlow({ initBody: { data: { upload_url: UPLOAD_URL } } })
+    expect((await createTikTokPlugin(BASE_CREDS).uploadDraft({ mediaUrl: MEDIA_URL })).error).toContain("publish_id")
+
+    mockFlow({ initBody: { data: { publish_id: "pub_only" } } })
+    expect((await createTikTokPlugin(BASE_CREDS).uploadDraft({ mediaUrl: MEDIA_URL })).error).toContain("upload_url")
+  })
+
+  it("reports a failed chunk upload rather than claiming success", async () => {
+    mockFlow({ size: 1024, putStatus: 403 })
+
+    const result = await createTikTokPlugin(BASE_CREDS).uploadDraft({ mediaUrl: MEDIA_URL })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("chunk 1/1")
+    expect(result.error).toContain("403")
+  })
+
+  it("needs no saved TikTok settings", async () => {
+    mockFlow()
+    const result = await createTikTokPlugin(BASE_CREDS).uploadDraft({ mediaUrl: MEDIA_URL })
+    expect(result.success).toBe(true)
   })
 })
 

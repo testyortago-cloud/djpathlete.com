@@ -24,6 +24,8 @@ import { TIKTOK_PRIVACY_LEVELS, tiktokPostSettingsSchema } from "@/lib/validator
 
 const TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 const PUBLISH_INIT_URL = "https://open.tiktokapis.com/v2/post/publish/video/init/"
+// video.upload: the video lands in the coach's TikTok inbox as a draft.
+const INBOX_INIT_URL = "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"
 const CREATOR_INFO_URL = "https://open.tiktokapis.com/v2/post/publish/creator_info/query/"
 const PUBLISH_STATUS_URL = "https://open.tiktokapis.com/v2/post/publish/status/fetch/"
 const USER_INFO_URL =
@@ -129,6 +131,11 @@ async function loadVideoSource(url: string): Promise<VideoSource | { error: stri
 export interface TikTokPlugin extends PublishPlugin {
   /** What this TikTok account may do right now: audiences, interaction locks, max length. */
   creatorInfo(): Promise<CreatorInfoResult>
+  /**
+   * Send a video to the coach's TikTok inbox as a draft (the `video.upload` scope).
+   * Caption, privacy and interactions are chosen in the TikTok app, so no settings.
+   */
+  uploadDraft(input: { mediaUrl: string | null }): Promise<PublishResult>
 }
 
 export function createTikTokPlugin(credentials: TikTokCredentials): TikTokPlugin {
@@ -165,6 +172,81 @@ export function createTikTokPlugin(credentials: TikTokCredentials): TikTokPlugin
       resp = await fetch(url, { ...init, headers })
     }
     return resp
+  }
+
+  /**
+   * Init + upload shared by publish() and uploadDraft(): both endpoints answer
+   * the same shape (publish_id + upload_url) and take the same FILE_UPLOAD bytes.
+   * `post_info` is the only thing that differs, so the caller passes the init
+   * body and the label its errors should carry.
+   */
+  async function initAndUpload(
+    initUrl: string,
+    initBody: Record<string, unknown>,
+    source: VideoSource,
+    plan: UploadPlan,
+    label: string,
+  ): Promise<PublishResult> {
+    const initResp = await authedFetch(initUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=UTF-8" },
+      body: JSON.stringify(initBody),
+    })
+    if (!initResp.ok) {
+      const text = await initResp.text().catch(() => "")
+      return {
+        success: false,
+        error: `TikTok ${label} init failed (${initResp.status}): ${text.slice(0, 300)}`,
+      }
+    }
+
+    const initData = (await initResp.json()) as {
+      data?: { publish_id?: string; upload_url?: string }
+      error?: { code?: string; message?: string }
+    }
+    if (initData.error?.code && initData.error.code !== "ok") {
+      return { success: false, error: `TikTok: ${initData.error.message ?? initData.error.code}` }
+    }
+    const publishId = initData.data?.publish_id
+    if (!publishId) {
+      return { success: false, error: "TikTok init returned no publish_id" }
+    }
+    const uploadUrl = initData.data?.upload_url
+    if (!uploadUrl) {
+      return { success: false, error: "TikTok init returned no upload_url" }
+    }
+
+    // Plain fetch, NOT authedFetch: upload_url is already a pre-signed TikTok
+    // URL, and attaching our bearer token would leak it to their CDN host.
+    for (let i = 0; i < plan.totalChunkCount; i++) {
+      const { start, end } = chunkRange(i, plan, source.size)
+      let body: ArrayBuffer
+      try {
+        body = await source.read(start, end)
+      } catch (err) {
+        return { success: false, error: `TikTok: ${(err as Error).message}` }
+      }
+      const putResp = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": source.contentType,
+          "Content-Range": `bytes ${start}-${end}/${source.size}`,
+        },
+        body,
+      })
+      if (!putResp.ok) {
+        const text = await putResp.text().catch(() => "")
+        return {
+          success: false,
+          error: `TikTok chunk ${i + 1}/${plan.totalChunkCount} upload failed (${putResp.status}): ${text.slice(0, 200)}`,
+        }
+      }
+    }
+
+    // TikTok ingests the video asynchronously. We return the publish_id;
+    // the analytics path resolves it to the real post id later via
+    // /v2/post/publish/status/fetch/.
+    return { success: true, platform_post_id: publishId }
   }
 
   return {
@@ -279,66 +361,28 @@ export function createTikTokPlugin(credentials: TikTokCredentials): TikTokPlugin
         },
       }
 
-      const initResp = await authedFetch(PUBLISH_INIT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json; charset=UTF-8" },
-        body: JSON.stringify(initBody),
-      })
-      if (!initResp.ok) {
-        const text = await initResp.text().catch(() => "")
-        return {
-          success: false,
-          error: `TikTok publish init failed (${initResp.status}): ${text.slice(0, 300)}`,
-        }
-      }
+      return initAndUpload(PUBLISH_INIT_URL, initBody, source, plan, "publish")
+    },
 
-      const initData = (await initResp.json()) as {
-        data?: { publish_id?: string; upload_url?: string }
-        error?: { code?: string; message?: string }
+    async uploadDraft(input: { mediaUrl: string | null }): Promise<PublishResult> {
+      if (!input.mediaUrl) {
+        return { success: false, error: "TikTok requires a video URL" }
       }
-      if (initData.error?.code && initData.error.code !== "ok") {
-        return { success: false, error: `TikTok: ${initData.error.message ?? initData.error.code}` }
+      const source = await loadVideoSource(input.mediaUrl)
+      if ("error" in source) {
+        return { success: false, error: `TikTok: ${source.error}` }
       }
-      const publishId = initData.data?.publish_id
-      if (!publishId) {
-        return { success: false, error: "TikTok init returned no publish_id" }
+      const plan = planUpload(source.size)
+      // The inbox API takes no post_info: the coach finishes the post in TikTok.
+      const initBody = {
+        source_info: {
+          source: "FILE_UPLOAD",
+          video_size: source.size,
+          chunk_size: plan.chunkSize,
+          total_chunk_count: plan.totalChunkCount,
+        },
       }
-      const uploadUrl = initData.data?.upload_url
-      if (!uploadUrl) {
-        return { success: false, error: "TikTok init returned no upload_url" }
-      }
-
-      // Plain fetch, NOT authedFetch: upload_url is already a pre-signed TikTok
-      // URL, and attaching our bearer token would leak it to their CDN host.
-      for (let i = 0; i < plan.totalChunkCount; i++) {
-        const { start, end } = chunkRange(i, plan, source.size)
-        let body: ArrayBuffer
-        try {
-          body = await source.read(start, end)
-        } catch (err) {
-          return { success: false, error: `TikTok: ${(err as Error).message}` }
-        }
-        const putResp = await fetch(uploadUrl, {
-          method: "PUT",
-          headers: {
-            "Content-Type": source.contentType,
-            "Content-Range": `bytes ${start}-${end}/${source.size}`,
-          },
-          body,
-        })
-        if (!putResp.ok) {
-          const text = await putResp.text().catch(() => "")
-          return {
-            success: false,
-            error: `TikTok chunk ${i + 1}/${plan.totalChunkCount} upload failed (${putResp.status}): ${text.slice(0, 200)}`,
-          }
-        }
-      }
-
-      // TikTok ingests the video asynchronously. We return the publish_id;
-      // the analytics path resolves it to the real post id later via
-      // /v2/post/publish/status/fetch/.
-      return { success: true, platform_post_id: publishId }
+      return initAndUpload(INBOX_INIT_URL, initBody, source, plan, "draft")
     },
 
     async fetchAnalytics(platformPostId: string): Promise<AnalyticsResult> {
@@ -407,7 +451,7 @@ export function createTikTokPlugin(credentials: TikTokCredentials): TikTokPlugin
         "1. Create an app at https://developers.tiktok.com — enable Login Kit and Content Posting API.",
         "2. Add the redirect URI for this app's /api/admin/platform-connections/tiktok/callback.",
         "3. Copy Client Key + Client Secret into Vercel env (TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET).",
-        "4. Click Connect and grant `video.publish` + `user.info.basic`.",
+        "4. Click Connect and grant `video.publish`, `video.upload` + `user.info.basic`.",
         "5. Privacy is chosen per post in the Post to TikTok dialog. While the app is unaudited, TikTok keeps every post private (SELF_ONLY) whatever is chosen.",
       ].join("\n")
     },
