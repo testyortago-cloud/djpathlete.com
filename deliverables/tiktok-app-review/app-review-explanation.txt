@@ -1,7 +1,9 @@
-DarrenJPaul is a strength-coaching website. Coaches upload their own training videos and post them to their own TikTok account.
+DarrenJPaul is a strength-coaching website. Coaches post their own training videos to their own TikTok account.
 
-Login Kit (user.info.basic): used when a coach links TikTok on our Connections page. We read the display name and username only, to show which account is linked.
+Login Kit (user.info.basic): when a coach links TikTok on our Connections page, we read the display name and username only, to show which account is linked.
 
-Content Posting API (video.publish, Direct Post): in Content Studio the coach clicks Publish now or Schedule on a video. This opens our Post to TikTok screen, which loads the creator info and shows the account name, a video preview and the editable caption. The coach must choose who can view the video (there is no default), can turn on comments, duets and stitches (all off by default), can disclose commercial content, and sees TikTok's Music Usage Confirmation before posting. We then upload the file (FILE_UPLOAD). Nothing is posted until the coach confirms that screen.
+video.publish (Direct Post): in Content Studio the coach clicks Publish now or Schedule, which opens our Post to TikTok screen. It loads creator info and shows the account name, a video preview and the editable caption. The coach must choose who can view the video (no default), can turn on comments, duets and stitches (all off by default), can disclose commercial content, and sees TikTok's Music Usage Confirmation. Nothing posts until the coach confirms.
 
-Coaches can unlink TikTok at any time on the Connections page, which revokes the token.
+video.upload: on the same screen, Send to TikTok drafts uploads the video to the coach's TikTok inbox, where they finish and post it in the TikTok app.
+
+Coaches can unlink TikTok at any time on the Connections page.

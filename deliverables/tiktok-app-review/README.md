@@ -7,11 +7,14 @@ it** (scopes mismatch; demo recorded by an automated tool; scopes not each shown
 |---|---|---|
 | App icon | `tiktok-app-icon-1024.png` | ✅ ready |
 | Description | below, 112/120 chars | ✅ ready |
-| Products + scopes | `app-review-explanation.txt`, 956/1000 — `user.info.basic` + `video.publish` only | ✅ rewritten 2026-11-17 |
+| Products + scopes | `app-review-explanation.txt`, 946/1000 — `user.info.basic`, `video.publish`, `video.upload` | ✅ rewritten 2026-11-17 |
 | Demo video | record by hand: `manual-recording-script.md` | ⏳ to record, against the sandbox |
 | ~~Old demo~~ | `tiktok-demo.mp4` | ❌ rejected — automated recording; do not resubmit |
 
-**What changed on 2026-11-17.** The site no longer requests `video.upload` (it never used it).
+**What changed on 2026-11-17.** The rejection's "scopes mismatch" was three scopes selected in the
+portal that nothing used (`user.info.profile`, `user.info.stats`, `video.list`); they were removed
+from the app in the portal. `video.upload` is bundled with the Content Posting API and cannot be
+removed, so the app now uses it: "Send to TikTok drafts" uploads a video to the coach's TikTok inbox.
 Every TikTok post now goes through a "Post to TikTok" screen that follows TikTok's Direct Post
 rules (account shown, privacy with no default, interactions off by default, disclosure, Music
 Usage Confirmation), and the privacy level is chosen per post on that screen. The old

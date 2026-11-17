@@ -11,11 +11,13 @@ and title cards, which is exactly what the reviewer refused.
 
 Do these in order. Steps 1 and 3 change production, so only do them when you are ready to record.
 
-1. **The Post to TikTok screen must be live.** The branch `worktree-tiktok-post-dialog` has to be
-   merged and deployed first. Without it, the reviewer sees a post screen that breaks TikTok's rules.
+1. **The Post to TikTok screen and "Send to TikTok drafts" must be live.** Both are merged and
+   deployed (the drafts button since branch `worktree-tiktok-drafts`).
 2. **Create the sandbox** in the TikTok Developer Portal (your app → Sandbox):
    - Add **Login Kit** and **Content Posting API** (with Direct Post turned on).
-   - Tick only the scopes **user.info.basic** and **video.publish**. Leave **video.upload** off.
+   - The scopes should be exactly **user.info.basic**, **video.publish** and **video.upload**. The last
+     one comes with the Content Posting API and cannot be removed, which is why the demo shows drafts.
+     Remove anything else.
    - In Login Kit, add the redirect URI
      `https://www.darrenjpaul.com/api/admin/platform-connections/tiktok/callback`.
    - Under **Target users**, add a TikTok account you own. Set that TikTok account to **private** in
@@ -36,7 +38,8 @@ Do these in order. Steps 1 and 3 change production, so only do them when you are
   read.
 - No captions, arrows, zooms, music, speed-ups or title cards. Trimming the start and the end is fine.
 - To show the post on TikTok, use **tiktok.com in the same browser**. Do not film a phone with a camera.
-- Each file must be under 50 MB. You may upload up to 5 videos, so two clips is fine (see step 8).
+- Each file must be under 50 MB. You may upload up to 5 videos, so several clips are fine (see steps 8
+  and 10).
   If a file is too big, open it in QuickTime and use File → Export As → 1080p.
 
 ## The walk-through
@@ -68,14 +71,24 @@ Do these in order. Steps 1 and 3 change production, so only do them when you are
    end to end.
    - If you would rather not record the 5-minute wait, stop the recording after step 6. Then start a
      second recording at step 7. Upload both clips.
-9. **Optional:** back on Connections, click Disconnect on TikTok, to show a coach can unlink at any time.
+9. **Send one to drafts (video.upload).** Back in Content Studio, open a different video's **TikTok**
+   row and click **Publish now**. On the Post to TikTok screen, read out the line under the buttons
+   ("Drafts open in the TikTok app…") and click **Send to TikTok drafts**. The message "Sent to your
+   TikTok drafts. Open TikTok and check your inbox to finish and post it." appears.
+10. **Show the draft arriving.** On your phone, start the phone's own screen recording (iPhone: Control
+    Centre → Screen Recording), open the TikTok app as the sandbox account, open the inbox
+    notification for the upload, and show the video ready to edit and post. Stop. Upload this phone
+    recording as its own clip. A phone's own screen recording is fine; filming the phone with a camera
+    is not.
+11. **Optional:** back on Connections, click Disconnect on TikTok, to show a coach can unlink at any time.
 
 ## Filling in the form
 
-- **Products and scopes:** Login Kit (user.info.basic) and Content Posting API (video.publish).
-  **Untick video.upload.** It was the "Scopes mismatch" in the rejection; the site no longer asks for it.
-- **Products and scopes explanation:** paste `app-review-explanation.txt` (956 of 1000 characters).
-- **Demo video:** the clip or clips you just recorded.
+- **Products and scopes:** Login Kit (user.info.basic) and Content Posting API (video.publish,
+  video.upload). On 2026-11-17 the three scopes nothing used (user.info.profile, user.info.stats,
+  video.list) were removed. They were the "Scopes mismatch" in the rejection.
+- **Products and scopes explanation:** paste `app-review-explanation.txt` (946 of 1000 characters).
+- **Demo video:** remove the old `tiktok-demo.mp4` first, then upload the clips you just recorded.
 
 ## After you submit
 
