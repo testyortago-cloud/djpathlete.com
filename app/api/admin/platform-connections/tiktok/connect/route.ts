@@ -7,7 +7,9 @@ import crypto from "crypto"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 
-const SCOPES = ["user.info.basic", "video.publish"]
+// video.upload powers "Send to TikTok drafts". TikTok's portal bundles it with the
+// Content Posting API product, so it cannot be dropped and is requested here too.
+const SCOPES = ["user.info.basic", "video.publish", "video.upload"]
 
 const STATE_COOKIE = "tk_oauth_state"
 const VERIFIER_COOKIE = "tk_oauth_verifier"
