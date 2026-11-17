@@ -16,6 +16,8 @@ vi.mock("sonner", () => ({ toast }))
 const MUSIC_URL = "https://www.tiktok.com/legal/page/global/music-usage-confirmation/en"
 const BC_URL = "https://www.tiktok.com/legal/page/global/bc-policy/en"
 const SUCCESS = "Sent to TikTok. It can take a few minutes to appear on your profile."
+const DRAFT_SUCCESS = "Sent to your TikTok drafts. Open TikTok and check your inbox to finish and post it."
+const DRAFT_NOTE = "Drafts open in the TikTok app, where you add the caption and choose who can see it."
 
 function makePost(overrides: Partial<SocialPost> = {}): SocialPost {
   return {
@@ -58,10 +60,10 @@ function json(status: number, body: unknown) {
 type Handler = (init?: RequestInit) => Response | Promise<Response>
 let fetchMock: ReturnType<typeof vi.fn>
 
-// One fake server for the four routes the dialog talks to. Unknown calls throw,
+// One fake server for the five routes the dialog talks to. Unknown calls throw,
 // so a request the dialog should not make fails the test loudly.
-function serve(over: Partial<Record<"GET" | "PUT" | "PATCH" | "PUBLISH", Handler>> = {}) {
-  const handlers: Record<"GET" | "PUT" | "PATCH" | "PUBLISH", Handler> = {
+function serve(over: Partial<Record<"GET" | "PUT" | "PATCH" | "PUBLISH" | "DRAFT", Handler>> = {}) {
+  const handlers: Record<"GET" | "PUT" | "PATCH" | "PUBLISH" | "DRAFT", Handler> = {
     GET: () => json(200, { creator: makeCreator(), previewUrl: "https://cdn.test/video.mp4", saved: null }),
     PUT: (init) => json(200, { tiktok_settings: JSON.parse(String(init?.body)).settings }),
     PATCH: (init) =>
@@ -72,6 +74,7 @@ function serve(over: Partial<Record<"GET" | "PUT" | "PATCH" | "PUBLISH", Handler
         version: 2,
       }),
     PUBLISH: () => json(200, { approval_status: "scheduled", scheduled_at: "2026-11-17T10:00:00Z" }),
+    DRAFT: () => json(200, { publish_id: "pub_1" }),
     ...over,
   }
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -80,6 +83,7 @@ function serve(over: Partial<Record<"GET" | "PUT" | "PATCH" | "PUBLISH", Handler
     if (url === "/api/admin/social/posts/post-1/tiktok" && method === "PUT") return handlers.PUT(init)
     if (url === "/api/admin/social/posts/post-1" && method === "PATCH") return handlers.PATCH(init)
     if (url === "/api/admin/social/posts/post-1/publish-now" && method === "POST") return handlers.PUBLISH(init)
+    if (url === "/api/admin/social/posts/post-1/tiktok/draft" && method === "POST") return handlers.DRAFT(init)
     throw new Error(`unexpected request ${method} ${url}`)
   })
   global.fetch = fetchMock as unknown as typeof fetch
@@ -114,6 +118,7 @@ function choosePrivacy(value: string) {
 }
 
 const postButton = () => screen.getByRole("button", { name: "Post to TikTok" })
+const draftButton = () => screen.getByRole("button", { name: "Send to TikTok drafts" })
 const declaration = () => screen.getByText(/By posting, you agree to TikTok/)
 
 beforeEach(() => {
@@ -580,5 +585,140 @@ describe("<TikTokPostDialog> — reopening", () => {
       expect(screen.getByRole("checkbox", { name })).not.toBeChecked()
     }
     expect(screen.getByRole("switch", { name: "Disclose video content" })).toHaveAttribute("aria-checked", "false")
+  })
+})
+
+describe("<TikTokPostDialog> — Send to TikTok drafts", () => {
+  it("is offered when posting now, with a note about finishing in the TikTok app", async () => {
+    renderDialog()
+    await privacySelect()
+    expect(draftButton()).toBeInTheDocument()
+    expect(screen.getByText(DRAFT_NOTE)).toBeInTheDocument()
+  })
+
+  it("is not offered when scheduling", async () => {
+    renderDialog({ intent: "schedule" })
+    await privacySelect()
+    expect(screen.queryByRole("button", { name: "Send to TikTok drafts" })).not.toBeInTheDocument()
+    expect(screen.queryByText(DRAFT_NOTE)).not.toBeInTheDocument()
+  })
+
+  it("is not offered while the account is refused or failed to load", async () => {
+    serve({ GET: () => json(409, { error: "This TikTok account has reached today's posting limit." }) })
+    renderDialog()
+    await screen.findByText("This TikTok account has reached today's posting limit.")
+    expect(screen.queryByRole("button", { name: "Send to TikTok drafts" })).not.toBeInTheDocument()
+  })
+
+  it("waits for the video length, but needs no privacy choice", async () => {
+    renderDialog()
+    const select = await privacySelect()
+    expect(select.value).toBe("")
+    expect(draftButton()).toBeDisabled()
+    loadVideo(30)
+    expect(select.value).toBe("")
+    expect(postButton()).toBeDisabled()
+    expect(draftButton()).toBeEnabled()
+  })
+
+  it("is blocked for a video longer than the account allows, or one that cannot load", async () => {
+    renderDialog()
+    await privacySelect()
+    loadVideo(601)
+    expect(draftButton()).toBeDisabled()
+    // Presence control: a video inside the limit unblocks it.
+    loadVideo(600)
+    expect(draftButton()).toBeEnabled()
+    fireEvent.error(document.querySelector("video")!)
+    expect(draftButton()).toBeDisabled()
+  })
+
+  it("sends one request, toasts the plain message and closes without queuing anything", async () => {
+    const { onOpenChange, onQueued, onReadyToSchedule } = renderDialog()
+    await privacySelect()
+    loadVideo(30)
+    fireEvent.click(draftButton())
+
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(calls("POST", "/tiktok/draft")).toHaveLength(1)
+    expect(toast.success).toHaveBeenCalledWith(DRAFT_SUCCESS)
+    expect(onQueued).not.toHaveBeenCalled()
+    expect(onReadyToSchedule).not.toHaveBeenCalled()
+    // A draft saves no settings, no caption and does not publish.
+    expect(calls("PUT", "/tiktok")).toHaveLength(0)
+    expect(calls("PATCH", "/post-1")).toHaveLength(0)
+    expect(calls("POST", "/publish-now")).toHaveLength(0)
+  })
+
+  it("sends once on a double click", async () => {
+    const { onOpenChange } = renderDialog()
+    await privacySelect()
+    loadVideo(30)
+    fireEvent.click(draftButton())
+    fireEvent.click(draftButton())
+
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(calls("POST", "/tiktok/draft")).toHaveLength(1)
+  })
+
+  it("shows the error and stays open when the send fails", async () => {
+    serve({ DRAFT: () => json(502, { error: "TikTok draft init failed (403): scope_not_authorized" }) })
+    const { onOpenChange, onQueued } = renderDialog()
+    await privacySelect()
+    loadVideo(30)
+    fireEvent.click(draftButton())
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("TikTok draft init failed (403): scope_not_authorized"))
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(onQueued).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+    await waitFor(() => expect(draftButton()).toBeEnabled())
+  })
+
+  it("is disabled while the primary send is in flight", async () => {
+    let releasePut!: () => void
+    serve({
+      PUT: (init) =>
+        new Promise<Response>((resolve) => {
+          releasePut = () => resolve(json(200, { tiktok_settings: JSON.parse(String(init?.body)).settings }))
+        }),
+    })
+    const { onQueued } = renderDialog()
+    await privacySelect()
+    loadVideo(30)
+    choosePrivacy("PUBLIC_TO_EVERYONE")
+    expect(draftButton()).toBeEnabled()
+
+    fireEvent.click(postButton())
+    await waitFor(() => expect(calls("PUT", "/tiktok")).toHaveLength(1))
+    expect(draftButton()).toBeDisabled()
+    fireEvent.click(draftButton())
+    expect(calls("POST", "/tiktok/draft")).toHaveLength(0)
+
+    releasePut()
+    await waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1))
+  })
+
+  it("disables Post to TikTok while a draft is being sent", async () => {
+    let releaseDraft!: () => void
+    serve({
+      DRAFT: () =>
+        new Promise<Response>((resolve) => {
+          releaseDraft = () => resolve(json(200, { publish_id: "pub_1" }))
+        }),
+    })
+    const { onOpenChange } = renderDialog()
+    await privacySelect()
+    loadVideo(30)
+    choosePrivacy("PUBLIC_TO_EVERYONE")
+    fireEvent.click(draftButton())
+    await waitFor(() => expect(calls("POST", "/tiktok/draft")).toHaveLength(1))
+    expect(postButton()).toBeDisabled()
+    // Escape mid-request is ignored, as for the primary send.
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" })
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    releaseDraft()
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
   })
 })

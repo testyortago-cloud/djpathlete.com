@@ -16,6 +16,7 @@ import {
   PRIVACY_LABELS,
   disclosureLabel,
   emptyDraft,
+  lengthBlocker,
   prefillDraft,
   submitBlocker,
   toSettings,
@@ -30,6 +31,7 @@ const CAPTION_MAX = 2200
 const MUSIC_URL = "https://www.tiktok.com/legal/page/global/music-usage-confirmation/en"
 const BC_URL = "https://www.tiktok.com/legal/page/global/bc-policy/en"
 const SUCCESS = "Sent to TikTok. It can take a few minutes to appear on your profile."
+const DRAFT_SUCCESS = "Sent to your TikTok drafts. Open TikTok and check your inbox to finish and post it."
 const JSON_HEADERS = { "content-type": "application/json" }
 
 interface TikTokPostDialogProps {
@@ -160,6 +162,26 @@ export function TikTokPostDialog({
         onQueued({ ...updated, ...data, rejection_notes: null })
         toast.success(SUCCESS)
       }
+      onOpenChange(false)
+    } catch (err) {
+      toast.error((err as Error).message || "Something went wrong")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // A draft needs no privacy choice (that is made in the TikTok app), only a video
+  // TikTok will take. Same length rule and shared `busy` as the primary button.
+  const draftBlocked = !creator || videoFailed || lengthBlocker(creator, duration) !== null
+
+  async function sendDraft() {
+    if (busy || draftBlocked) return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/admin/social/posts/${post.id}/tiktok/draft`, { method: "POST" })
+      if (!res.ok) throw new Error(await readApiError(res, "Couldn't send the draft."))
+      toast.success(DRAFT_SUCCESS)
+      // The post itself is unchanged, so the parent is not told (no onQueued).
       onOpenChange(false)
     } catch (err) {
       toast.error((err as Error).message || "Something went wrong")
@@ -383,6 +405,19 @@ export function TikTokPostDialog({
                 Retry
               </button>
             )}
+            {load.state === "ready" && intent === "now" && (
+              <button
+                type="button"
+                onClick={sendDraft}
+                disabled={draftBlocked || busy}
+                className={cn(
+                  footerButton,
+                  "border border-border bg-white text-primary hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50",
+                )}
+              >
+                Send to TikTok drafts
+              </button>
+            )}
             {load.state === "ready" && (
               <button
                 type="button"
@@ -402,6 +437,11 @@ export function TikTokPostDialog({
           {blocker && (
             <p id="tiktok-post-blocker" className="text-right text-xs text-muted-foreground">
               {blocker}
+            </p>
+          )}
+          {load.state === "ready" && intent === "now" && (
+            <p className="text-right text-xs text-muted-foreground">
+              Drafts open in the TikTok app, where you add the caption and choose who can see it.
             </p>
           )}
         </div>

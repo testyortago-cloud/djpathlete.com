@@ -50,16 +50,24 @@ export function prefillDraft(saved: TikTokPostSettings | null, creator: TikTokCr
   }
 }
 
+// The video-length half of submitBlocker, shared with "Send to TikTok drafts",
+// which needs no privacy choice but obeys the same length rule.
+export function lengthBlocker(creator: TikTokCreatorInfo, durationSec: number | null): string | null {
+  if (durationSec === null) return "Loading the video…"
+  if (durationSec > creator.maxVideoPostDurationSec) {
+    return `This video is ${durationSec} seconds long. TikTok allows up to ${creator.maxVideoPostDurationSec} seconds for this account.`
+  }
+  return null
+}
+
 // First reason the Post button must stay off, or null. Order is deliberate.
 export function submitBlocker(
   draft: TikTokDraft,
   creator: TikTokCreatorInfo,
   durationSec: number | null,
 ): string | null {
-  if (durationSec === null) return "Loading the video…"
-  if (durationSec > creator.maxVideoPostDurationSec) {
-    return `This video is ${durationSec} seconds long. TikTok allows up to ${creator.maxVideoPostDurationSec} seconds for this account.`
-  }
+  const length = lengthBlocker(creator, durationSec)
+  if (length) return length
   if (draft.privacy_level === null) return "Choose who can view this video."
   if (draft.disclose && !draft.your_brand && !draft.branded_content) {
     return "You need to indicate if your content promotes yourself, a third party, or both."
