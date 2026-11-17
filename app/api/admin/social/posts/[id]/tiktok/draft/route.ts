@@ -27,8 +27,11 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
   if (!post || post.platform !== "tiktok") {
     return NextResponse.json({ error: "Social post not found" }, { status: 404 })
   }
-  if (post.approval_status === "published" || post.approval_status === "rejected") {
-    return NextResponse.json({ error: `Cannot change a ${post.approval_status} post` }, { status: 409 })
+  if (post.approval_status === "published") {
+    return NextResponse.json({ error: "This post is already published." }, { status: 409 })
+  }
+  if (post.approval_status === "rejected") {
+    return NextResponse.json({ error: "This post was rejected." }, { status: 409 })
   }
 
   bootstrapPlugins(await listPlatformConnections())
@@ -44,7 +47,13 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
     return NextResponse.json({ error: "This post has no video to send." }, { status: 409 })
   }
 
-  const result = await plugin.uploadDraft({ mediaUrl })
+  // uploadDraft returns failures, but a network error or a non-JSON init body throws.
+  let result
+  try {
+    result = await plugin.uploadDraft({ mediaUrl })
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message || "Couldn't reach TikTok. Try again." }, { status: 502 })
+  }
   if (!result.success) {
     return NextResponse.json({ error: result.error }, { status: 502 })
   }

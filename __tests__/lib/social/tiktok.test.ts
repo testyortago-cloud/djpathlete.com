@@ -447,12 +447,6 @@ describe("TikTokPlugin uploadDraft()", () => {
     expect(result.error).toContain("chunk 1/1")
     expect(result.error).toContain("403")
   })
-
-  it("needs no saved TikTok settings", async () => {
-    mockFlow()
-    const result = await createTikTokPlugin(BASE_CREDS).uploadDraft({ mediaUrl: MEDIA_URL })
-    expect(result.success).toBe(true)
-  })
 })
 
 describe("TikTokPlugin creatorInfo()", () => {

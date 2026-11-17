@@ -65,7 +65,9 @@ export function TikTokPostDialog({
   const [caption, setCaption] = useState(post.content)
   const [duration, setDuration] = useState<number | null>(null)
   const [videoFailed, setVideoFailed] = useState(false)
-  const [busy, setBusy] = useState(false)
+  // Which request is running, so only the clicked button spins: a draft is not a public post.
+  const [running, setRunning] = useState<false | "post" | "draft">(false)
+  const busy = running !== false
 
   // The caption the server holds. A PATCH can land while a later request fails
   // and the parent never hears of it, so this outranks a stale post.content
@@ -129,7 +131,7 @@ export function TikTokPostDialog({
 
   async function confirm() {
     if (busy || blocker !== null) return
-    setBusy(true)
+    setRunning("post")
     try {
       let updated: SocialPost = { ...post, content: savedCaption.current }
       if (caption.trim() !== savedCaption.current.trim()) {
@@ -166,7 +168,7 @@ export function TikTokPostDialog({
     } catch (err) {
       toast.error((err as Error).message || "Something went wrong")
     } finally {
-      setBusy(false)
+      setRunning(false)
     }
   }
 
@@ -176,7 +178,7 @@ export function TikTokPostDialog({
 
   async function sendDraft() {
     if (busy || draftBlocked) return
-    setBusy(true)
+    setRunning("draft")
     try {
       const res = await fetch(`/api/admin/social/posts/${post.id}/tiktok/draft`, { method: "POST" })
       if (!res.ok) throw new Error(await readApiError(res, "Couldn't send the draft."))
@@ -186,7 +188,7 @@ export function TikTokPostDialog({
     } catch (err) {
       toast.error((err as Error).message || "Something went wrong")
     } finally {
-      setBusy(false)
+      setRunning(false)
     }
   }
 
@@ -387,7 +389,7 @@ export function TikTokPostDialog({
         )}
 
         <div className="space-y-1.5 pt-2">
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               onClick={() => onOpenChange(false)}
@@ -410,11 +412,13 @@ export function TikTokPostDialog({
                 type="button"
                 onClick={sendDraft}
                 disabled={draftBlocked || busy}
+                aria-describedby={draftBlocked && blocker ? "tiktok-post-blocker" : undefined}
                 className={cn(
                   footerButton,
                   "border border-border bg-white text-primary hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50",
                 )}
               >
+                {running === "draft" && <Loader2 className="size-4 animate-spin" />}
                 Send to TikTok drafts
               </button>
             )}
@@ -429,7 +433,7 @@ export function TikTokPostDialog({
                   "bg-primary text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50",
                 )}
               >
-                {busy && <Loader2 className="size-4 animate-spin" />}
+                {running === "post" && <Loader2 className="size-4 animate-spin" />}
                 {intent === "now" ? "Post to TikTok" : "Continue to schedule"}
               </button>
             )}

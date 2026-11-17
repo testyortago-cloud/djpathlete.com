@@ -692,6 +692,9 @@ describe("<TikTokPostDialog> — Send to TikTok drafts", () => {
     fireEvent.click(postButton())
     await waitFor(() => expect(calls("PUT", "/tiktok")).toHaveLength(1))
     expect(draftButton()).toBeDisabled()
+    // Only the clicked button shows it is working.
+    expect(postButton().querySelector(".animate-spin")).not.toBeNull()
+    expect(draftButton().querySelector(".animate-spin")).toBeNull()
     fireEvent.click(draftButton())
     expect(calls("POST", "/tiktok/draft")).toHaveLength(0)
 
@@ -714,11 +717,33 @@ describe("<TikTokPostDialog> — Send to TikTok drafts", () => {
     fireEvent.click(draftButton())
     await waitFor(() => expect(calls("POST", "/tiktok/draft")).toHaveLength(1))
     expect(postButton()).toBeDisabled()
+    // The draft is not a public post: only the draft button shows it is working.
+    expect(draftButton().querySelector(".animate-spin")).not.toBeNull()
+    expect(postButton().querySelector(".animate-spin")).toBeNull()
     // Escape mid-request is ignored, as for the primary send.
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" })
     expect(onOpenChange).not.toHaveBeenCalled()
 
     releaseDraft()
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+  })
+})
+
+describe("<TikTokPostDialog> — footer layout and accessibility", () => {
+  it("lets the footer buttons wrap on a narrow screen", async () => {
+    renderDialog()
+    await privacySelect()
+    expect(draftButton().parentElement).toHaveClass("flex-wrap")
+  })
+
+  it("points a blocked draft button at the reason shown under the footer", async () => {
+    renderDialog()
+    await privacySelect()
+    loadVideo(601)
+    expect(draftButton()).toHaveAttribute("aria-describedby", "tiktok-post-blocker")
+    expect(document.getElementById("tiktok-post-blocker")).toHaveTextContent(/601 seconds/)
+    loadVideo(30)
+    choosePrivacy("PUBLIC_TO_EVERYONE")
+    expect(draftButton()).not.toHaveAttribute("aria-describedby")
   })
 })

@@ -58,7 +58,7 @@ export const PLATFORM_SETUP_GUIDES: Record<SocialPlatform, SetupGuide> = {
       "TikTok OAuth opens in a new tab. Log in, grant Content Posting permissions, tap Authorize.",
       "TikTok's API is hybrid: scheduled posts trigger a push notification to your phone with the caption + video link pre-filled. Tap Share to finish publishing.",
     ],
-    scopesGranted: ["video.publish", "user.info.basic"],
+    scopesGranted: ["video.publish", "video.upload", "user.info.basic"],
     helpUrl: "https://support.tiktok.com/en/business-and-creator/business-account",
   },
   youtube: {

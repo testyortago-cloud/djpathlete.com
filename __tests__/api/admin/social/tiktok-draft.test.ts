@@ -88,14 +88,18 @@ describe("POST /api/admin/social/posts/:id/tiktok/draft", () => {
     getSocialPostByIdMock.mockResolvedValue(post({ platform: "instagram" }))
     const res = await callPost()
     expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: "Social post not found" })
     expect(uploadDraftMock).not.toHaveBeenCalled()
   })
 
-  it.each(["published", "rejected"])("409 when the post is %s", async (approval_status) => {
+  it.each([
+    ["published", "This post is already published."],
+    ["rejected", "This post was rejected."],
+  ])("409 when the post is %s", async (approval_status, error) => {
     getSocialPostByIdMock.mockResolvedValue(post({ approval_status }))
     const res = await callPost()
     expect(res.status).toBe(409)
-    expect(await res.json()).toEqual({ error: `Cannot change a ${approval_status} post` })
+    expect(await res.json()).toEqual({ error })
     expect(uploadDraftMock).not.toHaveBeenCalled()
   })
 
@@ -120,6 +124,14 @@ describe("POST /api/admin/social/posts/:id/tiktok/draft", () => {
     const res = await callPost()
     expect(res.status).toBe(502)
     expect(await res.json()).toEqual({ error: "TikTok draft init failed (403): scope_not_authorized" })
+  })
+
+  it("502 with the message when the upload throws instead of returning", async () => {
+    uploadDraftMock.mockRejectedValue(new Error("fetch failed"))
+    const res = await callPost()
+    expect(res.status).toBe(502)
+    expect(await res.json()).toEqual({ error: "fetch failed" })
+    expect(updateSocialPostMock).not.toHaveBeenCalled()
   })
 
   it("200 with the publish_id, sending the file the publisher would send", async () => {
