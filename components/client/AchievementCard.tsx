@@ -3,6 +3,8 @@
 import { motion } from "framer-motion"
 import { Trophy, Flame, Star, CheckCircle2 } from "lucide-react"
 import type { Achievement } from "@/types/database"
+import { useWeightUnit } from "@/hooks/use-weight-unit"
+import { formatAchievementText } from "@/lib/weight-utils"
 
 interface AchievementCardProps {
   achievement: Achievement
@@ -69,6 +71,7 @@ function getBorderForType(type: string) {
 }
 
 export function AchievementCard({ achievement }: AchievementCardProps) {
+  const { unit } = useWeightUnit()
   const Icon = getIconForType(achievement.achievement_type)
   const iconColor = getAccentColorForType(achievement.achievement_type)
   const iconBg = getIconBgForType(achievement.achievement_type)
@@ -96,7 +99,7 @@ export function AchievementCard({ achievement }: AchievementCardProps) {
           </div>
           {achievement.description && (
             <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 line-clamp-2">
-              {achievement.description}
+              {formatAchievementText(achievement.description, unit)}
             </p>
           )}
         </div>

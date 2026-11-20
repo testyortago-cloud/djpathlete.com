@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useAdminWeightUnit } from "@/hooks/use-admin-weight-unit"
+import { formatAchievementText } from "@/lib/weight-utils"
 import type { SetDetail } from "@/types/database"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
@@ -43,7 +44,6 @@ interface ClientProgressViewProps {
     achievement_type: string
     title: string
     description: string | null
-    metric_value: number | null
     earned_at: string
     icon: string
   }>
@@ -115,7 +115,7 @@ export function ClientProgressView({
   stats,
   programs = [],
 }: ClientProgressViewProps) {
-  const { formatWeight } = useAdminWeightUnit()
+  const { unit, formatWeight } = useAdminWeightUnit()
   const [achievementsOpen, setAchievementsOpen] = useState(true)
   const [workoutsOpen, setWorkoutsOpen] = useState(true)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
@@ -246,17 +246,15 @@ export function ClientProgressView({
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-foreground truncate">{achievement.title}</p>
                         {achievement.description && (
-                          <p className="text-xs text-muted-foreground truncate">{achievement.description}</p>
-                        )}
-                      </div>
-                      <div className="shrink-0 text-right">
-                        {achievement.metric_value !== null && (
-                          <p className="text-sm font-medium text-foreground">
-                            {formatWeight(achievement.metric_value)}
+                          <p className="text-xs text-muted-foreground truncate">
+                            {formatAchievementText(achievement.description, unit)}
                           </p>
                         )}
-                        <p className="text-xs text-muted-foreground">{formatShortDate(achievement.earned_at)}</p>
                       </div>
+                      {/* No metric_value column: it means kg, reps, days or a workout count depending on
+                          the row, so formatting it as a weight showed "100 Workouts!" as 220.46 lbs. The
+                          description already carries the number. */}
+                      <p className="shrink-0 text-xs text-muted-foreground">{formatShortDate(achievement.earned_at)}</p>
                     </div>
                   )
                 })}

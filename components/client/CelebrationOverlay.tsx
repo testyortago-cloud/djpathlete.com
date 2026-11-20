@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Trophy, Flame, Star, CheckCircle2 } from "lucide-react"
+import { useWeightUnit } from "@/hooks/use-weight-unit"
+import { formatAchievementText } from "@/lib/weight-utils"
 
 interface CelebrationAchievement {
   achievement_type: string
@@ -145,6 +147,7 @@ function fireConfetti(type: string) {
 }
 
 export function CelebrationOverlay({ achievements, onComplete }: CelebrationOverlayProps) {
+  const { unit } = useWeightUnit()
   const [currentIndex, setCurrentIndex] = useState(0)
 
   const advance = useCallback(() => {
@@ -241,7 +244,7 @@ export function CelebrationOverlay({ achievements, onComplete }: CelebrationOver
               transition={{ delay: 0.4 }}
               className="text-sm text-muted-foreground"
             >
-              {current.description}
+              {formatAchievementText(current.description, unit)}
             </motion.p>
           )}
 

@@ -44,6 +44,20 @@ export function formatWeightCompact(kg: number | null, unit: WeightUnit): string
   return `${val}${unit}`
 }
 
+/**
+ * Achievement descriptions are stored with raw kg in the text
+ * ("New heaviest weight: 9.071858kg"). Rewrite each "<n>kg" in the viewer's
+ * unit as a whole number. The stored text keeps full precision, so this stays
+ * correct for both units.
+ */
+export function formatAchievementText(text: string, unit: WeightUnit): string {
+  return text.replace(/(\d[\d,]*(?:\.\d+)?)kg/g, (_, n: string) => {
+    const kg = Number(n.replace(/,/g, ""))
+    const value = Math.round(unit === "kg" ? kg : kg * KG_TO_LBS)
+    return `${value.toLocaleString("en-US")}${unit}`
+  })
+}
+
 /** Convert a user-entered value back to kg for storage. */
 export function toKg(value: number, unit: WeightUnit): number {
   if (unit === "kg") return value

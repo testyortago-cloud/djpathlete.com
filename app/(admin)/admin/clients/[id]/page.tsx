@@ -790,7 +790,6 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     achievement_type: a.achievement_type,
     title: a.title,
     description: a.description,
-    metric_value: a.metric_value,
     earned_at: a.earned_at,
     icon: a.icon,
   }))

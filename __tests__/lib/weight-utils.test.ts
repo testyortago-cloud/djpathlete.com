@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
   displayWeight,
+  formatAchievementText,
   formatWeight,
   formatWeightCompact,
   toKg,
@@ -70,5 +71,44 @@ describe("weight-utils — formatting", () => {
     expect(formatWeight(80, "kg")).toBe("80 kg")
     expect(unitLabel("kg")).toBe("kg")
     expect(unitLabel("lbs")).toBe("lbs")
+  })
+})
+
+/**
+ * Achievement descriptions are stored as raw kg ("New heaviest weight:
+ * 9.071858kg"). The owner asked for whole numbers only (2026-11-20). These are
+ * the strings from his screenshot.
+ */
+describe("formatAchievementText", () => {
+  it("shows every weight as a whole number in lbs", () => {
+    expect(formatAchievementText("New heaviest weight: 20.411657kg (previous: 9.071858kg)", "lbs")).toBe(
+      "New heaviest weight: 45lbs (previous: 20lbs)",
+    )
+    expect(formatAchievementText("New most reps at 3.628743kg+: 30 reps (previous: 5)", "lbs")).toBe(
+      "New most reps at 8lbs+: 30 reps (previous: 5)",
+    )
+    expect(formatAchievementText("New session volume record: 326.587kg (previous: 258.548kg)", "lbs")).toBe(
+      "New session volume record: 720lbs (previous: 570lbs)",
+    )
+  })
+
+  it("rounds to whole kg for a kg athlete", () => {
+    expect(formatAchievementText("New session volume record: 326.587kg (previous: 258.548kg)", "kg")).toBe(
+      "New session volume record: 327kg (previous: 259kg)",
+    )
+    expect(formatAchievementText("New estimated 1RM: 26kg (previous: 11kg)", "kg")).toBe(
+      "New estimated 1RM: 26kg (previous: 11kg)",
+    )
+  })
+
+  it("reads the thousands separator toLocaleString wrote", () => {
+    expect(formatAchievementText("New session volume record: 1,234.5kg (previous: 680.389kg)", "kg")).toBe(
+      "New session volume record: 1,235kg (previous: 680kg)",
+    )
+  })
+
+  it("leaves text with no weight in it alone", () => {
+    const streak = "You've worked out 7 days in a row. Incredible consistency!"
+    expect(formatAchievementText(streak, "lbs")).toBe(streak)
   })
 })
